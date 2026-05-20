@@ -73,7 +73,7 @@ DnaTreeCalc/
 │   │       │       ├── types.rs        # re-exports + UI projections
 │   │       │       └── mod.rs
 │   │       ├── app/
-│   │       │   ├── reducer.rs          # state mutations (tree edits, node selection, layout)
+│   │       │   ├── reducer.rs          # state mutations (tree edits, node selection, host state)
 │   │       │   ├── host_mount.rs       # bootstrap + bridge init
 │   │       │   ├── intents.rs          # high-level actions
 │   │       │   └── mod.rs
@@ -81,29 +81,29 @@ DnaTreeCalc/
 │   │       │   ├── types.rs            # TreeCalcHostState
 │   │       │   ├── workspace.rs        # workspace tree, formats, templates
 │   │       │   ├── selection.rs        # selection set, multi-select state
-│   │       │   ├── skin_registry.rs    # active skin + installed set (per-skin state lives in tree meta-namespaces)
+│   │       │   ├── skin_registry.rs    # registered skins + mounted composition (state lives in tree meta-namespaces)
 │   │       │   └── mod.rs
 │   │       ├── ui/
 │   │       │   ├── components/
 │   │       │   │   ├── workspace_shell.rs   # top-level shell layout
 │   │       │   │   ├── nav_rail.rs          # tree outline (left rail)
 │   │       │   │   ├── tree_row.rs          # individual tree row
-│   │       │   │   ├── node_editor.rs       # three-pane node editor layout
+│   │       │   │   ├── node_editor.rs       # TripleEditor skin body
 │   │       │   │   ├── value_detail.rs      # value rendering
 │   │       │   │   ├── array_grid.rs        # virtualized array view
 │   │       │   │   ├── table_editor.rs      # structured-table editor
 │   │       │   │   ├── format_editor.rs     # format meta-child editor
 │   │       │   │   ├── template_editor.rs   # template editing
-│   │       │   │   ├── canvas.rs            # free-canvas layout
-│   │       │   │   ├── outline_table.rs     # outline-table hybrid view
-│   │       │   │   ├── notebook.rs          # notebook layout
+│   │       │   │   ├── canvas.rs            # CanvasFlow skin primitives/body
+│   │       │   │   ├── outline_table.rs     # OutlineTable skin primitives/body
+│   │       │   │   ├── notebook.rs          # Notebook skin primitives/body
 │   │       │   │   ├── dependency_map.rs    # dependencies panel
 │   │       │   │   ├── search.rs            # workspace search
 │   │       │   │   ├── command_palette.rs   # Ctrl+. palette
 │   │       │   │   └── ...
 │   │       │   ├── editor/                  # REUSED from OneCalc — formula editor primitives
 │   │       │   └── design_tokens/
-│   │       │       └── theme.rs             # extended TreeCalc theme
+│   │       │       └── theme.rs             # skin/theme token helpers
 │   │       ├── services/
 │   │       │   ├── tree_view_model.rs       # state → tree-row projection
 │   │       │   ├── selection_service.rs     # multi-select operations
@@ -171,7 +171,7 @@ pub struct TreeCalcHostState {
     pub workspace: WorkspaceState,
     pub selection: SelectionState,
     pub ui_chrome: UiChromeState,
-    pub skins: SkinRegistryState,        // active skin + installed set (see §3.5); per-skin state lives in the tree's meta-namespaces
+    pub skins: SkinRegistryState,        // registered skins + mounted skin composition; per-skin state lives in tree meta-namespaces
     pub capability_and_environment: CapabilityAndEnvironmentState,
     pub ambient_app_context: AmbientAppContext,
     pub command_palette: CommandPaletteState,
@@ -188,8 +188,7 @@ pub struct WorkspaceState {
     pub dirty: bool,                                  // unsaved changes
     pub root: TreeNodeId,
     pub nodes: HashMap<TreeNodeId, TreeNodeState>,
-    pub templates: TemplateRegistry,
-    pub instance_links: HashMap<TreeNodeId, InstanceLink>,
+    pub template_index: TemplateIndex,                 // derived host index over template meta-subtrees and rollout tags
     pub external_aliases: ExternalWorkspaceAliases,
     pub capability_profile_id: String,
     pub last_published_result: Option<OxCalcTreeRecalcResult>,
@@ -203,7 +202,6 @@ pub struct TreeNodeState {
     pub formula: String,                              // single content field: "" = Empty, leading `=` = formula, else literal constant (CORE_MODEL_SPEC §6)
     pub is_meta: bool,
     pub hidden: bool,
-    pub layout_metadata: Option<NodeLayoutMetadata>,  // canvas position, etc.
     pub children: Vec<TreeNodeId>,                    // ordered
 }
 ```
@@ -243,14 +241,18 @@ The earlier `LayoutMode` / `LayoutState` design has been replaced by the skin ar
 
 ```rust
 pub struct SkinRegistryState {
-    /// Skin currently rendering the main UI.
-    pub active_skin_id: SkinId,
-    /// All registered (installed) skins, available to switch to.
-    pub installed: Vec<Box<dyn WorkspaceSkin>>,
+    /// Skin rendering the default main slot.
+    pub main_skin_id: SkinId,
+    /// All registered (installed) skins, available to mount or switch to.
+    pub registered: Vec<RegisteredSkin>,
+    /// Currently mounted skin instances, including optional inspector/split panes.
+    pub mounted: Vec<SkinMountDescriptor>,
     /// User's default skin preference (loaded from workspace meta or app prefs).
     pub default_skin_id: SkinId,
 }
 ```
+
+`RegisteredSkin` is the object-safe registration wrapper around concrete `WorkspaceSkin<State = S>` implementations. Concrete skins keep typed state; the registry stores erased factories, manifests, and capabilities so Rust's associated-state type does not leak into `Vec<Box<dyn ...>>`.
 
 Per-skin state lives in the workspace tree itself as meta-nodes under the `skins/<skin_id>` meta-subtree (see skin architecture §4). The state model has no global "layout choice" field; each skin owns its state, persisted alongside the workspace data. Shared cross-skin state (e.g., tree-collapse) lives under `skins/shared`.
 
@@ -386,36 +388,35 @@ A `.dnatree` file is a JSON document (or msgpack for size; decide on a flag). Sc
         "formula": "",
         "is_meta": false,
         "hidden": false,
-        "children": ["<TreeNodeId>", "..."],
-        "layout_metadata": null
+        "children": ["<TreeNodeId>", "..."]
+      },
+      {
+        "id": "<TreeNodeId>",
+        "parent_id": "<root>",
+        "sibling_index": 9,
+        "name": "skins",
+        "formula": "",
+        "is_meta": true,
+        "hidden": true,
+        "children": ["<TripleEditorStateNode>", "<CanvasFlowStateNode>", "..."]
+      },
+      {
+        "id": "<TreeNodeId>",
+        "parent_id": "<root>",
+        "sibling_index": 10,
+        "name": "Templates",
+        "formula": "",
+        "is_meta": true,
+        "hidden": true,
+        "children": ["<TemplateRootNode>", "..."]
       },
       ...
     ]
-  },
-  "templates": [
-    {
-      "id": "templates.quarter_shape",
-      "root_node_id": "<TreeNodeId>",
-      "version": 7,
-      "source_node_ids": ["<TemplateNodeId>", "..."]
-    }
-  ],
-  "instance_links": [
-    {
-      "root_node_id": "<TreeNodeId>",
-      "template_id": "templates.quarter_shape",
-      "bound_version": 7,
-      "node_map": [
-        { "template_node_id": "<TemplateNodeId>", "instance_node_id": "<TreeNodeId>" }
-      ]
-    }
-  ],
-  "ui_layout": {
-    "active_layout_per_subtree": {...},
-    "canvas_positions": {...}
   }
 }
 ```
+
+Skin state, template definitions, format data, template rollout tags, and other host bookkeeping persist as meta-nodes in the tree. Runtime indexes such as `TemplateIndex`, skin-state lookup tables, and format caches are rebuilt from that tree on load; any future cached index must be treated as disposable acceleration, not semantic truth.
 
 ### 5.2 Save / load flow
 
@@ -623,7 +624,7 @@ The host UX depends on items 1, 2, 8, and 9 directly; the others are formula-lan
 | §2.8 Format editor | §6.9 format_editor.rs |
 | §2.9 Template editor | §6.10 template_editor.rs |
 | §2.10 Diagnostics | inline in editor; reused from OneCalc |
-| §2.11 Workspace-level views | individual components — settings panel, templates registry list |
+| §2.11 Workspace-level views | individual components — settings panel, templates index/list |
 | §3 Editing actions | §3 state model + §6 components; reducer in app/reducer.rs |
 | §3.10 Keybindings | command_palette + per-component key handlers |
 | §4 Layout modes (skins) | §3.5 SkinRegistryState + per-skin meta-namespaces; SKINS.md; §6.5/§6.6/§6.7 skin-specific components |
@@ -647,11 +648,11 @@ The host UX depends on items 1, 2, 8, and 9 directly; the others are formula-lan
 
 A natural build order based on dependencies:
 
-1. **Phase 0 — Foundation.** Factor reusable OneCalc components into a shared crate. Verify TreeCalc consumes them.
-2. **Phase 1 — Tree shell.** Workspace state, tree outline (nav rail), basic node creation/deletion/rename. Three-pane editor with formula editor reused. Single-node evaluation via bridge. Persistence via localStorage and explicit file save.
+1. **Phase 0 — Foundation + skin scaffold.** Factor reusable OneCalc components into a shared crate, define `RegisteredSkin` / `WorkspaceSkin` / `SkinContext`, and mount the first shell through the skin registry from the start.
+2. **Phase 1 — Tree shell in TripleEditor.** Workspace state, tree outline (nav rail), basic node creation/deletion/rename. TripleEditor uses reused formula-editor primitives and persists its panel state through `skins/triple-editor` meta-nodes. Single-node evaluation via bridge. Persistence via localStorage and explicit file save.
 3. **Phase 2 — Multi-node calc.** OxCalc bridge integration. Recalc and dependency graph in place. Status display per node. Reference resolution with walk-up.
 4. **Phase 3 — Editing breadth.** Multi-select, move, drag-and-drop. Rename-propagation prompt. Search.
-5. **Phase 4 — Layout alternatives.** Outline-table view. Notebook view. Adaptive layout selection.
+5. **Phase 4 — Additional skins and adaptive renderers.** OutlineTable, CellView, Notebook-style presentation, and active-skin renderer choices for scalars/arrays/tables/templates.
 6. **Phase 5 — Meta-nodes and formatting.** is_meta flag plumbing. Format editor. Format inheritance walking.
 7. **Phase 6 — Templates.** Template editor. Instance link tracking, hidden rollout tags, and on-demand validate/sync (initially N individual edits; later transactional once OxCalc supports it).
 8. **Phase 7 — Tables.** Table editor for Table-valued nodes. Structured-reference syntax in the editor.
@@ -686,7 +687,7 @@ A handful of choices the technical plan defers:
 1. **Workspace file format**: JSON vs. msgpack. JSON is human-readable and debuggable; msgpack is compact and fast. Pick JSON for v1; msgpack as future optimization.
 2. **Canvas implementation**: pure HTML/CSS positioning vs. canvas drawing API vs. SVG. SVG is most likely (good Leptos integration, supports drawing connection lines, exportable).
 3. **Tree row drag-drop library**: roll own with `web-sys` Drag API or pull in a lightweight crate. Roll own — the drag-drop interactions are specific to the tree-row use case.
-4. **Theme palette**: extend OneCalc's beige palette or design TreeCalc-specific theme. Extend; the visual continuity helps users moving between products.
+4. **Skin theming**: each skin owns its visual language through theme tokens. A built-in skin may reuse OneCalc cues for continuity, but that is optional and not normative; skinning should make divergence cheap.
 5. **WebAssembly bundle size**: the engine crates are substantial; bundle splitting may help startup. Defer until measured.
 6. **Service-worker / offline mode**: nice-to-have; defer.
 

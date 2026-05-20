@@ -109,6 +109,17 @@ pub trait WorkspaceSkin: Send + Sync + 'static {
     fn mount(&self, cx: SkinContext<Self::State>) -> SkinHandle;
 }
 
+pub struct RegisteredSkin {
+    pub id: SkinId,
+    pub manifest: SkinManifest,
+    pub capabilities: SkinCapabilities,
+    pub factory: Arc<dyn ErasedSkinFactory>,
+}
+
+pub trait ErasedSkinFactory: Send + Sync + 'static {
+    fn mount_erased(&self, cx: ErasedSkinContext) -> SkinHandle;
+}
+
 pub struct SkinHandle {
     /// Root DOM/View element produced by the skin.
     pub view: View,
@@ -120,7 +131,7 @@ pub struct SkinHandle {
 }
 ```
 
-The trait is the smallest practical surface. Capabilities and manifest are pure data. The only function is `mount`, which receives the typed context and returns the rendered fragment plus optional lifecycle callbacks.
+Concrete skins implement `WorkspaceSkin` with a typed `State`. The skin registry stores `RegisteredSkin`, an object-safe wrapper that owns the manifest, capabilities, and an erased mount factory. This keeps skin implementation strongly typed without forcing `Vec<Box<dyn WorkspaceSkin>>` through Rust's associated-type/object-safety constraints. Capabilities and manifest are pure data. The core lifecycle operation is `mount`, which receives the typed context and returns the rendered fragment plus optional lifecycle callbacks.
 
 ## 2.2 `SkinContext<S>` — what a skin receives
 
@@ -149,13 +160,13 @@ pub struct SkinContext<S: SkinState> {
 
     /// Cross-skin shared state (tree-collapse, pinned nodes, recent selection).
     /// Read by any skin that wants it; written by any skin that owns the relevant action.
-    pub shared: RwSignal<SharedSkinState>,
+    pub shared: SharedSkinStateHandle,
 
     // === Skin's own state (typed) ===
 
     /// The skin's typed, persisted state. Reads and writes go through this signal.
     /// The host serializes/deserializes against the workspace meta-tree.
-    pub state: RwSignal<S>,
+    pub state: SkinStateHandle<S>,
 
     // === Mutator-role outputs ===
 
@@ -165,7 +176,7 @@ pub struct SkinContext<S: SkinState> {
 }
 ```
 
-Each field has a clear role. Nothing is generic JSON — the typed state `S` is the skin's own struct; the workspace is a typed `WorkspaceState`; the dispatch takes typed intents.
+Each field has a clear role. Nothing is generic JSON — the typed state `S` is the skin's own struct; the workspace is a typed `WorkspaceState`; the dispatch takes typed intents. `state` and `shared` are DnaTreeCalc host handles over meta-node persistence. Updating them does not call OxCalc, does not rebind formulas, and does not recalculate values.
 
 ## 2.3 `SkinState` — typed per-skin state
 
@@ -253,7 +264,7 @@ impl SkinState for TripleEditorState {
 }
 ```
 
-Each is small, typed, persistable. Skins access via `cx.state.with(|s| s.field)` for reads and `cx.state.update(|s| s.field = new_value)` for writes. The signal infrastructure handles the serialize-on-change to meta-nodes.
+Each is small, typed, persistable. Skins access via `cx.state.with(|s| s.field)` for reads and `cx.state.update(|s| s.field = new_value)` for writes. The DnaTreeCalc host handles serialization to `skins/<skin_id>` meta-nodes. This is facade state, not engine state.
 
 ## 2.4 `SharedSkinState` — cross-skin state
 
@@ -273,11 +284,11 @@ pub struct SharedSkinState {
 }
 ```
 
-When the triple-editor's nav rail toggles a node's collapse, it writes to `cx.shared.update(|s| s.tree_collapsed.insert(id))`. When the cell-view skin renders, it reads `cx.shared.with(|s| s.tree_collapsed.contains(&id))`. Consistency falls out of the shared signal.
+When the triple-editor's nav rail toggles a node's collapse, it writes to `cx.shared.update(|s| s.tree_collapsed.insert(id))`. When the cell-view skin renders, it reads `cx.shared.with(|s| s.tree_collapsed.contains(&id))`. Consistency falls out of the shared host signal and its meta-node persistence.
 
 ## 2.5 `Dispatcher` — the intent gateway
 
-A skin **never** writes directly to `workspace`; it dispatches typed intents.
+A skin **never** writes directly to calculation workspace state and never calls OxCalc. Structural/content/template/external-value changes go through typed intents. Skin-specific and cross-skin facade state goes through `cx.state` / `cx.shared`, which are handled entirely by DnaTreeCalc.
 
 ```rust
 pub struct Dispatcher {
@@ -357,18 +368,14 @@ pub enum WorkspaceIntent {
     UpdateExternalValue { node: TreeNodeId, value: EvalValue, source: ExternalSourceId },
     InvalidateExternal { source: ExternalSourceId },
 
-    // --- View-shared state ---
-    SetTreeCollapsed { node: TreeNodeId, collapsed: bool },
-    Pin { node: TreeNodeId },
-    Unpin { node: TreeNodeId },
 }
 ```
 
 This is a closed set. Skins compose user gestures into these intents. The dispatcher routes:
 
-- **Selection / shared-state intents** → direct write to the relevant signal (cheap).
+- **Selection intents** → direct write to DnaTreeCalc host state (cheap).
 - **Structural / formula intents** → bridge call → engine recalc → workspace update.
-- **Format intents** → write to the node's `Format` meta-child (which is a structural edit on a meta-subtree, calc-ignored, but persisted).
+- **Format intents** → DnaTreeCalc writes the node's `Format` meta-child, persists it, and updates render state; OxCalc sees only the normal `is_meta` behavior and does not evaluate that subtree.
 - **Template intents** → host-level orchestration (read template structure, generate N structural edits to instances).
 - **External-value intents** → bridge's external-value entry point → engine invalidation → cascade.
 
@@ -382,8 +389,7 @@ pub struct WorkspaceState {
     pub dirty: bool,
     pub root: TreeNodeId,
     pub nodes: HashMap<TreeNodeId, TreeNodeState>,
-    pub templates: TemplateRegistry,
-    pub instance_links: HashMap<TreeNodeId, InstanceLink>,
+    pub template_index: TemplateIndex,             // derived host bookkeeping over template meta-subtrees and rollout tags
     pub external_aliases: ExternalWorkspaceAliases,
     pub capability_profile_id: CapabilityProfileId,
     pub last_published_result: Option<OxCalcTreeRecalcResult>,
@@ -733,7 +739,7 @@ Primitives are pure Leptos components with well-defined props. They don't read c
 
 ## 4. Per-skin meta-state
 
-Each skin owns a meta-namespace under the workspace root. Skin state is persisted as meta-nodes (`is_meta = true`), invisible to formulas, host-managed.
+Each skin owns a meta-namespace under the workspace root. Skin state is persisted as meta-nodes (`is_meta = true`), invisible to formulas, host-managed by DnaTreeCalc.
 
 ### 4.1 Namespace layout
 
@@ -781,7 +787,7 @@ Each skin owns a meta-namespace under the workspace root. Skin state is persiste
 - **`pinned-nodes`** — list of "favorite" nodes a user has pinned across the workspace.
 - **`recent-selection`** — recent selection history.
 
-A skin reads from `shared_skin_state` and `skin_state` in its render. Writes its own state to `skin_state`; writes shared state (e.g., toggle collapse) to `shared_skin_state`.
+A skin reads from `shared_skin_state` and `skin_state` while mounted. Writes to its own state go through `skin_state`; writes to shared facade state (e.g., toggle collapse) go through `shared_skin_state`. These writes are persisted by DnaTreeCalc as meta-node changes, but they are not OxCalc transactions and do not participate in formula dependency invalidation.
 
 ### 4.3 Coexistence
 
@@ -801,31 +807,35 @@ When a node is deleted from the regular tree, the host walks all skin meta-names
 
 1. Workspace loads. Core state hydrates from persistence.
 2. Skin registry initializes with built-in skins.
-3. User's preferred default skin (from workspace meta or app preferences) becomes active.
-4. Active skin's `on_activate` runs: reads its meta-namespace, populates internal signals.
-5. Skin `render()` returns the root element, which mounts into the shell.
+3. User's preferred default skin (from workspace meta or app preferences) is assigned to the main mount slot.
+4. Host hydrates that skin instance's typed state from its meta-namespace.
+5. Host builds `SkinContext` and calls `skin.mount(cx)`.
+6. The returned `SkinHandle.view` mounts into the shell.
 
 ### 5.2 Switching skins
 
 1. User triggers switch (via skin-switcher chrome, command palette, or keyboard shortcut).
-2. Active skin's `on_deactivate` runs: flushes any pending state to its meta-namespace.
-3. Active skin's component tree tears down. Shared signals (workspace, selection, calc state) persist; skin-specific signals go away.
-4. New skin's `on_activate` runs: hydrates from its meta-namespace.
-5. New skin's `render()` returns the new root element; mounts into the shell.
+2. The outgoing skin handle's `on_deactivate` runs: flushes any pending state to its meta-namespace.
+3. The outgoing skin's component tree tears down. Shared signals (workspace, selection, calc state) persist; skin-specific signals go away.
+4. Host hydrates the new skin's typed state from its meta-namespace.
+5. Host builds `SkinContext` and calls `skin.mount(cx)`.
+6. The returned `SkinHandle.view` mounts into the shell.
 
 ### 5.3 Workspace edits during a session
 
 When a user edits in any skin:
-- The skin issues actions through the bridge (formula edit, structural edit, etc.).
-- Bridge updates core state.
-- Core state's signal updates trigger re-renders in the active skin (and any subscribed primitives).
-- Other skins' meta-namespaces are unaffected unless the skin observes the event (`on_workspace_event`).
+- The skin dispatches typed intents to DnaTreeCalc.
+- DnaTreeCalc routes only calc-affecting intents through the OxCalc bridge; facade/meta-only changes stay in the host.
+- Core state's signal updates trigger re-renders in mounted skins (and any subscribed primitives).
+- Other skins' meta-namespaces are unaffected unless the host explicitly updates shared facade state.
 
 ### 5.4 Skin-meta updates
 
 When a user reorganizes the canvas (drag a node to a new position):
 - Canvas skin writes `{x: ..., y: ...}` to its meta-namespace via `skin_state.update(...)`.
-- The write goes through the regular structural-edit pathway (it's a meta-node value edit).
+- DnaTreeCalc persists the meta-node value and updates the mounted skin signal.
+- No OxCalc bridge call, formula rebind, or value recalc occurs.
+- These writes are outside the calculation undo stack by default; a skin may offer its own local view-state undo where useful.
 - The change persists with the workspace.
 - Other skins ignore it.
 
@@ -846,18 +856,20 @@ When a user reorganizes the canvas (drag a node to a new position):
 
 Some skins (TripleEditor, Outline-table) read the shared tree-state so collapsing a subtree in one skin shows it collapsed in the other. Other skins (Canvas) don't use tree-state at all — they have their own spatial organization.
 
-The Format Editor and Template Editor are "Inspector" / "Specialty" category skins: they're often shown alongside an Editor skin (in a future multi-pane composition) rather than fully replacing the active editor. For v1, switching to them takes over the full shell.
+The Format Editor and Template Editor are "Inspector" / "Specialty" category skins: they can be mounted alongside an Editor skin when the shell uses split panes, or they can occupy the main slot in a simpler one-pane shell.
 
 ---
 
-## 7. Multi-pane composition (deferred to v2)
+## 7. Skin Composition
 
-Layer 6 includes a future skin called `multi-pane-shell` that:
-- Contains multiple sub-skins, each occupying a configurable pane.
-- The user picks which skin renders in each pane.
-- Splitter dividers; resizing.
+Layer 6 is a composition layer, not a hard "one active skin" switch. The default v1 shell can mount one editor skin in one main slot, but the interface is flexible enough to mount multiple skin instances when a skin or shell wants split panes, inspectors, or subtree-scoped views:
 
-This composability is intentional but deferred until the single-active-skin model is solid. The architecture supports it (`WorkspaceSkin` can recursively contain other `WorkspaceSkin` instances), but v1 ships with single-active-skin only.
+- a `SkinMountSlot` identifies where the skin instance is mounted (`main`, `right-inspector`, `split-left`, `split-right`, etc.);
+- a `SkinContext` may carry an optional focus scope such as a selected node, subtree root, or template id;
+- each mounted instance keeps its own typed state where needed, while shared state (`selection`, collapse state, pinned nodes) remains host-managed;
+- inspector/specialty skins such as FormatEditor and TemplateEditor can therefore be mounted beside an editor skin without changing the core contract.
+
+This makes adaptive layout a skin/shell composition policy rather than a separate core mode system. V1 can start with the simple one-main-slot shell, but the trait and state model do not need to be redesigned for multi-pane or per-subtree presentation later.
 
 ---
 
@@ -913,10 +925,10 @@ Tracked as engine prerequisites in [`CORE_MODEL_SPEC.md`](../model/CORE_MODEL_SP
 
 ## 10. Skin registry and switching chrome
 
-The shell provides a thin layer above the active skin:
+The shell provides a thin layer above the mounted skin composition:
 
 - **Top-of-shell** context strip (filename, profile, recalc status) — universal, not skin-controlled.
-- **Skin switcher** in the context strip — quick switch between installed skins. Could be a tab strip (as shown in mockups 06–08), a dropdown, or a command palette command.
+- **Skin switcher** in the context strip — quick switch between installed skins in the focused mount slot. Could be a tab strip (as shown in mockups 06–08), a dropdown, or a command palette command.
 - **Bottom-of-shell** status foot — partially skin-driven (skin contributes hints/keybindings), partially universal (calc state, deps count).
 
 The shell occupies a thin border around the skin; everything inside is the skin's domain.
@@ -925,11 +937,11 @@ The shell occupies a thin border around the skin; everything inside is the skin'
 
 ## 11. Performance and resource model
 
-- **Each skin instantiates its own components** when active. Component tree tears down on deactivation.
-- **Shared signals survive switches.** Workspace state, selection state, calc state — all in the core, unaffected by skin lifecycle.
+- **Each mounted skin instantiates its own components.** Component tree tears down on unmount/deactivation.
+- **Shared signals survive switches and composition changes.** Workspace state, selection state, calc state — all in the core, unaffected by skin lifecycle.
 - **Heavy components are lazy.** Drill panel, dependency graph, format editor instantiate only when the user opens them, not on every skin activation.
 - **Meta-state hydration is cheap.** Per-skin meta is small (a few hundred entries for canvas positions in a moderate workspace). Loading on activate is sub-millisecond.
-- **Switching is fast** by construction: tear down DOM of old skin, mount DOM of new skin, hydrate from meta. No data conversion, no engine recalc, no formula re-bind.
+- **Switching is fast** by construction: tear down DOM of old skin instance, mount DOM of new skin instance, hydrate from meta. No data conversion, no engine recalc, no formula re-bind.
 
 ---
 
@@ -950,11 +962,11 @@ Skin removal (a skin unregistered from a build) preserves its meta-namespace in 
 
 A reasonable build order:
 
-**Phase A — Skin scaffold.** Define the `WorkspaceSkin` trait, `SkinContext`, `SkinManifest`, `SkinCapabilities`. Implement skin registry. Implement skin switching mechanics. Ship with one trivial skin (`TripleEditor`) to prove the scaffold.
+**Phase A — Skin scaffold.** Define `WorkspaceSkin`, `RegisteredSkin`, `SkinContext`, `SkinManifest`, `SkinCapabilities`, and the host-side skin-state handles. Implement the registry/composition layer and mount TripleEditor through it from the first usable shell.
 
 **Phase B — Lift primitives.** Extract OneCalc-derived primitives into a shared crate. Wire them into TripleEditor as proof.
 
-**Phase C — Second skin.** Implement CellView or OutlineTable. Force the design to handle a second active skin (per-skin state, shared tree state, switching). Iron out the shared-skin-state pattern.
+**Phase C — Second skin.** Implement CellView or OutlineTable. Force the design to handle a second registered/mountable skin (per-skin state, shared tree state, switching or side-by-side mounting). Iron out the shared-skin-state pattern.
 
 **Phase D — Canvas.** Implement CanvasFlow. Most demanding for state model (positions per node, groups, layout modes). Tests the meta-namespace model under pressure.
 
@@ -964,7 +976,7 @@ A reasonable build order:
 
 **Phase G — Polish.** Skin-switcher UX in chrome. Keyboard shortcuts. Skin discovery in command palette. Skin documentation.
 
-After Phase G, the architecture is mature. Future skins (Notebook, custom user skins, multi-pane shell) layer on without further scaffold changes.
+After Phase G, the architecture is mature. Future skins, custom user skins, and richer pane composition layer on without further scaffold changes.
 
 ---
 

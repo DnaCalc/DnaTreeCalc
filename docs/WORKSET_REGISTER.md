@@ -34,9 +34,9 @@ These epic beads were created during W001 bootstrap. Use this table only to pair
 ## Default sequence
 
 ```
-W001 → W002 → W003 → W004 → W005 → W006 → W007 → W008 → W009 → W010
-(bootstrap)   (engine  (shell)  (refs)  (skins)  (more   (meta/  (excel  (excel  (UDF)
-              bridge)                            skins)  fmt/    import) export
+W001 → W002 → W005 → W003 → W004 → W006 → W007 → W008 → W009 → W010
+(bootstrap)   (engine  (skin   (shell)  (refs)  (more   (meta/  (excel  (excel  (UDF)
+              bridge)  scaffold)                 skins)  fmt/    import) export
                                                         templ)          + replay)
 ```
 
@@ -66,10 +66,10 @@ Engine prerequisites in OxCalc/OxFml/OxFunc (Spec `model/CORE_MODEL_SPEC.md` §6
 
 ### W003_tree_shell_and_core_editing
 - **Purpose:** The workspace shell and core structural editing — nav-rail tree outline, node CRUD (insert/rename/move/delete), the three-pane editor skin, persistence to `.dnatree`.
-- **Depends on:** W002.
+- **Depends on:** W002, W005 skin scaffold. Worksets need not be executed strictly by number; TreeCalc's first usable shell is built through the skin interface from the start, not retrofitted later.
 - **Spec sections:** `ux/REQUIREMENTS.md`; `ux/TECHNICAL.md` §6; `ux/SKINS.md` (triple-editor).
 - **Closure condition:** a user can build, edit, save, and reopen a tree of named nodes in the three-pane skin.
-- **Initial epic lanes:** nav rail + tree rows; structural edit service; persistence; three-pane skin.
+- **Initial epic lanes:** nav rail + tree rows; structural edit service; persistence; registered TripleEditor skin.
 - **Verification:** Local + a UX click-through on the running shell; save/reopen round-trip test. Scaffolding: skin click-through harness; persistence round-trip fixture.
 - **Status:** OPEN
 
@@ -84,16 +84,16 @@ Engine prerequisites in OxCalc/OxFml/OxFunc (Spec `model/CORE_MODEL_SPEC.md` §6
 
 ### W005_skin_architecture_and_primitives
 - **Purpose:** The skin framework — `WorkspaceSkin` trait, `SkinContext`, intent dispatch, shared primitive library, per-skin meta-namespaces, skin switcher.
-- **Depends on:** W003.
+- **Depends on:** W002. This is foundational UI infrastructure; W003 consumes it for the first shell.
 - **Spec sections:** `ux/SKINS.md`.
-- **Closure condition:** two skins coexist and switch at runtime with per-skin state persisted in the `skins/*` meta-node subtree; shared tree-state honored across skins.
+- **Closure condition:** the skin registry/composition layer mounts TripleEditor through the skin interface, and a second minimal skin or test skin proves per-skin state persisted in the `skins/*` meta-node subtree; shared tree-state is honored across mounted skins.
 - **Initial epic lanes:** skin trait + registry; primitive library lift from OneCalc; meta-namespace persistence.
 - **Verification:** Local + cross-skin equivalence (the same workspace renders/edits correctly across skins) + per-skin meta-state round-trip. Scaffolding: cross-skin equivalence harness; skin-state persistence tests.
 - **Status:** OPEN
 
 ### W006_additional_skins
 - **Purpose:** The remaining v1 skins — cell-view, outline-table, nodes-across, canvas-flow — on the primitive library.
-- **Depends on:** W005.
+- **Depends on:** W003, W005.
 - **Spec sections:** `ux/SKINS.md` §6; `ux/prototypes/`.
 - **Closure condition:** the prototyped skins render and edit the same workspace; canvas group→template affordance works.
 - **Initial epic lanes:** cell-view; outline-table; nodes-across; canvas-flow.
@@ -105,7 +105,7 @@ Engine prerequisites in OxCalc/OxFml/OxFunc (Spec `model/CORE_MODEL_SPEC.md` §6
 - **Depends on:** W004, W005. Engine prereqs (`is_meta` flag, transactional batch edit) via handover.
 - **Spec sections:** `model/META_NODES.md`; `model/CORE_MODEL_SPEC.md` §7b; `ux/REQUIREMENTS.md` §2.8.
 - **Closure condition:** templates instantiate and sync; format editor reads/writes `Format` meta-children; inheritance walk works.
-- **Initial epic lanes:** is_meta plumbing; format editor + inheritance; template registry + sync.
+- **Initial epic lanes:** is_meta plumbing; format editor + inheritance; template index/bookkeeping + sync.
 - **Verification:** Local for template instantiate/sync/override semantics; Excel anchor for number-format and conditional-format **rendering** via OxReplay display-faithful views (where the format model is Excel-aligned). Scaffolding: format/CF fixture corpus; template-sync test fixtures.
 - **Status:** OPEN
 

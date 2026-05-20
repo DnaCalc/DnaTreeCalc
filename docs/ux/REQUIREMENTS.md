@@ -198,7 +198,7 @@ Beyond per-node detail, the shell offers workspace-wide views:
 
 **2.11.1 Calc status overview.** A heatmap or list of all nodes' calc states; click to navigate to dirty/errored/cycle-blocked nodes.
 
-**2.11.2 Templates registry.** Lists all templates in the workspace with their instance counts; click to open the template editor.
+**2.11.2 Templates index.** Lists templates discovered from the workspace's template meta-subtrees and rollout tags, with instance counts; click to open the template editor. This is a host-built index over workspace bookkeeping, not a separate template body store.
 
 **2.11.3 Workspace settings / config.** Cross-workspace alias manifest, UI preferences, capability profile (read-only display).
 
@@ -358,7 +358,7 @@ Nodes can be positioned anywhere on a 2D canvas. Each node is a card showing nam
 
 **Strengths:** visual organization, dashboard-like presentation, custom layouts.
 
-**Constraints:** position is host-level metadata, not part of structural tree. Persisted per node in the workspace file.
+**Constraints:** position is skin-owned facade metadata, not part of the calculation tree. Persisted under the canvas skin's `skins/canvas-flow` meta-namespace.
 
 **Use cases:** dashboards, narrative presentations, building visual mental models.
 
@@ -374,13 +374,13 @@ A vertical scroll of nodes in tree order. Non-leaf nodes precede their children;
 
 ### 4.5 Adaptive / auto-layout
 
-The system chooses a layout per top-level subtree based on its shape:
+The mounted skin chooses renderers or subviews based on each subtree's shape:
 - Templated uniform subtrees (Q1/Q2/Q3/Q4 with parallel inner structure) → grid view, one column per instance.
 - Tabular data (table-valued nodes) → table view.
 - Mostly-leaf flat nodes → list or notebook.
 - Mostly-deep narrow nodes → outline.
 
-User can override with explicit layout choice.
+User overrides are stored as per-skin meta-state. This is not a core workspace layout mode and does not add per-node layout fields to regular nodes.
 
 ### 4.6 Drill-down
 
@@ -392,7 +392,7 @@ The shell supports "summary-at-parent, expand-to-children" interactions. A paren
 
 ### 4.7 Multi-pane / split view
 
-The user can split the working area into multiple panes, each showing a different node. Useful for comparison, side-by-side editing, or watching a value while editing a dependency.
+The user can split the working area into multiple panes, each mounting a skin instance against the same workspace with its own focus scope. Useful for comparison, side-by-side editing, or watching a value while editing a dependency.
 
 ### 4.8 Read-only / presentation mode
 
@@ -521,7 +521,7 @@ Based on workspace size, the shell adapts:
 
 - Autosave to a workspace file on each significant edit (debounced).
 - localStorage fallback for browser-resident workspaces (same pattern as DnaOneCalc).
-- Workspace file format records: tree structure, formulas, values (or recompute on load), formats (as meta-data), templates, instance links, cross-workspace alias manifest, capability profile, UI layout preferences per node.
+- Workspace file format records: tree structure, formulas, values (or recompute on load), formats (as meta-data), template meta-subtrees and rollout tags, cross-workspace alias manifest, capability profile, and per-skin UI state under `skins/*` meta-namespaces.
 - Explicit "Save As" for naming and choosing location.
 
 ### 7.2 Versioning
@@ -599,12 +599,12 @@ Decisions implicit in this requirements doc:
 | Persistence | Autosave + explicit save |
 | Wow-moment for v1 | Templated forecast model (Accounts.YYYY.Qx pattern) |
 | Tech reuse from DnaOneCalc | Formula editor surface, bridge pattern, drill panel, completion machinery |
-| Adaptive layouts | Auto-chosen per subtree, with explicit override |
+| Adaptive rendering | Chosen inside the mounted skin or skin composition, with explicit per-skin override |
 
 Dials worth surfacing for further user input:
-- Default font / theme (DnaOneCalc's warm beige vs. alternatives).
+- Default font / theme for each built-in skin; OneCalc visual continuity is optional, not a constraint.
 - Default meta-node visibility (currently hidden; could default to "shown but greyed").
-- Whether templates registry is a separate top-level workspace view or a section of the workspace settings panel.
+- Whether the templates index is a separate top-level workspace view or a section of the workspace settings panel.
 - Free-canvas auto-layout details (force-directed graph initialization vs. user-positioned blank slate).
 - Cross-workspace stale-data refresh policy (auto vs. prompt).
 
