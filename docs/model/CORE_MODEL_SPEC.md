@@ -81,7 +81,7 @@ ref.*                             children-as-references collection (sugar for r
 
 Consequences:
 - An ancestor is findable by its own name (`Q1` from inside `Q1.Income.Sales` resolves to `Q1` as a child of `2005`).
-- Self-reference (a node's formula writing its own name) resolves to self and produces the standard cycle error.
+- Self-reference (a node's formula writing its own name) resolves to self; under the default (non-iterative) profile this produces a circular-reference error, and with iterative calculation enabled it participates in the iterated cycle region (see §7a).
 
 To force a specific resolution and override the walk-up, the user writes an explicit relative (`^.Name`, `^^.Name`), a deeper descent (`Q1.Margin`), or a workspace-rooted (`[]Name`) or cross-workspace (`[ws]Name`) absolute. The editor surfaces the resolved binding on hover so shadowing is visible at write-time.
 
@@ -287,10 +287,35 @@ The following pieces are TreeCalc-specific extensions that depend on engine work
 9. **`is_meta` per-node attribute** (boolean, default false). When true on any node, that node and its entire descendant subtree are invisible to formula reference resolution AND are not bound or evaluated by the engine. Bind layer skips meta-flagged nodes and their descendants when resolving references (resulting in `Unresolved` on lookup failure). Positional operators (`@PREV`/`@NEXT`/`@INDEX`/`.*`) on regular siblings skip meta neighbors. Templates and per-node format both use this flag; future meta-node uses (configuration, named lambdas, annotations) inherit the same mechanism. Storage / filter strategy is OxCalc's choice.
 10. **Conditional-formatting rule semantics for the format surface** — confirm or add support for ordered multiple rules, `Stop If True`, action accumulation across rules, and subtree-level format inheritance inputs. The format engine details live in OxFml/OxFunc, but TreeCalc's format editor and Excel verification depend on this behavior being explicit and reusable rather than reconstructed in the host.
 11. **Constant entry classification on the TreeCalc channel** — OxFml's cell-entry classification (`OXFML_DNA_ONECALC_DOWNSTREAM_CONSUMER_CONTRACT.md` §2.1A: leading `=` formula, `'` text escape, finite-number/`TRUE`-`FALSE`/quoted-string/verbatim-text constant) must be reachable from the TreeCalc host channel, with the formula branch parsing tree-path references under `treecalc-v1` rather than WorksheetA1, plus Excel-aligned implicit number-format inference on number constants. Raised in `docs/handovers/HANDOVER_OXFML_constant_input.md`.
+12. **Circular-reference cycle profiles** — the host selects a cycle profile and supplies iterative bounds (Maximum Iterations, Maximum Change) via the compatibility basis; OxCalc owns the profiles and the iteration (`docs/spec/core-engine/w048-cycles/`): `cycle.non_iterative_stage1` (default — reject / `cycle_blocked`), `cycle.excel_match_iterative` (Excel-faithful; named blockers still open), `cycle.iterative_deterministic_v0` (deterministic Jacobi). See §7a and `docs/handovers/HANDOVER_OXCALC_iterative_cycle_config.md`.
 
 ## 7. Calc-State Display
 
-The engine maintains an invalidation vocabulary (`clean` / `dirty_pending` / `needed` / `evaluating` / `verified_clean` / `publish_ready` / `rejected_pending_repair` / `cycle_blocked`). TreeCalc does not distinguish `verified_clean` from `clean` in user-visible state. The full displayed-status taxonomy is settled by UX design.
+The engine maintains an invalidation vocabulary (`clean` / `dirty_pending` / `needed` / `evaluating` / `verified_clean` / `publish_ready` / `rejected_pending_repair` / `cycle_blocked`). TreeCalc does not distinguish `verified_clean` from `clean` in user-visible state. The full displayed-status taxonomy is settled by UX design. Whether a cycle is an error or is iterated is profile-governed — see §7a.
+
+## 7a. Circular References and Iterative Calculation
+
+A reference cycle (a node that, directly or transitively, depends on itself) is a first-class, **profile-governed** condition — not merely an error. How a cycle is handled is set by **host-supplied configuration on the workspace**, exactly as Excel exposes circular-reference handling at the workbook level. The cycle semantics themselves are owned by the engine (OxCalc, `docs/spec/core-engine/w048-cycles/`); TreeCalc selects the profile, supplies the bounds, persists the configuration, and surfaces the result.
+
+**Cycle profiles** (OxCalc W048; selected via the compatibility basis the host submits with a recalc):
+
+| Profile | When | Behavior |
+|---|---|---|
+| `cycle.non_iterative_stage1` | **default** (≡ Excel with iterative calc off) | The cycle region is rejected: members enter `cycle_blocked`, the wave publishes no new cycle values, and previously published values remain visible (not republished). A circular-reference diagnostic is surfaced. |
+| `cycle.excel_match_iterative` | opt-in; Excel-faithful | The region is iterated in workbook chain order (sequential region update), bounded by **Maximum Iterations** and a **Maximum Change** stop metric (default `0.001`, max absolute visible numeric delta). On convergence — or at the iteration bound, or at a stable oscillation terminal — the whole region publishes atomically, then dependents recompute. Matches Excel's iterative calculation for the covered surfaces. |
+| `cycle.iterative_deterministic_v0` | opt-in; deterministic | A deterministic Jacobi-snapshot iteration: initial vector = last published numeric value (or zero), default **100** iterations / **`0.001`** threshold. Converged → publish the region atomically; divergent / oscillating / non-numeric → reject with no publication. Preferred where deterministic clarity matters more than reproducing Excel's history-sensitive behavior. |
+
+**Host-supplied configuration (workspace-level, Excel-aligned).** The workspace persistence file records the cycle configuration alongside the capability profile (§4):
+
+- **iterative calculation** enabled/disabled, and which iterative profile;
+- **Maximum Iterations** (Excel `MaxIterations`);
+- **Maximum Change** (the convergence threshold; Excel default `0.001`).
+
+These mirror Excel's *File ▸ Options ▸ Formulas ▸ Enable iterative calculation / Maximum Iterations / Maximum Change*. The default is non-iterative (`cycle.non_iterative_stage1`), matching Excel out of the box. The selected profile and bounds are conveyed to OxCalc through the compatibility basis carried on the recalc snapshot; **TreeCalc does not implement iteration itself**.
+
+**Calc-state and UX.** Under the non-iterative default, cycle members display `cycle_blocked` (§7) and surface in the workspace error summary and the "show cycle" affordance (`ux/REQUIREMENTS.md`). Under an iterative profile, members display their iterated values, and the engine's `cycle_iteration_trace` is available for diagnostics.
+
+**Excel-alignment boundary.** The iteration model, convergence, and Excel-match values are Excel-anchored and owned by OxCalc (W048). TreeCalc owns the configuration surface, its persistence, and the calc-state / cycle-map UX. OxCalc's Excel-match profile is in progress and carries named blockers (report-cell behavior, non-numeric/blank/error prior states, cross-version, multi-threaded) before any universal Excel-match claim — see the engine prerequisite (§6 item 12) and `docs/handovers/HANDOVER_OXCALC_iterative_cycle_config.md`.
 
 ## 7b. Templates
 

@@ -17,8 +17,15 @@ Context: <why this matters>
 Evidence: <links / repro / spec section, only if useful>
 ```
 
-Known handovers this repo expects to author (per the Spec):
+Handovers this repo has authored or expects to author. Engine prerequisites (`../model/CORE_MODEL_SPEC.md` §6) are raised as **topic-specific** handovers, not one monolithic `engine_prereqs` file.
+
+Authored:
+
+- `HANDOVER_OXFML_constant_input.md` — adopt OxFml's §2.1A cell-entry classification on the tree-reference channel (constant vs. formula by leading `=`). Engine prereq §6 item 11.
+- `HANDOVER_OXCALC_iterative_cycle_config.md` — host-config contract for circular-reference cycle profiles + iterative bounds, plus the diagnostic surface back. Engine prereq §6 item 12.
+
+Anticipated:
 
 - `HANDOVER_OXXLPLAY_workbook_construction.md` — request the `WorkbookConstructionSpec` + construct-and-observe capability (and UDF provisioning). See `../interop/EXCEL_EXPORT_AND_REPLAY.md` §6, §12.
 - `HANDOVER_OXREPLAY_treecalc_lane.md` — register the `dna_treecalc` lane + adapter; confirm locator-keyed view pairing.
-- `HANDOVER_OXCALC_engine_prereqs.md` — the engine prerequisites in `../model/CORE_MODEL_SPEC.md` §6.
+- Further `../model/CORE_MODEL_SPEC.md` §6 engine prerequisites, raised topic-by-topic as they become actionable.
