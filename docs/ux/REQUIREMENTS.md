@@ -152,7 +152,7 @@ When a node's value is a Table (§2.4 of spec — note: tables are deferred to a
 
 - Column headers with names, optional totals row.
 - Data rows displayed as a grid.
-- Cell-level editing (literal values) or column-level formula editing.
+- Cell-level editing (constant values) or column-level formula editing.
 - Add/remove rows; add/remove columns.
 - Structured-reference autocomplete inside column formulas (`[@Col]`, `[#Headers]`, `[#Data]`, etc.).
 - Column format inheritance from `Format` meta-children.
@@ -255,12 +255,12 @@ All creations are committed atomically and trigger recalc as needed.
 - Tab accepts completion suggestion.
 - Switching nodes (clicking another, arrow keys in tree) prompts on unsaved edits: "Commit / Discard / Cancel".
 
-### 3.6 Value entry (literal-array node)
+### 3.6 Value entry (constant-content node)
 
-When the node's value is a literal (typed-in, not formula-derived):
-- Single value: editor accepts scalar or formula; if it starts with `=` it's a formula, else literal.
-- Array literal: the value detail panel renders an editable grid. Paste from clipboard (CSV/TSV) supported. Resizing the array is by adding/removing rows or columns.
-- Switching between literal and formula: the user can toggle ("convert to formula" / "freeze to literal").
+When the node's content is a constant (no leading `=`, not formula-derived):
+- Single value: the editor accepts one content string; if it starts with `=` it's a formula, otherwise a literal constant (number/logical/text per Excel cell-entry rules — CORE_MODEL_SPEC §6).
+- Array constant: the value detail panel renders an editable grid. Paste from clipboard (CSV/TSV) supported. Resizing the array is by adding/removing rows or columns.
+- Switching between constant and formula: the user can toggle ("convert to formula" / "freeze to constant").
 
 ### 3.7 Selection and multi-select
 

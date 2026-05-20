@@ -21,7 +21,7 @@ A workspace is a tree of named nodes. Each node has:
 
 - A **name** (case-insensitive at lookup, display preserves user casing).
 - A **position** among its siblings (`sibling_index`, user-reorderable).
-- A **formula** (OxFml source text) OR a **literal value** (typed in directly, can be a dynamic array).
+- A **formula** — the node's single content field (OxFml source text). Per Excel's cell-entry convention, a leading `=` introduces a formula; any other entry is a **literal constant** that OxFml parses and resolves to a typed value (§6). A leading apostrophe (`'`) forces text. There is no separate "literal value" content kind; a constant (including an array literal) is just a `formula` without a leading `=`.
 - A computed **value** (`EvalValue` — scalar, array, error, reference, lambda).
 - A **format** (full per-node formatting, DnaOneCalc-style: number format, font, fill, conditional format rules, data bars, icon sets).
 - Zero or more **child nodes**.
@@ -258,6 +258,7 @@ Beyond the tree/node structure and the reference-identifier surface, align with 
 | Workspace as workbook-analog persistence file | Function-name capitalization (UPPERCASE) |
 | Rename/move propagation prompts | Array semantics where they coincide (1D/2D arrays of scalar cells) |
 | Rich-values theme (rich errors etc.) | LAMBDA, LET, and other functional constructs |
+| Single `formula` content field per node | Cell-entry classification: leading `=` = formula, `'` = forced text, else a typed constant (Excel value-entry rules) |
 
 Most design questions have a fast answer: what does Excel do? Capitalization (`@NAME` not `@name`), single-quoting (`'Sales Q1'` not backtick), case-insensitive name lookup, error-code shapes (`#REF!`, `#VALUE!`, `#CALC!`) all follow from this.
 
@@ -265,7 +266,9 @@ Most design questions have a fast answer: what does Excel do? Capitalization (`@
 
 **Per-node value type is `EvalValue`** — scalar `Number`/`Text`/`Logical`/`Error`, plus `Array` (a 2D grid of scalar `ArrayCellValue` cells), `Reference(ReferenceLike)`, `Lambda`.
 
-**Dynamic arrays are first-class at every layer.** A formula result can be an array; a user-typed literal value can be an array (resized as edited); references to an array-valued node return the whole array.
+**Node content is a single `formula` field; literal constants are unprefixed entries.** Following Excel's cell-entry convention, the entry text is classified before formula parsing: a leading `=` is a formula; a leading apostrophe (`'`) forces text (the apostrophe is an entry escape, not part of the value); an unprefixed entry that parses as a finite number is a number constant; `TRUE`/`FALSE` (case-insensitive) is a logical constant; a quoted string is a text constant; any other unprefixed entry is text preserved verbatim. OxFml already owns this classification for its single-cell host path (see `OXFML_DNA_ONECALC_DOWNSTREAM_CONSUMER_CONTRACT.md` §2.1A); TreeCalc adopts the same rules, so `123.4`, `TRUE`, and `=A.B+1` are all just `formula` strings and the leading-`=` discriminator decides constant vs. computed. Consequently `Margin` typed without `=` is the text constant "Margin", while `=Margin` is a reference — exactly as in Excel.
+
+**Dynamic arrays are first-class at every layer.** A formula result can be an array; a literal-constant entry can be an array literal (resized as edited); references to an array-valued node return the whole array.
 
 **Nested arrays are rejected.** Operations that would produce an `EvalValue::Array` whose cells are themselves arrays — for example `MAP(Sheet1.*, c -> c.Margin)` when any Margin's value is itself an array — error out at bind or runtime with `#CALC!`.
 
@@ -283,6 +286,7 @@ The following pieces are TreeCalc-specific extensions that depend on engine work
 8. **Transactional batch structural editing** in OxCalc — `begin / N edits / commit-or-rollback` atomically as one publication candidate. Useful broadly (multi-node refactors, paste, undo) and specifically needed for clean template sync. Queued as a fundamental engine feature.
 9. **`is_meta` per-node attribute** (boolean, default false). When true on any node, that node and its entire descendant subtree are invisible to formula reference resolution AND are not bound or evaluated by the engine. Bind layer skips meta-flagged nodes and their descendants when resolving references (resulting in `Unresolved` on lookup failure). Positional operators (`@PREV`/`@NEXT`/`@INDEX`/`.*`) on regular siblings skip meta neighbors. Templates and per-node format both use this flag; future meta-node uses (configuration, named lambdas, annotations) inherit the same mechanism. Storage / filter strategy is OxCalc's choice.
 10. **Conditional-formatting rule semantics for the format surface** — confirm or add support for ordered multiple rules, `Stop If True`, action accumulation across rules, and subtree-level format inheritance inputs. The format engine details live in OxFml/OxFunc, but TreeCalc's format editor and Excel verification depend on this behavior being explicit and reusable rather than reconstructed in the host.
+11. **Constant entry classification on the TreeCalc channel** — OxFml's cell-entry classification (`OXFML_DNA_ONECALC_DOWNSTREAM_CONSUMER_CONTRACT.md` §2.1A: leading `=` formula, `'` text escape, finite-number/`TRUE`-`FALSE`/quoted-string/verbatim-text constant) must be reachable from the TreeCalc host channel, with the formula branch parsing tree-path references under `treecalc-v1` rather than WorksheetA1, plus Excel-aligned implicit number-format inference on number constants. Raised in `docs/handovers/HANDOVER_OXFML_constant_input.md`.
 
 ## 7. Calc-State Display
 
@@ -358,6 +362,8 @@ QuotedPath     := "'" (any-char-or-'')* "'"              // single-quoted path s
 ```
 
 Illustrative — the canonical grammar lives in OxFml's binding layer once TreeCalc-specific reference parsing is added.
+
+The grammar above is the `=`-formula branch. An unprefixed entry is a literal constant resolved by the entry classification in §6, not by this grammar — a leading `=` selects the formula branch; a leading `'` forces text.
 
 ## 10. Excel Defined-Name Import
 

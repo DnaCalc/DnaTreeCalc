@@ -200,8 +200,7 @@ pub struct TreeNodeState {
     pub parent_id: Option<TreeNodeId>,
     pub sibling_index: usize,
     pub name: String,
-    pub formula_text: String,
-    pub literal_value: Option<EvalValue>,             // when node is literal-typed not formula-typed
+    pub formula_text: String,                         // single content field: leading `=` = formula, else a literal constant (CORE_MODEL_SPEC §6)
     pub is_meta: bool,
     pub hidden: bool,
     pub layout_metadata: Option<NodeLayoutMetadata>,  // canvas position, etc.
@@ -380,7 +379,6 @@ A `.dnatree` file is a JSON document (or msgpack for size; decide on a flag). Sc
         "sibling_index": 0,
         "name": "Accounts",
         "formula_text": "",
-        "literal_value": null,
         "is_meta": false,
         "hidden": false,
         "children": ["<TreeNodeId>", "..."],
@@ -459,7 +457,7 @@ Auto-backup to a sibling `.dnatree.bak` file on each save. Configurable retentio
 - Per-cell rendering uses `ArrayCellFormat` from OneCalc.
 - Scroll position preserved on size changes.
 - Lazy-fetch for arrays exceeding memory budget: bridge returns cell ranges on demand.
-- Editable in literal mode (per-cell typing); read-only in formula mode.
+- Editable when the content is a constant (per-cell typing); read-only when it is a `=`-formula.
 
 ### 6.5 Canvas (`canvas.rs`)
 

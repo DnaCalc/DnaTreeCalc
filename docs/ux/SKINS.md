@@ -331,11 +331,10 @@ pub enum WorkspaceIntent {
     MoveNode { node: TreeNodeId, new_parent: TreeNodeId, new_position: usize },
     DeleteNode { node: TreeNodeId, cascade: bool },
 
-    // --- Formula / value edits ---
-    EditFormula { node: TreeNodeId, formula_text: String },
-    SetLiteralValue { node: TreeNodeId, value: LiteralValue },
-    ConvertToFormula { node: TreeNodeId, formula_text: String },
-    ConvertToLiteral { node: TreeNodeId },
+    // --- Content edits (single `formula_text` field: leading `=` = formula, else a literal constant) ---
+    EditFormula { node: TreeNodeId, formula_text: String },      // set the content string (constant or =formula)
+    ConvertToFormula { node: TreeNodeId, formula_text: String }, // turn a constant into a =formula
+    ConvertToLiteral { node: TreeNodeId },                       // freeze: replace a formula with its computed value, written as a constant
 
     // --- Format / CF edits (writes to ::Format meta-children) ---
     SetFormatProperty { node: TreeNodeId, property: FormatPath, value: FormatValue },
@@ -396,8 +395,7 @@ pub struct TreeNodeState {
     pub sibling_index: usize,
     pub name: String,
     pub is_meta: bool,
-    pub formula_text: String,
-    pub literal_value: Option<EvalValue>,
+    pub formula_text: String,                  // single content field: leading `=` = formula, else a literal constant
     pub computed_value: Option<EvalValue>,
     pub children: Vec<TreeNodeId>,
 }

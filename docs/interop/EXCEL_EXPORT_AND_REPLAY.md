@@ -199,7 +199,7 @@ This is TreeCalc's core contribution. It lives in TreeCalc (`services/excel_expo
 
 ### 4.1 Export strategies
 
-**Strategy 1 — defined-names primary.** Each node with a non-empty formula or literal value becomes a `DefinedNameSpec` whose `refers_to` is the baked formula. No cells used. This is the default.
+**Strategy 1 — defined-names primary.** Each node with non-empty content (a `=`-formula or a literal constant) becomes a `DefinedNameSpec` whose `refers_to` is the baked formula. No cells used. This is the default.
 
 **Strategy 2 — grid-cell promotion** for nodes that need it. A promoted node's value lands in cells (`CellSpec`s on a sheet); a `DefinedNameSpec` aliases the cell range. Triggers:
 
