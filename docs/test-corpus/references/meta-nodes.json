@@ -1,6 +1,8 @@
 {
   "schema_version": "treecalc-corpus-v1",
   "theme": "references/meta-nodes",
+  "workset": "W004",
+  "status": "pending",
   "description": "Meta-node invisibility: a node with is_meta=true and its descendant subtree are invisible to formula resolution and skipped by positional operators (CORE_MODEL_SPEC §2, §6 item 9).",
   "cases": [
     {

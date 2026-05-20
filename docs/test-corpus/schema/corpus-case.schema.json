@@ -4,11 +4,13 @@
   "title": "TreeCalc corpus case file",
   "description": "A themed file of spec-derived cases. Per-kind required fields and cross-references (caller/target exist in the named workspace, known profile verdicts) are enforced by tools/validate-corpus.ps1, which is easier than JSON Schema conditionals for these invariants.",
   "type": "object",
-  "required": ["schema_version", "theme", "cases"],
+  "required": ["schema_version", "theme", "workset", "status", "cases"],
   "additionalProperties": false,
   "properties": {
     "schema_version": { "const": "treecalc-corpus-v1" },
     "theme": { "type": "string" },
+    "workset": { "type": "string", "pattern": "^W[0-9]{3}$", "description": "Owning workset (WORKSET_REGISTER) whose completion activates these cases." },
+    "status": { "enum": ["pending", "active"], "description": "pending = authored + well-formed, no executable runner yet; active = wired to a runner. Flip pending->active as the owning workset lands." },
     "description": { "type": "string" },
     "cases": { "type": "array", "items": { "$ref": "#/$defs/case" } }
   },
@@ -16,12 +18,12 @@
     "case": {
       "type": "object",
       "required": ["id", "name", "spec", "kind"],
-      "additionalProperties": false,
+      "additionalProperties": true,
       "properties": {
         "id": { "type": "string", "description": "Stable, corpus-unique id." },
         "name": { "type": "string" },
         "spec": { "type": "string", "description": "CORE_MODEL_SPEC section citation, e.g. '§3.2, §3.7'." },
-        "kind": { "enum": ["resolution", "classification", "profile", "syntax", "import", "cycle"] },
+        "kind": { "enum": ["resolution", "classification", "profile", "syntax", "import", "cycle", "dynamic", "membership", "constant", "edit", "template", "format", "value_equivalence"] },
         "note": { "type": "string" },
         "profile": { "enum": ["treecalc-v1", "strict-excel"], "description": "Active profile for resolution/classification/syntax cases (default treecalc-v1)." },
         "workspace": { "type": "string", "description": "resolution: workspace_id of the fixture." },
@@ -51,7 +53,8 @@
         },
         "excel": { "type": "object", "description": "import kind: the Excel input (sheets, defined_names)." },
         "members": { "type": "array", "description": "cycle kind: node_ids forming the cycle region (the SCC).", "items": { "type": "string" } },
-        "config": { "type": "object", "description": "cycle kind: host cycle configuration — { profile, max_iterations?, max_change? } (§7a)." }
+        "config": { "type": "object", "description": "cycle kind: host cycle configuration — { profile, max_iterations?, max_change? } (§7a)." },
+        "given": { "type": "object", "description": "dynamic kind: runtime text values of nodes that drive a dynamic (INDIRECT) reference, keyed by node_id." }
       }
     }
   }

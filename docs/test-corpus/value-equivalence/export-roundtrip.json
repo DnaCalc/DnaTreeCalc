@@ -1,0 +1,11 @@
+{
+  "schema_version": "treecalc-corpus-v1",
+  "theme": "value-equivalence/export-roundtrip",
+  "workset": "W009",
+  "status": "pending",
+  "description": "Export round-trip (CORE_MODEL_SPEC §10.7; interop/EXCEL_EXPORT_AND_REPLAY): a TreeCalc workspace converts to a WorkbookConstructionSpec (defined-names primary) and is verified against Excel. Round-trip fidelity is graduated — named-nodes-with-formulas survive; TreeCalc-novel surface does not. Executed via the W009 verify-workspace path (export -> OxXlPlay construct+observe -> OxReplay diff).",
+  "cases": [
+    { "id": "ve-export-clean", "name": "named nodes with formulas round-trip cleanly", "spec": "§10.7", "kind": "value_equivalence", "workspace": "accounts", "expect": { "roundtrip": "clean", "anchor": "excel" }, "note": "Each path becomes a workbook/sheet-scoped defined name; the workspace re-imports equivalently and recomputes equal to Excel." },
+    { "id": "ve-export-lossy-novel-surface", "name": "TreeCalc-novel operators do not round-trip", "spec": "§10.7", "kind": "value_equivalence", "workspace": "accounts", "expect": { "roundtrip": "lossy", "lossy_surface": ["@PREV", "@NEXT", ".*", "**", "@ANCESTORS", "{Foo, Bar}"] }, "note": "Formulas using novel surface error or lose semantics on save to Excel; bidirectional fidelity is a graduated promise (§10.7). (The accounts workspace is the host fixture; the assertion is the round-trip rule.)" }
+  ]
+}

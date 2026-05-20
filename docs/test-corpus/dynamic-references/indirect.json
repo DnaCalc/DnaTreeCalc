@@ -1,0 +1,148 @@
+{
+  "schema_version": "treecalc-corpus-v1",
+  "theme": "dynamic-references/indirect",
+  "workset": "W004",
+  "status": "pending",
+  "description": "INDIRECT-driven dynamic references — the TreeCalc surface of OxCalc's CTRO (Calc-Time Rebinding Overlay, W047/W055). Pins calc-time resolution outcomes and the dynamic dependency set (selector + resolved target) including re-binding. `given` supplies the runtime text value of the selector node. OUT OF SCOPE here: the overlay / effective-graph machinery (G_eff, frontier repair) and invalidation timing (engine-internal), and grid/spill expansion/contraction (TreeCalc has no grid — §1). Iterated values for dynamic cycles are governed by §7a (see the cycles theme); exact values are engine/Excel-anchored.",
+  "cases": [
+    {
+      "id": "dyn-static-string-resolves",
+      "name": "static-string INDIRECT parses the string as a tree path",
+      "spec": "§4, §6 item 1, §10.3",
+      "kind": "dynamic",
+      "workspace": "dynamic",
+      "caller": "StaticPick",
+      "reference": "INDIRECT(\"Sheet1.Foo\")",
+      "profile": "treecalc-v1",
+      "expect": {
+        "outcome": "resolved",
+        "target": "Sheet1.Foo",
+        "depends_on": ["Sheet1.Foo"],
+        "engine_ref": "DynamicResolved{ string -> Sheet1.Foo }"
+      },
+      "note": "Under treecalc-v1 the INDIRECT string is parsed as a tree path; the engine carries it as a runtime-resolved (DynamicResolved) reference even though the string is constant."
+    },
+    {
+      "id": "dyn-sheet-bang-in-string",
+      "name": "INDIRECT honors the !-after-sheet alias inside its string",
+      "spec": "§10.3, §3.1",
+      "kind": "dynamic",
+      "workspace": "dynamic",
+      "caller": "StaticPick",
+      "reference": "INDIRECT(\"Sheet1!Foo\")",
+      "profile": "treecalc-v1",
+      "expect": {
+        "outcome": "resolved",
+        "target": "Sheet1.Foo",
+        "depends_on": ["Sheet1.Foo"],
+        "engine_ref": "DynamicResolved{ string -> Sheet1.Foo }"
+      },
+      "note": "The !-after-first-segment allowance is honored inside the parsed string, so \"Sheet1!Foo\" ≡ the path Sheet1.Foo (§10.3)."
+    },
+    {
+      "id": "dyn-target-switch-A",
+      "name": "selector-driven INDIRECT resolves to the named target",
+      "spec": "§6 item 1",
+      "kind": "dynamic",
+      "workspace": "dynamic",
+      "caller": "Pick",
+      "reference": "INDIRECT(Selector)",
+      "profile": "treecalc-v1",
+      "given": { "Selector": "Branch.A" },
+      "expect": {
+        "outcome": "resolved",
+        "target": "Branch.A",
+        "depends_on": ["Selector", "Branch.A"],
+        "engine_ref": "DynamicResolved{ via Selector -> Branch.A }"
+      },
+      "note": "The dynamic reference depends on BOTH Selector (which picks the path) and the resolved target Branch.A — the CTRO dynamic-target shape."
+    },
+    {
+      "id": "dyn-target-rebind-B",
+      "name": "changing the selector re-points the dynamic edge (CTRO rebind)",
+      "spec": "§6 item 1",
+      "kind": "dynamic",
+      "workspace": "dynamic",
+      "caller": "Pick",
+      "reference": "INDIRECT(Selector)",
+      "profile": "treecalc-v1",
+      "given": { "Selector": "Branch.B" },
+      "expect": {
+        "outcome": "resolved",
+        "target": "Branch.B",
+        "depends_on": ["Selector", "Branch.B"],
+        "engine_ref": "DynamicResolved{ via Selector -> Branch.B }"
+      },
+      "note": "When Selector's text changes to \"Branch.B\", the Branch.A edge releases and the Branch.B edge activates; the dependency set changes from {Selector, Branch.A} to {Selector, Branch.B}. Downstream dependents (Down = Pick+1) are invalidated and recomputed after the rebind."
+    },
+    {
+      "id": "dyn-unresolved-refn-error",
+      "name": "INDIRECT to a non-existent name fails (no publication)",
+      "spec": "§6 item 1, §3.2",
+      "kind": "dynamic",
+      "workspace": "dynamic",
+      "caller": "MissPick",
+      "reference": "INDIRECT(\"Nope\")",
+      "profile": "treecalc-v1",
+      "expect": {
+        "outcome": "error",
+        "reason": "the string names no node; the dynamic dependency fails (#REF! / DynamicDependencyFailure) and the candidate does not publish — prior published value remains",
+        "engine_ref": "DynamicResolved -> DynamicDependencyFailure (#REF!)"
+      },
+      "note": "Mirrors OxCalc's local dynamic-reject floor: a diagnostic runtime-effect overlay, DynamicDependencyFailure, no publication bundle."
+    },
+    {
+      "id": "dyn-ctro-self-cycle-blocked",
+      "name": "INDIRECT that resolves to its own node is a CTRO self-cycle",
+      "spec": "§6 item 1, §7a",
+      "kind": "dynamic",
+      "workspace": "dynamic",
+      "caller": "Loop",
+      "reference": "INDIRECT(LoopName)",
+      "profile": "treecalc-v1",
+      "given": { "LoopName": "Loop" },
+      "expect": {
+        "outcome": "cycle_blocked",
+        "depends_on": ["LoopName", "Loop"],
+        "engine_ref": "DynamicResolved{ via LoopName -> Loop } — candidate-overlay self-cycle"
+      },
+      "note": "The calc-time-resolved edge points the node back at itself; it hits the same no-publication cycle policy as a structural self-cycle. Under the default non-iterative profile this is cycle_blocked; an iterative profile would iterate it (§7a)."
+    },
+    {
+      "id": "dyn-ctro-multinode-cycle-blocked",
+      "name": "two INDIRECTs pointing at each other form a CTRO multi-node cycle",
+      "spec": "§6 item 1, §7a",
+      "kind": "dynamic",
+      "workspace": "dynamic",
+      "caller": "CycA",
+      "reference": "INDIRECT(CycAName)",
+      "profile": "treecalc-v1",
+      "members": ["CycA", "CycB"],
+      "given": { "CycAName": "CycB", "CycBName": "CycA" },
+      "expect": {
+        "outcome": "cycle_blocked",
+        "depends_on": ["CycAName", "CycB"],
+        "engine_ref": "DynamicResolved candidate-overlay SCC {CycA, CycB}"
+      },
+      "note": "CycA -> CycB and CycB -> CycA are both calc-time-resolved; the candidate overlay creates a two-node SCC, blocked under the default profile (§7a)."
+    },
+    {
+      "id": "dyn-ctro-cycle-release-reentry",
+      "name": "a dynamic cycle becomes acyclic when the selector changes (release/re-entry)",
+      "spec": "§6 item 1, §7a",
+      "kind": "dynamic",
+      "workspace": "dynamic",
+      "caller": "Loop",
+      "reference": "INDIRECT(LoopName)",
+      "profile": "treecalc-v1",
+      "given": { "LoopName": "Branch.A" },
+      "expect": {
+        "outcome": "resolved",
+        "target": "Branch.A",
+        "depends_on": ["LoopName", "Branch.A"],
+        "engine_ref": "DynamicResolved{ via LoopName -> Branch.A }"
+      },
+      "note": "When LoopName changes from \"Loop\" to \"Branch.A\", the prior self-cycle is released; the reference re-points to an acyclic target, the node re-enters calculation and publishes, and downstream dependents recompute. Mirrors OxCalc's CTRO cycle-release/re-entry scenario."
+    }
+  ]
+}

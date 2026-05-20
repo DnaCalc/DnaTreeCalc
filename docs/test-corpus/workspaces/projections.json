@@ -1,0 +1,12 @@
+{
+  "schema_version": "treecalc-workspace-v1",
+  "workspace_id": "projections",
+  "description": "Second workspace for cross-workspace [ws] reference cases (CORE_MODEL_SPEC §3.3). The 'accounts' workspace registers the alias 'projections' -> this workspace.",
+  "profile": "treecalc-v1",
+  "nodes": [
+    { "node_id": "Branch1", "formula": "" },
+    { "node_id": "Branch1.MyNode", "formula": "99" },
+    { "node_id": "[Branch X]", "formula": "" },
+    { "node_id": "[Branch X].MyNode", "formula": "7" }
+  ]
+}

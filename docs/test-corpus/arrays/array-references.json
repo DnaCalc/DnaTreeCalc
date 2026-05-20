@@ -1,0 +1,12 @@
+{
+  "schema_version": "treecalc-corpus-v1",
+  "theme": "arrays/array-references",
+  "workset": "W004",
+  "status": "pending",
+  "description": "Dynamic arrays at the node level (CORE_MODEL_SPEC §6, §2): a node value may be an array, a reference to an array-valued node returns the WHOLE array (no spill onto neighbors), and array-of-arrays is rejected (#CALC!). Array CONTENTS coincide with Excel array semantics (§5) and are verified via value-equivalence, not asserted here.",
+  "cases": [
+    { "id": "arr-whole-array-ref", "name": "a reference to an array-valued node returns the whole array", "spec": "§6, §2", "kind": "resolution", "workspace": "arrays", "caller": "Arr.Whole", "reference": "List", "profile": "treecalc-v1", "expect": { "outcome": "resolved", "target": "Arr.List" }, "note": "List is a node whose value is a 1x3 array; =List returns the whole array on this node (no inter-node spill). Contents are Excel-anchored." },
+    { "id": "arr-index-into-array-node", "name": "INDEX selects from an array-valued node", "spec": "§6", "kind": "resolution", "workspace": "arrays", "caller": "Arr.Pick", "reference": "List", "profile": "treecalc-v1", "expect": { "outcome": "resolved", "target": "Arr.List" }, "note": "List resolves to the array node; INDEX(List,1) picks an element. The element value is Excel-anchored." },
+    { "id": "arr-nested-rejected", "name": "a result that is an array of arrays is rejected", "spec": "§6", "kind": "resolution", "workspace": "arrays", "caller": "Arr.Nested", "reference": "MAP(List, x -> List)", "profile": "treecalc-v1", "expect": { "outcome": "error", "reason": "an operation producing an EvalValue::Array whose cells are themselves arrays errors with #CALC! (§6, nested arrays rejected)" }, "note": "MAP(List, x -> List) would build an array whose cells are the 1x3 array -> #CALC! at bind/runtime." }
+  ]
+}

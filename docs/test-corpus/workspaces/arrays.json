@@ -1,0 +1,13 @@
+{
+  "schema_version": "treecalc-workspace-v1",
+  "workspace_id": "arrays",
+  "description": "Fixture for §6 dynamic-array behavior. Arr.List is an array-literal value (1x3); Arr.Whole references the whole array; Arr.Pick INDEXes it; Arr.Nested builds an array-of-arrays (#CALC!).",
+  "profile": "treecalc-v1",
+  "nodes": [
+    { "node_id": "Arr", "formula": "" },
+    { "node_id": "Arr.List", "formula": "={1, 2, 3}" },
+    { "node_id": "Arr.Whole", "formula": "=List" },
+    { "node_id": "Arr.Pick", "formula": "=INDEX(List, 1)" },
+    { "node_id": "Arr.Nested", "formula": "=MAP(List, x -> List)" }
+  ]
+}

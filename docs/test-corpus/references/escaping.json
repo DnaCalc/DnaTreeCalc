@@ -1,0 +1,16 @@
+{
+  "schema_version": "treecalc-corpus-v1",
+  "theme": "references/escaping",
+  "workset": "W004",
+  "status": "pending",
+  "description": "Bracket-escaped node names and reserved-character escaping (CORE_MODEL_SPEC §3.4) plus bracket-after-separator descent (§3.3). Reserved chars [ ] # ' @ are escaped with an inner single-quote, verbatim from Excel structured-reference rules. `decodes_to` is the literal node name the escaped segment denotes.",
+  "cases": [
+    { "id": "esc-space", "name": "a name with a space is bracket-escaped", "spec": "§3.4", "kind": "syntax", "reference": "[Sales Q1]", "profile": "treecalc-v1", "expect": { "parse": "accept", "decodes_to": "Sales Q1" }, "note": "Space is outside the bare-identifier set, but needs no inner-quote escape." },
+    { "id": "esc-open-bracket", "name": "escaped open bracket in a name", "spec": "§3.4", "kind": "syntax", "reference": "[Foo'[Bar]", "profile": "treecalc-v1", "expect": { "parse": "accept", "decodes_to": "Foo[Bar" } },
+    { "id": "esc-close-bracket", "name": "escaped close bracket in a name", "spec": "§3.4", "kind": "syntax", "reference": "[Foo']Bar]", "profile": "treecalc-v1", "expect": { "parse": "accept", "decodes_to": "Foo]Bar" } },
+    { "id": "esc-hash", "name": "escaped hash in a name", "spec": "§3.4", "kind": "syntax", "reference": "[Col'#Name]", "profile": "treecalc-v1", "expect": { "parse": "accept", "decodes_to": "Col#Name" } },
+    { "id": "esc-apostrophe", "name": "doubled apostrophe is a literal apostrophe", "spec": "§3.4", "kind": "syntax", "reference": "[Foo''Bar]", "profile": "treecalc-v1", "expect": { "parse": "accept", "decodes_to": "Foo'Bar" } },
+    { "id": "esc-at", "name": "escaped leading at-sign", "spec": "§3.4", "kind": "syntax", "reference": "['@Special]", "profile": "treecalc-v1", "expect": { "parse": "accept", "decodes_to": "@Special" } },
+    { "id": "esc-descent", "name": "bracket-escaped name after a . separator", "spec": "§3.3", "kind": "syntax", "reference": "Region.[Net Revenue]", "profile": "treecalc-v1", "expect": { "parse": "accept", "decodes_to_path": ["Region", "Net Revenue"] }, "note": "path.[Name] descends to a child whose name needs escaping." }
+  ]
+}

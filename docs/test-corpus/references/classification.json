@@ -1,6 +1,8 @@
 {
   "schema_version": "treecalc-corpus-v1",
   "theme": "references/classification",
+  "workset": "W004",
+  "status": "pending",
   "description": "Operator cardinality (single vs set) per the navigation principle (CORE_MODEL_SPEC §3.5b), plus result-kind for the meta-accessor family (§3.5). No operator implicitly searches and picks one; closest/first-match is always explicit FILTER+INDEX composition.",
   "cases": [
     { "id": "cls-bare-single", "name": "bare name is single", "spec": "§3.5b", "kind": "classification", "reference": "Margin", "expect": { "cardinality": "single" } },

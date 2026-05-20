@@ -1,0 +1,15 @@
+{
+  "schema_version": "treecalc-workspace-v1",
+  "workspace_id": "formatting",
+  "description": "Fixture for §6 item 10 / META_NODES formatting: per-node format lives in a meta-flagged 'Format' child (is_meta). Book.Format is a workspace-level default; Book.Margin has its own Format override; Book.Sales inherits.",
+  "profile": "treecalc-v1",
+  "nodes": [
+    { "node_id": "Book", "formula": "" },
+    { "node_id": "Book.Format", "formula": "", "is_meta": true },
+    { "node_id": "Book.Format.NumberFormat", "formula": "0.00", "is_meta": true },
+    { "node_id": "Book.Sales", "formula": "=1000" },
+    { "node_id": "Book.Margin", "formula": "=0.2" },
+    { "node_id": "Book.Margin.Format", "formula": "", "is_meta": true },
+    { "node_id": "Book.Margin.Format.NumberFormat", "formula": "0%", "is_meta": true }
+  ]
+}

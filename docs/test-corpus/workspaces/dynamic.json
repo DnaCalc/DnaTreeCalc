@@ -1,0 +1,24 @@
+{
+  "schema_version": "treecalc-workspace-v1",
+  "workspace_id": "dynamic",
+  "description": "Fixtures for INDIRECT-driven dynamic (CTRO) references. Selector (text \"Branch.A\") drives Pick (=INDIRECT(Selector)); Down (=Pick+1) is downstream. LoopName (text \"Loop\") drives Loop (=INDIRECT(LoopName)) into a dynamic self-cycle. CycA/CycB (each =INDIRECT of a name node pointing at the other) form a dynamic two-node cycle. StaticPick/MissPick use constant strings. Content is a single formula field (§6): unprefixed entries are literal constants (here, the path-strings are text).",
+  "profile": "treecalc-v1",
+  "nodes": [
+    { "node_id": "Sheet1", "formula": "" },
+    { "node_id": "Sheet1.Foo", "formula": "42" },
+    { "node_id": "Branch", "formula": "" },
+    { "node_id": "Branch.A", "formula": "10" },
+    { "node_id": "Branch.B", "formula": "20" },
+    { "node_id": "Selector", "formula": "Branch.A" },
+    { "node_id": "Pick", "formula": "=INDIRECT(Selector)" },
+    { "node_id": "Down", "formula": "=Pick + 1" },
+    { "node_id": "LoopName", "formula": "Loop" },
+    { "node_id": "Loop", "formula": "=INDIRECT(LoopName)" },
+    { "node_id": "StaticPick", "formula": "=INDIRECT(\"Sheet1.Foo\")" },
+    { "node_id": "MissPick", "formula": "=INDIRECT(\"Nope\")" },
+    { "node_id": "CycA", "formula": "=INDIRECT(CycAName)" },
+    { "node_id": "CycAName", "formula": "CycB" },
+    { "node_id": "CycB", "formula": "=INDIRECT(CycBName)" },
+    { "node_id": "CycBName", "formula": "CycA" }
+  ]
+}

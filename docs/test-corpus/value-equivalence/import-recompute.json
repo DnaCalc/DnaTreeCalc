@@ -1,0 +1,10 @@
+{
+  "schema_version": "treecalc-corpus-v1",
+  "theme": "value-equivalence/import-recompute",
+  "workset": "W008",
+  "status": "pending",
+  "description": "Excel-anchor tier (OPERATIONS §6): whole-workspace value-equivalence — a workspace recomputes equal to Excel, per node. Executed via OxXlPlay (construct + observe Excel) + OxReplay (diff + govern); Excel comparison is never reimplemented here. `expect.excel_values` are the canonical Excel-truth assertions. This is the W008 gate: an imported defined-names workbook must recompute equal to Excel.",
+  "cases": [
+    { "id": "ve-accounts-recompute", "name": "the accounts workspace recomputes equal to Excel", "spec": "§10; OPERATIONS §6", "kind": "value_equivalence", "workspace": "accounts", "expect": { "excel_values": { "Accounts.2005.Q1.Income": 2, "Accounts.2005.Q1.Net": 1.6, "Accounts.2005.Q2.Net": 100, "Accounts.2005.Total": 101.6 }, "anchor": "excel" }, "note": "Income=Sales*Margin=10*0.2=2; Net=Income*(1-Margin)=1.6; Total=Q1.Net+Q2.Net=101.6. The runner builds the equivalent defined-name workbook, observes Excel, and diffs (value-equivalence per node)." }
+  ]
+}

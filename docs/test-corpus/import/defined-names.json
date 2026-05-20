@@ -1,6 +1,8 @@
 {
   "schema_version": "treecalc-corpus-v1",
   "theme": "import/defined-names",
+  "workset": "W008",
+  "status": "pending",
   "description": "Excel defined-name import: sheets + defined names only, dots unroll to paths, intermediates stubbed, zero formula source-text rewriting (CORE_MODEL_SPEC §10).",
   "cases": [
     {

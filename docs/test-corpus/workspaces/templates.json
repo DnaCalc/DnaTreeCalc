@@ -1,0 +1,18 @@
+{
+  "schema_version": "treecalc-workspace-v1",
+  "workspace_id": "templates",
+  "description": "Fixture for §7b templates (META_NODES). Templates.Quarter is a meta-flagged template subtree (is_meta, invisible to formulas); Year.Q1 is an instance generated from it, with Year.Q1.Revenue diverged from the template default.",
+  "profile": "treecalc-v1",
+  "nodes": [
+    { "node_id": "Templates", "formula": "", "is_meta": true },
+    { "node_id": "Templates.Quarter", "formula": "", "is_meta": true },
+    { "node_id": "Templates.Quarter.Revenue", "formula": "0", "is_meta": true },
+    { "node_id": "Templates.Quarter.Cost", "formula": "0", "is_meta": true },
+    { "node_id": "Templates.Quarter.Profit", "formula": "=Revenue-Cost", "is_meta": true },
+    { "node_id": "Year", "formula": "" },
+    { "node_id": "Year.Q1", "formula": "" },
+    { "node_id": "Year.Q1.Revenue", "formula": "=100" },
+    { "node_id": "Year.Q1.Cost", "formula": "40" },
+    { "node_id": "Year.Q1.Profit", "formula": "=Revenue-Cost" }
+  ]
+}

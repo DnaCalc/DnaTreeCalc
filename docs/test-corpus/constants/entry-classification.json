@@ -1,0 +1,22 @@
+{
+  "schema_version": "treecalc-corpus-v1",
+  "theme": "constants/entry-classification",
+  "workset": "W002",
+  "status": "pending",
+  "description": "Node entry classification (CORE_MODEL_SPEC §2, §5, §6): a single content string is classified before formula parsing — '' = Empty, leading = is a formula, leading ' forces text, a finite number = number, TRUE/FALSE (case-insensitive) = logical, a quoted string = text, anything else = verbatim text. Adopts OxFml §2.1A (see HANDOVER_OXFML_constant_input). Number constants carry an Excel-aligned implicit number_format; exact values for dates are Excel-anchored.",
+  "cases": [
+    { "id": "const-empty", "name": "empty string is the Empty value", "spec": "§2, §6", "kind": "constant", "input": "", "expect": { "value_type": "empty" }, "note": "The one TreeCalc-specific addition to §2.1A; a formula cannot produce top-level Empty." },
+    { "id": "const-number-int", "name": "integer entry is a number", "spec": "§6", "kind": "constant", "input": "10", "expect": { "value_type": "number", "value": 10 } },
+    { "id": "const-number-decimal", "name": "decimal entry is a number", "spec": "§6", "kind": "constant", "input": "123.4", "expect": { "value_type": "number", "value": 123.4 } },
+    { "id": "const-number-negative", "name": "negative entry is a number", "spec": "§6", "kind": "constant", "input": "-5", "expect": { "value_type": "number", "value": -5 } },
+    { "id": "const-percent", "name": "percent entry infers value and format", "spec": "§5, §6", "kind": "constant", "input": "5%", "expect": { "value_type": "number", "value": 0.05, "number_format": "0%" }, "note": "Excel-aligned implicit number-format inference." },
+    { "id": "const-currency", "name": "currency entry infers value and format", "spec": "§5, §6", "kind": "constant", "input": "$5", "expect": { "value_type": "number", "value": 5, "number_format": "$#,##0.00" } },
+    { "id": "const-date", "name": "date entry parses to a serial with a date format", "spec": "§5, §6", "kind": "constant", "input": "12/31/2025", "expect": { "value_type": "number", "number_format": "m/d/yyyy" }, "note": "Date text parses to an Excel date serial; the exact serial is Excel-anchored." },
+    { "id": "const-logical-true", "name": "TRUE is a logical", "spec": "§6", "kind": "constant", "input": "TRUE", "expect": { "value_type": "logical", "value": true } },
+    { "id": "const-logical-ci", "name": "false (any case) is a logical", "spec": "§6", "kind": "constant", "input": "false", "expect": { "value_type": "logical", "value": false } },
+    { "id": "const-text-word", "name": "a bare word is text, not a reference", "spec": "§2, §6", "kind": "constant", "input": "Margin", "expect": { "value_type": "text", "value": "Margin" }, "note": "Without a leading =, Margin is the text \"Margin\"; only =Margin is a reference (Excel cell-entry convention)." },
+    { "id": "const-text-apostrophe", "name": "apostrophe forces text on a number-like entry", "spec": "§6", "kind": "constant", "input": "'007", "expect": { "value_type": "text", "value": "007" }, "note": "The leading apostrophe is an entry escape, not part of the value." },
+    { "id": "const-quoted-string", "name": "a quoted-string entry is text", "spec": "§6", "kind": "constant", "input": "\"hi\"", "expect": { "value_type": "text", "value": "hi" } },
+    { "id": "const-formula", "name": "leading = is a formula, not a constant", "spec": "§2, §6", "kind": "constant", "input": "=1+1", "expect": { "value_type": "formula" }, "note": "Classification distinguishes formula from constant; the formula then parses/evaluates normally." }
+  ]
+}

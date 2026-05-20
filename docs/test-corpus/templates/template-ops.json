@@ -1,0 +1,14 @@
+{
+  "schema_version": "treecalc-corpus-v1",
+  "theme": "templates/template-ops",
+  "workset": "W007",
+  "status": "pending",
+  "description": "Host-level templates (CORE_MODEL_SPEC §7b, META_NODES): a template is a meta-flagged subtree; instances are generated subtrees with per-leaf divergence tracking. These cases pin the structural OUTCOMES of template operations (host operations; OxCalc sees ordinary structural edits). `op` is the gesture; expect describes the resulting tree / divergence record.",
+  "cases": [
+    { "id": "tmpl-instantiate", "name": "instantiate materializes the template structure at a path", "spec": "§7b", "kind": "template", "workspace": "templates", "op": "instantiate", "template": "Templates.Quarter", "at": "Year.Q2", "expect": { "nodes": [ { "node_id": "Year.Q2.Revenue", "formula": "0" }, { "node_id": "Year.Q2.Cost", "formula": "0" }, { "node_id": "Year.Q2.Profit", "formula": "=Revenue-Cost" } ], "instance_link": { "template": "Templates.Quarter", "root": "Year.Q2" } }, "note": "Materializes Revenue/Cost/Profit from the template and registers the instance link." },
+    { "id": "tmpl-edit-sync", "name": "editing the template syncs to instances, skipping diverged leaves", "spec": "§7b", "kind": "template", "workspace": "templates", "op": "edit", "template": "Templates.Quarter", "change": { "add_child": "Tax", "formula": "=Profit*0.3" }, "expect": { "synced": ["Year.Q1"], "instance_gains": [ { "node_id": "Year.Q1.Tax", "formula": "=Profit*0.3" } ], "skipped_diverged": ["Year.Q1.Revenue"] }, "note": "The structural diff (add Tax) applies to each instance via ordinary edits; the diverged leaf Year.Q1.Revenue is skipped." },
+    { "id": "tmpl-override-divergence", "name": "editing an instance leaf records per-leaf divergence", "spec": "§7b", "kind": "template", "workspace": "templates", "op": "override", "target": "Year.Q1.Cost", "expect": { "diverged": ["Year.Q1.Cost"] }, "note": "Per-leaf override granularity: the node-path is recorded as diverged; future template edits to that leaf are skipped for this instance." },
+    { "id": "tmpl-detach", "name": "detach drops the instance link", "spec": "§7b", "kind": "template", "workspace": "templates", "op": "detach", "target": "Year.Q1", "expect": { "detached": "Year.Q1" }, "note": "The subtree becomes independent; later template edits no longer reach it." },
+    { "id": "tmpl-fit-check", "name": "fit-check reports which template a subtree matches", "spec": "§7b", "kind": "template", "workspace": "templates", "op": "fit_check", "target": "Year.Q1", "expect": { "matches": ["Templates.Quarter"], "divergences": ["Year.Q1.Revenue"] }, "note": "Given an arbitrary subtree, fit-check reports the templates it could be adopted as an instance of and the divergences that would be recorded." }
+  ]
+}

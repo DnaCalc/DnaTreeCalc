@@ -1,6 +1,8 @@
 {
   "schema_version": "treecalc-corpus-v1",
   "theme": "references/sibling-offsets",
+  "workset": "W004",
+  "status": "pending",
   "description": "@PREV / @NEXT positional sibling navigators (CORE_MODEL_SPEC §3.2, §3.5, §3.7). Sibling order is the workspace node array order.",
   "cases": [
     {

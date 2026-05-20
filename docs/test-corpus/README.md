@@ -72,10 +72,17 @@ docs/test-corpus/
   README.md            this file
   schema/              JSON Schemas for the case + workspace shapes
   workspaces/          shared multi-node tree fixtures (referenced by id)
-  references/          §3 — resolution, anchors, sibling-offsets, classification, meta, syntax
+  references/          §3 — walkup, anchors, sibling-offsets, classification, set-membership, escaping, cross-workspace, meta, syntax
   profiles/            §4 — treecalc-v1 vs strict-excel gating
-  import/              §10 — Excel defined-name → tree mapping
+  constants/           §2/§6 — entry classification (constant vs formula)
+  structural-edits/    §8 — rename/move/delete/insert propagation
+  arrays/              §6 — dynamic array references
+  dynamic-references/  §6 (item 1), §10.3 — INDIRECT-driven dynamic (CTRO) references
   cycles/              §7a — circular references under each cycle profile
+  templates/           §7b — template instantiate/sync/divergence (META_NODES)
+  formatting/          §6 (item 10) — ::Format meta-children + inheritance (META_NODES)
+  import/              §10 — Excel defined-name → tree mapping
+  value-equivalence/   Excel anchor — whole-workspace recompute + export round-trip
   tools/
     validate-corpus.ps1
 ```
@@ -111,8 +118,33 @@ Section references (`§3.2`, etc.) are into [`../model/CORE_MODEL_SPEC.md`](../m
 | `syntax` | `reference` | `{ parse: accept\|reject, equivalent_to?, reason? }` (§3.1, §3.3) |
 | `import` | `excel` | `{ nodes: [{ node_id, formula, stub? }], aliases? }` **or** `{ outcome: out-of-scope\|eval-error, reason }` (§10) |
 | `cycle` | `workspace`, `members`, `config` | `{ outcome: cycle_blocked\|published\|rejected, terminal?, publication?, values_anchor? }` — host-surfaced outcome per cycle profile (§7a); iterated *values* are Excel/engine-anchored, not asserted here |
+| `dynamic` | `workspace`, `caller`, `reference` | `{ outcome: resolved\|unresolved\|error\|cycle_blocked, target?, depends_on?, engine_ref? }` + optional `given` (runtime selector values) — INDIRECT / CTRO dynamic references (§6 item 1, §10.3) |
 
 ---
+
+## Traceability & progressive activation
+
+Every theme file declares the **workset** that owns it and an **activation status**, so the corpus
+maps cleanly onto the work plan and can be switched on area-by-area as the engine/features land.
+
+- `workset` — the [`WORKSET_REGISTER.md`](../WORKSET_REGISTER.md) id whose completion makes these
+  cases runnable (e.g. `W004`).
+- `status` — `pending` (authored + well-formed, but no executable runner yet) or `active` (wired to a
+  runner/check). Today everything is `pending`; flip a theme to `active` when its workset delivers the
+  behavior and the runner can bind it.
+
+`validate-corpus.ps1` prints a coverage matrix grouped by workset + status. The future runner selects
+`status: active` themes; this validator checks the well-formedness of every theme regardless.
+
+| Workset | Themes | What it pins |
+|---|---|---|
+| **W002** engine seam | `constants/`, `cycles/` | entry classification (§2/§6); cycle profiles (§7a) |
+| **W004** reference model | `references/*`, `profiles/`, `dynamic-references/`, `structural-edits/`, `arrays/` | §3 resolution + set membership, §4 gating, INDIRECT/CTRO, §8 edit propagation, §6 arrays |
+| **W007** meta/format/templates | `templates/`, `formatting/` | §7b templates; `::Format` inheritance (META_NODES) |
+| **W008** import | `import/`, `value-equivalence/import-*` | §10 defined-name import + recompute-equals-Excel |
+| **W009** export/replay | `value-equivalence/export-*` | export round-trip; whole-workspace value-equivalence |
+
+The matrix in the validator output is the live source of truth; this table is the human overview.
 
 ## Runner contract
 

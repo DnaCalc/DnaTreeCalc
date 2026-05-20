@@ -1,6 +1,8 @@
 {
   "schema_version": "treecalc-corpus-v1",
   "theme": "cycles/cycle-profiles",
+  "workset": "W002",
+  "status": "pending",
   "description": "Circular references under each host-configured cycle profile (CORE_MODEL_SPEC §7a). Pins the host-surfaced OUTCOME class per profile; iterated numeric values are Excel/engine-anchored (OxCalc W048 + OxXlPlay/OxReplay) and are NOT asserted here.",
   "cases": [
     {

@@ -1,6 +1,8 @@
 {
   "schema_version": "treecalc-corpus-v1",
   "theme": "references/syntax",
+  "workset": "W004",
+  "status": "pending",
   "description": "Pure parse-level acceptance/rejection of the path surface: the ! sheet-separator alias rule (§3.1) and the bracket-then-caret rule (§3.3). These are profile-agnostic syntax facts within treecalc-v1; profile gating itself lives in profiles/gating.json.",
   "cases": [
     {

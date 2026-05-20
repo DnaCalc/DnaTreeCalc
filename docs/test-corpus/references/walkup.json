@@ -1,6 +1,8 @@
 {
   "schema_version": "treecalc-corpus-v1",
   "theme": "references/walkup",
+  "workset": "W004",
+  "status": "pending",
   "description": "Bare-name lexical walk-up resolution: own children first, then each ancestor's children one scope at a time, first match wins (CORE_MODEL_SPEC §3.2, §3.7).",
   "cases": [
     {
