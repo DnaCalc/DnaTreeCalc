@@ -25,7 +25,7 @@ Developed by DNA Kode, as part of the DNA Calc program.
 
 ## Status
 
-Design/planning stage. The implementation tree (Rust workspace) is not yet scaffolded. Bead store initialization (`br init`) is still pending — see `docs/WORKSET_REGISTER.md` workset `W001`.
+Design/planning stage. Git and the bead store are initialized. The implementation tree (Rust workspace) is not yet scaffolded. Execution state lives in `br`; start with `br ready`.
 
 ## License
 

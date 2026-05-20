@@ -2,7 +2,8 @@
 /target/
 **/target/
 
-# Bead store transient files (track beads.db; ignore lock/WAL transients)
+# Bead store local runtime files
+# Portable bead state is .beads/issues.jsonl; .beads/.gitignore also ignores generated local DB/runtime files.
 .beads/*.lock
 .beads/*.db-wal
 .beads/*.db-shm

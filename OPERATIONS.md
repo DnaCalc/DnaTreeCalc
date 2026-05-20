@@ -91,7 +91,7 @@ The type only changes what "review" and "evidence" mean in practice, not the loo
 
 ### `br` tooling
 
-`br` is the only mutation tool; `bv` is for graph-aware inspection. Direct edits to `.beads/` are prohibited. Agents use only non-interactive inspection commands.
+`br` is the only mutation tool. Direct edits to `.beads/` are prohibited. Agents use only non-interactive inspection commands.
 
 ```
 br ready                                  # list ready beads

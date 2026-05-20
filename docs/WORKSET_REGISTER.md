@@ -12,6 +12,25 @@ This is the initial seed map, derived from the Spec (`SPEC.md`) and the UX techn
 
 ---
 
+## Epic bead pairing
+
+These epic beads were created during W001 bootstrap. Use this table only to pair register worksets with bead epics; use `br epic status`, `br ready`, and `br show <id>` for live execution state.
+
+| Workset | Epic bead |
+|---|---|
+| W001_repo_bootstrap_and_doctrine | `dtc-jfv` |
+| W002_engine_seam_and_bridge | `dtc-d6o` |
+| W003_tree_shell_and_core_editing | `dtc-mm0` |
+| W004_reference_model_and_resolution | `dtc-z0i` |
+| W005_skin_architecture_and_primitives | `dtc-osq` |
+| W006_additional_skins | `dtc-366` |
+| W007_meta_nodes_formatting_templates | `dtc-fks` |
+| W008_excel_import | `dtc-xlx` |
+| W009_excel_export_and_replay | `dtc-p5q` |
+| W010_udf_hosting | `dtc-dht` |
+
+---
+
 ## Default sequence
 
 ```
@@ -34,7 +53,7 @@ Engine prerequisites in OxCalc/OxFml/OxFunc (Spec `model/CORE_MODEL_SPEC.md` §6
 - **Closure condition:** repo has the doctrine doc set, an initialized bead store, and a first epic+beads created; `br ready` returns work.
 - **Initial epic lanes:** doctrine docs; bead-store bootstrap; spec-set indexing.
 - **Verification:** Local only — doc set present, `git status` works, bead store is initialized, and `br ready` returns work. No Excel/formal tier.
-- **Status:** OPEN
+- **Status:** CLOSED
 
 ### W002_engine_seam_and_bridge
 - **Purpose:** The `OxCalcTreeBridge` and the multi-node recalc seam — submit structural snapshot + formula catalog, get back values/dependency-graph/calc-state. Reuse the OxFml editor bridge for per-node formulas.
