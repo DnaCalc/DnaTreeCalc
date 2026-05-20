@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<!-- Mockup 08: Canvas flow with block-based graph layout
+     Cards arranged in 2D. Value + formula combined in each card; one card focused with
+     formula bar above. Floating layout toolbar (free / auto / hierarchical / grid).
+     Connection lines as smooth bezier curves. Group selection (lasso). Zoom controls. Minimap. -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>08 — Canvas flow</title>
+<style>
+  :root {
+    --tc-color-bg: #f4ede2;
+    --tc-color-canvas: #ede4d2;
+    --tc-color-canvas-grid: #e0d6bf;
+    --tc-color-surface: #fffaf4;
+    --tc-color-surface-subtle: #faf5ec;
+    --tc-color-text: #2a2a28;
+    --tc-color-muted: #7a7570;
+    --tc-color-fainter: #b3aca0;
+    --tc-color-accent: #245d5a;
+    --tc-color-accent-soft: #d6e5e4;
+    --tc-color-accent-bg: #e8f0ef;
+    --tc-color-warning: #c58b2f;
+    --tc-color-warning-soft: #f5e4c4;
+    --tc-color-success: #4f7b57;
+    --tc-color-success-soft: #d8e7db;
+    --tc-color-error: #b34a3f;
+    --tc-color-border: #e3dccf;
+    --tc-color-border-strong: #c9bfa9;
+    --tc-color-wire: #245d5a;
+    --tc-color-wire-soft: #69a2a0;
+    --tc-radius-panel: 8px;
+    --tc-radius-card: 10px;
+    --tc-font-ui: "Segoe UI", "Inter", system-ui, sans-serif;
+    --tc-font-mono: "Cascadia Code", "Consolas", "JetBrains Mono", monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; background: var(--tc-color-bg); color: var(--tc-color-text); font-family: var(--tc-font-ui); font-size: 14px; }
+  .shell {
+    display: grid;
+    grid-template-rows: 38px 42px 1fr 26px;
+    height: 100vh;
+  }
+  .context {
+    background: var(--tc-color-surface);
+    border-bottom: 1px solid var(--tc-color-border);
+    display: flex; align-items: center;
+    padding: 0 14px; gap: 14px; font-size: 12px;
+  }
+  .context .filename { color: var(--tc-color-accent); font-weight: 600; }
+  .context .layout-pills { display: flex; gap: 4px; margin-left: 16px; }
+  .context .pill {
+    font-size: 11.5px; padding: 3px 10px; border-radius: 4px; cursor: pointer;
+    color: var(--tc-color-muted);
+  }
+  .context .pill.active { background: var(--tc-color-accent); color: white; font-weight: 600; }
+  .context .spacer { flex: 1; }
+  .context .profile {
+    font-family: var(--tc-font-mono);
+    background: var(--tc-color-accent-soft); color: var(--tc-color-accent);
+    padding: 2px 8px; border-radius: 4px; font-size: 11px;
+  }
+  /* Formula bar */
+  .formula-bar {
+    background: var(--tc-color-surface);
+    border-bottom: 1px solid var(--tc-color-border);
+    display: grid;
+    grid-template-columns: 220px 28px 1fr auto;
+    align-items: center;
+    padding: 0 14px;
+    gap: 0;
+  }
+  .formula-bar .selected-name {
+    display: flex; align-items: center; gap: 8px;
+    border-right: 1px solid var(--tc-color-border);
+    padding-right: 14px;
+    font-family: var(--tc-font-mono); font-size: 12.5px;
+  }
+  .formula-bar .selected-name .name {
+    background: var(--tc-color-surface-subtle);
+    padding: 3px 8px; border-radius: 4px;
+    color: var(--tc-color-accent); font-weight: 600;
+    border: 1px solid var(--tc-color-border-strong);
+  }
+  .formula-bar .selected-name .path { color: var(--tc-color-fainter); font-size: 11.5px; }
+  .formula-bar .fx-btn {
+    width: 26px; height: 26px;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--tc-color-muted);
+    font-style: italic; font-family: serif; font-size: 16px;
+    cursor: pointer; border-radius: 4px; margin-left: 10px;
+  }
+  .formula-bar .fx-btn:hover { background: var(--tc-color-surface-subtle); color: var(--tc-color-accent); }
+  .formula-bar .formula-edit {
+    padding: 6px 12px;
+    margin-left: 6px;
+    border-left: 1px solid var(--tc-color-border);
+    font-family: var(--tc-font-mono);
+    font-size: 14px;
+    color: var(--tc-color-text);
+  }
+  .formula-bar .formula-edit .equals { color: var(--tc-color-accent); }
+  .formula-bar .formula-edit .fn { color: var(--tc-color-accent); font-weight: 600; }
+  .formula-bar .formula-edit .ref { color: #6a4a8c; }
+  .formula-bar .formula-edit .op { color: var(--tc-color-muted); }
+  .formula-bar .formula-edit .num { color: var(--tc-color-warning); }
+  .formula-bar .group-info {
+    padding-left: 14px;
+    border-left: 1px solid var(--tc-color-border);
+    color: var(--tc-color-muted);
+    font-size: 11.5px;
+    font-family: var(--tc-font-mono);
+  }
+  .formula-bar .group-info strong { color: var(--tc-color-accent); }
+
+  /* Canvas area */
+  .canvas-wrap {
+    position: relative;
+    overflow: hidden;
+    background:
+      radial-gradient(circle, var(--tc-color-canvas-grid) 1px, transparent 1.5px) 0 0 / 22px 22px,
+      var(--tc-color-canvas);
+  }
+  /* SVG layer for wires */
+  svg.wires {
+    position: absolute;
+    inset: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+  }
+  svg.wires path {
+    fill: none;
+    stroke: var(--tc-color-wire-soft);
+    stroke-width: 2;
+    opacity: 0.75;
+  }
+  svg.wires path.active {
+    stroke: var(--tc-color-wire);
+    stroke-width: 2.4;
+    opacity: 1;
+    filter: drop-shadow(0 1px 2px rgba(36, 93, 90, 0.25));
+  }
+  svg.wires .label {
+    font-family: var(--tc-font-mono);
+    font-size: 10px;
+    fill: var(--tc-color-muted);
+  }
+  /* Nodes */
+  .node {
+    position: absolute;
+    background: var(--tc-color-surface);
+    border: 1px solid var(--tc-color-border-strong);
+    border-radius: var(--tc-radius-card);
+    box-shadow: 0 2px 6px rgba(31, 42, 44, 0.10);
+    min-width: 180px;
+    cursor: grab;
+    transition: box-shadow 100ms, border-color 100ms;
+  }
+  .node:hover { box-shadow: 0 4px 10px rgba(31, 42, 44, 0.14); }
+  .node.selected {
+    border-color: var(--tc-color-accent);
+    border-width: 2px;
+    box-shadow: 0 6px 16px rgba(36, 93, 90, 0.25);
+  }
+  .node.in-group {
+    border-color: var(--tc-color-warning);
+    box-shadow: 0 4px 12px rgba(197, 139, 47, 0.22);
+  }
+  .node .nh {
+    background: var(--tc-color-surface-subtle);
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--tc-color-border);
+    display: flex; align-items: center; gap: 6px;
+    border-top-left-radius: var(--tc-radius-card);
+    border-top-right-radius: var(--tc-radius-card);
+    font-family: var(--tc-font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--tc-color-text);
+  }
+  .node.selected .nh { background: var(--tc-color-accent-bg); color: var(--tc-color-accent); }
+  .node .nh .status { width: 7px; height: 7px; border-radius: 50%; background: var(--tc-color-success); }
+  .node .nh .status.dirty { background: var(--tc-color-warning); }
+  .node .nh .status.error { background: var(--tc-color-error); }
+  .node .nh .badge {
+    font-size: 9.5px; padding: 1px 5px; border-radius: 3px;
+    background: var(--tc-color-warning-soft); color: var(--tc-color-warning);
+    margin-left: auto; font-weight: 600;
+  }
+  .node .nh .badge.scalar { background: var(--tc-color-success-soft); color: var(--tc-color-success); }
+  .node .nb {
+    padding: 10px 14px;
+    font-family: var(--tc-font-mono);
+    font-size: 13px;
+    text-align: right;
+    color: var(--tc-color-text);
+  }
+  .node .nb .value { font-size: 17px; font-weight: 600; }
+  .node.selected .nb .value { color: var(--tc-color-accent); }
+  .node .nb .micro-formula {
+    font-size: 10.5px;
+    color: var(--tc-color-muted);
+    text-align: left;
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px dashed var(--tc-color-border);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .node .nb .micro-formula .ref { color: #6a4a8c; }
+  .node .nb .micro-formula .fn { color: var(--tc-color-accent); font-weight: 600; }
+  .node .nb .micro-formula .num { color: var(--tc-color-warning); }
+  .node.input .nh { background: rgba(106, 74, 140, 0.10); color: #6a4a8c; }
+  .node.input .nh::after {
+    content: '◀';
+    color: #6a4a8c;
+    font-size: 8px;
+    margin-left: 6px;
+  }
+  .node.output .nh { background: rgba(75, 123, 87, 0.14); color: var(--tc-color-success); }
+  /* Connection ports (visual hints) */
+  .port {
+    position: absolute;
+    width: 8px; height: 8px;
+    background: var(--tc-color-wire);
+    border-radius: 50%;
+    border: 2px solid var(--tc-color-surface);
+  }
+  .port.left { left: -5px; top: 50%; transform: translateY(-50%); }
+  .port.right { right: -5px; top: 50%; transform: translateY(-50%); }
+
+  /* Group selection rectangle */
+  .lasso {
+    position: absolute;
+    border: 1.5px dashed var(--tc-color-warning);
+    background: rgba(197, 139, 47, 0.08);
+    border-radius: 4px;
+    pointer-events: none;
+  }
+
+  /* Floating toolbar (layout & zoom) */
+  .toolbar {
+    position: absolute;
+    top: 14px; left: 14px;
+    background: var(--tc-color-surface);
+    border: 1px solid var(--tc-color-border-strong);
+    border-radius: var(--tc-radius-panel);
+    box-shadow: 0 4px 14px rgba(31, 42, 44, 0.10);
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 11.5px;
+    z-index: 20;
+  }
+  .toolbar-row {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+  }
+  .toolbar-label {
+    font-size: 9.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--tc-color-muted);
+    font-weight: 600;
+    padding: 0 4px;
+    margin-bottom: -1px;
+  }
+  .toolbar-btn {
+    background: var(--tc-color-surface);
+    color: var(--tc-color-text);
+    border: 1px solid var(--tc-color-border);
+    border-radius: 4px;
+    padding: 4px 9px;
+    font-size: 11.5px;
+    cursor: pointer;
+  }
+  .toolbar-btn:hover { background: var(--tc-color-accent-bg); border-color: var(--tc-color-accent); }
+  .toolbar-btn.active { background: var(--tc-color-accent); color: white; border-color: var(--tc-color-accent); font-weight: 600; }
+  .toolbar-btn.icon { padding: 4px 6px; font-family: var(--tc-font-mono); font-size: 13px; }
+
+  /* Zoom indicator (floating bottom-left) */
+  .zoom-indicator {
+    position: absolute;
+    bottom: 14px; left: 14px;
+    background: var(--tc-color-surface);
+    border: 1px solid var(--tc-color-border-strong);
+    border-radius: 18px;
+    padding: 4px 4px 4px 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    box-shadow: 0 2px 8px rgba(31, 42, 44, 0.10);
+    font-size: 11.5px;
+    z-index: 20;
+  }
+  .zoom-indicator .zoom-text {
+    font-family: var(--tc-font-mono);
+    color: var(--tc-color-text);
+    font-weight: 600;
+  }
+  .zoom-indicator .zoom-btn {
+    width: 22px; height: 22px;
+    border: 1px solid var(--tc-color-border);
+    background: var(--tc-color-surface);
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; color: var(--tc-color-text);
+    font-weight: 600;
+  }
+  .zoom-indicator .zoom-btn:hover { background: var(--tc-color-accent-bg); }
+
+  /* Minimap (bottom-right) */
+  .minimap {
+    position: absolute;
+    bottom: 14px; right: 14px;
+    width: 170px; height: 110px;
+    background: rgba(255, 250, 244, 0.95);
+    border: 1px solid var(--tc-color-border-strong);
+    border-radius: 6px;
+    box-shadow: 0 2px 8px rgba(31, 42, 44, 0.12);
+    overflow: hidden;
+    z-index: 20;
+  }
+  .minimap-label {
+    position: absolute; top: 2px; left: 6px;
+    font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--tc-color-muted); font-weight: 600;
+  }
+  .minimap-dot {
+    position: absolute;
+    background: var(--tc-color-wire-soft);
+    border-radius: 1px;
+  }
+  .minimap-dot.selected { background: var(--tc-color-accent); }
+  .minimap-dot.group { background: var(--tc-color-warning); }
+  .minimap-viewport {
+    position: absolute;
+    border: 1.5px solid var(--tc-color-accent);
+    background: rgba(36, 93, 90, 0.08);
+    border-radius: 2px;
+  }
+
+  /* Group-info banner */
+  .group-banner {
+    position: absolute;
+    top: 14px; right: 14px;
+    background: var(--tc-color-warning-soft);
+    border: 1px solid var(--tc-color-warning);
+    border-radius: 6px;
+    padding: 6px 12px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    font-size: 12px;
+    color: var(--tc-color-warning);
+    box-shadow: 0 2px 8px rgba(197, 139, 47, 0.20);
+    z-index: 20;
+  }
+  .group-banner .gb-count { font-weight: 700; }
+  .group-banner .gb-actions { display: flex; gap: 6px; }
+  .group-banner .gb-btn {
+    background: var(--tc-color-surface);
+    color: var(--tc-color-warning);
+    border: 1px solid var(--tc-color-warning);
+    padding: 2px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .group-banner .gb-btn:hover { background: var(--tc-color-warning); color: white; }
+
+  /* Status */
+  .status {
+    background: var(--tc-color-surface);
+    border-top: 1px solid var(--tc-color-border);
+    display: flex; align-items: center;
+    padding: 0 14px; gap: 18px;
+    font-size: 11px;
+    color: var(--tc-color-muted);
+    font-family: var(--tc-font-mono);
+  }
+  .status .calc-state { color: var(--tc-color-success); display: flex; align-items: center; gap: 5px; }
+  .status .calc-state::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--tc-color-success); }
+  .status .spacer { flex: 1; }
+  .status kbd { font-family: var(--tc-font-mono); background: var(--tc-color-bg); border: 1px solid var(--tc-color-border-strong); border-radius: 3px; padding: 1px 5px; font-size: 10px; }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <div class="context">
+    <span class="filename">forecast-2026.dnatree</span>
+    <div class="layout-pills">
+      <span class="pill">Editor</span>
+      <span class="pill">Outline-table</span>
+      <span class="pill">Cell view</span>
+      <span class="pill">Across</span>
+      <span class="pill active">Canvas</span>
+    </div>
+    <div class="spacer"></div>
+    <span class="profile">treecalc-v1</span>
+  </div>
+
+  <div class="formula-bar">
+    <div class="selected-name">
+      <span class="name">AfterTax</span>
+      <span class="path">.MonthlyModel</span>
+    </div>
+    <div class="fx-btn"><i>f</i></div>
+    <div class="formula-edit">
+      <span class="equals">=</span><span class="ref">Margin</span> <span class="op">*</span> (<span class="num">1</span> <span class="op">−</span> <span class="ref">TaxRate</span>)
+    </div>
+    <div class="group-info">
+      <strong>Group selection:</strong> 3 nodes &middot; <kbd>G</kbd> group · <kbd>Ctrl+Drag</kbd> lasso
+    </div>
+  </div>
+
+  <div class="canvas-wrap">
+
+    <!-- Floating toolbar -->
+    <div class="toolbar">
+      <div class="toolbar-label">Layout</div>
+      <div class="toolbar-row">
+        <button class="toolbar-btn active">Free</button>
+        <button class="toolbar-btn">Auto</button>
+      </div>
+      <div class="toolbar-row">
+        <button class="toolbar-btn">Hierarchy</button>
+        <button class="toolbar-btn">Grid snap</button>
+      </div>
+      <div class="toolbar-label" style="margin-top: 4px;">Group</div>
+      <div class="toolbar-row">
+        <button class="toolbar-btn icon" title="Lasso select">▱</button>
+        <button class="toolbar-btn icon" title="Group">⊞</button>
+        <button class="toolbar-btn icon" title="Ungroup">⊟</button>
+        <button class="toolbar-btn icon" title="Auto-align">═</button>
+      </div>
+      <div class="toolbar-label" style="margin-top: 4px;">Routing</div>
+      <div class="toolbar-row">
+        <button class="toolbar-btn">Bezier</button>
+        <button class="toolbar-btn">Orthogonal</button>
+      </div>
+    </div>
+
+    <!-- Group banner -->
+    <div class="group-banner">
+      <span>Group <span class="gb-count">▤ Pipeline-A</span> · 3 nodes selected</span>
+      <span class="gb-actions">
+        <button class="gb-btn">Collapse</button>
+        <button class="gb-btn">Promote to template</button>
+      </span>
+    </div>
+
+    <!-- SVG wire layer -->
+    <svg class="wires" viewBox="0 0 1400 760" preserveAspectRatio="xMinYMin meet">
+      <!-- GrowthRate -> Sales -->
+      <path d="M 220 220 C 320 220, 320 130, 430 130" />
+      <!-- SeasonalIdx -> Sales -->
+      <path d="M 220 320 C 320 320, 320 150, 430 150" />
+      <!-- Sales -> Costs -->
+      <path d="M 660 140 C 720 140, 720 240, 780 240" />
+      <!-- Sales -> Margin -->
+      <path d="M 660 160 C 760 160, 760 380, 850 380" class="active" />
+      <!-- Costs -> Margin -->
+      <path d="M 1010 250 C 1060 250, 920 360, 850 360" class="active" />
+      <!-- Margin -> AfterTax -->
+      <path d="M 1080 380 C 1140 380, 1080 500, 850 500" class="active" />
+      <!-- TaxRate -> AfterTax -->
+      <path d="M 220 500 C 480 500, 600 510, 670 510" class="active" />
+      <!-- AfterTax -> Total -->
+      <path d="M 1080 510 C 1180 510, 1180 620, 1200 620" />
+      <!-- Labels at midpoints (illustrative) -->
+      <text class="label" x="380" y="110">refers</text>
+      <text class="label" x="780" y="200">refers</text>
+      <text class="label" x="970" y="430">refers</text>
+    </svg>
+
+    <!-- Nodes -->
+    <!-- Inputs column ~left -->
+    <div class="node input" style="top: 188px; left: 60px;">
+      <div class="nh"><span class="status"></span><span>GrowthRate</span><span class="badge scalar">scalar</span></div>
+      <div class="nb">
+        <div class="value">4.2%</div>
+        <div class="micro-formula">= <span class="num">0.042</span></div>
+      </div>
+      <div class="port right"></div>
+    </div>
+    <div class="node input" style="top: 288px; left: 60px;">
+      <div class="nh"><span class="status"></span><span>SeasonalIdx</span><span class="badge">12 × 1</span></div>
+      <div class="nb">
+        <div class="value">[12 cells]</div>
+        <div class="micro-formula">= <span class="fn">SEQUENCE</span>(<span class="num">12</span>)</div>
+      </div>
+      <div class="port right"></div>
+    </div>
+    <div class="node input" style="top: 470px; left: 60px;">
+      <div class="nh"><span class="status"></span><span>TaxRate</span><span class="badge scalar">scalar</span></div>
+      <div class="nb">
+        <div class="value">27.0%</div>
+        <div class="micro-formula">= <span class="num">0.27</span></div>
+      </div>
+      <div class="port right"></div>
+    </div>
+
+    <!-- Sales card -->
+    <div class="node in-group" style="top: 100px; left: 470px;">
+      <div class="nh"><span class="status"></span><span>Sales</span><span class="badge">12 × 1</span></div>
+      <div class="nb">
+        <div class="value">sum 122,020</div>
+        <div class="micro-formula">= <span class="fn">MAP</span>(<span class="ref">SeasonalIdx</span>, m <span class="op">-&gt;</span> m <span class="op">*</span> <span class="ref">GrowthRate</span> <span class="op">*</span> <span class="num">1000</span>)</div>
+      </div>
+      <div class="port left"></div>
+      <div class="port right"></div>
+    </div>
+
+    <!-- Costs card -->
+    <div class="node in-group" style="top: 210px; left: 820px;">
+      <div class="nh"><span class="status"></span><span>Costs</span><span class="badge">12 × 1</span></div>
+      <div class="nb">
+        <div class="value">sum 49,527</div>
+        <div class="micro-formula">= <span class="fn">MAP</span>(<span class="ref">Sales</span>, s <span class="op">-&gt;</span> s <span class="op">*</span> <span class="num">0.38</span> <span class="op">+</span> <span class="num">200</span>)</div>
+      </div>
+      <div class="port left"></div>
+      <div class="port right"></div>
+    </div>
+
+    <!-- Margin card -->
+    <div class="node in-group" style="top: 350px; left: 670px;">
+      <div class="nh"><span class="status"></span><span>Margin</span><span class="badge">12 × 1</span></div>
+      <div class="nb">
+        <div class="value">sum 74,493</div>
+        <div class="micro-formula">= <span class="ref">Sales</span> <span class="op">−</span> <span class="ref">Costs</span></div>
+      </div>
+      <div class="port left"></div>
+      <div class="port right"></div>
+    </div>
+
+    <!-- AfterTax (selected) -->
+    <div class="node selected" style="top: 470px; left: 670px;">
+      <div class="nh"><span class="status"></span><span>AfterTax</span><span class="badge">12 × 1</span></div>
+      <div class="nb">
+        <div class="value">sum 54,379</div>
+        <div class="micro-formula">= <span class="ref">Margin</span> <span class="op">*</span> (<span class="num">1</span> <span class="op">−</span> <span class="ref">TaxRate</span>)</div>
+      </div>
+      <div class="port left"></div>
+      <div class="port right"></div>
+    </div>
+
+    <!-- Total (output) -->
+    <div class="node output" style="top: 588px; left: 1170px;">
+      <div class="nh"><span class="status"></span><span>Total</span><span class="badge scalar">scalar</span></div>
+      <div class="nb">
+        <div class="value">54,379</div>
+        <div class="micro-formula">= <span class="fn">SUM</span>(<span class="ref">AfterTax</span>)</div>
+      </div>
+      <div class="port left"></div>
+    </div>
+
+    <!-- Lasso example -->
+    <div class="lasso" style="top: 84px; left: 450px; width: 660px; height: 350px;"></div>
+
+    <!-- Zoom indicator -->
+    <div class="zoom-indicator">
+      <span class="zoom-text">100%</span>
+      <button class="zoom-btn">−</button>
+      <button class="zoom-btn">+</button>
+      <button class="zoom-btn" title="Fit to screen">▢</button>
+    </div>
+
+    <!-- Minimap -->
+    <div class="minimap">
+      <div class="minimap-label">overview</div>
+      <!-- Approximated dot positions; mirror of actual node layout -->
+      <div class="minimap-dot" style="top: 30px; left: 14px; width: 6px; height: 4px;"></div>
+      <div class="minimap-dot" style="top: 42px; left: 14px; width: 6px; height: 4px;"></div>
+      <div class="minimap-dot" style="top: 66px; left: 14px; width: 6px; height: 4px;"></div>
+      <div class="minimap-dot group" style="top: 24px; left: 64px; width: 6px; height: 4px;"></div>
+      <div class="minimap-dot group" style="top: 36px; left: 110px; width: 6px; height: 4px;"></div>
+      <div class="minimap-dot group" style="top: 50px; left: 90px; width: 6px; height: 4px;"></div>
+      <div class="minimap-dot selected" style="top: 65px; left: 90px; width: 6px; height: 4px;"></div>
+      <div class="minimap-dot" style="top: 80px; left: 154px; width: 6px; height: 4px;"></div>
+      <!-- Viewport box -->
+      <div class="minimap-viewport" style="top: 18px; left: 8px; width: 160px; height: 86px;"></div>
+    </div>
+
+  </div>
+
+  <div class="status">
+    <div class="calc-state">Canvas · 8 nodes · 3 in group · free positioning · bezier wires</div>
+    <span class="spacer"></span>
+    <span><kbd>Space+Drag</kbd> pan · <kbd>Scroll</kbd> zoom · <kbd>G</kbd> group · <kbd>L</kbd> auto-layout · <kbd>F</kbd> fit</span>
+  </div>
+
+</div>
+</body>
+</html>

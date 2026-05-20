@@ -1,0 +1,24 @@
+# Rust build output
+/target/
+**/target/
+
+# Bead store transient files (track beads.db; ignore lock/WAL transients)
+.beads/*.lock
+.beads/*.db-wal
+.beads/*.db-shm
+.beads/.sync.lock
+
+# WASM / web build
+/dist/
+/pkg/
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# Local scratch
+/.tmp/
+/.local/

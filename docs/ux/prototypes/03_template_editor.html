@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<!-- Mockup 03: Template editor
+     Grounded in UX requirements §2.9 (template editor) and §5.4 (templates and instances).
+     Templates live as meta-flagged subtrees; this view edits one. -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>03 — Template editor</title>
+<style>
+  :root {
+    --tc-color-bg: #f4ede2;
+    --tc-color-surface: #fffaf4;
+    --tc-color-surface-subtle: #faf5ec;
+    --tc-color-text: #2a2a28;
+    --tc-color-muted: #7a7570;
+    --tc-color-fainter: #b3aca0;
+    --tc-color-accent: #245d5a;
+    --tc-color-accent-soft: #d6e5e4;
+    --tc-color-accent-bg: #e8f0ef;
+    --tc-color-meta: #8b6a3a;
+    --tc-color-meta-soft: #f0e2c8;
+    --tc-color-warning: #c58b2f;
+    --tc-color-success: #4f7b57;
+    --tc-color-success-soft: #d8e7db;
+    --tc-color-error: #b34a3f;
+    --tc-color-border: #e3dccf;
+    --tc-color-border-strong: #c9bfa9;
+    --tc-radius-panel: 12px;
+    --tc-radius-control: 5px;
+    --tc-font-ui: "Segoe UI", "Inter", system-ui, sans-serif;
+    --tc-font-mono: "Cascadia Code", "Consolas", "JetBrains Mono", monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; background: var(--tc-color-bg); color: var(--tc-color-text); font-family: var(--tc-font-ui); font-size: 14px; }
+  .shell {
+    display: grid;
+    grid-template-rows: 44px 1fr 30px;
+    grid-template-columns: 280px 1fr;
+    grid-template-areas:
+      "context context"
+      "nav main"
+      "status status";
+    height: 100vh;
+  }
+  .context {
+    grid-area: context;
+    background: var(--tc-color-surface);
+    border-bottom: 1px solid var(--tc-color-border);
+    display: flex; align-items: center; padding: 0 16px; gap: 16px;
+  }
+  .breadcrumb { font-size: 13px; display: flex; align-items: center; gap: 6px; }
+  .breadcrumb .filename { color: var(--tc-color-accent); font-weight: 600; }
+  .breadcrumb .sep { color: var(--tc-color-fainter); }
+  .breadcrumb .meta-tag { background: var(--tc-color-meta-soft); color: var(--tc-color-meta); font-size: 10px; padding: 1px 6px; border-radius: 3px; font-family: var(--tc-font-mono); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+  .breadcrumb .seg.active { color: var(--tc-color-accent); font-weight: 600; }
+  .context .spacer { flex: 1; }
+  .context .pill { font-size: 11px; padding: 3px 8px; border-radius: 4px; font-family: var(--tc-font-mono); }
+  .context .profile { background: var(--tc-color-accent-soft); color: var(--tc-color-accent); }
+
+  .nav {
+    grid-area: nav;
+    background: var(--tc-color-surface);
+    border-right: 1px solid var(--tc-color-border);
+    overflow-y: auto;
+    padding: 12px 0;
+  }
+  .nav-header {
+    padding: 4px 14px 12px;
+    border-bottom: 1px solid var(--tc-color-border);
+    margin-bottom: 8px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .nav-header .title { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--tc-color-muted); font-weight: 600; flex: 1; }
+  .nav-header .meta-toggle {
+    font-size: 11px; color: var(--tc-color-meta); font-weight: 600;
+    background: var(--tc-color-meta-soft); padding: 2px 7px; border-radius: 3px;
+  }
+  .row {
+    display: flex; align-items: center; gap: 5px;
+    padding: 4px 14px 4px 4px;
+    cursor: pointer;
+    font-size: 13.5px;
+    border-left: 3px solid transparent;
+  }
+  .row:hover { background: var(--tc-color-surface-subtle); }
+  .row.selected { background: var(--tc-color-accent-bg); border-left-color: var(--tc-color-accent); }
+  .row.selected .name { color: var(--tc-color-accent); font-weight: 600; }
+  .row .triangle { font-size: 9px; color: var(--tc-color-fainter); width: 12px; display: inline-block; text-align: center; }
+  .row .name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .summary { color: var(--tc-color-muted); font-size: 12px; font-family: var(--tc-font-mono); }
+  .row.meta-node {
+    background: rgba(139, 106, 58, 0.04);
+  }
+  .row.meta-node .name {
+    color: var(--tc-color-meta);
+    font-style: italic;
+  }
+  .row.meta-node.selected {
+    background: var(--tc-color-meta-soft);
+    border-left-color: var(--tc-color-meta);
+  }
+  .row.meta-node.selected .name { color: var(--tc-color-meta); font-weight: 600; }
+  .row .meta-icon { color: var(--tc-color-meta); font-size: 11px; }
+  .row .instance-icon { color: var(--tc-color-accent); font-size: 11px; }
+  .indent-1 { padding-left: 22px; }
+  .indent-2 { padding-left: 40px; }
+  .indent-3 { padding-left: 58px; }
+
+  .main {
+    grid-area: main;
+    overflow: hidden;
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    grid-template-rows: auto 1fr;
+    grid-template-areas:
+      "header header"
+      "editor instances";
+    gap: 12px;
+    padding: 16px 20px 12px;
+  }
+  .template-header {
+    grid-area: header;
+    background: var(--tc-color-surface);
+    border: 1px solid var(--tc-color-meta-soft);
+    border-left: 4px solid var(--tc-color-meta);
+    border-radius: var(--tc-radius-panel);
+    padding: 14px 18px;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 18px;
+    align-items: center;
+  }
+  .template-header .icon-block {
+    width: 36px; height: 36px;
+    background: var(--tc-color-meta-soft);
+    color: var(--tc-color-meta);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    font-weight: 700;
+  }
+  .template-header .meta-pair { display: flex; align-items: baseline; gap: 12px; }
+  .template-header .meta-tag { background: var(--tc-color-meta-soft); color: var(--tc-color-meta); font-size: 10px; padding: 2px 7px; border-radius: 3px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+  .template-header .template-name { font-size: 22px; font-weight: 600; color: var(--tc-color-text); }
+  .template-header .template-path { font-size: 12px; color: var(--tc-color-muted); font-family: var(--tc-font-mono); margin-top: 2px; }
+  .template-header .actions { display: flex; gap: 8px; align-items: center; }
+  .template-header .version-tag { font-size: 11.5px; color: var(--tc-color-muted); font-family: var(--tc-font-mono); }
+  .template-header .btn {
+    font-size: 12.5px; color: var(--tc-color-text); border: 1px solid var(--tc-color-border-strong);
+    padding: 5px 12px; border-radius: var(--tc-radius-control); cursor: pointer;
+    background: var(--tc-color-surface);
+  }
+  .template-header .btn.primary { background: var(--tc-color-accent); color: white; border-color: var(--tc-color-accent); }
+  .template-header .btn:hover { border-color: var(--tc-color-accent); }
+  .template-header .btn.primary:hover { background: #1e504e; }
+
+  .editor-area {
+    grid-area: editor;
+    background: var(--tc-color-surface);
+    border: 1px solid var(--tc-color-border);
+    border-radius: var(--tc-radius-panel);
+    overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  .editor-area .toolbar {
+    display: flex;
+    align-items: center;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--tc-color-border);
+    gap: 14px;
+    background: var(--tc-color-surface-subtle);
+    font-size: 12px;
+  }
+  .editor-area .toolbar .label { color: var(--tc-color-muted); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; font-size: 11px; }
+  .editor-area .toolbar .spacer { flex: 1; }
+  .editor-area .toolbar .ghost-btn {
+    font-size: 11.5px; color: var(--tc-color-muted); cursor: pointer;
+    padding: 3px 8px; border-radius: 3px;
+  }
+  .editor-area .toolbar .ghost-btn:hover { background: var(--tc-color-accent-soft); color: var(--tc-color-accent); }
+  .editor-area .body {
+    flex: 1;
+    overflow: auto;
+    padding: 16px;
+  }
+  .template-tree {
+    font-family: var(--tc-font-mono);
+    font-size: 13.5px;
+  }
+  .tt-row {
+    display: grid;
+    grid-template-columns: 200px 1fr 80px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    align-items: baseline;
+    gap: 16px;
+  }
+  .tt-row:hover { background: var(--tc-color-meta-soft); }
+  .tt-row .tt-name { font-family: var(--tc-font-mono); }
+  .tt-row .tt-formula { color: var(--tc-color-muted); }
+  .tt-row .tt-formula .ref { color: #6a4a8c; }
+  .tt-row .tt-formula .op { color: var(--tc-color-warning); }
+  .tt-row .tt-formula .num { color: var(--tc-color-warning); }
+  .tt-row .tt-tag {
+    font-size: 10px; padding: 1px 6px; border-radius: 3px;
+    text-align: center; justify-self: end;
+    font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+    font-family: var(--tc-font-ui);
+  }
+  .tt-row .tt-tag.default { background: var(--tc-color-meta-soft); color: var(--tc-color-meta); }
+  .tt-row .tt-tag.computed { background: var(--tc-color-accent-soft); color: var(--tc-color-accent); }
+  .tt-row .tt-tag.format { background: rgba(106, 74, 140, 0.12); color: #6a4a8c; }
+  .tt-indent-1 { padding-left: 26px; }
+  .tt-indent-2 { padding-left: 48px; }
+  .tt-indent-3 { padding-left: 70px; }
+  .tt-meta { color: var(--tc-color-meta); font-style: italic; }
+  .tt-meta-marker { color: var(--tc-color-meta); margin-right: 2px; }
+
+  .instances-panel {
+    grid-area: instances;
+    background: var(--tc-color-surface);
+    border: 1px solid var(--tc-color-border);
+    border-radius: var(--tc-radius-panel);
+    overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  .instances-panel .ph {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--tc-color-border);
+    display: flex; align-items: center; gap: 8px;
+    background: var(--tc-color-surface-subtle);
+  }
+  .instances-panel .ph .title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--tc-color-muted); font-weight: 600; flex: 1; }
+  .instances-panel .ph .count {
+    background: var(--tc-color-accent);
+    color: white;
+    font-size: 11px;
+    padding: 1px 7px;
+    border-radius: 9px;
+    font-weight: 600;
+  }
+  .instances-panel .body { flex: 1; overflow: auto; }
+  .instance-row {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--tc-color-border);
+    cursor: pointer;
+  }
+  .instance-row:hover { background: var(--tc-color-surface-subtle); }
+  .instance-row .path { font-family: var(--tc-font-mono); font-size: 12.5px; color: var(--tc-color-text); }
+  .instance-row .status-line {
+    display: flex; gap: 10px; margin-top: 4px; align-items: center;
+    font-size: 11px; color: var(--tc-color-muted);
+  }
+  .instance-row .ver { font-family: var(--tc-font-mono); padding: 1px 5px; background: var(--tc-color-accent-soft); color: var(--tc-color-accent); border-radius: 3px; }
+  .instance-row .pip {
+    width: 7px; height: 7px; border-radius: 50%;
+  }
+  .instance-row.synced .pip { background: var(--tc-color-success); }
+  .instance-row.behind .pip { background: var(--tc-color-warning); }
+  .instance-row.diverged .pip { background: var(--tc-color-meta); }
+  .instance-row .override-tag { font-size: 10px; padding: 1px 5px; background: var(--tc-color-meta-soft); color: var(--tc-color-meta); border-radius: 3px; font-weight: 600; }
+
+  .footer-help {
+    padding: 10px 16px;
+    background: var(--tc-color-meta-soft);
+    color: var(--tc-color-meta);
+    font-size: 12px;
+    border-top: 1px solid var(--tc-color-border);
+  }
+  .footer-help .strong { font-weight: 600; }
+
+  .status {
+    grid-area: status;
+    background: var(--tc-color-surface);
+    border-top: 1px solid var(--tc-color-border);
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 18px;
+    font-size: 11.5px;
+    color: var(--tc-color-muted);
+    font-family: var(--tc-font-mono);
+  }
+  .status .calc-state { color: var(--tc-color-meta); display: flex; align-items: center; gap: 5px; }
+  .status .calc-state::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--tc-color-meta); }
+  .status .spacer { flex: 1; }
+  .status kbd { font-family: var(--tc-font-mono); background: var(--tc-color-bg); border: 1px solid var(--tc-color-border-strong); border-radius: 3px; padding: 1px 5px; font-size: 10.5px; }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <div class="context">
+    <div class="breadcrumb">
+      <span class="filename">forecast-2026.dnatree</span>
+      <span class="sep">·</span>
+      <span class="meta-tag">meta</span>
+      <span>Templates</span>
+      <span class="sep">›</span>
+      <span class="seg active">QuarterShape</span>
+    </div>
+    <div class="spacer"></div>
+    <div class="pill profile">treecalc-v1</div>
+  </div>
+
+  <div class="nav">
+    <div class="nav-header"><span class="title">Workspace</span><span class="meta-toggle">● meta visible</span></div>
+    <div class="row"><span class="triangle">▾</span><span class="name">Accounts</span><span class="summary">[3 sheets]</span></div>
+    <div class="row indent-1"><span class="triangle">▾</span><span class="name">2026</span><span class="summary">441,290.18</span></div>
+    <div class="row indent-2"><span class="triangle">○</span><span class="instance-icon">▤</span><span class="name">Q1</span><span class="summary">104,229.00</span></div>
+    <div class="row indent-2"><span class="triangle">○</span><span class="instance-icon">▤</span><span class="name">Q2</span><span class="summary">109,440.40</span></div>
+    <div class="row indent-2"><span class="triangle">○</span><span class="instance-icon">▤</span><span class="name">Q3</span><span class="summary">112,418.78</span></div>
+    <div class="row indent-2"><span class="triangle">○</span><span class="instance-icon">▤</span><span class="name">Q4</span><span class="summary">115,202.00</span></div>
+    <div class="row"><span class="triangle">▸</span><span class="name">Assumptions</span><span class="summary">[12]</span></div>
+    <!-- Meta-section appears when "meta visible" toggled on -->
+    <div class="row meta-node"><span class="triangle">▾</span><span class="meta-icon">⚙</span><span class="name">Templates</span><span class="summary">[3]</span></div>
+    <div class="row meta-node indent-1 selected"><span class="triangle">○</span><span class="meta-icon">▦</span><span class="name">QuarterShape</span><span class="summary">v7</span></div>
+    <div class="row meta-node indent-1"><span class="triangle">○</span><span class="meta-icon">▦</span><span class="name">MonthlyAccount</span><span class="summary">v3</span></div>
+    <div class="row meta-node indent-1"><span class="triangle">○</span><span class="meta-icon">▦</span><span class="name">RegionForecast</span><span class="summary">v2</span></div>
+    <div class="row meta-node"><span class="triangle">▸</span><span class="meta-icon">⚙</span><span class="name">Config</span><span class="summary">[5]</span></div>
+    <div class="row meta-node"><span class="triangle">▸</span><span class="meta-icon">⚙</span><span class="name">Format</span><span class="summary">number, font</span></div>
+  </div>
+
+  <div class="main">
+    <div class="template-header">
+      <div class="icon-block">▦</div>
+      <div>
+        <div class="meta-pair">
+          <span class="meta-tag">template</span>
+          <span class="template-name">QuarterShape</span>
+        </div>
+        <div class="template-path">[]::Templates.QuarterShape · 4 instances · version 7</div>
+      </div>
+      <div class="actions">
+        <span class="version-tag">v7 saved 12m ago</span>
+        <button class="btn">Detach all</button>
+        <button class="btn primary">Sync to instances (4)</button>
+      </div>
+    </div>
+
+    <div class="editor-area">
+      <div class="toolbar">
+        <span class="label">Template structure</span>
+        <span class="spacer"></span>
+        <span class="ghost-btn">＋ Add child</span>
+        <span class="ghost-btn">⇄ Reorder</span>
+        <span class="ghost-btn">▼ Collapse all</span>
+      </div>
+      <div class="body">
+        <div class="template-tree">
+          <div class="tt-row">
+            <div class="tt-name">▾ <strong>(root)</strong></div>
+            <div class="tt-formula"></div>
+            <div class="tt-tag default">template root</div>
+          </div>
+          <div class="tt-row tt-indent-1">
+            <div class="tt-name">▾ Income</div>
+            <div class="tt-formula">= <span class="ref">Sales</span> + <span class="ref">Interest</span> + <span class="ref">Other</span></div>
+            <div class="tt-tag default">default</div>
+          </div>
+          <div class="tt-row tt-indent-2">
+            <div class="tt-name">Sales</div>
+            <div class="tt-formula">= <span class="num">0</span></div>
+            <div class="tt-tag default">default</div>
+          </div>
+          <div class="tt-row tt-indent-2">
+            <div class="tt-name">Interest</div>
+            <div class="tt-formula">= <span class="num">0</span></div>
+            <div class="tt-tag default">default</div>
+          </div>
+          <div class="tt-row tt-indent-2">
+            <div class="tt-name">Other</div>
+            <div class="tt-formula">= <span class="num">0</span></div>
+            <div class="tt-tag default">default</div>
+          </div>
+          <div class="tt-row tt-indent-1">
+            <div class="tt-name">▾ Expenses</div>
+            <div class="tt-formula">= <span class="ref">Rental</span> + <span class="ref">Salaries</span> + <span class="ref">Other</span></div>
+            <div class="tt-tag default">default</div>
+          </div>
+          <div class="tt-row tt-indent-2">
+            <div class="tt-name">Rental</div>
+            <div class="tt-formula">= <span class="num">0</span></div>
+            <div class="tt-tag default">default</div>
+          </div>
+          <div class="tt-row tt-indent-2">
+            <div class="tt-name">Salaries</div>
+            <div class="tt-formula">= <span class="num">0</span></div>
+            <div class="tt-tag default">default</div>
+          </div>
+          <div class="tt-row tt-indent-2">
+            <div class="tt-name">Other</div>
+            <div class="tt-formula">= <span class="num">0</span></div>
+            <div class="tt-tag default">default</div>
+          </div>
+          <div class="tt-row tt-indent-1">
+            <div class="tt-name">Net</div>
+            <div class="tt-formula">= <span class="ref">Income</span> − <span class="ref">Expenses</span></div>
+            <div class="tt-tag computed">computed</div>
+          </div>
+          <div class="tt-row tt-indent-1">
+            <div class="tt-name">Variance</div>
+            <div class="tt-formula">= <span class="ref">Net</span> − <span class="ref">@PREV.Net</span></div>
+            <div class="tt-tag computed">computed</div>
+          </div>
+          <div class="tt-row tt-indent-1">
+            <div class="tt-name tt-meta"><span class="tt-meta-marker">⚙</span>::Format</div>
+            <div class="tt-formula tt-meta">number format: <span class="op">#,##0.00</span> · font Color <span class="op">accent</span></div>
+            <div class="tt-tag format">meta</div>
+          </div>
+        </div>
+      </div>
+      <div class="footer-help">
+        Template formulas are stored as text; the engine never binds them. Each instance binds its own copy. <span class="strong">@PREV.Net</span> in <span class="strong">Variance</span> resolves per-instance — Q1's prior is missing (yields #REF!), Q2/Q3/Q4 resolve to the previous quarter automatically.
+      </div>
+    </div>
+
+    <div class="instances-panel">
+      <div class="ph">
+        <span class="title">Instances</span>
+        <span class="count">4</span>
+      </div>
+      <div class="body">
+        <div class="instance-row synced">
+          <div class="path">.Accounts.2026.Q1</div>
+          <div class="status-line">
+            <span class="pip"></span>
+            <span class="ver">v7</span>
+            <span>synced</span>
+          </div>
+        </div>
+        <div class="instance-row synced">
+          <div class="path">.Accounts.2026.Q2</div>
+          <div class="status-line">
+            <span class="pip"></span>
+            <span class="ver">v7</span>
+            <span>synced</span>
+          </div>
+        </div>
+        <div class="instance-row diverged">
+          <div class="path">.Accounts.2026.Q3</div>
+          <div class="status-line">
+            <span class="pip"></span>
+            <span class="ver">v7</span>
+            <span class="override-tag">2 overrides</span>
+          </div>
+        </div>
+        <div class="instance-row behind">
+          <div class="path">.Accounts.2026.Q4</div>
+          <div class="status-line">
+            <span class="pip"></span>
+            <span class="ver">v6</span>
+            <span>behind (sync ready)</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="status">
+    <div class="calc-state">Template · not bound · ignored from calculation</div>
+    <div>4 instances · 2 in scope of sync</div>
+    <div class="spacer"></div>
+    <div><kbd>Ctrl+S</kbd> save and sync · <kbd>Ctrl+Z</kbd> undo template edit</div>
+  </div>
+
+</div>
+</body>
+</html>

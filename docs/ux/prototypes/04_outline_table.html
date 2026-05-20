@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<!-- Mockup 04: Outline-table view (tree-table hybrid)
+     Grounded in UX requirements §4.2 (outline-table layout). Dense, scannable;
+     each row is a node, columns are attributes. -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>04 — Outline-table view</title>
+<style>
+  :root {
+    --tc-color-bg: #f4ede2;
+    --tc-color-surface: #fffaf4;
+    --tc-color-surface-subtle: #faf5ec;
+    --tc-color-text: #2a2a28;
+    --tc-color-muted: #7a7570;
+    --tc-color-fainter: #b3aca0;
+    --tc-color-accent: #245d5a;
+    --tc-color-accent-soft: #d6e5e4;
+    --tc-color-accent-bg: #e8f0ef;
+    --tc-color-warning: #c58b2f;
+    --tc-color-warning-soft: #f5e4c4;
+    --tc-color-success: #4f7b57;
+    --tc-color-success-soft: #d8e7db;
+    --tc-color-error: #b34a3f;
+    --tc-color-error-soft: #f1d8d4;
+    --tc-color-border: #e3dccf;
+    --tc-color-border-strong: #c9bfa9;
+    --tc-radius-panel: 12px;
+    --tc-radius-control: 5px;
+    --tc-font-ui: "Segoe UI", "Inter", system-ui, sans-serif;
+    --tc-font-mono: "Cascadia Code", "Consolas", "JetBrains Mono", monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; background: var(--tc-color-bg); color: var(--tc-color-text); font-family: var(--tc-font-ui); font-size: 14px; }
+  .shell {
+    display: grid;
+    grid-template-rows: 44px auto 1fr 30px;
+    grid-template-columns: 1fr;
+    height: 100vh;
+  }
+  .context {
+    background: var(--tc-color-surface);
+    border-bottom: 1px solid var(--tc-color-border);
+    display: flex; align-items: center; padding: 0 20px; gap: 16px;
+  }
+  .breadcrumb { font-size: 13px; display: flex; align-items: center; gap: 6px; }
+  .breadcrumb .filename { color: var(--tc-color-accent); font-weight: 600; }
+  .breadcrumb .sep { color: var(--tc-color-fainter); }
+  .breadcrumb .seg.active { color: var(--tc-color-accent); font-weight: 600; }
+  .context .spacer { flex: 1; }
+  .context .pill { font-size: 11px; padding: 3px 8px; border-radius: 4px; font-family: var(--tc-font-mono); }
+  .context .profile { background: var(--tc-color-accent-soft); color: var(--tc-color-accent); }
+
+  .toolbar {
+    background: var(--tc-color-surface);
+    border-bottom: 1px solid var(--tc-color-border);
+    padding: 10px 20px;
+    display: flex; align-items: center; gap: 14px;
+  }
+  .layout-tabs { display: flex; gap: 4px; }
+  .layout-tab {
+    font-size: 12px; padding: 5px 12px; border-radius: var(--tc-radius-control);
+    cursor: pointer; color: var(--tc-color-muted);
+    border: 1px solid transparent;
+  }
+  .layout-tab.active {
+    background: var(--tc-color-accent);
+    color: white;
+    font-weight: 600;
+  }
+  .layout-tab:not(.active):hover { background: var(--tc-color-surface-subtle); color: var(--tc-color-text); }
+  .toolbar .scope-line { font-size: 12px; color: var(--tc-color-muted); }
+  .toolbar .scope-line strong { color: var(--tc-color-text); font-family: var(--tc-font-mono); }
+  .toolbar .spacer { flex: 1; }
+  .toolbar .search-input {
+    background: var(--tc-color-surface-subtle);
+    border: 1px solid var(--tc-color-border);
+    padding: 5px 10px;
+    border-radius: var(--tc-radius-control);
+    font-size: 12.5px;
+    width: 220px;
+  }
+  .toolbar .ghost-btn {
+    font-size: 12px; color: var(--tc-color-muted); cursor: pointer;
+    padding: 4px 10px; border-radius: var(--tc-radius-control);
+    border: 1px solid var(--tc-color-border-strong);
+    background: var(--tc-color-surface);
+  }
+  .toolbar .ghost-btn:hover { color: var(--tc-color-accent); border-color: var(--tc-color-accent); }
+
+  .grid-wrap {
+    overflow: auto;
+    padding: 16px 20px;
+  }
+  table.outline-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--tc-color-surface);
+    border: 1px solid var(--tc-color-border);
+    border-radius: var(--tc-radius-panel);
+    overflow: hidden;
+    font-size: 13.5px;
+  }
+  table.outline-table thead {
+    background: var(--tc-color-surface-subtle);
+  }
+  table.outline-table th {
+    text-align: left;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--tc-color-border-strong);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--tc-color-muted);
+    font-weight: 600;
+    position: sticky;
+    top: 0;
+    background: var(--tc-color-surface-subtle);
+  }
+  table.outline-table th.right { text-align: right; }
+  table.outline-table th.center { text-align: center; }
+  table.outline-table td {
+    padding: 7px 14px;
+    border-bottom: 1px solid var(--tc-color-border);
+    vertical-align: middle;
+  }
+  table.outline-table tr:hover td { background: rgba(36, 93, 90, 0.04); }
+  table.outline-table tr.selected td { background: var(--tc-color-accent-bg); }
+  table.outline-table tr.depth-0 td.cell-name { font-weight: 600; }
+  table.outline-table tr.depth-0 td { background: var(--tc-color-surface-subtle); }
+
+  .cell-name {
+    font-family: var(--tc-font-mono);
+    display: flex; align-items: center; gap: 4px;
+  }
+  .cell-name .triangle { color: var(--tc-color-fainter); font-size: 9px; width: 12px; text-align: center; }
+  .cell-name .indent-1 { padding-left: 18px; }
+  .cell-name .indent-2 { padding-left: 36px; }
+  .cell-name .indent-3 { padding-left: 54px; }
+  .cell-name .indent-4 { padding-left: 72px; }
+  .cell-name .instance-icon { color: var(--tc-color-accent); font-size: 11px; }
+
+  .cell-formula {
+    font-family: var(--tc-font-mono);
+    font-size: 12.5px;
+    color: var(--tc-color-muted);
+    max-width: 320px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .cell-formula .literal { color: var(--tc-color-warning); }
+  .cell-formula .ref { color: #6a4a8c; }
+  .cell-formula .op { color: var(--tc-color-text); }
+  .cell-formula .fn { color: var(--tc-color-accent); font-weight: 600; }
+  .cell-formula em { font-style: italic; color: var(--tc-color-fainter); }
+
+  .cell-value {
+    text-align: right;
+    font-family: var(--tc-font-mono);
+    color: var(--tc-color-text);
+  }
+  .cell-value.array { color: var(--tc-color-warning); }
+  .cell-value.error { color: var(--tc-color-error); font-weight: 600; }
+  .cell-value.muted { color: var(--tc-color-muted); }
+
+  .cell-format {
+    font-family: var(--tc-font-mono);
+    font-size: 12px;
+    color: var(--tc-color-muted);
+  }
+  .cell-format .source { color: var(--tc-color-fainter); font-style: italic; }
+
+  .cell-status {
+    text-align: center;
+  }
+  .cell-status .pip {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--tc-color-success);
+  }
+  .cell-status .pip.dirty { background: var(--tc-color-warning); }
+  .cell-status .pip.error { background: var(--tc-color-error); }
+  .cell-status .pip.evaluating {
+    background: var(--tc-color-accent);
+    animation: pulse 1s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .badge {
+    display: inline-block;
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-left: 6px;
+  }
+  .badge.array { background: var(--tc-color-warning-soft); color: var(--tc-color-warning); }
+  .badge.instance { background: var(--tc-color-accent-soft); color: var(--tc-color-accent); }
+  .badge.override { background: rgba(139, 106, 58, 0.15); color: #8b6a3a; }
+
+  .status {
+    background: var(--tc-color-surface);
+    border-top: 1px solid var(--tc-color-border);
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    gap: 18px;
+    font-size: 11.5px;
+    color: var(--tc-color-muted);
+    font-family: var(--tc-font-mono);
+  }
+  .status .calc-state { color: var(--tc-color-success); display: flex; align-items: center; gap: 5px; }
+  .status .calc-state::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--tc-color-success); }
+  .status .spacer { flex: 1; }
+  .status kbd { font-family: var(--tc-font-mono); background: var(--tc-color-bg); border: 1px solid var(--tc-color-border-strong); border-radius: 3px; padding: 1px 5px; font-size: 10.5px; }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <div class="context">
+    <div class="breadcrumb">
+      <span class="filename">forecast-2026.dnatree</span>
+      <span class="sep">·</span>
+      <span>workspace overview</span>
+    </div>
+    <div class="spacer"></div>
+    <div class="pill profile">treecalc-v1</div>
+  </div>
+
+  <div class="toolbar">
+    <div class="layout-tabs">
+      <div class="layout-tab">Editor</div>
+      <div class="layout-tab active">Outline-table</div>
+      <div class="layout-tab">Notebook</div>
+      <div class="layout-tab">Canvas</div>
+    </div>
+    <div class="scope-line">Showing <strong>.Accounts.2026</strong> and descendants · 36 nodes</div>
+    <div class="spacer"></div>
+    <input class="search-input" placeholder="Filter by name, formula, value…" value="">
+    <div class="ghost-btn">Sort by Name</div>
+    <div class="ghost-btn">Columns…</div>
+  </div>
+
+  <div class="grid-wrap">
+    <table class="outline-table">
+      <thead>
+        <tr>
+          <th style="width: 260px;">Name</th>
+          <th>Formula</th>
+          <th class="right" style="width: 130px;">Value</th>
+          <th style="width: 180px;">Format</th>
+          <th class="center" style="width: 70px;">Status</th>
+          <th class="center" style="width: 70px;">Deps</th>
+        </tr>
+      </thead>
+      <tbody>
+
+        <tr class="depth-0">
+          <td class="cell-name"><span class="triangle">▾</span><span>Accounts</span></td>
+          <td class="cell-formula"><em>(structural container)</em></td>
+          <td class="cell-value muted">—</td>
+          <td class="cell-format"><span class="source">unset</span></td>
+          <td class="cell-status"><span class="pip"></span></td>
+          <td class="cell-value muted">—</td>
+        </tr>
+
+        <tr>
+          <td class="cell-name"><span class="indent-1"></span><span class="triangle">▾</span><span>2026</span></td>
+          <td class="cell-formula">= <span class="fn">SUM</span>(<span class="ref">Q1.Net</span>, <span class="ref">Q2.Net</span>, <span class="ref">Q3.Net</span>, <span class="ref">Q4.Net</span>)</td>
+          <td class="cell-value">441,290.18</td>
+          <td class="cell-format">#,##0.00 <span class="source">(inherited)</span></td>
+          <td class="cell-status"><span class="pip"></span></td>
+          <td class="cell-value">4 / 1</td>
+        </tr>
+
+        <tr>
+          <td class="cell-name"><span class="indent-2"></span><span class="triangle">▾</span><span class="instance-icon">▤</span><span>Q1</span><span class="badge instance">instance v7</span></td>
+          <td class="cell-formula">= <span class="ref">Income</span> − <span class="ref">Expenses</span></td>
+          <td class="cell-value">104,229.00</td>
+          <td class="cell-format">#,##0.00</td>
+          <td class="cell-status"><span class="pip"></span></td>
+          <td class="cell-value">2 / 1</td>
+        </tr>
+        <tr>
+          <td class="cell-name"><span class="indent-3"></span><span class="triangle">▾</span><span>Income</span></td>
+          <td class="cell-formula">= <span class="ref">Sales</span> + <span class="ref">Interest</span> + <span class="ref">Other</span></td>
+          <td class="cell-value">128,400.00</td>
+          <td class="cell-format">#,##0.00 <span class="source">(inherited)</span></td>
+          <td class="cell-status"><span class="pip"></span></td>
+          <td class="cell-value">3 / 2</td>
+        </tr>
+        <tr>
+          <td class="cell-name"><span class="indent-4"></span><span class="triangle">○</span><span>Sales</span></td>
+          <td class="cell-formula"><span class="literal">95,000</span></td>
+          <td class="cell-value">95,000.00</td>
+          <td class="cell-format">#,##0.00 <span class="source">(inherited)</span></td>
+          <td class="cell-status"><span class="pip"></span></td>
+          <td class="cell-value">0 / 1</td>
+        </tr>
+        <tr>
+          <td class="cell-name"><span class="indent-4"></span><span class="triangle">○</span><span>Interest</span></td>
+          <td class="cell-formula"><span class="literal">8,400</span></td>
+          <td class="cell-value">8,400.00</td>
+          <td class="cell-format">#,##0.00 <span class="source">(inherited)</span></td>
+          <td class="cell-status"><span class="pip"></span></td>
+          <td class="cell-value">0 / 1</td>
+        </tr>
+        <tr>
+          <td class="cell-name"><span class="indent-4"></span><span class="triangle">○</span><span>Other</span></td>
+          <td class="cell-formula"><span class="literal">25,000</span></td>
+          <td class="cell-value">25,000.00</td>
+          <td class="cell-format">#,##0.00 <span class="source">(inherited)</span></td>
+          <td class="cell-status"><span class="pip"></span></td>
+          <td class="cell-value">0 / 1</td>
+        </tr>
+        <tr>
+          <td class="cell-name"><span class="indent-3"></span><span class="triangle">▸</span><span>Expenses</span></td>
+          <td class="cell-formula">= <span class="ref">Rental</span> + <span class="ref">Salaries</span> + <span class="ref">Other</span></td>
+          <td class="cell-value">24,171.00</td>
+          <td class="cell-format">#,##0.00 <span class="source">(inherited)</span></td>
+          <td class="cell-status"><span class="pip"></span></td>
+          <td class="cell-value">3 / 1</td>
+        </tr>
+        <tr>
+          <td class="cell-name"><span class="indent-3"></span><span class="triangle">○</span><span>Net</span></td>
+          <td class="cell-formula">= <span class="ref">Income</span> − <span class="ref">Expenses</span></td>
+          <td class="cell-value">104,229.00</td>
+          <td class="cell-format">#,##0.00 <span class="source">(inherited)</span></td>
+          <td class="cell-status"><span class="pip"></span></td>
+          <td class="cell-value">2 / 1</td>
+        </tr>
+        <tr>
+          <td class="cell-name"><span class="indent-3"></span><span class="triangle">○</span><span>Variance</span></td>
+          <td class="cell-formula">= <span class="ref">Net</span> − <span class="ref">@PREV.Net</span></td>
+          <td class="cell-value error">#REF!</td>
+          <td class="cell-format">#,##0.00 <span class="source">(inherited)</span></td>
+          <td class="cell-status"><span class="pip error"></span></td>
+          <td class="cell-value">1 / 0</td>
+        </tr>
+
+        <tr class="selected">
+          <td class="cell-name"><span class="indent-2"></span><span class="triangle">▾</span><span class="instance-icon">▤</span><span>Q2</span><span class="badge instance">instance v7</span></td>
+          <td class="cell-formula">= <span class="ref">Income</span> − <span class="ref">Expenses</span></td>
+          <td class="cell-value">109,440.40</td>
+          <td class="cell-format">#,##0.00</td>
+          <td class="cell-status"><span class="pip"></span></td>
+          <td class="cell-value">2 / 1</td>
+        </tr>
+        <tr>
+          <td class="cell-name"><span class="indent-3"></span><span class="triangle">▾</span><span>Income</span></td>
+          <td class="cell-formula">= <span class="ref">Sales</span> + <span class="ref">Interest</span> + <span class="ref">Other</span></td>
+          <td class="cell-value">132,400.00</td>
+          <td class="cell-format">#,##0.00 <span class="source">(inherited)</span></td>
+          <td class="cell-status"><span class="pip"></span></td>
+          <td class="cell-value">3 / 2</td>
+        </tr>
+        <tr>
+          <td class="cell-name"><span class="indent-4"></span><span class="triangle">○</span><span>Sales</span></td>
+          <td class="cell-formula"><span class="literal">98,000</span></td>
+          <td class="cell-value">98,000.00</td>
+          <td class="cell-format">#,##0.00 <span class="source">(inherited)</span></td>
+          <td class="cell-status"><span class="pip"></span></td>
+          <td class="cell-value">0 / 1</td>
+        </tr>
+        <tr>
+          <td class="cell-name"><span class="indent-4"></span><span class="triangle">○</span><span>Interest</span></td>
+          <td class="cell-formula"><span class="literal">8,400</span></td>
+          <td class="cell-value">8,400.00</td>
+          <td class="cell-format">#,##0.00 <span class="source">(inherited)</span></td>
+          <td class="cell-status"><span class="pip"></span></td>
+          <td class="cell-value">0 / 1</td>
+        </tr>
+        <tr>
+          <td class="cell-name"><span class="indent-4"></span><span class="triangle">○</span><span>Other</span></td>
+          <td class="cell-formula"><span class="literal">26,000</span></td>
+          <td class="cell-value">26,000.00</td>
+          <td class="cell-format">#,##0.00 <span class="source">(inherited)</span></td>
+          <td class="cell-status"><span class="pip"></span></td>
+          <td class="cell-value">0 / 1</td>
+        </tr>
+        <tr>
+          <td class="cell-name"><span class="indent-3"></span><span class="triangle">▸</span><span>Expenses</span></td>
+          <td class="cell-formula">= <span class="ref">Rental</span> + <span class="ref">Salaries</span> + <span class="ref">Other</span></td>
+          <td class="cell-value">22,959.60</td>
+          <td class="cell-format">#,##0.00 <span class="source">(inherited)</span></td>
+          <td class="cell-status"><span class="pip"></span></td>
+          <td class="cell-value">3 / 1</td>
+        </tr>
+        <tr class="selected">
+          <td class="cell-name"><span class="indent-3"></span><span class="triangle">○</span><span>Net</span></td>
+          <td class="cell-formula">= <span class="ref">Income</span> − <span class="ref">Expenses</span></td>
+          <td class="cell-value">109,440.40</td>
+          <td class="cell-format">#,##0.00 <span class="source">(inherited)</span></td>
+          <td class="cell-status"><span class="pip"></span></td>
+          <td class="cell-value">2 / 2</td>
+        </tr>
+        <tr>
+          <td class="cell-name"><span class="indent-3"></span><span class="triangle">○</span><span>Variance</span></td>
+          <td class="cell-formula">= <span class="ref">Net</span> − <span class="ref">@PREV.Net</span></td>
+          <td class="cell-value">+5,211.40</td>
+          <td class="cell-format">+#,##0.00;−#,##0.00 <span class="source">override</span></td>
+          <td class="cell-status"><span class="pip"></span></td>
+          <td class="cell-value">2 / 0</td>
+        </tr>
+
+        <tr>
+          <td class="cell-name"><span class="indent-2"></span><span class="triangle">▸</span><span class="instance-icon">▤</span><span>Q3</span><span class="badge instance">instance v7</span><span class="badge override">2 overrides</span></td>
+          <td class="cell-formula">= <span class="ref">Income</span> − <span class="ref">Expenses</span></td>
+          <td class="cell-value">112,418.78</td>
+          <td class="cell-format">#,##0.00</td>
+          <td class="cell-status"><span class="pip dirty"></span></td>
+          <td class="cell-value">2 / 1</td>
+        </tr>
+        <tr>
+          <td class="cell-name"><span class="indent-2"></span><span class="triangle">▸</span><span class="instance-icon">▤</span><span>Q4</span><span class="badge instance">instance v6</span></td>
+          <td class="cell-formula">= <span class="ref">Income</span> − <span class="ref">Expenses</span></td>
+          <td class="cell-value">115,202.00</td>
+          <td class="cell-format">#,##0.00</td>
+          <td class="cell-status"><span class="pip"></span></td>
+          <td class="cell-value">2 / 1</td>
+        </tr>
+
+        <tr>
+          <td class="cell-name"><span class="indent-1"></span><span class="triangle">○</span><span>MonthlyForecast</span><span class="badge array">array 24×6</span></td>
+          <td class="cell-formula">= <span class="fn">MAP</span>(<span class="ref">SeasonalIdx</span>, m <span class="op">-&gt;</span> m * <span class="ref">GrowthRate</span> * <span class="literal">1000</span>)</td>
+          <td class="cell-value array">[24×6]</td>
+          <td class="cell-format">#,##0.00</td>
+          <td class="cell-status"><span class="pip"></span></td>
+          <td class="cell-value">2 / 5</td>
+        </tr>
+
+      </tbody>
+    </table>
+  </div>
+
+  <div class="status">
+    <div class="calc-state">Workspace clean · 36 nodes shown · last recalc 88ms</div>
+    <div>3 instances of QuarterShape</div>
+    <div class="spacer"></div>
+    <div><kbd>F2</kbd> edit cell · <kbd>Tab</kbd> next column · <kbd>Ctrl+G</kbd> goto node · <kbd>Ctrl+F</kbd> filter</div>
+  </div>
+
+</div>
+</body>
+</html>

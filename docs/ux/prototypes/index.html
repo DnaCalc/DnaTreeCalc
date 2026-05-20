@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>DNA TreeCalc — UX Prototypes</title>
+<style>
+  :root {
+    --tc-color-bg: #f4ede2;
+    --tc-color-surface: #fffaf4;
+    --tc-color-text: #2a2a28;
+    --tc-color-muted: #7a7570;
+    --tc-color-accent: #245d5a;
+    --tc-color-accent-soft: #d6e5e4;
+    --tc-color-warning: #c58b2f;
+    --tc-color-success: #4f7b57;
+    --tc-color-error: #b34a3f;
+    --tc-color-border: #e3dccf;
+    --tc-radius-panel: 14px;
+    --tc-radius-control: 6px;
+    --tc-shadow-panel: 0 8px 24px rgba(31, 42, 44, 0.08);
+    --tc-font-ui: "Segoe UI", "Inter", system-ui, sans-serif;
+    --tc-font-mono: "Cascadia Code", "Consolas", "JetBrains Mono", monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--tc-color-bg);
+    color: var(--tc-color-text);
+    font-family: var(--tc-font-ui);
+    font-size: 15px;
+    line-height: 1.5;
+  }
+  .page {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 48px 32px;
+  }
+  h1 {
+    font-size: 32px;
+    font-weight: 600;
+    margin: 0 0 8px;
+    color: var(--tc-color-accent);
+  }
+  .subtitle {
+    color: var(--tc-color-muted);
+    font-size: 17px;
+    margin-bottom: 40px;
+  }
+  .mockups {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 20px;
+  }
+  .mockup-card {
+    display: block;
+    background: var(--tc-color-surface);
+    border: 1px solid var(--tc-color-border);
+    border-radius: var(--tc-radius-panel);
+    padding: 20px 22px;
+    text-decoration: none;
+    color: inherit;
+    transition: transform 120ms ease, box-shadow 120ms ease;
+  }
+  .mockup-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--tc-shadow-panel);
+    border-color: var(--tc-color-accent);
+  }
+  .mockup-number {
+    font-family: var(--tc-font-mono);
+    color: var(--tc-color-muted);
+    font-size: 13px;
+    margin-bottom: 6px;
+  }
+  .mockup-title {
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: var(--tc-color-accent);
+  }
+  .mockup-desc {
+    color: var(--tc-color-text);
+    font-size: 14px;
+  }
+  .notes {
+    margin-top: 56px;
+    padding: 24px;
+    background: var(--tc-color-surface);
+    border-radius: var(--tc-radius-panel);
+    border-left: 4px solid var(--tc-color-accent);
+  }
+  .notes h2 {
+    margin-top: 0;
+    font-size: 18px;
+    color: var(--tc-color-accent);
+  }
+  .notes p {
+    color: var(--tc-color-muted);
+    font-size: 14px;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>DNA TreeCalc — UX Prototypes</h1>
+  <p class="subtitle">Visual mockups grounded in the UX requirements doc. Static HTML; click any tile to view.</p>
+
+  <h2 style="font-size: 14px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--tc-color-muted); margin: 0 0 14px;">Core layouts</h2>
+  <div class="mockups">
+    <a class="mockup-card" href="01_workspace_shell.html">
+      <div class="mockup-number">01</div>
+      <div class="mockup-title">Workspace shell — three-pane editor</div>
+      <div class="mockup-desc">Default layout: navigation rail, formula editor, value detail, drill panel, status foot.</div>
+    </a>
+    <a class="mockup-card" href="02_array_value.html">
+      <div class="mockup-number">02</div>
+      <div class="mockup-title">Array-valued node</div>
+      <div class="mockup-desc">Virtualized array grid with per-cell formatting, data bars, size summary.</div>
+    </a>
+    <a class="mockup-card" href="03_template_editor.html">
+      <div class="mockup-number">03</div>
+      <div class="mockup-title">Template editor</div>
+      <div class="mockup-desc">Editing a template definition with instance list and sync controls.</div>
+    </a>
+    <a class="mockup-card" href="04_outline_table.html">
+      <div class="mockup-number">04</div>
+      <div class="mockup-title">Outline-table view</div>
+      <div class="mockup-desc">Tree-table hybrid: rows are nodes, columns are attributes; dense, scannable.</div>
+    </a>
+    <a class="mockup-card" href="05_format_editor.html">
+      <div class="mockup-number">05</div>
+      <div class="mockup-title">Format editor</div>
+      <div class="mockup-desc">Per-node formatting via meta-child; number format, font, fill, conditional rules.</div>
+    </a>
+  </div>
+
+  <h2 style="font-size: 14px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--tc-color-muted); margin: 40px 0 14px;">Alternative front-ends to the same model</h2>
+  <div class="mockups">
+    <a class="mockup-card" href="06_excel_style_cell.html">
+      <div class="mockup-number">06</div>
+      <div class="mockup-title">Excel-style cell view</div>
+      <div class="mockup-desc">Formula bar at top (à la Excel); cells show values; selected array cell expands in place.</div>
+    </a>
+    <a class="mockup-card" href="07_nodes_across.html">
+      <div class="mockup-number">07</div>
+      <div class="mockup-title">Nodes-across horizontal flow</div>
+      <div class="mockup-desc">Calculations flow left-to-right as columns; arrays grow down within each. Connection arrows.</div>
+    </a>
+    <a class="mockup-card" href="08_canvas_flow.html">
+      <div class="mockup-number">08</div>
+      <div class="mockup-title">Canvas — block-graph layout</div>
+      <div class="mockup-desc">Free 2D canvas with wired connections, layout/group toolbar, zoom, minimap, lasso, group banner.</div>
+    </a>
+  </div>
+
+  <div class="notes">
+    <h2>Notes</h2>
+    <p>These mockups are static HTML&mdash;they don't represent live behavior. Their purpose is to make the layout, density, and visual language concrete enough to critique. The styling extends DnaOneCalc's warm beige palette (continuity for users moving between products).</p>
+    <p>Each mockup is grounded in specific UX requirements sections (cross-referenced in comments inside each file). The requirements doc is the source of truth for what each region must contain; the mockups show one defensible visual interpretation.</p>
+  </div>
+</div>
+</body>
+</html>

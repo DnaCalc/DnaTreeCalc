@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<!-- Mockup 01: Workspace shell - three-pane editor
+     Grounded in UX requirements §2.1 (shell chrome), §2.2 (tree outline),
+     §2.3 (formula editor), §2.4 (value detail), §2.5 (drill panel),
+     §4.1 (three-pane layout), §5.8 (calc state visualization). -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>01 — Workspace shell</title>
+<style>
+  :root {
+    --tc-color-bg: #f4ede2;
+    --tc-color-surface: #fffaf4;
+    --tc-color-surface-subtle: #faf5ec;
+    --tc-color-text: #2a2a28;
+    --tc-color-muted: #7a7570;
+    --tc-color-fainter: #b3aca0;
+    --tc-color-accent: #245d5a;
+    --tc-color-accent-soft: #d6e5e4;
+    --tc-color-accent-bg: #e8f0ef;
+    --tc-color-warning: #c58b2f;
+    --tc-color-warning-soft: #f5e4c4;
+    --tc-color-success: #4f7b57;
+    --tc-color-success-soft: #d8e7db;
+    --tc-color-error: #b34a3f;
+    --tc-color-error-soft: #f1d8d4;
+    --tc-color-border: #e3dccf;
+    --tc-color-border-strong: #c9bfa9;
+    --tc-radius-panel: 12px;
+    --tc-radius-control: 5px;
+    --tc-shadow-panel: 0 6px 18px rgba(31, 42, 44, 0.06);
+    --tc-font-ui: "Segoe UI", "Inter", system-ui, sans-serif;
+    --tc-font-mono: "Cascadia Code", "Consolas", "JetBrains Mono", monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; background: var(--tc-color-bg); color: var(--tc-color-text); font-family: var(--tc-font-ui); font-size: 14px; }
+  .shell {
+    display: grid;
+    grid-template-rows: 44px 1fr 30px;
+    grid-template-columns: 280px 1fr;
+    grid-template-areas:
+      "context context"
+      "nav main"
+      "status status";
+    height: 100vh;
+  }
+  /* Context bar */
+  .context {
+    grid-area: context;
+    background: var(--tc-color-surface);
+    border-bottom: 1px solid var(--tc-color-border);
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 16px;
+  }
+  .breadcrumb {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 13px;
+  }
+  .breadcrumb .filename { color: var(--tc-color-accent); font-weight: 600; }
+  .breadcrumb .sep { color: var(--tc-color-fainter); }
+  .breadcrumb .seg { color: var(--tc-color-text); cursor: pointer; }
+  .breadcrumb .seg:hover { text-decoration: underline; }
+  .breadcrumb .seg.active { color: var(--tc-color-accent); font-weight: 600; }
+  .context .spacer { flex: 1; }
+  .context .profile { font-size: 12px; color: var(--tc-color-muted); font-family: var(--tc-font-mono); padding: 3px 8px; background: var(--tc-color-accent-soft); border-radius: 4px; }
+  .context .recalc-state { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--tc-color-success); }
+  .context .recalc-state::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--tc-color-success); }
+  .context .search-trigger { font-size: 12px; color: var(--tc-color-muted); border: 1px solid var(--tc-color-border-strong); padding: 4px 10px; border-radius: var(--tc-radius-control); cursor: pointer; }
+  /* Nav rail */
+  .nav {
+    grid-area: nav;
+    background: var(--tc-color-surface);
+    border-right: 1px solid var(--tc-color-border);
+    overflow-y: auto;
+    padding: 12px 0;
+  }
+  .nav-header {
+    padding: 4px 14px 12px;
+    display: flex; align-items: center; gap: 8px;
+    border-bottom: 1px solid var(--tc-color-border);
+    margin-bottom: 8px;
+  }
+  .nav-header .title { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--tc-color-muted); font-weight: 600; flex: 1; }
+  .nav-header .meta-toggle { font-size: 11px; color: var(--tc-color-fainter); cursor: pointer; user-select: none; }
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 14px 4px 4px;
+    cursor: pointer;
+    font-size: 13.5px;
+    border-left: 3px solid transparent;
+  }
+  .row:hover { background: var(--tc-color-surface-subtle); }
+  .row.selected { background: var(--tc-color-accent-bg); border-left-color: var(--tc-color-accent); }
+  .row.selected .name { color: var(--tc-color-accent); font-weight: 600; }
+  .row .triangle { font-size: 9px; color: var(--tc-color-fainter); width: 12px; display: inline-block; text-align: center; }
+  .row .triangle.collapsed { transform: rotate(-90deg); }
+  .row .name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .value-summary { color: var(--tc-color-muted); font-size: 12px; font-family: var(--tc-font-mono); }
+  .row .status-pip { width: 6px; height: 6px; border-radius: 50%; background: var(--tc-color-success); }
+  .row .status-pip.dirty { background: var(--tc-color-warning); }
+  .row .status-pip.error { background: var(--tc-color-error); }
+  .indent-1 { padding-left: 22px; }
+  .indent-2 { padding-left: 40px; }
+  .indent-3 { padding-left: 58px; }
+  .indent-4 { padding-left: 76px; }
+  /* Main pane */
+  .main {
+    grid-area: main;
+    display: grid;
+    grid-template-rows: auto auto 1fr auto;
+    overflow: hidden;
+    padding: 16px 20px 12px;
+    gap: 12px;
+  }
+  .node-header {
+    display: flex; align-items: baseline; gap: 12px;
+  }
+  .node-header .node-name { font-size: 22px; font-weight: 600; color: var(--tc-color-text); }
+  .node-header .node-path { font-size: 12px; color: var(--tc-color-muted); font-family: var(--tc-font-mono); }
+  .node-header .badge { background: var(--tc-color-success-soft); color: var(--tc-color-success); font-size: 11px; padding: 2px 7px; border-radius: 4px; font-weight: 600; }
+  /* Formula editor */
+  .editor-panel {
+    background: var(--tc-color-surface);
+    border: 1px solid var(--tc-color-border);
+    border-radius: var(--tc-radius-panel);
+    padding: 12px 16px;
+  }
+  .editor-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--tc-color-muted); font-weight: 600; margin-bottom: 6px; }
+  .editor-textarea {
+    font-family: var(--tc-font-mono);
+    font-size: 14.5px;
+    color: var(--tc-color-text);
+    width: 100%;
+    border: none;
+    background: transparent;
+    outline: none;
+    resize: none;
+    line-height: 1.55;
+  }
+  .editor-textarea .keyword { color: var(--tc-color-accent); font-weight: 600; }
+  .editor-textarea .reference { color: #6a4a8c; }
+  .editor-textarea .reference-resolved { background: rgba(106, 74, 140, 0.08); padding: 1px 2px; border-radius: 2px; }
+  .editor-textarea .number { color: var(--tc-color-warning); }
+  .editor-textarea .string { color: var(--tc-color-success); }
+  .editor-textarea .operator { color: var(--tc-color-muted); }
+  /* Drill / value pane */
+  .pane-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    overflow: hidden;
+  }
+  .panel {
+    background: var(--tc-color-surface);
+    border: 1px solid var(--tc-color-border);
+    border-radius: var(--tc-radius-panel);
+    padding: 14px 16px;
+    overflow: auto;
+  }
+  .panel-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--tc-color-muted); font-weight: 600; margin-bottom: 10px; }
+  .value-hero { font-size: 38px; font-weight: 600; color: var(--tc-color-accent); font-family: var(--tc-font-mono); margin-bottom: 4px; }
+  .value-raw { font-size: 12px; color: var(--tc-color-muted); font-family: var(--tc-font-mono); }
+  .value-meta { margin-top: 18px; padding-top: 14px; border-top: 1px dashed var(--tc-color-border); }
+  .value-meta-row { display: flex; justify-content: space-between; font-size: 12.5px; margin-bottom: 4px; }
+  .value-meta-row .label { color: var(--tc-color-muted); }
+  .value-meta-row .data { font-family: var(--tc-font-mono); color: var(--tc-color-text); }
+  /* Drill panel */
+  .drill-tree { font-family: var(--tc-font-mono); font-size: 12.5px; line-height: 1.7; }
+  .drill-row { display: flex; align-items: center; gap: 6px; }
+  .drill-state {
+    font-size: 9.5px; padding: 1px 5px; border-radius: 3px; font-family: var(--tc-font-ui);
+    font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .drill-state.eval { background: var(--tc-color-success-soft); color: var(--tc-color-success); }
+  .drill-state.bound { background: var(--tc-color-accent-soft); color: var(--tc-color-accent); }
+  .drill-result { color: var(--tc-color-muted); }
+  .drill-indent-1 { padding-left: 18px; }
+  .drill-indent-2 { padding-left: 36px; }
+  .drill-indent-3 { padding-left: 54px; }
+  /* Status foot */
+  .status {
+    grid-area: status;
+    background: var(--tc-color-surface);
+    border-top: 1px solid var(--tc-color-border);
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 18px;
+    font-size: 11.5px;
+    color: var(--tc-color-muted);
+    font-family: var(--tc-font-mono);
+  }
+  .status .calc-state { display: flex; align-items: center; gap: 5px; color: var(--tc-color-success); }
+  .status .calc-state::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--tc-color-success); }
+  .status .spacer { flex: 1; }
+  .status .hint { font-size: 11px; }
+  .status kbd { font-family: var(--tc-font-mono); background: var(--tc-color-bg); border: 1px solid var(--tc-color-border-strong); border-radius: 3px; padding: 1px 5px; font-size: 10.5px; color: var(--tc-color-text); }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- Context bar -->
+  <div class="context">
+    <div class="breadcrumb">
+      <span class="filename">forecast-2026.dnatree</span>
+      <span class="sep">·</span>
+      <span class="seg">Accounts</span>
+      <span class="sep">›</span>
+      <span class="seg">2026</span>
+      <span class="sep">›</span>
+      <span class="seg">Q2</span>
+      <span class="sep">›</span>
+      <span class="seg">Income</span>
+      <span class="sep">›</span>
+      <span class="seg active">Net</span>
+    </div>
+    <div class="spacer"></div>
+    <div class="profile">treecalc-v1</div>
+    <div class="recalc-state">recalc 42ms ago</div>
+    <div class="search-trigger">Search&nbsp;&nbsp;Ctrl+F</div>
+  </div>
+
+  <!-- Navigation rail -->
+  <div class="nav">
+    <div class="nav-header">
+      <span class="title">Workspace</span>
+      <span class="meta-toggle">○ meta</span>
+    </div>
+    <div class="row"><span class="triangle">▾</span><span class="name">Accounts</span><span class="value-summary">[3 sheets]</span></div>
+    <div class="row indent-1"><span class="triangle">▾</span><span class="name">2025</span><span class="value-summary">412,318.40</span><span class="status-pip"></span></div>
+    <div class="row indent-2"><span class="triangle">▸</span><span class="name">Q1</span><span class="value-summary">98,144.00</span><span class="status-pip"></span></div>
+    <div class="row indent-2"><span class="triangle">▸</span><span class="name">Q2</span><span class="value-summary">102,887.40</span><span class="status-pip"></span></div>
+    <div class="row indent-2"><span class="triangle">▸</span><span class="name">Q3</span><span class="value-summary">104,623.00</span><span class="status-pip"></span></div>
+    <div class="row indent-2"><span class="triangle">▸</span><span class="name">Q4</span><span class="value-summary">106,664.00</span><span class="status-pip"></span></div>
+    <div class="row indent-1"><span class="triangle">▾</span><span class="name">2026</span><span class="value-summary">441,290.18</span><span class="status-pip"></span></div>
+    <div class="row indent-2"><span class="triangle">▸</span><span class="name">Q1</span><span class="value-summary">104,229.00</span><span class="status-pip"></span></div>
+    <div class="row indent-2"><span class="triangle">▾</span><span class="name">Q2</span><span class="value-summary">109,440.40</span><span class="status-pip"></span></div>
+    <div class="row indent-3"><span class="triangle">▾</span><span class="name">Income</span><span class="value-summary">132,400.00</span><span class="status-pip"></span></div>
+    <div class="row indent-4"><span class="triangle">▸</span><span class="name">Sales</span><span class="value-summary">98,000.00</span><span class="status-pip"></span></div>
+    <div class="row indent-4"><span class="triangle">▸</span><span class="name">Interest</span><span class="value-summary">8,400.00</span><span class="status-pip"></span></div>
+    <div class="row indent-4"><span class="triangle">▸</span><span class="name">Other</span><span class="value-summary">26,000.00</span><span class="status-pip"></span></div>
+    <div class="row indent-3"><span class="triangle">▸</span><span class="name">Expenses</span><span class="value-summary">22,959.60</span><span class="status-pip"></span></div>
+    <div class="row indent-3 selected"><span class="triangle">○</span><span class="name">Net</span><span class="value-summary">109,440.40</span><span class="status-pip"></span></div>
+    <div class="row indent-3"><span class="triangle">○</span><span class="name">Variance</span><span class="value-summary">+6,553.40</span><span class="status-pip"></span></div>
+    <div class="row indent-2"><span class="triangle">▸</span><span class="name">Q3</span><span class="value-summary">112,418.78</span><span class="status-pip"></span></div>
+    <div class="row indent-2"><span class="triangle">▸</span><span class="name">Q4</span><span class="value-summary">115,202.00</span><span class="status-pip"></span></div>
+    <div class="row indent-1"><span class="triangle">▸</span><span class="name">Summary</span><span class="value-summary">853,608.58</span><span class="status-pip"></span></div>
+    <div class="row"><span class="triangle">▸</span><span class="name">Assumptions</span><span class="value-summary">[12]</span></div>
+    <div class="row"><span class="triangle">▸</span><span class="name">Lookup&nbsp;Tables</span><span class="value-summary">[5]</span></div>
+  </div>
+
+  <!-- Main pane -->
+  <div class="main">
+    <div class="node-header">
+      <div class="node-name">Net</div>
+      <div class="node-path">.Accounts.2026.Q2.Income.Net</div>
+      <div class="badge">Clean</div>
+    </div>
+
+    <div class="editor-panel">
+      <div class="editor-label">Formula</div>
+      <div class="editor-textarea" contenteditable="false">= <span class="reference reference-resolved">Sales</span> <span class="operator">+</span> <span class="reference reference-resolved">Interest</span> <span class="operator">+</span> <span class="reference reference-resolved">Other</span></div>
+    </div>
+
+    <div class="pane-row">
+      <!-- Value detail -->
+      <div class="panel">
+        <div class="panel-title">Value</div>
+        <div class="value-hero">132,400.00</div>
+        <div class="value-raw">132400.0 · USD · Number</div>
+        <div class="value-meta">
+          <div class="value-meta-row"><span class="label">Format</span><span class="data">#,##0.00 (inherited from .Accounts.Format)</span></div>
+          <div class="value-meta-row"><span class="label">Last recalc</span><span class="data">42ms ago</span></div>
+          <div class="value-meta-row"><span class="label">Type</span><span class="data">Number (scalar)</span></div>
+          <div class="value-meta-row"><span class="label">Dependencies</span><span class="data">3 inputs, 2 dependents</span></div>
+        </div>
+      </div>
+
+      <!-- Drill -->
+      <div class="panel">
+        <div class="panel-title">Walk-tree drill</div>
+        <div class="drill-tree">
+          <div class="drill-row">+ <span class="drill-state eval">eval</span><span class="drill-result">→ 132400.00</span></div>
+          <div class="drill-row drill-indent-1">+ <span class="drill-state eval">eval</span><span class="drill-result">→ 106000.00</span></div>
+          <div class="drill-row drill-indent-2"><span class="reference">Sales</span> <span class="drill-state eval">eval</span><span class="drill-result">→ 98000.00</span></div>
+          <div class="drill-row drill-indent-2"><span class="reference">Interest</span> <span class="drill-state eval">eval</span><span class="drill-result">→ 8400.00</span></div>
+          <div class="drill-row drill-indent-1"><span class="reference">Other</span> <span class="drill-state eval">eval</span><span class="drill-result">→ 26400.00</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Status foot -->
+  <div class="status">
+    <div class="calc-state">Clean · last published 42ms ago</div>
+    <div>3 deps in · 2 deps out</div>
+    <div class="spacer"></div>
+    <div class="hint"><kbd>F2</kbd> edit · <kbd>F3</kbd> jump to def · <kbd>Ctrl+D</kbd> drill</div>
+  </div>
+
+</div>
+</body>
+</html>

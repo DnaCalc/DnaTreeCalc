@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<!-- Mockup 07: Nodes-across (horizontal flow) view
+     Each node is a column; calculations flow left-to-right; arrays grow down within
+     a node's column. Inspired by Excel-with-dynamic-arrays workflow where you place
+     formulas across columns precisely because each spills downward.
+     Connection lines between dependent nodes drawn as light arrows above. -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>07 — Nodes-across flow</title>
+<style>
+  :root {
+    --tc-color-bg: #f4ede2;
+    --tc-color-surface: #fffaf4;
+    --tc-color-surface-subtle: #faf5ec;
+    --tc-color-text: #2a2a28;
+    --tc-color-muted: #7a7570;
+    --tc-color-fainter: #b3aca0;
+    --tc-color-accent: #245d5a;
+    --tc-color-accent-soft: #d6e5e4;
+    --tc-color-accent-bg: #e8f0ef;
+    --tc-color-warning: #c58b2f;
+    --tc-color-warning-soft: #f5e4c4;
+    --tc-color-success: #4f7b57;
+    --tc-color-success-soft: #d8e7db;
+    --tc-color-error: #b34a3f;
+    --tc-color-border: #e3dccf;
+    --tc-color-border-strong: #c9bfa9;
+    --tc-color-flow-line: #b8a98a;
+    --tc-radius-panel: 10px;
+    --tc-radius-control: 5px;
+    --tc-font-ui: "Segoe UI", "Inter", system-ui, sans-serif;
+    --tc-font-mono: "Cascadia Code", "Consolas", "JetBrains Mono", monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; background: var(--tc-color-bg); color: var(--tc-color-text); font-family: var(--tc-font-ui); font-size: 14px; }
+  .shell {
+    display: grid;
+    grid-template-rows: 38px 42px 1fr 26px;
+    height: 100vh;
+  }
+  /* Context strip */
+  .context {
+    background: var(--tc-color-surface);
+    border-bottom: 1px solid var(--tc-color-border);
+    display: flex; align-items: center;
+    padding: 0 14px;
+    gap: 14px;
+    font-size: 12px;
+  }
+  .context .filename { color: var(--tc-color-accent); font-weight: 600; }
+  .context .layout-pills { display: flex; gap: 4px; margin-left: 16px; }
+  .context .pill {
+    font-size: 11.5px; padding: 3px 10px; border-radius: 4px; cursor: pointer;
+    color: var(--tc-color-muted);
+  }
+  .context .pill.active { background: var(--tc-color-accent); color: white; font-weight: 600; }
+  .context .pill:not(.active):hover { background: var(--tc-color-surface-subtle); }
+  .context .spacer { flex: 1; }
+  .context .profile {
+    font-family: var(--tc-font-mono);
+    background: var(--tc-color-accent-soft); color: var(--tc-color-accent);
+    padding: 2px 8px; border-radius: 4px; font-size: 11px;
+  }
+  /* Formula bar (same Excel-style as 06) */
+  .formula-bar {
+    background: var(--tc-color-surface);
+    border-bottom: 1px solid var(--tc-color-border);
+    display: grid;
+    grid-template-columns: 220px 28px 1fr;
+    align-items: center;
+    padding: 0 14px;
+  }
+  .formula-bar .selected-name {
+    display: flex; align-items: center; gap: 8px;
+    border-right: 1px solid var(--tc-color-border);
+    padding-right: 14px;
+    font-family: var(--tc-font-mono);
+    font-size: 12.5px;
+  }
+  .formula-bar .selected-name .name {
+    background: var(--tc-color-surface-subtle);
+    padding: 3px 8px; border-radius: 4px;
+    color: var(--tc-color-accent); font-weight: 600;
+    border: 1px solid var(--tc-color-border-strong);
+  }
+  .formula-bar .selected-name .path { color: var(--tc-color-fainter); font-size: 11.5px; }
+  .formula-bar .fx-btn {
+    width: 26px; height: 26px;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--tc-color-muted);
+    font-style: italic; font-family: serif; font-size: 16px;
+    cursor: pointer; border-radius: 4px; margin-left: 10px;
+  }
+  .formula-bar .fx-btn:hover { background: var(--tc-color-surface-subtle); color: var(--tc-color-accent); }
+  .formula-bar .formula-edit {
+    padding: 6px 12px;
+    margin-left: 6px;
+    border-left: 1px solid var(--tc-color-border);
+    font-family: var(--tc-font-mono);
+    font-size: 14.5px;
+    color: var(--tc-color-text);
+  }
+  .formula-bar .formula-edit .equals { color: var(--tc-color-accent); margin-right: 2px; }
+  .formula-bar .formula-edit .fn { color: var(--tc-color-accent); font-weight: 600; }
+  .formula-bar .formula-edit .ref { color: #6a4a8c; }
+  .formula-bar .formula-edit .op { color: var(--tc-color-muted); }
+  .formula-bar .formula-edit .num { color: var(--tc-color-warning); }
+
+  /* Body — horizontal scroll of node columns */
+  .body {
+    overflow: auto;
+    padding: 14px 18px 24px;
+    background: var(--tc-color-bg);
+    position: relative;
+  }
+  /* Group strip (top crumb showing parent context) */
+  .group-bar {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    padding: 0 4px 12px;
+    font-size: 12.5px;
+    color: var(--tc-color-muted);
+  }
+  .group-bar .group-label {
+    font-weight: 600;
+    color: var(--tc-color-text);
+    font-family: var(--tc-font-mono);
+  }
+  .group-bar .calc-flow {
+    color: var(--tc-color-fainter);
+    font-size: 11.5px;
+    display: flex; align-items: center; gap: 5px;
+  }
+  .group-bar .calc-flow::before { content: '→'; color: var(--tc-color-accent); font-size: 14px; }
+
+  /* The columns flow */
+  .columns {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+    position: relative;
+    z-index: 1;
+    min-height: 100%;
+    padding-top: 18px;
+  }
+  .column {
+    flex: 0 0 auto;
+    min-width: 200px;
+    background: var(--tc-color-surface);
+    border: 1px solid var(--tc-color-border);
+    border-radius: var(--tc-radius-panel);
+    overflow: hidden;
+    display: flex; flex-direction: column;
+    box-shadow: 0 1px 2px rgba(31, 42, 44, 0.04);
+    position: relative;
+  }
+  .column.selected {
+    border-color: var(--tc-color-accent);
+    border-width: 2px;
+    box-shadow: 0 4px 12px rgba(36, 93, 90, 0.18);
+  }
+  .column .col-head {
+    padding: 9px 14px;
+    background: var(--tc-color-surface-subtle);
+    border-bottom: 1px solid var(--tc-color-border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .column.selected .col-head { background: var(--tc-color-accent-bg); }
+  .column .col-head .name {
+    font-weight: 600; color: var(--tc-color-text); font-family: var(--tc-font-mono); font-size: 13px;
+    flex: 1;
+  }
+  .column.selected .col-head .name { color: var(--tc-color-accent); }
+  .column .col-head .status-pip { width: 7px; height: 7px; border-radius: 50%; background: var(--tc-color-success); }
+  .column .col-head .status-pip.dirty { background: var(--tc-color-warning); }
+  .column .col-head .status-pip.error { background: var(--tc-color-error); }
+  .column .col-formula {
+    padding: 6px 12px;
+    font-family: var(--tc-font-mono);
+    font-size: 11.5px;
+    color: var(--tc-color-muted);
+    border-bottom: 1px dashed var(--tc-color-border);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .column .col-formula .equals { color: var(--tc-color-accent); }
+  .column .col-formula .fn { color: var(--tc-color-accent); font-weight: 600; }
+  .column .col-formula .ref { color: #6a4a8c; }
+  .column .col-formula .num { color: var(--tc-color-warning); }
+  /* Value area — scalar centered, array as rows growing down */
+  .column .col-value-scalar {
+    padding: 18px 14px;
+    font-family: var(--tc-font-mono);
+    font-size: 19px;
+    color: var(--tc-color-text);
+    font-weight: 600;
+    text-align: right;
+  }
+  .column.selected .col-value-scalar { color: var(--tc-color-accent); }
+  .column .col-value-array {
+    flex: 1;
+    overflow: hidden;
+    font-family: var(--tc-font-mono);
+    font-size: 12.5px;
+  }
+  .column .col-value-array .arr-header {
+    background: var(--tc-color-surface-subtle);
+    padding: 5px 12px;
+    font-size: 10px;
+    color: var(--tc-color-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 600;
+    border-bottom: 1px solid var(--tc-color-border);
+    display: flex;
+    justify-content: space-between;
+  }
+  .column .col-value-array .arr-cell {
+    padding: 4px 12px;
+    border-bottom: 1px solid var(--tc-color-border);
+    text-align: right;
+    color: var(--tc-color-text);
+    background: var(--tc-color-surface);
+  }
+  .column .col-value-array .arr-cell:nth-child(odd) {
+    background: var(--tc-color-surface-subtle);
+  }
+  .column .col-value-array .arr-cell.highlight {
+    background: rgba(197, 139, 47, 0.12);
+    color: var(--tc-color-warning);
+    font-weight: 600;
+  }
+  .column .col-foot {
+    padding: 6px 12px;
+    border-top: 1px solid var(--tc-color-border);
+    background: var(--tc-color-surface-subtle);
+    font-size: 10.5px;
+    color: var(--tc-color-muted);
+    font-family: var(--tc-font-mono);
+    display: flex;
+    gap: 12px;
+  }
+
+  /* Connection arrows (purely visual, on an absolute SVG overlay) */
+  .arrows {
+    position: absolute;
+    top: 0; left: 0;
+    pointer-events: none;
+    z-index: 0;
+    overflow: visible;
+  }
+  .arrows path { fill: none; stroke: var(--tc-color-flow-line); stroke-width: 1.6; opacity: 0.65; }
+  .arrows .head { fill: var(--tc-color-flow-line); opacity: 0.65; }
+
+  /* Status */
+  .status {
+    background: var(--tc-color-surface);
+    border-top: 1px solid var(--tc-color-border);
+    display: flex; align-items: center;
+    padding: 0 14px; gap: 18px;
+    font-size: 11px;
+    color: var(--tc-color-muted);
+    font-family: var(--tc-font-mono);
+  }
+  .status .calc-state { color: var(--tc-color-success); display: flex; align-items: center; gap: 5px; }
+  .status .calc-state::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--tc-color-success); }
+  .status .spacer { flex: 1; }
+  .status kbd { font-family: var(--tc-font-mono); background: var(--tc-color-bg); border: 1px solid var(--tc-color-border-strong); border-radius: 3px; padding: 1px 5px; font-size: 10px; }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <div class="context">
+    <span class="filename">forecast-2026.dnatree</span>
+    <div class="layout-pills">
+      <span class="pill">Editor</span>
+      <span class="pill">Outline-table</span>
+      <span class="pill">Cell view</span>
+      <span class="pill active">Across</span>
+      <span class="pill">Canvas</span>
+    </div>
+    <div class="spacer"></div>
+    <span class="profile">treecalc-v1</span>
+  </div>
+
+  <div class="formula-bar">
+    <div class="selected-name">
+      <span class="name">Margin</span>
+      <span class="path">.MonthlyModel</span>
+    </div>
+    <div class="fx-btn"><i>f</i></div>
+    <div class="formula-edit">
+      <span class="equals">=</span><span class="ref">Sales</span> <span class="op">−</span> <span class="ref">Costs</span>
+    </div>
+  </div>
+
+  <div class="body">
+
+    <div class="group-bar">
+      <span class="group-label">.MonthlyModel</span>
+      <span class="calc-flow">calculation flows left to right · arrays grow down</span>
+    </div>
+
+    <div class="columns">
+
+      <!-- Connection arrows behind columns -->
+      <svg class="arrows" width="100%" height="600">
+        <!-- These arrows just suggest the dependency direction; actual layout would draw real coords -->
+        <path d="M 200 70 Q 230 70 230 70 L 235 70" />
+        <path d="M 414 70 L 449 70" />
+        <path d="M 628 70 L 663 70" />
+        <path d="M 842 70 L 877 70" />
+        <path d="M 1056 70 L 1091 70" />
+        <!-- GrowthRate -> Sales arrow from below -->
+        <path d="M 100 470 C 150 470, 200 200, 300 70" />
+        <!-- TaxRate -> Net arrow -->
+        <path d="M 100 530 C 250 530, 700 220, 950 70" />
+      </svg>
+
+      <!-- Assumptions: scalar (left edge) -->
+      <div class="column" style="min-width: 180px;">
+        <div class="col-head">
+          <span class="name">GrowthRate</span>
+          <span class="status-pip"></span>
+        </div>
+        <div class="col-formula"><span class="equals">=</span><span class="num">0.042</span></div>
+        <div class="col-value-scalar">4.2%</div>
+        <div class="col-foot"><span>scalar</span><span>const</span></div>
+      </div>
+
+      <!-- Sales: array growing down -->
+      <div class="column">
+        <div class="col-head">
+          <span class="name">Sales</span>
+          <span class="status-pip"></span>
+        </div>
+        <div class="col-formula"><span class="equals">=</span><span class="fn">MAP</span>(<span class="ref">SeasonalIdx</span>, m <span class="op">-&gt;</span> m <span class="op">*</span> <span class="ref">GrowthRate</span> <span class="op">*</span> <span class="num">1000</span>)</div>
+        <div class="col-value-array">
+          <div class="arr-header"><span>Month</span><span>Value</span></div>
+          <div class="arr-cell">8,200</div>
+          <div class="arr-cell">8,640</div>
+          <div class="arr-cell">9,180</div>
+          <div class="arr-cell">9,820</div>
+          <div class="arr-cell">10,440</div>
+          <div class="arr-cell highlight">11,160</div>
+          <div class="arr-cell">12,100</div>
+          <div class="arr-cell">12,640</div>
+          <div class="arr-cell">11,880</div>
+          <div class="arr-cell">10,920</div>
+          <div class="arr-cell">9,840</div>
+          <div class="arr-cell">9,200</div>
+        </div>
+        <div class="col-foot"><span>12 × 1</span><span>sum 122,020</span></div>
+      </div>
+
+      <!-- Costs: array growing down -->
+      <div class="column">
+        <div class="col-head">
+          <span class="name">Costs</span>
+          <span class="status-pip"></span>
+        </div>
+        <div class="col-formula"><span class="equals">=</span><span class="fn">MAP</span>(<span class="ref">Sales</span>, s <span class="op">-&gt;</span> s <span class="op">*</span> <span class="num">0.38</span> <span class="op">+</span> <span class="num">200</span>)</div>
+        <div class="col-value-array">
+          <div class="arr-header"><span>Month</span><span>Value</span></div>
+          <div class="arr-cell">3,316</div>
+          <div class="arr-cell">3,483</div>
+          <div class="arr-cell">3,688</div>
+          <div class="arr-cell">3,932</div>
+          <div class="arr-cell">4,167</div>
+          <div class="arr-cell highlight">4,441</div>
+          <div class="arr-cell">4,798</div>
+          <div class="arr-cell">5,003</div>
+          <div class="arr-cell">4,714</div>
+          <div class="arr-cell">4,350</div>
+          <div class="arr-cell">3,939</div>
+          <div class="arr-cell">3,696</div>
+        </div>
+        <div class="col-foot"><span>12 × 1</span><span>sum 49,527</span></div>
+      </div>
+
+      <!-- Margin: selected, derived from Sales - Costs -->
+      <div class="column selected">
+        <div class="col-head">
+          <span class="name">Margin</span>
+          <span class="status-pip"></span>
+        </div>
+        <div class="col-formula"><span class="equals">=</span><span class="ref">Sales</span> <span class="op">−</span> <span class="ref">Costs</span></div>
+        <div class="col-value-array">
+          <div class="arr-header"><span>Month</span><span>Value</span></div>
+          <div class="arr-cell">4,884</div>
+          <div class="arr-cell">5,157</div>
+          <div class="arr-cell">5,492</div>
+          <div class="arr-cell">5,888</div>
+          <div class="arr-cell">6,273</div>
+          <div class="arr-cell highlight">6,719</div>
+          <div class="arr-cell">7,302</div>
+          <div class="arr-cell">7,637</div>
+          <div class="arr-cell">7,166</div>
+          <div class="arr-cell">6,570</div>
+          <div class="arr-cell">5,901</div>
+          <div class="arr-cell">5,504</div>
+        </div>
+        <div class="col-foot"><span>12 × 1</span><span>sum 74,493</span></div>
+      </div>
+
+      <!-- AfterTax: derived from Margin and TaxRate -->
+      <div class="column">
+        <div class="col-head">
+          <span class="name">AfterTax</span>
+          <span class="status-pip"></span>
+        </div>
+        <div class="col-formula"><span class="equals">=</span><span class="ref">Margin</span> <span class="op">*</span> (<span class="num">1</span> <span class="op">−</span> <span class="ref">TaxRate</span>)</div>
+        <div class="col-value-array">
+          <div class="arr-header"><span>Month</span><span>Value</span></div>
+          <div class="arr-cell">3,565</div>
+          <div class="arr-cell">3,765</div>
+          <div class="arr-cell">4,009</div>
+          <div class="arr-cell">4,298</div>
+          <div class="arr-cell">4,579</div>
+          <div class="arr-cell highlight">4,905</div>
+          <div class="arr-cell">5,330</div>
+          <div class="arr-cell">5,575</div>
+          <div class="arr-cell">5,231</div>
+          <div class="arr-cell">4,796</div>
+          <div class="arr-cell">4,308</div>
+          <div class="arr-cell">4,018</div>
+        </div>
+        <div class="col-foot"><span>12 × 1</span><span>sum 54,379</span></div>
+      </div>
+
+      <!-- Cumulative: scan over AfterTax -->
+      <div class="column">
+        <div class="col-head">
+          <span class="name">Cumulative</span>
+          <span class="status-pip"></span>
+        </div>
+        <div class="col-formula"><span class="equals">=</span><span class="fn">SCAN</span>(<span class="num">0</span>, <span class="ref">AfterTax</span>, <span class="fn">LAMBDA</span>(a,c,a<span class="op">+</span>c))</div>
+        <div class="col-value-array">
+          <div class="arr-header"><span>Month</span><span>Cum.</span></div>
+          <div class="arr-cell">3,565</div>
+          <div class="arr-cell">7,330</div>
+          <div class="arr-cell">11,339</div>
+          <div class="arr-cell">15,637</div>
+          <div class="arr-cell">20,216</div>
+          <div class="arr-cell highlight">25,121</div>
+          <div class="arr-cell">30,451</div>
+          <div class="arr-cell">36,026</div>
+          <div class="arr-cell">41,257</div>
+          <div class="arr-cell">46,053</div>
+          <div class="arr-cell">50,361</div>
+          <div class="arr-cell">54,379</div>
+        </div>
+        <div class="col-foot"><span>12 × 1</span><span>final 54,379</span></div>
+      </div>
+
+      <!-- Total: scalar -->
+      <div class="column" style="min-width: 180px;">
+        <div class="col-head">
+          <span class="name">Total</span>
+          <span class="status-pip"></span>
+        </div>
+        <div class="col-formula"><span class="equals">=</span><span class="fn">SUM</span>(<span class="ref">AfterTax</span>)</div>
+        <div class="col-value-scalar">54,379</div>
+        <div class="col-foot"><span>scalar</span><span>0 deps out</span></div>
+      </div>
+
+      <!-- TaxRate floating after, sample of another scalar -->
+      <div class="column" style="min-width: 180px;">
+        <div class="col-head">
+          <span class="name">TaxRate</span>
+          <span class="status-pip"></span>
+        </div>
+        <div class="col-formula"><span class="equals">=</span><span class="num">0.27</span></div>
+        <div class="col-value-scalar">27.0%</div>
+        <div class="col-foot"><span>scalar</span><span>const</span></div>
+      </div>
+
+    </div>
+
+  </div>
+
+  <div class="status">
+    <div class="calc-state">Clean · 7 nodes in flow · 5 arrays · 2 scalars</div>
+    <span class="spacer"></span>
+    <span><kbd>← →</kbd> nav columns · <kbd>F2</kbd> edit · <kbd>Ctrl+→</kbd> add column · <kbd>Ctrl+Z</kbd> undo</span>
+  </div>
+
+</div>
+</body>
+</html>

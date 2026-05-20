@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<!-- Mockup 02: Array-valued node
+     Grounded in UX requirements §2.4 (value detail), §5.1 (arrays that change size),
+     §6.4 (array grid), and the per-cell format scheme from DnaOneCalc. -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>02 — Array-valued node</title>
+<style>
+  :root {
+    --tc-color-bg: #f4ede2;
+    --tc-color-surface: #fffaf4;
+    --tc-color-surface-subtle: #faf5ec;
+    --tc-color-text: #2a2a28;
+    --tc-color-muted: #7a7570;
+    --tc-color-fainter: #b3aca0;
+    --tc-color-accent: #245d5a;
+    --tc-color-accent-soft: #d6e5e4;
+    --tc-color-accent-bg: #e8f0ef;
+    --tc-color-warning: #c58b2f;
+    --tc-color-success: #4f7b57;
+    --tc-color-success-soft: #d8e7db;
+    --tc-color-error: #b34a3f;
+    --tc-color-border: #e3dccf;
+    --tc-color-border-strong: #c9bfa9;
+    --tc-radius-panel: 12px;
+    --tc-radius-control: 5px;
+    --tc-font-ui: "Segoe UI", "Inter", system-ui, sans-serif;
+    --tc-font-mono: "Cascadia Code", "Consolas", "JetBrains Mono", monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; background: var(--tc-color-bg); color: var(--tc-color-text); font-family: var(--tc-font-ui); font-size: 14px; }
+  .shell {
+    display: grid;
+    grid-template-rows: 44px 1fr 30px;
+    grid-template-columns: 280px 1fr;
+    grid-template-areas:
+      "context context"
+      "nav main"
+      "status status";
+    height: 100vh;
+  }
+  .context {
+    grid-area: context;
+    background: var(--tc-color-surface);
+    border-bottom: 1px solid var(--tc-color-border);
+    display: flex; align-items: center; padding: 0 16px; gap: 16px;
+  }
+  .breadcrumb { font-size: 13px; }
+  .breadcrumb .filename { color: var(--tc-color-accent); font-weight: 600; }
+  .breadcrumb .sep { color: var(--tc-color-fainter); margin: 0 4px; }
+  .breadcrumb .seg.active { color: var(--tc-color-accent); font-weight: 600; }
+  .context .spacer { flex: 1; }
+  .context .pill { font-size: 11px; padding: 3px 8px; border-radius: 4px; font-family: var(--tc-font-mono); }
+  .context .profile { background: var(--tc-color-accent-soft); color: var(--tc-color-accent); }
+  .context .recalc { background: var(--tc-color-success-soft); color: var(--tc-color-success); }
+  .context .home { font-size: 12px; color: var(--tc-color-muted); cursor: pointer; }
+  .context .home:hover { color: var(--tc-color-accent); text-decoration: underline; }
+
+  .nav {
+    grid-area: nav;
+    background: var(--tc-color-surface);
+    border-right: 1px solid var(--tc-color-border);
+    overflow-y: auto;
+    padding: 12px 0;
+  }
+  .nav-header {
+    padding: 4px 14px 12px;
+    border-bottom: 1px solid var(--tc-color-border);
+    margin-bottom: 8px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .nav-header .title { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--tc-color-muted); font-weight: 600; flex: 1; }
+  .nav-header .meta-toggle { font-size: 11px; color: var(--tc-color-fainter); }
+  .row {
+    display: flex; align-items: center; gap: 5px;
+    padding: 4px 14px 4px 4px;
+    cursor: pointer;
+    font-size: 13.5px;
+    border-left: 3px solid transparent;
+  }
+  .row:hover { background: var(--tc-color-surface-subtle); }
+  .row.selected { background: var(--tc-color-accent-bg); border-left-color: var(--tc-color-accent); }
+  .row.selected .name { color: var(--tc-color-accent); font-weight: 600; }
+  .row .triangle { font-size: 9px; color: var(--tc-color-fainter); width: 12px; display: inline-block; text-align: center; }
+  .row .name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .summary { color: var(--tc-color-muted); font-size: 12px; font-family: var(--tc-font-mono); }
+  .row .summary.array { color: var(--tc-color-warning); font-weight: 600; }
+  .row .status-pip { width: 6px; height: 6px; border-radius: 50%; background: var(--tc-color-success); }
+  .indent-1 { padding-left: 22px; }
+  .indent-2 { padding-left: 40px; }
+
+  .main {
+    grid-area: main;
+    overflow: hidden;
+    padding: 16px 20px 12px;
+    display: grid;
+    grid-template-rows: auto auto 1fr;
+    gap: 12px;
+  }
+  .node-header { display: flex; align-items: baseline; gap: 12px; }
+  .node-header .node-name { font-size: 22px; font-weight: 600; }
+  .node-header .node-path { font-size: 12px; color: var(--tc-color-muted); font-family: var(--tc-font-mono); }
+  .node-header .badge { background: var(--tc-color-warning); color: white; font-size: 11px; padding: 2px 7px; border-radius: 4px; font-weight: 600; }
+  .editor-panel {
+    background: var(--tc-color-surface);
+    border: 1px solid var(--tc-color-border);
+    border-radius: var(--tc-radius-panel);
+    padding: 12px 16px;
+  }
+  .editor-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--tc-color-muted); font-weight: 600; margin-bottom: 6px; }
+  .editor-text {
+    font-family: var(--tc-font-mono);
+    font-size: 14.5px;
+  }
+  .editor-text .keyword { color: var(--tc-color-accent); font-weight: 600; }
+  .editor-text .reference { color: #6a4a8c; background: rgba(106, 74, 140, 0.08); padding: 1px 2px; border-radius: 2px; }
+  .editor-text .operator { color: var(--tc-color-muted); }
+  .editor-text .number { color: var(--tc-color-warning); }
+
+  .value-panel {
+    background: var(--tc-color-surface);
+    border: 1px solid var(--tc-color-border);
+    border-radius: var(--tc-radius-panel);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .value-toolbar {
+    display: flex;
+    align-items: center;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--tc-color-border);
+    gap: 14px;
+    background: var(--tc-color-surface-subtle);
+  }
+  .value-toolbar .shape {
+    font-size: 13px; font-family: var(--tc-font-mono); color: var(--tc-color-accent); font-weight: 600;
+  }
+  .value-toolbar .delta {
+    font-size: 11.5px; color: var(--tc-color-warning);
+    padding: 2px 7px; background: rgba(197, 139, 47, 0.12); border-radius: 4px;
+  }
+  .value-toolbar .spacer { flex: 1; }
+  .value-toolbar .btn {
+    font-size: 12px; color: var(--tc-color-text); border: 1px solid var(--tc-color-border-strong);
+    padding: 4px 10px; border-radius: var(--tc-radius-control); cursor: pointer;
+    background: var(--tc-color-surface);
+  }
+  .value-toolbar .btn:hover { background: var(--tc-color-accent-bg); border-color: var(--tc-color-accent); }
+  .value-toolbar .stats { font-size: 11.5px; color: var(--tc-color-muted); font-family: var(--tc-font-mono); }
+
+  .grid-wrap { flex: 1; overflow: auto; }
+  table.array-grid {
+    border-collapse: collapse;
+    font-family: var(--tc-font-mono);
+    font-size: 13px;
+    width: 100%;
+  }
+  table.array-grid th {
+    position: sticky;
+    top: 0;
+    background: var(--tc-color-surface);
+    border-bottom: 1px solid var(--tc-color-border-strong);
+    text-align: right;
+    padding: 8px 10px;
+    color: var(--tc-color-muted);
+    font-weight: 600;
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  table.array-grid th.row-header {
+    text-align: left;
+    background: var(--tc-color-surface);
+    border-right: 1px solid var(--tc-color-border);
+    z-index: 2;
+  }
+  table.array-grid td {
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--tc-color-border);
+    text-align: right;
+    color: var(--tc-color-text);
+    white-space: nowrap;
+  }
+  table.array-grid td.row-label {
+    background: var(--tc-color-surface-subtle);
+    color: var(--tc-color-muted);
+    text-align: left;
+    font-weight: 600;
+    border-right: 1px solid var(--tc-color-border);
+    position: sticky; left: 0; z-index: 1;
+  }
+  table.array-grid tr:hover td { background: rgba(36, 93, 90, 0.04); }
+  /* Data bar fill via background */
+  td .databar {
+    display: inline-block;
+    width: 60px;
+    height: 6px;
+    background: var(--tc-color-accent-soft);
+    border-radius: 2px;
+    margin-right: 6px;
+    vertical-align: middle;
+    position: relative;
+    overflow: hidden;
+  }
+  td .databar::before {
+    content: '';
+    display: block;
+    height: 100%;
+    background: var(--tc-color-accent);
+    width: var(--fill, 50%);
+  }
+  td.flagged { color: var(--tc-color-error); font-weight: 600; }
+  td.positive { color: var(--tc-color-success); }
+  td.changed { background: rgba(197, 139, 47, 0.10) !important; }
+
+  .footer-summary {
+    padding: 8px 16px;
+    border-top: 1px solid var(--tc-color-border);
+    background: var(--tc-color-surface-subtle);
+    display: flex;
+    gap: 24px;
+    font-size: 12px;
+    color: var(--tc-color-muted);
+  }
+  .footer-summary .label { font-family: var(--tc-font-mono); }
+  .footer-summary strong { color: var(--tc-color-text); font-family: var(--tc-font-mono); }
+
+  .status {
+    grid-area: status;
+    background: var(--tc-color-surface);
+    border-top: 1px solid var(--tc-color-border);
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 18px;
+    font-size: 11.5px;
+    color: var(--tc-color-muted);
+    font-family: var(--tc-font-mono);
+  }
+  .status .calc-state { color: var(--tc-color-success); display: flex; align-items: center; gap: 5px; }
+  .status .calc-state::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--tc-color-success); }
+  .status .spacer { flex: 1; }
+  .status kbd { font-family: var(--tc-font-mono); background: var(--tc-color-bg); border: 1px solid var(--tc-color-border-strong); border-radius: 3px; padding: 1px 5px; font-size: 10.5px; }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <div class="context">
+    <div class="breadcrumb">
+      <span class="home">← back</span>
+      <span class="sep">·</span>
+      <span class="filename">forecast-2026.dnatree</span>
+      <span class="sep">·</span>
+      <span>Assumptions</span>
+      <span class="sep">›</span>
+      <span class="seg active">MonthlyForecast</span>
+    </div>
+    <div class="spacer"></div>
+    <div class="pill profile">treecalc-v1</div>
+    <div class="pill recalc">recalc 88ms</div>
+  </div>
+
+  <div class="nav">
+    <div class="nav-header"><span class="title">Workspace</span><span class="meta-toggle">○ meta</span></div>
+    <div class="row"><span class="triangle">▾</span><span class="name">Accounts</span><span class="summary">[3 sheets]</span></div>
+    <div class="row indent-1"><span class="triangle">▸</span><span class="name">2025</span><span class="summary">412,318.40</span><span class="status-pip"></span></div>
+    <div class="row indent-1"><span class="triangle">▸</span><span class="name">2026</span><span class="summary">441,290.18</span><span class="status-pip"></span></div>
+    <div class="row indent-1"><span class="triangle">▸</span><span class="name">Summary</span><span class="summary">853,608.58</span><span class="status-pip"></span></div>
+    <div class="row"><span class="triangle">▾</span><span class="name">Assumptions</span><span class="summary">[12]</span></div>
+    <div class="row indent-1"><span class="triangle">○</span><span class="name">GrowthRate</span><span class="summary">4.2%</span><span class="status-pip"></span></div>
+    <div class="row indent-1"><span class="triangle">○</span><span class="name">TaxRate</span><span class="summary">0.27</span><span class="status-pip"></span></div>
+    <div class="row indent-1 selected"><span class="triangle">○</span><span class="name">MonthlyForecast</span><span class="summary array">[24×6]</span><span class="status-pip"></span></div>
+    <div class="row indent-1"><span class="triangle">○</span><span class="name">SeasonalIdx</span><span class="summary array">[12×1]</span><span class="status-pip"></span></div>
+    <div class="row indent-1"><span class="triangle">○</span><span class="name">Discount</span><span class="summary">0.10</span><span class="status-pip"></span></div>
+    <div class="row"><span class="triangle">▸</span><span class="name">Lookup Tables</span><span class="summary">[5]</span></div>
+  </div>
+
+  <div class="main">
+    <div class="node-header">
+      <div class="node-name">MonthlyForecast</div>
+      <div class="node-path">.Assumptions.MonthlyForecast</div>
+      <div class="badge">Array</div>
+    </div>
+
+    <div class="editor-panel">
+      <div class="editor-label">Formula</div>
+      <div class="editor-text">= <span class="keyword">MAP</span>(<span class="reference">SeasonalIdx</span>, m <span class="operator">-&gt;</span> m <span class="operator">*</span> <span class="reference">GrowthRate</span> <span class="operator">*</span> <span class="number">1000</span>)</div>
+    </div>
+
+    <div class="value-panel">
+      <div class="value-toolbar">
+        <div class="shape">[24 × 6] · 144 cells</div>
+        <div class="delta">Shape changed: +2 rows since last commit</div>
+        <div class="spacer"></div>
+        <div class="stats">min 880 · max 12,640 · sum 472,840</div>
+        <button class="btn">Pin</button>
+        <button class="btn">Export</button>
+        <button class="btn">Show in canvas</button>
+      </div>
+
+      <div class="grid-wrap">
+        <table class="array-grid">
+          <thead>
+            <tr>
+              <th class="row-header">Month</th>
+              <th>Sales</th>
+              <th>Costs</th>
+              <th>Margin</th>
+              <th>Growth %</th>
+              <th>Volume</th>
+              <th>Score</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="row-label">2026-01</td>
+              <td>8,200.00</td>
+              <td>3,180.00</td>
+              <td class="positive">5,020.00</td>
+              <td><span class="databar" style="--fill: 22%"></span>2.2%</td>
+              <td>1,640</td>
+              <td>0.61</td>
+            </tr>
+            <tr>
+              <td class="row-label">2026-02</td>
+              <td>8,640.00</td>
+              <td>3,310.00</td>
+              <td class="positive">5,330.00</td>
+              <td><span class="databar" style="--fill: 31%"></span>3.1%</td>
+              <td>1,728</td>
+              <td>0.66</td>
+            </tr>
+            <tr>
+              <td class="row-label">2026-03</td>
+              <td>9,180.00</td>
+              <td>3,422.00</td>
+              <td class="positive">5,758.00</td>
+              <td><span class="databar" style="--fill: 47%"></span>4.7%</td>
+              <td>1,836</td>
+              <td>0.72</td>
+            </tr>
+            <tr>
+              <td class="row-label">2026-04</td>
+              <td>9,820.00</td>
+              <td>3,610.00</td>
+              <td class="positive">6,210.00</td>
+              <td><span class="databar" style="--fill: 53%"></span>5.3%</td>
+              <td>1,964</td>
+              <td>0.79</td>
+            </tr>
+            <tr>
+              <td class="row-label">2026-05</td>
+              <td>10,440.00</td>
+              <td>3,807.00</td>
+              <td class="positive">6,633.00</td>
+              <td><span class="databar" style="--fill: 61%"></span>6.1%</td>
+              <td>2,088</td>
+              <td>0.84</td>
+            </tr>
+            <tr class="changed">
+              <td class="row-label">2026-06</td>
+              <td>11,160.00</td>
+              <td>4,040.00</td>
+              <td class="positive">7,120.00</td>
+              <td><span class="databar" style="--fill: 68%"></span>6.8%</td>
+              <td>2,232</td>
+              <td>0.90</td>
+            </tr>
+            <tr>
+              <td class="row-label">2026-07</td>
+              <td>12,100.00</td>
+              <td>4,302.00</td>
+              <td class="positive">7,798.00</td>
+              <td><span class="databar" style="--fill: 76%"></span>7.6%</td>
+              <td>2,420</td>
+              <td>0.96</td>
+            </tr>
+            <tr>
+              <td class="row-label">2026-08</td>
+              <td>12,640.00</td>
+              <td>4,488.00</td>
+              <td class="positive">8,152.00</td>
+              <td><span class="databar" style="--fill: 82%"></span>8.2%</td>
+              <td>2,528</td>
+              <td>1.00</td>
+            </tr>
+            <tr>
+              <td class="row-label">2026-09</td>
+              <td>11,880.00</td>
+              <td>4,310.00</td>
+              <td class="positive">7,570.00</td>
+              <td><span class="databar" style="--fill: 71%"></span>7.1%</td>
+              <td>2,376</td>
+              <td>0.93</td>
+            </tr>
+            <tr>
+              <td class="row-label">2026-10</td>
+              <td>10,920.00</td>
+              <td>4,022.00</td>
+              <td class="positive">6,898.00</td>
+              <td><span class="databar" style="--fill: 62%"></span>6.2%</td>
+              <td>2,184</td>
+              <td>0.86</td>
+            </tr>
+            <tr>
+              <td class="row-label">2026-11</td>
+              <td>9,840.00</td>
+              <td>3,720.00</td>
+              <td class="positive">6,120.00</td>
+              <td><span class="databar" style="--fill: 47%"></span>4.7%</td>
+              <td>1,968</td>
+              <td>0.78</td>
+            </tr>
+            <tr class="changed">
+              <td class="row-label">2026-12</td>
+              <td>9,200.00</td>
+              <td>3,480.00</td>
+              <td class="positive">5,720.00</td>
+              <td><span class="databar" style="--fill: 39%"></span>3.9%</td>
+              <td>1,840</td>
+              <td>0.73</td>
+            </tr>
+            <tr>
+              <td class="row-label">2027-01</td>
+              <td>880.00</td>
+              <td>1,200.00</td>
+              <td class="flagged">−320.00</td>
+              <td><span class="databar" style="--fill: 4%"></span>0.4%</td>
+              <td>176</td>
+              <td>0.04</td>
+            </tr>
+            <tr>
+              <td class="row-label">2027-02</td>
+              <td>1,240.00</td>
+              <td>1,310.00</td>
+              <td class="flagged">−70.00</td>
+              <td><span class="databar" style="--fill: 9%"></span>0.9%</td>
+              <td>248</td>
+              <td>0.10</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="footer-summary">
+        <div><span class="label">Rows visible:</span> <strong>14 / 24</strong></div>
+        <div><span class="label">Memory:</span> <strong>~3.4 KB</strong></div>
+        <div><span class="label">Dependents:</span> <strong>5 nodes</strong></div>
+        <div><span class="label">Cells flagged by CF:</span> <strong>2</strong></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="status">
+    <div class="calc-state">Clean · published 88ms ago</div>
+    <div>1 in · 5 out</div>
+    <div class="spacer"></div>
+    <div><kbd>Ctrl+E</kbd> edit array · <kbd>Ctrl+Shift+C</kbd> copy as TSV · <kbd>Ctrl+D</kbd> drill</div>
+  </div>
+
+</div>
+</body>
+</html>

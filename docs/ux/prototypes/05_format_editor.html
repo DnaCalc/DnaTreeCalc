@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<!-- Mockup 05: Format editor
+     Grounded in UX requirements §2.8 (format editor) and §5.5 (formatting UX).
+     Edits the ::Format meta-child; properties can be literal or computed. -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>05 — Format editor</title>
+<style>
+  :root {
+    --tc-color-bg: #f4ede2;
+    --tc-color-surface: #fffaf4;
+    --tc-color-surface-subtle: #faf5ec;
+    --tc-color-text: #2a2a28;
+    --tc-color-muted: #7a7570;
+    --tc-color-fainter: #b3aca0;
+    --tc-color-accent: #245d5a;
+    --tc-color-accent-soft: #d6e5e4;
+    --tc-color-accent-bg: #e8f0ef;
+    --tc-color-meta: #8b6a3a;
+    --tc-color-meta-soft: #f0e2c8;
+    --tc-color-warning: #c58b2f;
+    --tc-color-success: #4f7b57;
+    --tc-color-success-soft: #d8e7db;
+    --tc-color-error: #b34a3f;
+    --tc-color-error-soft: #f1d8d4;
+    --tc-color-border: #e3dccf;
+    --tc-color-border-strong: #c9bfa9;
+    --tc-radius-panel: 12px;
+    --tc-radius-control: 5px;
+    --tc-font-ui: "Segoe UI", "Inter", system-ui, sans-serif;
+    --tc-font-mono: "Cascadia Code", "Consolas", "JetBrains Mono", monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; background: var(--tc-color-bg); color: var(--tc-color-text); font-family: var(--tc-font-ui); font-size: 14px; }
+  .shell {
+    display: grid;
+    grid-template-rows: 44px 1fr 30px;
+    grid-template-columns: 280px 1fr 420px;
+    grid-template-areas:
+      "context context context"
+      "nav main format"
+      "status status status";
+    height: 100vh;
+  }
+  .context {
+    grid-area: context;
+    background: var(--tc-color-surface);
+    border-bottom: 1px solid var(--tc-color-border);
+    display: flex; align-items: center; padding: 0 16px; gap: 16px;
+  }
+  .breadcrumb { font-size: 13px; display: flex; align-items: center; gap: 6px; }
+  .breadcrumb .filename { color: var(--tc-color-accent); font-weight: 600; }
+  .breadcrumb .sep { color: var(--tc-color-fainter); }
+  .breadcrumb .seg.active { color: var(--tc-color-accent); font-weight: 600; }
+  .context .spacer { flex: 1; }
+  .context .pill { font-size: 11px; padding: 3px 8px; border-radius: 4px; font-family: var(--tc-font-mono); }
+  .context .profile { background: var(--tc-color-accent-soft); color: var(--tc-color-accent); }
+
+  .nav {
+    grid-area: nav;
+    background: var(--tc-color-surface);
+    border-right: 1px solid var(--tc-color-border);
+    overflow-y: auto;
+    padding: 12px 0;
+  }
+  .nav-header { padding: 4px 14px 12px; border-bottom: 1px solid var(--tc-color-border); margin-bottom: 8px; }
+  .nav-header .title { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--tc-color-muted); font-weight: 600; }
+  .row {
+    display: flex; align-items: center; gap: 5px;
+    padding: 4px 14px 4px 4px;
+    cursor: pointer;
+    font-size: 13.5px;
+    border-left: 3px solid transparent;
+  }
+  .row:hover { background: var(--tc-color-surface-subtle); }
+  .row.selected { background: var(--tc-color-accent-bg); border-left-color: var(--tc-color-accent); }
+  .row.selected .name { color: var(--tc-color-accent); font-weight: 600; }
+  .row .triangle { font-size: 9px; color: var(--tc-color-fainter); width: 12px; display: inline-block; text-align: center; }
+  .row .name { flex: 1; }
+  .row .summary { color: var(--tc-color-muted); font-size: 12px; font-family: var(--tc-font-mono); }
+  .row .status-pip { width: 6px; height: 6px; border-radius: 50%; background: var(--tc-color-success); }
+  .row .format-icon { color: var(--tc-color-meta); font-size: 12px; }
+  .indent-1 { padding-left: 22px; }
+  .indent-2 { padding-left: 40px; }
+  .indent-3 { padding-left: 58px; }
+
+  .main {
+    grid-area: main;
+    overflow: hidden;
+    display: grid;
+    grid-template-rows: auto auto 1fr;
+    gap: 12px;
+    padding: 16px 16px 12px;
+  }
+  .node-header { display: flex; align-items: baseline; gap: 12px; }
+  .node-header .node-name { font-size: 22px; font-weight: 600; }
+  .node-header .node-path { font-size: 12px; color: var(--tc-color-muted); font-family: var(--tc-font-mono); }
+  .node-header .badge { background: var(--tc-color-success-soft); color: var(--tc-color-success); font-size: 11px; padding: 2px 7px; border-radius: 4px; font-weight: 600; }
+
+  .editor-panel {
+    background: var(--tc-color-surface);
+    border: 1px solid var(--tc-color-border);
+    border-radius: var(--tc-radius-panel);
+    padding: 12px 16px;
+  }
+  .editor-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--tc-color-muted); font-weight: 600; margin-bottom: 6px; }
+  .editor-text { font-family: var(--tc-font-mono); font-size: 14.5px; }
+  .editor-text .keyword { color: var(--tc-color-accent); font-weight: 600; }
+  .editor-text .ref { color: #6a4a8c; }
+  .editor-text .op { color: var(--tc-color-muted); }
+
+  .preview-panel {
+    background: var(--tc-color-surface);
+    border: 1px solid var(--tc-color-border);
+    border-radius: var(--tc-radius-panel);
+    padding: 18px 22px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 14px;
+  }
+  .preview-panel .preview-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--tc-color-muted); font-weight: 600; align-self: flex-start; }
+  .preview-card {
+    background: var(--tc-color-surface-subtle);
+    border-radius: 8px;
+    padding: 18px 32px;
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    border: 1px dashed var(--tc-color-border-strong);
+  }
+  .preview-card .icon-region {
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+  }
+  .preview-card .cf-icon {
+    font-size: 18px; color: var(--tc-color-success);
+  }
+  .preview-card .value-display {
+    font-family: "Segoe UI", "Inter", sans-serif;
+    font-size: 38px;
+    font-weight: 600;
+    color: #1e504e;
+    background: #f0fafa;
+    padding: 8px 22px;
+    border-radius: 6px;
+    border-left: 4px solid var(--tc-color-success);
+    position: relative;
+  }
+  .preview-card .databar-fill {
+    position: absolute; left: 0; bottom: 0;
+    height: 5px;
+    width: 72%;
+    background: linear-gradient(90deg, var(--tc-color-accent), #69a2a0);
+    border-bottom-left-radius: 6px;
+  }
+  .preview-meta {
+    font-family: var(--tc-font-mono); font-size: 12px;
+    color: var(--tc-color-muted);
+    display: flex; gap: 18px;
+  }
+  .preview-meta strong { color: var(--tc-color-text); }
+
+  .format-panel {
+    grid-area: format;
+    background: var(--tc-color-surface);
+    border-left: 1px solid var(--tc-color-border);
+    overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  .fp-header {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--tc-color-border);
+    background: var(--tc-color-meta-soft);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .fp-header .meta-icon {
+    width: 28px; height: 28px;
+    background: var(--tc-color-meta);
+    color: var(--tc-color-meta-soft);
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; font-weight: 700;
+  }
+  .fp-header .title-block { flex: 1; }
+  .fp-header .pre-title { font-size: 10px; color: var(--tc-color-meta); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }
+  .fp-header .title { font-size: 15px; color: var(--tc-color-text); font-weight: 600; }
+  .fp-header .path { font-size: 11px; color: var(--tc-color-meta); font-family: var(--tc-font-mono); }
+  .fp-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 18px 20px;
+  }
+  .section {
+    margin-bottom: 24px;
+  }
+  .section h3 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--tc-color-muted);
+    margin: 0 0 10px;
+    font-weight: 600;
+    border-bottom: 1px solid var(--tc-color-border);
+    padding-bottom: 4px;
+  }
+  .field {
+    display: flex;
+    align-items: center;
+    margin-bottom: 8px;
+    gap: 10px;
+  }
+  .field-label {
+    width: 100px;
+    font-size: 12.5px;
+    color: var(--tc-color-text);
+  }
+  .field-control {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .field-control input, .field-control select {
+    border: 1px solid var(--tc-color-border-strong);
+    background: var(--tc-color-surface);
+    border-radius: var(--tc-radius-control);
+    padding: 4px 8px;
+    font-size: 12.5px;
+    font-family: var(--tc-font-mono);
+    flex: 1;
+    color: var(--tc-color-text);
+  }
+  .field-control input:focus, .field-control select:focus { outline: none; border-color: var(--tc-color-accent); }
+  .field-control .mode-toggle {
+    font-size: 10px;
+    color: var(--tc-color-muted);
+    padding: 3px 6px;
+    border: 1px solid var(--tc-color-border-strong);
+    border-radius: 3px;
+    cursor: pointer;
+    background: var(--tc-color-surface);
+    text-transform: uppercase;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+  }
+  .field-control .mode-toggle.computed { background: var(--tc-color-accent); color: white; border-color: var(--tc-color-accent); }
+  .field-control .color-swatch {
+    width: 22px; height: 22px;
+    border-radius: 4px;
+    border: 1px solid var(--tc-color-border-strong);
+    cursor: pointer;
+  }
+  .field-control .computed-formula {
+    flex: 1;
+    background: var(--tc-color-accent-bg);
+    border: 1px solid var(--tc-color-accent-soft);
+    border-radius: var(--tc-radius-control);
+    padding: 4px 8px;
+    font-family: var(--tc-font-mono);
+    font-size: 12px;
+    color: var(--tc-color-accent);
+  }
+  .inherited-tag {
+    font-size: 10px;
+    color: var(--tc-color-meta);
+    background: var(--tc-color-meta-soft);
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-weight: 600;
+    margin-left: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .inheritance-note {
+    font-size: 11.5px;
+    color: var(--tc-color-meta);
+    background: var(--tc-color-meta-soft);
+    padding: 8px 12px;
+    border-radius: 6px;
+    border-left: 3px solid var(--tc-color-meta);
+    margin-bottom: 14px;
+  }
+  .cf-rule {
+    background: var(--tc-color-surface-subtle);
+    border: 1px solid var(--tc-color-border);
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+  }
+  .cf-rule .cf-head { display: flex; align-items: center; gap: 8px; font-size: 12.5px; margin-bottom: 6px; }
+  .cf-rule .cf-head .cf-bullet { width: 12px; height: 12px; border-radius: 2px; background: var(--tc-color-success); }
+  .cf-rule .cf-head .cf-bullet.warn { background: var(--tc-color-warning); }
+  .cf-rule .cf-head .cf-bullet.err { background: var(--tc-color-error); }
+  .cf-rule .cf-head .cf-label { font-weight: 600; }
+  .cf-rule .cf-cond {
+    font-family: var(--tc-font-mono); font-size: 12px;
+    color: var(--tc-color-muted);
+  }
+  .cf-rule .cf-cond .ref { color: #6a4a8c; }
+  .cf-rule .cf-cond .num { color: var(--tc-color-warning); }
+  .add-rule {
+    font-size: 12px; color: var(--tc-color-accent);
+    border: 1px dashed var(--tc-color-accent-soft);
+    background: transparent;
+    padding: 6px 12px;
+    border-radius: var(--tc-radius-control);
+    cursor: pointer;
+    width: 100%;
+    text-align: center;
+  }
+  .add-rule:hover { background: var(--tc-color-accent-bg); border-style: solid; }
+
+  .fp-footer {
+    padding: 12px 18px;
+    border-top: 1px solid var(--tc-color-border);
+    background: var(--tc-color-surface-subtle);
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+  }
+  .fp-footer .btn {
+    font-size: 12.5px; padding: 6px 14px; border-radius: var(--tc-radius-control);
+    cursor: pointer;
+    border: 1px solid var(--tc-color-border-strong);
+    background: var(--tc-color-surface);
+    color: var(--tc-color-text);
+  }
+  .fp-footer .btn.primary { background: var(--tc-color-accent); color: white; border-color: var(--tc-color-accent); }
+  .fp-footer .btn:hover { border-color: var(--tc-color-accent); }
+  .fp-footer .btn.primary:hover { background: #1e504e; }
+
+  .status {
+    grid-area: status;
+    background: var(--tc-color-surface);
+    border-top: 1px solid var(--tc-color-border);
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 18px;
+    font-size: 11.5px;
+    color: var(--tc-color-muted);
+    font-family: var(--tc-font-mono);
+  }
+  .status .calc-state { color: var(--tc-color-success); display: flex; align-items: center; gap: 5px; }
+  .status .calc-state::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--tc-color-success); }
+  .status .spacer { flex: 1; }
+  .status kbd { font-family: var(--tc-font-mono); background: var(--tc-color-bg); border: 1px solid var(--tc-color-border-strong); border-radius: 3px; padding: 1px 5px; font-size: 10.5px; }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <div class="context">
+    <div class="breadcrumb">
+      <span class="filename">forecast-2026.dnatree</span>
+      <span class="sep">·</span>
+      <span class="seg">Accounts.2026.Q2.Income</span>
+      <span class="sep">›</span>
+      <span class="seg active">Net</span>
+    </div>
+    <div class="spacer"></div>
+    <div class="pill profile">treecalc-v1</div>
+  </div>
+
+  <div class="nav">
+    <div class="nav-header"><span class="title">Workspace</span></div>
+    <div class="row"><span class="triangle">▾</span><span class="name">Accounts</span><span class="summary">[3]</span></div>
+    <div class="row indent-1"><span class="triangle">▾</span><span class="name">2026</span><span class="summary">441,290.18</span><span class="status-pip"></span></div>
+    <div class="row indent-2"><span class="triangle">▾</span><span class="name">Q2</span><span class="summary">109,440.40</span><span class="status-pip"></span></div>
+    <div class="row indent-3"><span class="triangle">▾</span><span class="name">Income</span><span class="format-icon">𝒇</span><span class="summary">132,400.00</span><span class="status-pip"></span></div>
+    <div class="row indent-3"><span class="triangle">▸</span><span class="name">Expenses</span><span class="summary">22,959.60</span><span class="status-pip"></span></div>
+    <div class="row indent-3 selected"><span class="triangle">○</span><span class="name">Net</span><span class="format-icon">𝒇</span><span class="summary">109,440.40</span><span class="status-pip"></span></div>
+    <div class="row indent-3"><span class="triangle">○</span><span class="name">Variance</span><span class="format-icon">𝒇</span><span class="summary">+5,211.40</span><span class="status-pip"></span></div>
+    <div class="row indent-2"><span class="triangle">▸</span><span class="name">Q3</span><span class="summary">112,418.78</span><span class="status-pip"></span></div>
+    <div class="row indent-2"><span class="triangle">▸</span><span class="name">Q4</span><span class="summary">115,202.00</span><span class="status-pip"></span></div>
+    <div class="row"><span class="triangle">▸</span><span class="name">Assumptions</span><span class="summary">[12]</span></div>
+  </div>
+
+  <div class="main">
+    <div class="node-header">
+      <div class="node-name">Net</div>
+      <div class="node-path">.Accounts.2026.Q2.Income.Net</div>
+      <div class="badge">Clean</div>
+    </div>
+
+    <div class="editor-panel">
+      <div class="editor-label">Formula</div>
+      <div class="editor-text">= <span class="ref">Income</span> <span class="op">−</span> <span class="ref">Expenses</span></div>
+    </div>
+
+    <div class="preview-panel">
+      <div class="preview-title">Live format preview</div>
+      <div class="preview-card">
+        <div class="icon-region">
+          <span class="cf-icon">▲</span>
+        </div>
+        <div class="value-display">
+          109,440.40
+          <span class="databar-fill"></span>
+        </div>
+      </div>
+      <div class="preview-meta">
+        <span>Source: <strong>109440.4</strong></span>
+        <span>Format: <strong>#,##0.00</strong></span>
+        <span>Color: <strong>accent</strong></span>
+        <span>Data bar: <strong>72%</strong></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Format editor panel -->
+  <div class="format-panel">
+    <div class="fp-header">
+      <div class="meta-icon">𝒇</div>
+      <div class="title-block">
+        <div class="pre-title">meta-child</div>
+        <div class="title">Format</div>
+        <div class="path">.Accounts.2026.Q2.Income.Net::Format</div>
+      </div>
+    </div>
+
+    <div class="fp-body">
+      <div class="inheritance-note">
+        Some properties inherited from <strong>.Accounts::Format</strong>. Override per property.
+      </div>
+
+      <div class="section">
+        <h3>Number</h3>
+        <div class="field">
+          <div class="field-label">Format code</div>
+          <div class="field-control">
+            <input type="text" value="#,##0.00">
+            <span class="mode-toggle">literal</span>
+          </div>
+        </div>
+        <div class="field">
+          <div class="field-label">Locale</div>
+          <div class="field-control">
+            <select>
+              <option>en-US (inherited)</option>
+              <option>de-DE</option>
+              <option>en-GB</option>
+            </select>
+            <span class="inherited-tag">inherited</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h3>Font</h3>
+        <div class="field">
+          <div class="field-label">Family</div>
+          <div class="field-control">
+            <select>
+              <option>Segoe UI (inherited)</option>
+              <option>Inter</option>
+              <option>Arial</option>
+            </select>
+            <span class="inherited-tag">inherited</span>
+          </div>
+        </div>
+        <div class="field">
+          <div class="field-label">Size</div>
+          <div class="field-control">
+            <input type="text" value="14">
+            <span class="mode-toggle">literal</span>
+          </div>
+        </div>
+        <div class="field">
+          <div class="field-label">Color</div>
+          <div class="field-control">
+            <div class="color-swatch" style="background: #1e504e;"></div>
+            <div class="computed-formula">= IF(Net &gt; 0, "accent", "error")</div>
+            <span class="mode-toggle computed">fx</span>
+          </div>
+        </div>
+        <div class="field">
+          <div class="field-label">Weight</div>
+          <div class="field-control">
+            <select>
+              <option>600 (semibold)</option>
+              <option>400</option>
+              <option>700</option>
+            </select>
+            <span class="mode-toggle">literal</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h3>Fill</h3>
+        <div class="field">
+          <div class="field-label">Color</div>
+          <div class="field-control">
+            <div class="color-swatch" style="background: #f0fafa;"></div>
+            <input type="text" value="#f0fafa">
+            <span class="mode-toggle">literal</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h3>Data bar</h3>
+        <div class="field">
+          <div class="field-label">Enabled</div>
+          <div class="field-control">
+            <select>
+              <option>true</option>
+              <option>false</option>
+            </select>
+            <span class="mode-toggle">literal</span>
+          </div>
+        </div>
+        <div class="field">
+          <div class="field-label">Min ref</div>
+          <div class="field-control">
+            <div class="computed-formula">= MIN(^.*)</div>
+            <span class="mode-toggle computed">fx</span>
+          </div>
+        </div>
+        <div class="field">
+          <div class="field-label">Max ref</div>
+          <div class="field-control">
+            <div class="computed-formula">= MAX(^.*)</div>
+            <span class="mode-toggle computed">fx</span>
+          </div>
+        </div>
+        <div class="field">
+          <div class="field-label">Color</div>
+          <div class="field-control">
+            <div class="color-swatch" style="background: #245d5a;"></div>
+            <input type="text" value="accent">
+            <span class="mode-toggle">literal</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h3>Conditional formatting</h3>
+        <div class="cf-rule">
+          <div class="cf-head">
+            <div class="cf-bullet"></div>
+            <div class="cf-label">When positive</div>
+          </div>
+          <div class="cf-cond">if <span class="ref">value</span> &gt; <span class="num">0</span> → font color "success", icon ▲</div>
+        </div>
+        <div class="cf-rule">
+          <div class="cf-head">
+            <div class="cf-bullet warn"></div>
+            <div class="cf-label">When zero</div>
+          </div>
+          <div class="cf-cond">if <span class="ref">value</span> = <span class="num">0</span> → font color "muted"</div>
+        </div>
+        <div class="cf-rule">
+          <div class="cf-head">
+            <div class="cf-bullet err"></div>
+            <div class="cf-label">When negative</div>
+          </div>
+          <div class="cf-cond">if <span class="ref">value</span> &lt; <span class="num">0</span> → font color "error", icon ▼, format "+#,##0.00;−#,##0.00"</div>
+        </div>
+        <button class="add-rule">+ Add conditional rule</button>
+      </div>
+
+      <div class="section">
+        <h3>Icon set</h3>
+        <div class="field">
+          <div class="field-label">Set</div>
+          <div class="field-control">
+            <select>
+              <option>3-arrows (colored)</option>
+              <option>3-traffic-lights</option>
+              <option>5-quarters</option>
+              <option>(none)</option>
+            </select>
+            <span class="mode-toggle">literal</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="fp-footer">
+      <button class="btn">Reset to inherited</button>
+      <button class="btn primary">Apply</button>
+    </div>
+  </div>
+
+  <div class="status">
+    <div class="calc-state">Format meta · 3 computed properties · live preview updates with value</div>
+    <div class="spacer"></div>
+    <div><kbd>fx</kbd> toggle literal/computed · <kbd>Ctrl+S</kbd> apply · <kbd>Esc</kbd> close</div>
+  </div>
+
+</div>
+</body>
+</html>
