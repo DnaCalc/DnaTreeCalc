@@ -23,6 +23,52 @@
       "note": "My and My.Region were not defined names, so they become #NAME?-producing stubs; the formula lives on the leaf."
     },
     {
+      "id": "imp-dotted-unroll-existing-prefix",
+      "name": "dotted workbook name preserves a real prefix defined name",
+      "spec": "§10.1, §10.2",
+      "kind": "import",
+      "excel": {
+        "defined_names": [
+          { "name": "My", "scope": "workbook", "formula": "=10" },
+          { "name": "My.Region.Sales", "scope": "workbook", "formula": "=100" }
+        ]
+      },
+      "expect": {
+        "nodes": [
+          { "node_id": "My", "formula": "=10", "stub": false },
+          { "node_id": "My.Region", "formula": "#NAME?", "stub": true },
+          { "node_id": "My.Region.Sales", "formula": "=100", "stub": false }
+        ]
+      },
+      "note": "Only missing prefixes become stubs; existing prefix names keep their imported formulas."
+    },
+    {
+      "id": "imp-sheet-workbook-scope-collision",
+      "name": "sheet-scoped name and workbook-scoped name coexist",
+      "spec": "§10.1, §10.3",
+      "kind": "import",
+      "excel": {
+        "sheets": ["Sheet1", "Sheet2"],
+        "defined_names": [
+          { "name": "Foo", "scope": "workbook", "formula": "=1" },
+          { "name": "Foo", "scope": { "sheet": "Sheet1" }, "formula": "=2" },
+          { "name": "UsesFoo", "scope": { "sheet": "Sheet1" }, "formula": "=Foo" },
+          { "name": "UsesFoo", "scope": { "sheet": "Sheet2" }, "formula": "=Foo" }
+        ]
+      },
+      "expect": {
+        "nodes": [
+          { "node_id": "Foo", "formula": "=1", "stub": false },
+          { "node_id": "Sheet1", "formula": "", "stub": false },
+          { "node_id": "Sheet1.Foo", "formula": "=2", "stub": false },
+          { "node_id": "Sheet1.UsesFoo", "formula": "=Foo", "stub": false },
+          { "node_id": "Sheet2", "formula": "", "stub": false },
+          { "node_id": "Sheet2.UsesFoo", "formula": "=Foo", "stub": false }
+        ]
+      },
+      "note": "Sheet1.UsesFoo resolves bare Foo locally to Sheet1.Foo; Sheet2.UsesFoo falls back to the workbook-scoped Foo."
+    },
+    {
       "id": "imp-sheet-node",
       "name": "a sheet becomes a first-level node",
       "spec": "§10.1",
@@ -105,7 +151,7 @@
     {
       "id": "imp-cross-workbook-alias",
       "name": "cross-workbook reference registers a workspace alias",
-      "spec": "§10.4",
+      "spec": "§10.5",
       "kind": "import",
       "excel": {
         "defined_names": [
@@ -120,12 +166,12 @@
           { "alias": "Other.xlsx", "kind": "workspace" }
         ]
       },
-      "note": "[Other.xlsx] is registered as a workspace alias; the formula text is left intact (§10.4)."
+      "note": "[Other.xlsx] is registered as a workspace alias; the formula text is left intact (§10.5)."
     },
     {
       "id": "imp-grid-function-out-of-scope",
       "name": "grid-position functions have no defined-name analog",
-      "spec": "§10.5",
+      "spec": "§10.6",
       "kind": "import",
       "excel": {
         "defined_names": [
@@ -134,13 +180,13 @@
       },
       "expect": {
         "outcome": "eval-error",
-        "reason": "OFFSET is a grid-position function with no defined-name analog; it errors at evaluation (§10.5)"
+        "reason": "OFFSET is a grid-position function with no defined-name analog; it errors at evaluation (§10.6)"
       }
     },
     {
       "id": "imp-dynamic-indirect-out-of-scope",
       "name": "dynamic-string INDIRECT building grid refs is out of scope",
-      "spec": "§10.5",
+      "spec": "§10.6",
       "kind": "import",
       "excel": {
         "defined_names": [
@@ -149,7 +195,7 @@
       },
       "expect": {
         "outcome": "out-of-scope",
-        "reason": "dynamic-string INDIRECT builds A1-style cell refs at runtime; grid usage is excluded by the no-grid constraint (§10.5)"
+        "reason": "dynamic-string INDIRECT builds A1-style cell refs at runtime; grid usage is excluded by the no-grid constraint (§10.6)"
       }
     }
   ]

@@ -39,7 +39,7 @@ Excel-anchored and "never reimplemented here."
 - Operator **cardinality** (single vs. set — §3.5b).
 - **Capability-profile gating** — `treecalc-v1` accepts / `strict-excel` rejects (§4).
 - **Meta-node invisibility** to resolution and positional operators (§2, §6 item 9).
-- **Import mapping** — Excel defined-names → tree + stub policy (§10); export round-trip rules (§10.7).
+- **Import mapping** — Excel defined-names → tree + stub policy (§10); export round-trip rules (§10.8).
 - **Whole-workspace value-equivalence vs. Excel** — fixtures here; *executed* via the Excel-anchor tier, not by local re-evaluation.
 
 **Belongs in OxCalc / OxFml / OxFunc** (useful, but NOT in this repo):

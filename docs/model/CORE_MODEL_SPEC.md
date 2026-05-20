@@ -434,9 +434,11 @@ DNA TreeCalc imports Excel workbooks restricted to **sheets and defined names** 
 
 **Dots in Excel names are interpreted as path separators**, not as literal characters. The TreeCalc tree gains the hierarchy the dots suggested. A defined name `My.Region.Sales = 100` creates three nodes (`My`, `My.Region`, `My.Region.Sales`); the formula lives on the leaf.
 
+Unrolling is incremental within the Excel name's scope. If a prefix already exists as a real defined name, it keeps its formula/value and is not replaced by a stub. Only missing prefixes become structural stubs. Excel's own uniqueness rules apply within each scope, so the importer treats workbook-scoped and sheet-scoped names as separate scope roots.
+
 ### 10.2 Intermediate stub nodes
 
-When Excel had `My.Region.Sales` but no `My.Region` and no `My` defined names, the unroll creates structural intermediates with no original Excel formula. The import policy gives these intermediates an explicit `#NAME?`-producing formula so that references to them match Excel's "no such name" behavior:
+When Excel has a dotted name whose prefixes are not themselves defined names, the unroll creates structural intermediates with no original Excel formula. The import policy gives these intermediates an explicit `#NAME?`-producing formula so that references to them match Excel's "no such name" behavior:
 
 ```
 TreeCalc post-import:
@@ -446,6 +448,15 @@ TreeCalc post-import:
 ```
 
 This matches Excel's `=My` → `#NAME?` when no defined name `My` exists. Do not use `NA()` for these stubs: `NA()` produces `#N/A`, which is a different Excel error. The exact representation can be a literal error value or a host-provided formula/error producer, but the observable result must be `#NAME?`. The user can later replace the stub with a real formula/value to make the intermediate node meaningful (TreeCalc allows non-leaf nodes to have formulas).
+
+If Excel also has `My = 10`, then only the missing `My.Region` prefix is stubbed:
+
+```
+TreeCalc post-import:
+  .My              formula: =10 (real imported defined name)
+  .My.Region       value/formula result: #NAME? (explicit missing-name error)
+  .My.Region.Sales formula: <the Excel formula>
+```
 
 ### 10.3 Formula syntax compatibility
 
@@ -462,9 +473,22 @@ Excel formulas in defined-name-only workbooks import without source-text rewriti
 | `=LAMBDA(x, x * My.Rate)` | unchanged |
 | `=INDIRECT("Sheet1!Foo")` | INDIRECT parses its string argument; `!`-after-first-segment is honored inside the string too, so the static-string case works without modification |
 
-Scope semantics align: Excel's "sheet-scope wins, fall back to workbook-scope" maps onto TreeCalc's walk-up traversal of `caller's children → ancestor's children → root's children`. A defined name `Foo` workbook-scoped and `Foo` sheet-scoped on Sheet1 resolves correctly from each context.
+Scope semantics align: Excel's "sheet-scope wins, fall back to workbook-scope" maps onto TreeCalc's walk-up traversal of `caller's children → ancestor's children → root's children`. A workbook-scoped `Foo` imports as root child `Foo`; a Sheet1-scoped `Foo` imports as `Sheet1.Foo`. A formula evaluated under `Sheet1` resolves bare `Foo` to `Sheet1.Foo`; a formula evaluated under another sheet resolves bare `Foo` to that sheet's local `Foo` if present, otherwise the workbook-scoped root `Foo`.
 
-### 10.4 Cross-workbook reference handling
+### 10.4 Import preview and manifest
+
+The importer emits a preview/manifest alongside the imported workspace. This is bookkeeping, not a second semantic model. For each Excel defined name and each created structural node, the manifest records:
+
+- source workbook and sheet scope (`workbook` or the sheet name);
+- original Excel name and formula source text;
+- TreeCalc path and node id;
+- whether the node was created as a stub;
+- cross-workbook aliases that were registered or still need path confirmation;
+- import warnings/errors such as grid-position functions, dynamic-grid `INDIRECT`, hidden internals, or name/scope collisions discovered in the source.
+
+The preview uses this manifest to show the hierarchy that will be created, the `#NAME?` stubs, and any aliases or unsupported surfaces before the user accepts the import.
+
+### 10.5 Cross-workbook reference handling
 
 Excel cross-workbook syntax `[Other.xlsx]Sheet1!Foo` maps to TreeCalc's cross-workspace bracket `[Other.xlsx]Sheet1.Foo` (with `!`-after-sheet allowed). The importer:
 
@@ -472,7 +496,7 @@ Excel cross-workbook syntax `[Other.xlsx]Sheet1!Foo` maps to TreeCalc's cross-wo
 2. Resolves the alias to a workspace file path (user may need to confirm the location).
 3. Leaves the formula's `[Other.xlsx]` text intact — the workspace alias has that name.
 
-### 10.5 What doesn't import cleanly
+### 10.6 What doesn't import cleanly
 
 Beyond the no-grid constraint (which excludes A1-style refs, ranges, Tables, multi-cell array formulas), three categories require attention:
 
@@ -482,13 +506,13 @@ Beyond the no-grid constraint (which excludes A1-style refs, ranges, Tables, mul
 
 3. **Hidden Excel internals** — VBA code, named styles, conditional-formatting rules tied to cells, drawing objects. Out of scope by the no-grid constraint.
 
-### 10.6 Trade-off: unroll changes rename semantics
+### 10.7 Trade-off: unroll changes rename semantics
 
 Excel treats `My.Region.Sales` as a single literal identifier; renaming a hypothetical `My` defined name doesn't propagate to `My.Region.Sales`. TreeCalc treats it as a path; renaming the `My` node propagates to all descendants (with the standard rename-propagation prompt).
 
 For the typical case where dotted names were already meant hierarchically, this matches user intent. For pathological cases where dotted names were flat identifiers, renames behave differently than Excel. Import preserves the user's data; only the editability characteristics shift.
 
-### 10.7 Bidirectional considerations
+### 10.8 Bidirectional considerations
 
 Saving a TreeCalc workspace back as Excel (the reverse direction) requires flattening:
 - Each tree path becomes a workbook-scoped defined name with dots in the identifier (e.g., `My.Region.Sales`).

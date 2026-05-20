@@ -325,7 +325,7 @@ Ctrl+. opens a command palette with fuzzy-search over all available commands. Ea
 - **Open workspace** — load from a `.dnatree` (or whatever extension) file.
 - **Save / Save As** — persist to disk.
 - **Import Excel** — bring in an Excel workbook restricted to sheets + defined names (per spec §10). Shows a preview of the import mapping; lets user adjust before confirming.
-- **Export to Excel** — flatten back to Excel defined names (with the bidirectional fidelity caveats per spec §10.7).
+- **Export to Excel** — flatten back to Excel defined names (with the bidirectional fidelity caveats per spec §10.8).
 - **Settings** — UI preferences, capability profile, autosave interval, font size, etc.
 
 ---

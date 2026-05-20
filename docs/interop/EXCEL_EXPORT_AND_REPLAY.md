@@ -201,6 +201,8 @@ This is TreeCalc's core contribution. It lives in TreeCalc (`services/excel_expo
 
 **Strategy 1 — defined-names primary.** Each node with non-empty content (a `=`-formula or a literal constant) becomes a `DefinedNameSpec` whose `refers_to` is the baked formula. No cells used. This is the default.
 
+Empty TreeCalc nodes are omitted unless an exported formula can dereference them. When an empty node must be an Excel target, the exporter grid-promotes that node to a blank cell and aliases the cell with a defined name, recording `referenced_empty` in the manifest. This is a pragmatic edge policy: empty string still exports as `=""`, while TreeCalc `Empty` gets the closest Excel blank-cell carrier and any semantic drift is visible in replay.
+
 **Strategy 2 — grid-cell promotion** for nodes that need it. A promoted node's value lands in cells (`CellSpec`s on a sheet); a `DefinedNameSpec` aliases the cell range. Triggers:
 
 1. **Table-typed nodes** → `TableSpec` (grid range + named Excel Table).
@@ -220,7 +222,7 @@ Every TreeCalc relative reference resolves to an absolute name at export time, u
 | `^.Margin` | `Accounts.2026.Q2.Income.Margin` |
 | `^^.Total` | `Accounts.2026.Q2.Total` |
 | `@PREV.Net` (from Q2) | `Accounts.2026.Q1.Net` |
-| `@PREV.Net` (from Q1) | `#REF!` / `NA()` (no previous sibling) |
+| `@PREV.Net` (from Q1) | `#REF!` (no previous sibling) |
 | `[].Foo` | `Foo` (workbook-scope) |
 | `[ws]Branch.Item` | `[ws.xlsx]Branch.Item` (external link) |
 | `Q1.*` in `SUM(...)` | static-expand: `SUM(Q1.Income, Q1.Expenses, Q1.Net, Q1.Variance)` |
@@ -228,14 +230,16 @@ Every TreeCalc relative reference resolves to an absolute name at export time, u
 
 The same source text in different positions becomes different baked formulas. Templates expand to instances; each instance bakes its relatives differently.
 
+Static expansion preserves TreeCalc collection semantics where Excel can carry them: stable child order is preserved, and explicit reference-array duplicates stay duplicated. Empty collections expand only in whitelisted contexts whose Excel behavior is known and acceptable (for example, a variadic aggregate that accepts no arguments); otherwise the node is marked unmapped for export. If an expanded formula would exceed Excel's formula-length limits, the exporter first tries a helper grid promotion; if that cannot preserve the intended value, it blocks that node with a manifest warning.
+
 ### 4.3 Name-mangling pass
 
-Excel defined names disallow spaces, hyphens, leading digits, `[`, `]`, `#`, `@`, `'`, `\`, and others. TreeCalc bracket-escaped names allow all of these. The converter:
+Excel defined-name eligibility follows Excel's rules: the first character must be a letter, underscore, or backslash; remaining characters may include letters, numbers, periods, and underscores; spaces are not valid; names must not look like cell references such as `A1` or `R1C1`; `C`, `c`, `R`, and `r` are reserved shorthand; names are case-insensitively unique within scope; and names are limited to 255 characters. TreeCalc bracket-escaped names allow a wider set, and TreeCalc literal-dot segments collide with the export convention that flattens paths with dots. The converter:
 
-1. Detects names with disallowed characters.
-2. Applies a deterministic transform (spaces → `_`, leading digit → `_NNNN` prefix, other disallowed → `_`).
-3. Records the mapping (`TreeCalc name → Excel name`) in the export manifest.
-4. Suffixes on collision.
+1. Detects TreeCalc paths or segments that are not valid Excel names, would parse as cell references, would collide case-insensitively, or would lose literal-dot structure.
+2. Applies a deterministic transform (spaces → `_`, leading digit → `_NNNN` prefix, other disallowed → `_`, literal-dot segment escape where needed).
+3. Records the mapping (`TreeCalc path/segment → Excel scoped name`) in the export manifest.
+4. Suffixes on collision within the affected Excel scope.
 5. Emits a warning per transformation.
 
 ### 4.4 Table layout
@@ -254,20 +258,54 @@ A sidecar produced by TreeCalc (NOT by OxXlPlay or OxReplay), recording per node
 ```rust
 pub struct ExportManifest {
     pub entries: Vec<ExportEntry>,
-    pub name_mangling: Vec<(TreeCalcName, ExcelName)>,
+    pub name_mangling: Vec<NameMapping>,
     pub set_expansions: Vec<SetExpansionRecord>,    // where .* / ** were statically expanded
     pub unmapped: Vec<UnmappedNode>,                // nodes that couldn't export (with reason)
+    pub external_workbooks: Vec<ExternalWorkbookExport>,
 }
 
 pub struct ExportEntry {
     pub node_id: TreeNodeId,
     pub tree_path: String,
-    pub excel_target: ExcelTarget,                  // DefinedName(name) | Cell(sheet, addr) | Table(name)
+    pub excel_target: ExcelTarget,                  // structured target: scoped name | range | table
+    pub canonical_locator: String,                  // replay pairing key derived from excel_target
     pub treecalc_computed_value: EvalValue,         // what TreeCalc computed (the comparison left side)
+}
+
+pub struct NameMapping {
+    pub tree_path: String,
+    pub excel_scope: ExcelNameScope,                // workbook | sheet
+    pub excel_name: String,
+    pub reason: String,                             // invalid char | cell-ref shape | collision | literal dot
+}
+
+pub struct ExternalWorkbookExport {
+    pub workspace_alias: String,
+    pub workspace_id: WorkspaceId,
+    pub workbook_path: String,
 }
 ```
 
 The manifest is the bridge for: (a) re-import round-trip, (b) replay-divergence triage (which Excel target maps to which node), (c) re-export stability checking.
+
+`canonical_locator` is a serialization key, not an architectural string boundary. TreeCalc and OxXlPlay should share structured target types where that is the cleanest code placement, then render the same canonical locator for OxReplay bundles:
+
+- workbook-scoped name: `name:workbook:<excel_name>`
+- sheet-scoped name: `name:sheet:<sheet_name>:<excel_name>`
+- cell or range: `range:<sheet_name>!<absolute_a1>`
+- table: `table:<table_name>`
+- table column: `table-column:<table_name>[<column_name>]`
+
+### 4.6 Cross-workspace export graph
+
+Cross-workspace references produce a small export graph. For W009, the exporter uses a simple deterministic policy:
+
+1. Build the dependency graph from bound cross-workspace references.
+2. Export dependency workbooks before dependents.
+3. Choose stable workbook filenames from workspace aliases, with deterministic suffixes on collision.
+4. Record alias → workbook path in `external_workbooks`.
+5. Ask OxXlPlay to open/provision dependency workbooks before constructing the dependent workbook.
+6. Block cyclic cross-workspace export graphs for the initial implementation, with a clear manifest error. Cycles can be revisited if a real workbook family needs them.
 
 ---
 
@@ -296,7 +334,7 @@ For each node, TreeCalc emits comparison views keyed by the node's Excel target 
 - `execution_outcome` — for nodes that error, the typed outcome (`#REF!`, `#VALUE!`, etc.).
 - Optionally `formatting_view` / `conditional_formatting_view` if TreeCalc preserves the format metadata (these come from OxFml's format machinery, which TreeCalc reuses).
 
-The view key must match the OxXlPlay-side bundle's locator so OxReplay can pair them. The shared key is the Excel target (defined-name or sheet!cell) recorded in the export manifest.
+The view key must match the OxXlPlay-side bundle's locator so OxReplay can pair them. The shared key is the manifest's `canonical_locator`, rendered from the structured Excel target after mangling, promotion, and scope selection.
 
 ---
 
@@ -318,7 +356,7 @@ The substantial sibling-repo work. These are capabilities OxXlPlay does not have
 
 A handover doc to OxXlPlay should request these.
 
-The `WorkbookConstructionSpec` type itself lives in OxXlPlay (it's the Excel-construction input contract). TreeCalc imports it as a direct dependency.
+The `WorkbookConstructionSpec` type itself lives in OxXlPlay by default because it describes Excel construction, but this is a code-placement guideline rather than a hard process/string boundary. If a shared crate or adjacent placement makes the implementation cleaner, use that, while keeping Excel COM execution in OxXlPlay and TreeCalc-specific conversion knowledge in TreeCalc.
 
 ---
 
@@ -468,7 +506,7 @@ This is a handover item to OxXlPlay alongside the workbook-construction capabili
 - **`[]` standalone (root reference)** — no Excel analog; skip with warning.
 - **INDIRECT with dynamic strings** — fragile in both directions.
 - **Display-faithful comparison** — blocked on the same upstream gap OneCalc flagged (OxFml publication + OxXlPlay observation + OxReplay view families). Value comparison works now; format comparison waits on the shared fix.
-- **Cross-workspace bundling** — each referenced workspace needs its own export; path coordination required.
+- **Cross-workspace bundling** — W009 has a deterministic export-graph policy for acyclic references; cyclic export graphs are blocked initially and can be revisited if a real workbook family requires them.
 
 ---
 
