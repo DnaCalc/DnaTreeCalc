@@ -616,9 +616,9 @@ USER  TEMPLATE-EDITOR SKIN     DISPATCHER     HOST  TEMPLATE-SYNC SERVICE  BRIDG
   |--save--->|                       |          |              |              |          |
   |          |--dispatch.send(EditTemplateStructure{...})       |              |          |
   |          |                       |--Intent->|              |              |          |
-  |          |                       |          |--diff old vs new template structure     |
+  |          |                       |          |--diff current instance vs template      |
   |          |                       |          |--for each instance:                     |
-  |          |                       |          |    plan structural edits (skip overrides)
+  |          |                       |          |    use mapping/tags; plan structural edits
   |          |                       |          |              |              |          |
   |          |                       |          |--invoke------>|              |          |
   |          |                       |          |  template-sync-service       |          |
@@ -635,7 +635,7 @@ USER  TEMPLATE-EDITOR SKIN     DISPATCHER     HOST  TEMPLATE-SYNC SERVICE  BRIDG
   |          |--rerender (instance badges update)              |              |          |
 ```
 
-Multi-step orchestration. The template-editor skin sends one logical intent; the host's template-sync service expands it; the dispatcher batches the resulting edits; the bridge applies them; one signal fire propagates to all subscribers.
+Multi-step orchestration. The template-editor skin sends one logical intent; the host's template-sync service uses the stored template mapping/tags to diff instances on demand, expands accepted changes into ordinary structural edits, the dispatcher batches them, the bridge applies them, and one signal fire propagates to all subscribers.
 
 ### Trace E: External RTD value pushes asynchronously
 

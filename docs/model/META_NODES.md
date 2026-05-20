@@ -32,7 +32,7 @@ Effective-meta status is computed as `self.is_meta OR any-ancestor.is_meta`. The
 
 ## Canonical uses
 
-**Templates.** A template is a meta-flagged subtree. Its formulas are stored as text patterns; the engine never binds them. The host's instantiation operation reads the template's structure, generates regular (non-meta) content nodes elsewhere with the same shape and formula text, and those instances get bound and evaluated normally.
+**Templates.** A template is a meta-flagged subtree. Its formulas are stored as text patterns; the engine never binds them. The host's instantiation operation reads the template's structure, generates regular (non-meta) content nodes elsewhere with the same shape and formula text, and those instances get bound and evaluated normally. Copied content nodes get `is_meta = false`; template-internal meta children that should remain host data on the rollout, such as `Format`, stay meta. Rollouts may also carry hidden meta-node bookkeeping tags for template id/version/source-node mapping.
 
 **Formatting.** A content node `Foo` may have a child `Format` with `is_meta = true`. The Format meta-node can have its own internal structure (children for `NumberFormat`, `Font`, `Fill`, etc.) — all effectively meta because their ancestor is meta. The host reads format data when rendering. Formulas cannot reach `Foo.Format` from any regular formula. Format-inheritance walks (workspace-level format defaults flowing into sub-trees) are host-level operations. Older notes and mockups sometimes used a double-colon display shorthand for this; treat that shorthand as retired, not syntax or a namespace.
 
@@ -62,10 +62,9 @@ Storage and filter strategy are OxCalc's choice — the spec mandates behavior, 
 
 ## Open questions
 
-1. **Default-attribute propagation when copying.** Instantiation copies a template's structure to a regular position. Each copied node gets `is_meta = false` (since it's being placed in the regular tree). Meta-children of template-internal nodes (like format meta-children) preserve their `is_meta = true` so they remain host-data on the instance. Worth being explicit about in the instantiation operation.
-2. **Reverse: can a regular node be retroactively flagged meta?** Yes, in principle — flipping `is_meta` to true takes the node out of the calculation surface. Any references to it from regular formulas re-bind to `Unresolved`. Standard rebind-on-structural-edit semantics apply.
-3. **Role taxonomy.** A free-form `role` string (or closed enum) per meta-node could help the host render them differently (template icon, format gear, draft pencil, etc.). Not engine-relevant; pure host concern. Defer until UI work.
-4. **Computed values inside meta-nodes.** Currently impossible — meta-nodes' formulas are not evaluated. If we later want computed format (e.g., color depending on data), the host can invoke the engine on a format expression at render time without putting it in the live dependency graph. That's a future host-side capability; the engine remains unaware.
+1. **Reverse: can a regular node be retroactively flagged meta?** Yes, in principle — flipping `is_meta` to true takes the node out of the calculation surface. Any references to it from regular formulas re-bind to `Unresolved`. Standard rebind-on-structural-edit semantics apply.
+2. **Role taxonomy.** A free-form `role` string (or closed enum) per meta-node could help the host render them differently (template icon, format gear, draft pencil, etc.). Not engine-relevant; pure host concern. Defer until UI work.
+3. **Computed values inside meta-nodes.** Currently impossible — meta-nodes' formulas are not evaluated. If we later want computed format (e.g., color depending on data), the host can invoke the engine on a format expression at render time without putting it in the live dependency graph. That's a future host-side capability; the engine remains unaware.
 
 ## What this concept does NOT do (intentional)
 

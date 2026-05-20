@@ -396,7 +396,8 @@ A `.dnatree` file is a JSON document (or msgpack for size; decide on a flag). Sc
     {
       "id": "templates.quarter_shape",
       "root_node_id": "<TreeNodeId>",
-      "version": 7
+      "version": 7,
+      "source_node_ids": ["<TemplateNodeId>", "..."]
     }
   ],
   "instance_links": [
@@ -404,7 +405,9 @@ A `.dnatree` file is a JSON document (or msgpack for size; decide on a flag). Sc
       "root_node_id": "<TreeNodeId>",
       "template_id": "templates.quarter_shape",
       "bound_version": 7,
-      "overrides": [["Income", "Sales"], ...]
+      "node_map": [
+        { "template_node_id": "<TemplateNodeId>", "instance_node_id": "<TreeNodeId>" }
+      ]
     }
   ],
   "ui_layout": {
@@ -508,7 +511,7 @@ Auto-backup to a sibling `.dnatree.bak` file on each save. Configurable retentio
 - Renders the template's structure as a sub-tree outline.
 - Same editing affordances as the main tree outline, scoped to the template.
 - Side panel lists instances; click to navigate.
-- "Sync" action triggers the template-sync service.
+- "Sync" / "Validate" action triggers the template-sync service. The service uses the persisted template id mapping plus hidden rollout meta-node tags to diff the current instance against the current template on demand; it does not maintain detailed live template-state records while the user edits an instance.
 
 ### 6.11 Dependency map (`dependency_map.rs`)
 
@@ -650,7 +653,7 @@ A natural build order based on dependencies:
 4. **Phase 3 — Editing breadth.** Multi-select, move, drag-and-drop. Rename-propagation prompt. Search.
 5. **Phase 4 — Layout alternatives.** Outline-table view. Notebook view. Adaptive layout selection.
 6. **Phase 5 — Meta-nodes and formatting.** is_meta flag plumbing. Format editor. Format inheritance walking.
-7. **Phase 6 — Templates.** Template editor. Instance link tracking. Template sync (initially N individual edits; later transactional once OxCalc supports it).
+7. **Phase 6 — Templates.** Template editor. Instance link tracking, hidden rollout tags, and on-demand validate/sync (initially N individual edits; later transactional once OxCalc supports it).
 8. **Phase 7 — Tables.** Table editor for Table-valued nodes. Structured-reference syntax in the editor.
 9. **Phase 8 — Canvas.** Free-canvas layout. Connection rendering. Drag-positioning.
 10. **Phase 9 — Excel I/O.** Import per spec §10. Export with bidirectional fidelity caveats. Cross-workspace alias management.

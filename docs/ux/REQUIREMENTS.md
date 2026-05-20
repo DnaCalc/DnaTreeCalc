@@ -179,7 +179,7 @@ When the user opens a template (a meta-flagged subtree), the template editor app
 - Editing operations on the template's nodes: insert, rename, move, delete, edit formula.
 - Per-template metadata: name, description, version (host-bumped).
 - Instance list: which workspace positions are currently instances of this template; click to navigate.
-- "Sync" action: push template changes to non-diverged instances.
+- "Validate / Sync" action: compare instances against the current template using the stored template-id mapping, then apply accepted changes.
 - "Fit-check" (future) — given a selected subtree elsewhere, check whether it could be adopted as an instance.
 
 ### 2.10 Diagnostics panel
@@ -431,9 +431,9 @@ A formula `=[reports]Q1.Revenue` references another workspace. UX requirements:
 
 - An instance subtree is visually marked in the tree outline (badge, slightly different background, icon).
 - Hovering an instance shows "Instance of template `QuarterShape` v7."
-- Per-leaf override status is visible (e.g., a small dot on overridden leaves).
-- Right-click on an instance offers: "Show template," "Sync from template now," "Detach from template," "Edit override behavior."
-- Editing the template opens its dedicated editor (§2.9); on save, sync triggers automatically (with optional confirm prompt for breaking changes).
+- Template-link status is visible: current mapping, stale/needs-validation, detached, or manually changed since the last validation.
+- Right-click on an instance offers: "Show template," "Validate against template," "Sync from template now," and "Detach from template."
+- Editing the template opens its dedicated editor (§2.9); on save, the template version advances and the UI can offer a validate/sync action for existing instances.
 
 ### 5.5 Formatting
 

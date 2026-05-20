@@ -341,18 +341,23 @@ These mirror Excel's *File ▸ Options ▸ Formulas ▸ Enable iterative calcula
 
 Templates are host-level reusable subtree definitions instantiated at one or more positions in the workspace. They are a pure DNA TreeCalc affordance — OxCalc gains no template concept; the engine sees ordinary structural edits.
 
-**Template storage.** A template lives as a meta-flagged subtree in the workspace tree — a node with `is_meta = true` and the descendants that form the template's structural pattern. Templates can be placed at any tree position (workspace root, sheet level, deeper) — host convention typically groups them under a `Templates` container at some level. The template's nodes and their descendants are invisible to formulas; their formulas are stored as text but not bound or evaluated. See [`META_NODES.md`](META_NODES.md) for the meta-node model.
+**Template storage and registry.** A template lives as a meta-flagged subtree in the workspace tree — a node with `is_meta = true` and the descendants that form the template's structural pattern. Templates can be placed at any tree position (workspace root, sheet level, deeper) — host convention typically groups them under a `Templates` container at some level. The template's nodes and their descendants are invisible to formulas; their formulas are stored as text but not bound or evaluated. See [`META_NODES.md`](META_NODES.md) for the meta-node model.
 
-**Instances.** An instance is a subtree whose structure was generated from a template. The host tracks the link: instance root path, template id, bound template version, and the divergence record.
+The host also keeps template bookkeeping: template id, template root node id, version, child/source-node ids, and instance counts/links. This registry is not a second copy of the template body; it is the host's index over the meta-subtree and its children so the UI can list templates, find rollouts, and validate mappings cheaply.
 
-**Divergence tracking.** Per-leaf override is the granularity. When a user edits an instance leaf's formula, the host records that node-path as diverged from the template. Future template-source edits to that leaf are skipped for this instance. Instances may also acquire structural divergence — added children, removed children, modified inner structure — and these are recorded explicitly in the instance metadata. The divergence data structure is shaped to support a future "fit-check" operation: given an arbitrary subtree, does it match a template's shape closely enough to be retroactively adopted as an instance?
+**Instances and rollout tags.** An instance is a subtree whose structure was generated from a template. The host tracks the link: instance root id/path, template id, bound template version, and a simple template-node-id to instance-node-id mapping. The rollout may also carry hidden meta-node children on the instance root and/or copied nodes with the same bookkeeping values (`template_id`, `template_version`, `template_node_id`). These tags are host data only; formulas cannot see them. They make it cheap to revalidate an instance, open the source template, or diff the current subtree against the template later.
 
-**Sync.** Editing a template:
-1. Host computes the structural diff between previous and new template versions.
-2. For each instance whose bound version was the previous version: host applies the diff via ordinary OxCalc structural-edit operations, skipping paths that match the instance's divergence record.
-3. Instance bound-version advances to the new template version.
+**Instance editing and revalidation.** Post-rollout editing is deliberately simple. An instance is an ordinary subtree: users can edit formulas, names, children, and formats without the host maintaining detailed live template-state records. When the user asks to sync, validate, or compare, the host uses the saved template id mapping and hidden tags to line the instance up against the current template, compute a diff at that moment, and present/apply ordinary structural edits as needed. If the mapping is missing or too stale, the instance can be reported as detached or needing manual reconciliation. Do not build complex always-on template-specific edit tracking for v1.
+
+**Sync.** Editing a template increments the template version. A sync request:
+1. Loads the template subtree and the instance's template-node mapping.
+2. Computes a current diff between template and instance.
+3. Applies any accepted changes via ordinary OxCalc structural-edit operations.
+4. Updates the instance's bound template version and bookkeeping tags.
 
 When OxCalc gains transactional batch editing (see §6.8), each per-instance sync becomes one transaction; until then, sync is N individual edits with the host's undo log grouping them visually.
+
+**Instantiation meta-copy rule.** Instantiation copies the template's regular structural pattern into a regular position: copied content nodes get `is_meta = false`. Template-internal meta children that represent host data on the copied nodes, such as `Format`, remain meta on the instance. The canonical examples in [`META_NODES.md`](META_NODES.md) guide this distinction.
 
 **Parameters and cross-workspace templates** are not in scope. Walk-up scope handles most cross-subtree context needs (an instance formula can reach `^^.[Year]` to find its enclosing year by tree position). Cross-workspace templates would require external template version tracking which is more machinery than the value justifies right now.
 
@@ -360,10 +365,10 @@ When OxCalc gains transactional batch editing (see §6.8), each per-instance syn
 
 - **Promote to template** — convert an existing subtree into a template definition; replace its original location with an instance link.
 - **Instantiate** — materialize template structure at a path; register the instance link. Bulk variant: instantiate at multiple paths in one user gesture.
-- **Edit template** — modify the template definition; trigger sync to all instances.
-- **Edit instance leaf** — record divergence on that leaf; apply the edit normally.
+- **Edit template** — modify the template definition and bump its version; instances sync when requested or when the UI offers an accepted sync action.
+- **Edit instance** — ordinary structural/formula/format edits on the rollout; later validation/sync computes the diff from the template mapping.
 - **Detach instance** — drop the instance link; subtree becomes independent.
-- **Fit-check** (future) — given an arbitrary subtree, report which templates it could be adopted as an instance of and what divergences would be recorded.
+- **Fit-check** (future) — given an arbitrary subtree, report which templates it could be mapped to and what current diff would result.
 
 ## 8. Structural Editing
 
