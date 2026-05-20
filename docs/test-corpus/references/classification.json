@@ -1,0 +1,25 @@
+{
+  "schema_version": "treecalc-corpus-v1",
+  "theme": "references/classification",
+  "description": "Operator cardinality (single vs set) per the navigation principle (CORE_MODEL_SPEC §3.5b), plus result-kind for the meta-accessor family (§3.5). No operator implicitly searches and picks one; closest/first-match is always explicit FILTER+INDEX composition.",
+  "cases": [
+    { "id": "cls-bare-single", "name": "bare name is single", "spec": "§3.5b", "kind": "classification", "reference": "Margin", "expect": { "cardinality": "single" } },
+    { "id": "cls-descent-single", "name": "descent Foo.Bar is single", "spec": "§3.5b", "kind": "classification", "reference": "Q1.Margin", "expect": { "cardinality": "single" } },
+    { "id": "cls-ws-anchor-single", "name": "workspace-anchored path is single", "spec": "§3.5b", "kind": "classification", "reference": "[]Sheet1.Foo", "expect": { "cardinality": "single" } },
+    { "id": "cls-parent-single", "name": "parent ^ is single", "spec": "§3.5b", "kind": "classification", "reference": "^", "expect": { "cardinality": "single" } },
+    { "id": "cls-ancestor-fixed-single", "name": "fixed-depth ancestor ^^ is single", "spec": "§3.5b", "kind": "classification", "reference": "^^", "expect": { "cardinality": "single" } },
+    { "id": "cls-ws-root-single", "name": "workspace root [] is a single navigation anchor", "spec": "§3.5b", "kind": "classification", "reference": "[]", "expect": { "cardinality": "single", "result_kind": "root-anchor-naked-value-error" } },
+    { "id": "cls-prev-single", "name": "@PREV is single", "spec": "§3.5b", "kind": "classification", "reference": "@PREV", "expect": { "cardinality": "single", "result_kind": "single-ref" } },
+    { "id": "cls-next-single", "name": "@NEXT is single", "spec": "§3.5b", "kind": "classification", "reference": "@NEXT", "expect": { "cardinality": "single", "result_kind": "single-ref" } },
+    { "id": "cls-parent-accessor-single", "name": "@PARENT is single", "spec": "§3.5b", "kind": "classification", "reference": "@PARENT", "expect": { "cardinality": "single", "result_kind": "single-ref" } },
+    { "id": "cls-name-value-text", "name": "@NAME is a text value", "spec": "§3.5", "kind": "classification", "reference": "@NAME", "expect": { "cardinality": "value", "result_kind": "text" } },
+    { "id": "cls-index-value-number", "name": "@INDEX is a 1-based sibling-position number", "spec": "§3.5", "kind": "classification", "reference": "@INDEX", "expect": { "cardinality": "value", "result_kind": "number-1-based-sibling-index" } },
+    { "id": "cls-formula-value-text", "name": "@FORMULA is a text value", "spec": "§3.5", "kind": "classification", "reference": "@FORMULA", "expect": { "cardinality": "value", "result_kind": "text" } },
+    { "id": "cls-children-sugar-set", "name": ".* (children sugar) is a set", "spec": "§3.5b", "kind": "classification", "reference": ".*", "expect": { "cardinality": "set", "result_kind": "ref-set" } },
+    { "id": "cls-children-accessor-set", "name": "@CHILDREN is a set", "spec": "§3.5b", "kind": "classification", "reference": "@CHILDREN", "expect": { "cardinality": "set", "result_kind": "ref-set" } },
+    { "id": "cls-ancestors-set", "name": "@ANCESTORS is a set", "spec": "§3.5b", "kind": "classification", "reference": "@ANCESTORS", "expect": { "cardinality": "set", "result_kind": "ref-set" } },
+    { "id": "cls-preceding-set", "name": "@PRECEDING is a set", "spec": "§3.5b", "kind": "classification", "reference": "@PRECEDING", "expect": { "cardinality": "set", "result_kind": "ref-set" } },
+    { "id": "cls-following-set", "name": "@FOLLOWING is a set", "spec": "§3.5b", "kind": "classification", "reference": "@FOLLOWING", "expect": { "cardinality": "set", "result_kind": "ref-set" } },
+    { "id": "cls-recursive-descent-set", "name": "** (recursive descent) is a set", "spec": "§3.5b, §3.6", "kind": "classification", "reference": "Accounts.**.Margin", "expect": { "cardinality": "set", "result_kind": "ref-set" } }
+  ]
+}

@@ -34,7 +34,7 @@ Effective-meta status is computed as `self.is_meta OR any-ancestor.is_meta`. The
 
 **Templates.** A template is a meta-flagged subtree. Its formulas are stored as text patterns; the engine never binds them. The host's instantiation operation reads the template's structure, generates regular (non-meta) content nodes elsewhere with the same shape and formula text, and those instances get bound and evaluated normally.
 
-**Formatting.** A content node `Foo` may have a child `Format` with `is_meta = true`. The Format meta-node can have its own internal structure (children for `NumberFormat`, `Font`, `Fill`, etc.) — all effectively meta because their ancestor is meta. The host reads format data when rendering. Formulas cannot reach `Foo.Format` from any regular formula. Format-inheritance walks (workspace-level format defaults flowing into sub-trees) are host-level operations.
+**Formatting.** A content node `Foo` may have a child `Format` with `is_meta = true`. The Format meta-node can have its own internal structure (children for `NumberFormat`, `Font`, `Fill`, etc.) — all effectively meta because their ancestor is meta. The host reads format data when rendering. Formulas cannot reach `Foo.Format` from any regular formula. Format-inheritance walks (workspace-level format defaults flowing into sub-trees) are host-level operations. Older notes and mockups sometimes used a double-colon display shorthand for this; treat that shorthand as retired, not syntax or a namespace.
 
 **Future host-data uses** that fit the same pattern: workspace configuration (alias manifest, UI preferences), reusable named-lambda library, annotations, draft formulas, test scenarios. All addressed by direct host access, not formula syntax.
 
@@ -70,6 +70,7 @@ Storage and filter strategy are OxCalc's choice — the spec mandates behavior, 
 ## What this concept does NOT do (intentional)
 
 - It does not introduce `::` or any other meta-syntax in the formula language.
+- It does not reserve a parallel double-colon namespace for format, template, or skin data. Those are ordinary meta-flagged nodes by convention: `Format`, `Templates`, `skins`, etc.
 - It does not require two child collections per node — there's just one child list, with a flag per child.
 - It does not introduce a "parallel meta-system" for cross-meta references, meta-meta typing, or any richer machinery.
 - It does not require OxCalc to model "meta-tree" as a distinct concept beyond honoring the flag.

@@ -19,10 +19,10 @@ The OxCalc substrate uses tree-node-id semantics (not coordinates) and exposes t
 
 A workspace is a tree of named nodes. Each node has:
 
-- A **name** (case-insensitive at lookup, display preserves user casing).
-- A **position** among its siblings (`sibling_index`, user-reorderable).
-- A **formula** — the node's single content field (OxFml source text). Per Excel's cell-entry convention, a leading `=` introduces a formula; any other entry is a **literal constant** that OxFml parses and resolves to a typed value (§6). A leading apostrophe (`'`) forces text. There is no separate "literal value" content kind; a constant (including an array literal) is just a `formula` without a leading `=`.
-- A computed **value** (`EvalValue` — scalar, array, error, reference, lambda).
+- A **name** (case-insensitive at lookup, display preserves user casing). Sibling names are unique case-insensitively; a node cannot have two regular children, two meta children, or one regular and one meta child whose names differ only by case.
+- A **position** among its siblings (`sibling_index`, user-reorderable). Sibling order is stable, persisted, and user-visible; it is the semantic order used by ordered reference collections.
+- A **formula** — the node's single content field (OxFml source text). Per Excel's cell-entry convention, a leading `=` introduces a formula; an empty string is an empty node; any other entry is a **literal constant** that OxFml parses and resolves to a typed value (§6). A leading apostrophe (`'`) forces text. There is no separate "literal value" content kind; a constant (including an array literal) is just a `formula` without a leading `=`.
+- A computed / observable **value** (`Empty` or `EvalValue` — scalar, array, error, reference, lambda).
 - A **format** (full per-node formatting, DnaOneCalc-style: number format, font, fill, conditional format rules, data bars, icon sets).
 - Zero or more **child nodes**.
 
@@ -55,21 +55,21 @@ Three anchor sigils, each with one role:
 
 - `^` (and stacks `^^`, `^^^`, ...) — parent / fixed-depth ancestor of the caller. Single reference.
 - `[<workspace>]` — workspace selector. Empty brackets `[]` = the current workspace; named or pathed brackets `[ws]` / `['C:\...']` = another workspace. Brackets always appear at the start of an expression and always anchor an absolute path from that workspace's root.
-- Bare name — sibling lookup (no anchor). Walk-up resolution skips meta-flagged nodes and their descendants; they are not reachable from formulas.
+- Bare name — unanchored lexical walk-up lookup. Walk-up resolution skips meta-flagged nodes and their descendants; they are not reachable from formulas.
 
 ### 3.2 Path forms
 
 ```
-Margin                            sibling-only lookup of "Margin" among caller's siblings
-Q1.Margin                         sibling "Q1", then its child "Margin"
+Margin                            lexical walk-up lookup of "Margin" from the caller's scope
+Q1.Margin                         lexical walk-up lookup of "Q1", then its child "Margin"
 ^                                 caller's parent (single reference)
 ^.Margin                          parent's child "Margin"
 ^^.Total                          grandparent's child "Total"
 ^^^                               great-grandparent
-[]                                the workspace root (single reference)
+[]                                the workspace root anchor (navigation only; naked value use errors)
 []Sheet1.Margin                   workspace-rooted absolute path
 [].@CHILDREN                      workspace root's children (all top-level "sheets")
-[Sales Q1].Margin                 bracket-escaped segment (for names with spaces / punctuation)
+[][Sales Q1].Margin               workspace-rooted path whose first segment needs escaping
 [ws]Branch1.MyNode                cross-workspace reference (see §3.3)
 ref.@NAME                         meta-accessor: node's display name (see §3.5)
 ref.*                             children-as-references collection (sugar for ref.@CHILDREN)
@@ -105,26 +105,33 @@ Engine mapping: bind layer produces an `External(ExternalRef)` carrier (OxFml). 
 
 | Position | Content | Meaning |
 |---|---|---|
-| Start of expression | `[]` | workspace root |
-| Start of expression | `[#Name]` | self-anchored meta-specifier |
+| Start of expression | `[]` | current-workspace root anchor |
 | Start of expression | `[@Name]` | implicit current-row column (column-formula context only) |
 | Start of expression | `['quoted path']` | workspace selector (always) |
 | Start of expression | `[Word]` / `[Word with spaces]` | workspace selector if the content matches a registered alias; otherwise bare-escaped node name resolved via walk-up |
 | After a path, no separator | `path[Col]` | table column ref (LHS Table-typed) |
-| After a path, no separator | `path[#Spec]` | meta-specifier on path |
+| After a path, no separator | `path[#Spec]` | structured-reference special item on a Table-typed LHS |
 | After a path, no separator | `path[@Col]` | implicit current-row column (column-formula context) |
 | After a `.` separator | `path.[Name]` | descent to a node whose name needs escaping |
 | Double-bracket form | `path[[Sub]:[Sub2]]`, `path[[#Headers],[Col]]` | structured-ref composite per Excel rules |
 
-The start-of-expression `[Word]` ambiguity (workspace alias vs. bare-escaped name) is resolved at bind time: the manifest is consulted first, and a bare-escaped name lookup is the fallback. Real conflicts (user registers an alias whose name collides with a workspace-global node) are rare; the editor surfaces the resolved binding on hover.
+The start-of-expression `[Word]` ambiguity (workspace alias vs. bare-escaped first path segment) is resolved at bind time: the manifest is consulted first, and a bare-escaped name lookup is the fallback. If both meanings are possible, the alias wins, and the editor must surface the binding on hover plus a collision warning. Alias registration should reject or warn on collisions with root-level node names, and the user can disambiguate a node by writing an explicit anchor (`[][Name]`, `^.[Name]`, `^^.[Name]`, etc.) when the intended scope is known.
+
+**Bracket design notes / open improvement.**
+
+Excel does not provide an escape form for defined names containing spaces because those names are invalid: Microsoft documents that defined names cannot contain spaces and suggests underscore or period as word separators. Excel uses brackets in adjacent surfaces instead:
+- structured references use brackets (and sometimes double brackets) around table column names and special items;
+- linked data type fields use the dot operator, and Excel automatically adds brackets around field names that contain spaces, e.g. `=A2.[52 Week High]`.
+
+TreeCalc currently borrows both ideas: bracketed node segments for path names with spaces, and bracketed selectors for structured/table/data-type style access. The cleanest long-term rule may be stricter than the current alias-first fallback: reserve start-of-expression brackets for workspace selectors only, and require escaped first path segments to be anchored explicitly (`[][Sales Q1]`, `^.[Sales Q1]`) or to appear after a dot. That would reduce ambiguity but make walk-up lookup of an escaped first segment less terse. Decide this before parser lock; until then, keep alias-first fallback, mandatory hover disclosure, and collision warnings.
 
 Engine mapping: bind layer produces an `External(ExternalRef)` carrier (OxFml). From OxCalc-Tree's view, this is a `HostSensitive` reference. The host adapter loads external workspaces, caches their published values, and signals invalidation on external republish.
 
 ### 3.4 Node names and bracket escaping
 
-Following Excel's structured-reference rules for column names (Microsoft's [structured-references doc](https://support.microsoft.com/en-au/office/using-structured-references-with-excel-tables-f5ed2452-2337-4f71-bed3-c8ae6d2b276e)):
+TreeCalc borrows Excel structured-reference escaping for bracketed names (Microsoft's [structured-references doc](https://support.microsoft.com/en-au/office/using-structured-references-with-excel-tables-f5ed2452-2337-4f71-bed3-c8ae6d2b276e)), but the unescaped path identifier is TreeCalc-specific:
 
-- **Bare identifier** (no escape required): `[A-Za-z_][A-Za-z0-9_\\]*` — letters, digits (not leading), underscore, backslash. Matches Excel's defined-name character set (Excel allows `\` in names; we follow). Dots are NOT in the bare identifier set — `.` is always the separator.
+- **Bare identifier** (no escape required): `[A-Za-z_][A-Za-z0-9_\\]*` — letters, digits (not leading), underscore, backslash. This is intentionally close to Excel defined-name spelling where useful, but it is not Excel's full defined-name grammar. In particular, dots are NOT in the bare identifier set because `.` is always the TreeCalc path separator. Import/export handle this deliberately: dotted Excel names unroll to paths on import, and paths flatten back to dotted names on export where the workspace stays within the Excel-defined-name subset.
 - **Bracket-escaped name** (required when the name contains any character outside the bare set): `[Sales Q1]`, `[Net Revenue]`, `[2025-Q1]`, `[$Forecast]`.
 - **Reserved characters** that need an inner single-quote escape: `[`, `]`, `#`, `'`, `@`. Verbatim from Excel — the same five chars.
   - `[Foo'[Bar]` — name literally `Foo[Bar`
@@ -151,11 +158,11 @@ The family:
 |---|---|---|---|
 | `@NAME` | `@NAME` (caller's name) | `ref.@NAME` | text |
 | `@FORMULA` | `@FORMULA` | `ref.@FORMULA` | text (source formula) |
-| `@INDEX` | `@INDEX` | `ref.@INDEX` | number (sibling position) |
-| `@PARENT` | (`^` is the shorthand) | `ref.@PARENT` | single ref |
+| `@INDEX` | `@INDEX` | `ref.@INDEX` | number (1-based sibling position among regular siblings; meta siblings skipped) |
+| `@PARENT` | (`^` is the shorthand) | `ref.@PARENT` | single ref (`#REF!` at workspace root) |
 | `@CHILDREN` | (`.*` is the shorthand on this-node, but rare) | `ref.@CHILDREN` (= `ref.*`) | set of refs |
-| `@PREV` | `@PREV` | `ref.@PREV` | single ref (errors on out-of-range) |
-| `@NEXT` | `@NEXT` | `ref.@NEXT` | single ref (errors on out-of-range) |
+| `@PREV` | `@PREV` | `ref.@PREV` | single ref (`#REF!` on out-of-range) |
+| `@NEXT` | `@NEXT` | `ref.@NEXT` | single ref (`#REF!` on out-of-range) |
 | `@PRECEDING` | `@PRECEDING` | `ref.@PRECEDING` | set of refs (earlier siblings, sibling-index order) |
 | `@FOLLOWING` | `@FOLLOWING` | `ref.@FOLLOWING` | set of refs (later siblings, sibling-index order) |
 | `@ANCESTORS` | `@ANCESTORS` | `ref.@ANCESTORS` | set of refs (closest first, up to root) |
@@ -169,7 +176,7 @@ Path-navigation operators are either **deterministic (single result)** or **set-
 | Operator | Single or set? |
 |---|---|
 | Bare name, descent (`Foo.Bar`), workspace anchor (`[]Foo`, `[ws]Foo`) | single |
-| Parent (`^`), fixed-depth ancestor (`^^`, `^^^`, ...), workspace root (`[]` alone) | single |
+| Parent (`^`), fixed-depth ancestor (`^^`, `^^^`, ...), workspace root (`[]` alone) | single navigation ref (`[]` errors if evaluated naked) |
 | `@PREV`, `@NEXT`, `@PARENT` | single |
 | `@NAME`, `@INDEX`, `@FORMULA` | single (value, not ref) |
 | `.*` / `@CHILDREN`, `@ANCESTORS`, `@PRECEDING`, `@FOLLOWING`, `**` | set |
@@ -179,6 +186,15 @@ Example — "closest enclosing Year" is explicit composition, not a path-level o
 ```
 INDEX(FILTER(@ANCESTORS, a -> a.@NAME = "Year"), 1)
 ```
+
+**Collection order and duplicates.** "Set-producing" means "collection-producing"; these are ordered reference collections, not mathematical sets.
+
+- `.*` / `@CHILDREN` returns regular children in sibling order, excluding meta-effective children.
+- `@PRECEDING` returns earlier regular siblings in ascending sibling order; `@FOLLOWING` returns later regular siblings in ascending sibling order.
+- `@ANCESTORS` returns closest ancestor first, then outward toward the workspace root.
+- `**` returns descendants in stable depth-first pre-order under the base node, excluding meta-effective subtrees. `Foo.**.Bar` filters that traversal to matching `Bar` descendants while preserving traversal order.
+- Explicit reference-array literals preserve source order. Duplicate references are preserved in explicit literals; navigation-produced collections do not duplicate a node because the tree traversal visits each node once.
+- Empty collections are valid reference collections. Single-reference navigators such as `@PREV`, `@NEXT`, `^`, or `@PARENT` do not become empty collections on failure; they produce `#REF!`.
 
 ### 3.6 Recursive descent `**`
 
@@ -201,7 +217,7 @@ Sheet1.**                         every descendant of Sheet1
 | `^.Margin` | `RelativePath { base: ParentNode, path: ["Margin"] }` |
 | `^^.Total` | `RelativePath { base: Ancestor(2), path: ["Total"] }` |
 | `[]Sheet1.Margin` | `ProjectionPath { projection_path: "Sheet1.Margin" }` |
-| `[]` alone | reference to workspace root node |
+| `[]` alone | workspace root anchor / ref for further navigation; evaluating it as a value without an accessor or path tail produces `#REF!` |
 | `[ws]Branch1.MyNode` | OxFml `External` → OxCalc `HostSensitive` |
 | `@PREV.Net` | `SiblingOffset { offset: -1, tail: ["Net"] }` |
 | `@NEXT` | `SiblingOffset { offset: +1, tail: [] }` |
@@ -264,19 +280,23 @@ Most design questions have a fast answer: what does Excel do? Capitalization (`@
 
 ## 6. Values, Arrays, and Engine Prerequisites
 
-**Per-node value type is `EvalValue`** — scalar `Number`/`Text`/`Logical`/`Error`, plus `Array` (a 2D grid of scalar `ArrayCellValue` cells), `Reference(ReferenceLike)`, `Lambda`.
+**Per-node observable value is either `Empty` or an `EvalValue`.** `Empty` is the value of a node whose formula text is the empty string. It is not a formula-evaluation result: no `=...` formula, array formula, or non-empty literal entry can evaluate a node to top-level `Empty`. Formula output may be an empty string (`""`), which is a text value and is distinct from `Empty`. Dereferencing a reference to an empty node can return the `Empty` value to a caller, matching Excel's blank-cell distinction.
 
-**Node content is a single `formula` field; literal constants are unprefixed entries.** Following Excel's cell-entry convention, the entry text is classified before formula parsing: a leading `=` is a formula; a leading apostrophe (`'`) forces text (the apostrophe is an entry escape, not part of the value); an unprefixed entry that parses as a finite number is a number constant; `TRUE`/`FALSE` (case-insensitive) is a logical constant; a quoted string is a text constant; any other unprefixed entry is text preserved verbatim. OxFml already owns this classification for its single-cell host path (see `OXFML_DNA_ONECALC_DOWNSTREAM_CONSUMER_CONTRACT.md` §2.1A); TreeCalc adopts the same rules, so `123.4`, `TRUE`, and `=A.B+1` are all just `formula` strings and the leading-`=` discriminator decides constant vs. computed. Consequently `Margin` typed without `=` is the text constant "Margin", while `=Margin` is a reference — exactly as in Excel.
+The non-empty `EvalValue` domain is scalar `Number`/`Text`/`Logical`/`Error`, plus `Array` (a 2D grid of scalar `ArrayCellValue` cells, including blank cells), `Reference(ReferenceLike)`, and `Lambda`.
 
-**Dynamic arrays are first-class at every layer.** A formula result can be an array; a literal-constant entry can be an array literal (resized as edited); references to an array-valued node return the whole array.
+**Node content is a single `formula` field; literal constants are unprefixed entries.** Following Excel's cell-entry convention, the entry text is classified before formula parsing: the empty string means the node is empty; a leading `=` is a formula; a leading apostrophe (`'`) forces text (the apostrophe is an entry escape, not part of the value); an unprefixed entry that parses as a finite number is a number constant; `TRUE`/`FALSE` (case-insensitive) is a logical constant; a quoted string is a text constant; any other unprefixed non-empty entry is text preserved verbatim. OxFml already owns the non-empty classification for its single-cell host path (see `OXFML_DNA_ONECALC_DOWNSTREAM_CONSUMER_CONTRACT.md` §2.1A); TreeCalc adopts the same rules with the explicit empty-string case above, so `123.4`, `TRUE`, and `=A.B+1` are all just `formula` strings and the leading-`=` discriminator decides constant vs. computed. Consequently `Margin` typed without `=` is the text constant "Margin", while `=Margin` is a reference — exactly as in Excel. Deleting a node's formula/content sets `formula` to `""`, and the node's value becomes `Empty`.
+
+**Dynamic arrays are first-class at every layer.** A formula result can be an array; a literal-constant entry can be an array literal (resized as edited); references to an array-valued node return the whole array. Array cells may be numbers, text, logicals, errors, or empty cells; array cells may not themselves be references, lambdas, or nested arrays.
 
 **Nested arrays are rejected.** Operations that would produce an `EvalValue::Array` whose cells are themselves arrays — for example `MAP(Sheet1.*, c -> c.Margin)` when any Margin's value is itself an array — error out at bind or runtime with `#CALC!`.
 
-**Reference collections are References, not Arrays.** A tree-reference collection (`.*`, `@CHILDREN`, `@ANCESTORS`, `@PRECEDING`, `@FOLLOWING`, `Foo.**`, and explicit `{Foo, Bar}` literals) is carried in `EvalValue::Reference(ReferenceLike)` — the same value-shape Excel uses for range references like `A1:B5`. The existing `ReferenceLike { kind: ReferenceKind, target: String }` extends to recognize tree-shaped kinds. Functions that already take a `Reference` input handle these via existing iteration code; no per-function arity extension is needed.
+**Reference collections are References, not Arrays.** A tree-reference collection (`.*`, `@CHILDREN`, `@ANCESTORS`, `@PRECEDING`, `@FOLLOWING`, `Foo.**`, and explicit `{Foo, Bar}` literals) is carried in `EvalValue::Reference(ReferenceLike)` — the same broad value shape Excel uses for range references like `A1:B5`. TreeCalc does not support grid ranges such as `A1:B5`, but it deliberately creates opaque tree-reference arrays so the upstream libraries are forced to solve the shared abstraction problem once: Excel grid references/ranges and TreeCalc opaque reference arrays should pass through OxFml/OxFunc/OxCalc as uniformly as the model can honestly support.
+
+**Reference abstraction design area (TBD).** This is not expected to have a trivial local answer in TreeCalc. The target behavior is: when a function is marked as not needing references, OxFml/OxFunc can dereference a grid range or tree-reference collection and pass the function an array/value collection; when a function is marked as reference-sensitive, it receives an opaque reference/range-like value and can perform the same class of operations on an Excel range and a TreeCalc reference array where that makes semantic sense. Some Excel range behaviors may not abstract cleanly to unordered or non-rectangular tree sets; those limits must be made explicit in OxFml/OxFunc/OxCalc design, with Excel always kept as the comparison anchor. TreeCalc's role is to expose this pressure early through its reference-array surface, not to paper over it with host-specific per-function behavior.
 
 The following pieces are TreeCalc-specific extensions that depend on engine work in OxCalc / OxFml / OxFunc:
 
-1. **New `ReferenceKind` variants** in OxFunc: tree single-node, tree node-set (children/ancestors/preceding/following/descendants/explicit), tree-dynamic (runtime-resolved via INDIRECT). Iteration logic for the new kinds plugs into the existing per-kind dispatch.
+1. **Unified `ReferenceKind` / reference-view abstraction** in OxFunc/OxFml/OxCalc: tree single-node, tree node-set (children/ancestors/preceding/following/descendants/explicit), and tree-dynamic (runtime-resolved via INDIRECT) must coexist with Excel grid references/ranges behind an abstraction that supports both "dereference to values before calling the function" and "preserve opaque reference/range identity for reference-sensitive functions." Iteration logic should plug into shared per-kind dispatch where possible, but the exact abstraction boundary is a design area, not a solved TreeCalc-local detail.
 2. **`SelfNode` base variant** in OxCalc's `RelativePath` (or `Ancestor(0)` generalization) so the walk-up scope resolution can capture own-child matches.
 3. **Set-membership dependency edge type** in OxCalc's `DependencyGraph`: "this formula depends on the set of children of node X" must invalidate when the set's membership changes structurally (add / remove / rename of a matching child). Same machinery covers `@ANCESTORS`, `@PRECEDING`/`@FOLLOWING`, and `**`.
 4. **Reference-array literals** `{Foo, Bar}` — OxFml binder grammar admits references inside `{...}` (not only scalars) under the `treecalc-v1` profile.
@@ -286,8 +306,8 @@ The following pieces are TreeCalc-specific extensions that depend on engine work
 8. **Transactional batch structural editing** in OxCalc — `begin / N edits / commit-or-rollback` atomically as one publication candidate. Useful broadly (multi-node refactors, paste, undo) and specifically needed for clean template sync. Queued as a fundamental engine feature.
 9. **`is_meta` per-node attribute** (boolean, default false). When true on any node, that node and its entire descendant subtree are invisible to formula reference resolution AND are not bound or evaluated by the engine. Bind layer skips meta-flagged nodes and their descendants when resolving references (resulting in `Unresolved` on lookup failure). Positional operators (`@PREV`/`@NEXT`/`@INDEX`/`.*`) on regular siblings skip meta neighbors. Templates and per-node format both use this flag; future meta-node uses (configuration, named lambdas, annotations) inherit the same mechanism. Storage / filter strategy is OxCalc's choice.
 10. **Conditional-formatting rule semantics for the format surface** — confirm or add support for ordered multiple rules, `Stop If True`, action accumulation across rules, and subtree-level format inheritance inputs. The format engine details live in OxFml/OxFunc, but TreeCalc's format editor and Excel verification depend on this behavior being explicit and reusable rather than reconstructed in the host.
-11. **Constant entry classification on the TreeCalc channel** — OxFml's cell-entry classification (`OXFML_DNA_ONECALC_DOWNSTREAM_CONSUMER_CONTRACT.md` §2.1A: leading `=` formula, `'` text escape, finite-number/`TRUE`-`FALSE`/quoted-string/verbatim-text constant) must be reachable from the TreeCalc host channel, with the formula branch parsing tree-path references under `treecalc-v1` rather than WorksheetA1, plus Excel-aligned implicit number-format inference on number constants. Raised in `docs/handovers/HANDOVER_OXFML_constant_input.md`.
-12. **Circular-reference cycle profiles** — the host selects a cycle profile and supplies iterative bounds (Maximum Iterations, Maximum Change) via the compatibility basis; OxCalc owns the profiles and the iteration (`docs/spec/core-engine/w048-cycles/`): `cycle.non_iterative_stage1` (default — reject / `cycle_blocked`), `cycle.excel_match_iterative` (Excel-faithful; named blockers still open), `cycle.iterative_deterministic_v0` (deterministic Jacobi). See §7a and `docs/handovers/HANDOVER_OXCALC_iterative_cycle_config.md`.
+11. **Constant entry classification on the TreeCalc channel** — OxFml's cell-entry classification (`OXFML_DNA_ONECALC_DOWNSTREAM_CONSUMER_CONTRACT.md` §2.1A: leading `=` formula, `'` text escape, finite-number/`TRUE`-`FALSE`/quoted-string/verbatim-text constant) must be reachable from the TreeCalc host channel, with TreeCalc's explicit empty-string → `Empty` case and the formula branch parsing tree-path references under `treecalc-v1` rather than WorksheetA1, plus Excel-aligned implicit number-format inference on number constants. Raised in `docs/handovers/HANDOVER_OXFML_constant_input.md`.
+12. **Circular-reference cycle profiles** — the host selects a cycle profile and supplies iterative bounds (Maximum Iterations, Maximum Change) via the compatibility basis; OxCalc owns the profiles and the iteration (`docs/spec/core-engine/w048-cycles/`): `cycle.non_iterative_stage1` (default — reject / `cycle_blocked`), `cycle.excel_match_iterative` (Excel-faithful for the current single-host-scoped covered surface), `cycle.iterative_deterministic_v0` (deterministic Jacobi). See §7a and `docs/handovers/HANDOVER_OXCALC_iterative_cycle_config.md`.
 
 ## 7. Calc-State Display
 
@@ -315,7 +335,7 @@ These mirror Excel's *File ▸ Options ▸ Formulas ▸ Enable iterative calcula
 
 **Calc-state and UX.** Under the non-iterative default, cycle members display `cycle_blocked` (§7) and surface in the workspace error summary and the "show cycle" affordance (`ux/REQUIREMENTS.md`). Under an iterative profile, members display their iterated values, and the engine's `cycle_iteration_trace` is available for diagnostics.
 
-**Excel-alignment boundary.** The iteration model, convergence, and Excel-match values are Excel-anchored and owned by OxCalc (W048). TreeCalc owns the configuration surface, its persistence, and the calc-state / cycle-map UX. OxCalc's Excel-match profile is in progress and carries named blockers (report-cell behavior, non-numeric/blank/error prior states, cross-version, multi-threaded) before any universal Excel-match claim — see the engine prerequisite (§6 item 12) and `docs/handovers/HANDOVER_OXCALC_iterative_cycle_config.md`.
+**Excel-alignment boundary.** The iteration model, convergence, and Excel-match values are Excel-anchored and owned by OxCalc (W048). TreeCalc owns the configuration surface, its persistence, and the calc-state / cycle-map UX. OxCalc currently has single-host-scoped evidence for the declared W048 surface, including the formerly open root/report-cell and non-numeric/blank/error prior-state lanes; this is still not a broad cross-version Excel-compatibility claim, and multithread behavior remains a profile/scope dimension rather than something TreeCalc should silently imply.
 
 ## 7b. Templates
 
@@ -350,6 +370,8 @@ When OxCalc gains transactional batch editing (see §6.8), each per-instance syn
 User gestures on the tree:
 
 - **Insert child / insert sibling** — creates a new node with default empty formula.
+- **Create / rename** — enforce case-insensitive sibling-name uniqueness across regular and meta children. A parent cannot contain two children whose names differ only by case, even if one is meta.
+- **Insert / reorder** — preserve the parent's stable sibling order. That order is persisted and is the order used by `@INDEX`, `@PREV`/`@NEXT`, `@PRECEDING`/`@FOLLOWING`, `.*`, and other ordered reference collections.
 - **Rename** — prompts the user whether to propagate the rename to referencing formulas, showing the list of references that would be affected.
 - **Move** — analogous prompt for any references that would resolve differently after the move (relative-path refs may rebind; absolute-path refs may break to `Unresolved`).
 - **Delete** — references to the deleted node become `Unresolved`; undo affords recovery.
@@ -359,25 +381,24 @@ The engine-side semantics for each gesture (rebind vs. recalc vs. publication co
 ## 9. Compact Grammar Sketch
 
 ```
-Path           := Anchor? Segment SheetSep? ('.' Segment)*  // SheetSep = '!' allowed only at first separator position
+Path           := Anchor? Segment SheetSep? ('.' Segment)* StructuredRefTail? // SheetSep = '!' allowed only at first separator position
                 |  Anchor                                // anchor alone (root ref, parent ref, etc.)
 SheetSep       := '!'                                    // separator alias, accepted only at position 1 (after first segment)
-Anchor         := '[' AnchorContent? ']'                 // workspace selector (or self-meta when content starts with #/@)
+Anchor         := '[' AnchorContent? ']'                 // workspace selector or bracket-escaped first segment (see §3.3 ambiguity)
                 |  '^' ('^')*                            // up-steps (ancestor)
-AnchorContent  := Identifier                             // workspace alias OR bare-escaped node name
+AnchorContent  := Name                                   // workspace alias/path token OR escaped first node segment; bind disambiguates
                 |  QuotedPath                            // quoted external workspace path
-                |  '#' SpecifierName                     // self-anchored meta-specifier (e.g. [#Prev], [#Name])
                 |  '@' (SpecifierName | '[' Name ']')    // implicit-row (column-formula context only)
 Segment        := Identifier
                 |  BracketEscapedName                    // [Sales Q1], [$Forecast], etc.
-                |  MetaSpecifier                         // [#Name], [#Children], [#Prev], ...
                 |  '*'                                   // children sugar (only as final segment)
                 |  '**'                                  // recursive descent
-Identifier     := [A-Za-z_][A-Za-z0-9_\\]*               // letters, digits, underscore, backslash; matches Excel defined-name char set
+StructuredRefTail := '[' StructuredRefContent ']'         // only when LHS is Table/data-type/structured-ref capable
+Identifier     := [A-Za-z_][A-Za-z0-9_\\]*               // TreeCalc bare path identifier; deliberately excludes dot
 BracketEscapedName := '[' Name ']'                       // any chars allowed; reserved chars escaped with '
 Name           := (regular-char | "'" reserved-char | "''")+
                  where reserved-char ∈ { '[', ']', '#', "'", '@' }
-MetaSpecifier  := '[' '#' SpecifierName ']'              // Title-Case per Excel convention (e.g. [#Prev], [#Name])
+StructuredRefContent := '#' SpecifierName | '@' Name | Name | composite-structured-ref
 SpecifierName  := [A-Z][a-zA-Z0-9_]*
 QuotedPath     := "'" (any-char-or-'')* "'"              // single-quoted path string for external workspaces
 
@@ -414,12 +435,12 @@ When Excel had `My.Region.Sales` but no `My.Region` and no `My` defined names, t
 
 ```
 TreeCalc post-import:
-  .My              formula: =NA() or equivalent #NAME?-producer
-  .My.Region       formula: =NA() or equivalent
+  .My              value/formula result: #NAME? (explicit missing-name error)
+  .My.Region       value/formula result: #NAME? (explicit missing-name error)
   .My.Region.Sales formula: <the Excel formula>
 ```
 
-This matches Excel's `=My` → `#NAME?` when no defined name `My` exists. The user can later replace the stub formula with a real one to make the intermediate node meaningful (TreeCalc allows non-leaf nodes to have formulas).
+This matches Excel's `=My` → `#NAME?` when no defined name `My` exists. Do not use `NA()` for these stubs: `NA()` produces `#N/A`, which is a different Excel error. The exact representation can be a literal error value or a host-provided formula/error producer, but the observable result must be `#NAME?`. The user can later replace the stub with a real formula/value to make the intermediate node meaningful (TreeCalc allows non-leaf nodes to have formulas).
 
 ### 10.3 Formula syntax compatibility
 

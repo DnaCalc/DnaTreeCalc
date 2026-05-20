@@ -2,8 +2,8 @@
 
 Status: Open
 Target: OxFml
-Ask: Make the §2.1A cell-entry classification reachable from a TreeCalc host channel — leading `=` = formula, `'` = forced text, otherwise a typed constant — with the formula branch parsing tree-path references under `treecalc-v1` instead of `WorksheetA1`.
-Context: DNA TreeCalc normalizes node content to a single `formula` field. An entry without a leading `=` is a literal constant that the engine must parse and resolve to a typed `EvalValue` during bind — not via a host-side fallback evaluator.
+Ask: Make the §2.1A cell-entry classification reachable from a TreeCalc host channel — empty string = `Empty`, leading `=` = formula, `'` = forced text, otherwise a typed constant — with the formula branch parsing tree-path references under `treecalc-v1` instead of `WorksheetA1`.
+Context: DNA TreeCalc normalizes node content to a single `formula` field. The empty string is the node-level `Empty` value; a non-empty entry without a leading `=` is a literal constant that the engine must parse and resolve to a typed `EvalValue` during bind — not via a host-side fallback evaluator.
 Evidence: OxFml `docs/spec/OXFML_DNA_ONECALC_DOWNSTREAM_CONSUMER_CONTRACT.md` §2.1A ("WorksheetA1 Cell-Entry Classification", rules 1–6); DnaTreeCalc `docs/model/CORE_MODEL_SPEC.md` §2, §5, §6 (item 11).
 
 ## Background
@@ -18,8 +18,10 @@ exactly what OxFml already specifies for the single-cell host path:
 > entry is a text literal preserving the entered text exactly. "This classification is OxFml-owned …
 > so DNA OneCalc does not need a host-side fallback evaluator for ordinary literal cell entries."
 
-TreeCalc wants the same guarantee, so that `123.4`, `TRUE`, `'007`, and `=A.B+1` are all just `formula`
-strings and the engine resolves type + value with no host-side constant parser.
+TreeCalc wants the same guarantee, so that `""`, `123.4`, `TRUE`, `'007`, and `=A.B+1` are all just
+`formula` strings and the engine resolves type + value with no host-side constant parser. The empty
+string is the one TreeCalc-specific addition to the classification: it produces the node's `Empty`
+value. A formula can produce `""` as a text value, but cannot produce top-level `Empty`.
 
 ## What TreeCalc needs
 
@@ -28,8 +30,8 @@ strings and the engine resolves type + value with no host-side constant parser.
    entry text first, then dispatch the *formula* branch to the active channel's reference grammar — or
    (b) expose a tree-reference channel that reuses the same classification with the `treecalc-v1`
    grammar on the formula branch. Please confirm which, and the channel id TreeCalc should pass.
-2. **Discriminator + escapes unchanged.** Rules 1–6 above are adopted verbatim; TreeCalc adds nothing
-   to the constant branch.
+2. **Discriminator + escapes unchanged for non-empty entries.** Rules 1–6 above are adopted for all
+   non-empty entries; TreeCalc adds only the explicit empty-string branch before those rules.
 3. **Excel-aligned implicit number-format inference.** A number constant entered as `5%`, `$5`,
    `12/31/2025`, or `1,000` should resolve a value *and* an Excel-aligned implicit number format, on
    the same basis OxFml/OxFunc already handle Excel value entry. Confirm scope (value-only vs.

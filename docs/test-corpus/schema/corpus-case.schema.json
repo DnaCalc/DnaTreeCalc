@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dnacalc.dev/treecalc/test-corpus/corpus-case.schema.json",
+  "title": "TreeCalc corpus case file",
+  "description": "A themed file of spec-derived cases. Per-kind required fields and cross-references (caller/target exist in the named workspace, known profile verdicts) are enforced by tools/validate-corpus.ps1, which is easier than JSON Schema conditionals for these invariants.",
+  "type": "object",
+  "required": ["schema_version", "theme", "cases"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "treecalc-corpus-v1" },
+    "theme": { "type": "string" },
+    "description": { "type": "string" },
+    "cases": { "type": "array", "items": { "$ref": "#/$defs/case" } }
+  },
+  "$defs": {
+    "case": {
+      "type": "object",
+      "required": ["id", "name", "spec", "kind"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "description": "Stable, corpus-unique id." },
+        "name": { "type": "string" },
+        "spec": { "type": "string", "description": "CORE_MODEL_SPEC section citation, e.g. '§3.2, §3.7'." },
+        "kind": { "enum": ["resolution", "classification", "profile", "syntax", "import", "cycle"] },
+        "note": { "type": "string" },
+        "profile": { "enum": ["treecalc-v1", "strict-excel"], "description": "Active profile for resolution/classification/syntax cases (default treecalc-v1)." },
+        "workspace": { "type": "string", "description": "resolution: workspace_id of the fixture." },
+        "caller": { "type": "string", "description": "resolution: node_id of the calling node." },
+        "reference": { "type": "string", "description": "The surface reference string under test." },
+        "expect": {
+          "type": "object",
+          "description": "Outcome assertion. Shape depends on kind; see the case-kinds table in README.md.",
+          "properties": {
+            "outcome": { "enum": ["resolved", "unresolved", "reject", "error", "cycle_blocked", "published", "rejected"] },
+            "target": { "type": "string", "description": "node_id of the resolved node, or '/' for the workspace root." },
+            "engine_ref": { "type": "string", "description": "Intended TreeReference mapping (§3.7); informational until the runner asserts it." },
+            "reason": { "type": "string" },
+            "calc": { "type": "string", "description": "Evaluation-time note, e.g. 'cycle'." },
+            "cardinality": { "enum": ["single", "set", "value"] },
+            "result_kind": { "type": "string" },
+            "parse": { "enum": ["accept", "reject"] },
+            "equivalent_to": { "type": "string" },
+            "nodes": { "type": "array" },
+            "aliases": { "type": "array" }
+          }
+        },
+        "profiles": {
+          "type": "object",
+          "description": "profile kind: maps a profile id to 'accept'/'reject' or { verdict, as }.",
+          "propertyNames": { "enum": ["treecalc-v1", "strict-excel"] }
+        },
+        "excel": { "type": "object", "description": "import kind: the Excel input (sheets, defined_names)." },
+        "members": { "type": "array", "description": "cycle kind: node_ids forming the cycle region (the SCC).", "items": { "type": "string" } },
+        "config": { "type": "object", "description": "cycle kind: host cycle configuration — { profile, max_iterations?, max_change? } (§7a)." }
+      }
+    }
+  }
+}

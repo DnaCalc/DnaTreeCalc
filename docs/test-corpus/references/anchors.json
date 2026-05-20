@@ -1,0 +1,115 @@
+{
+  "schema_version": "treecalc-corpus-v1",
+  "theme": "references/anchors",
+  "description": "Anchor sigils: ^ / ^^ ancestors and [] / []path workspace selectors (CORE_MODEL_SPEC §3.1, §3.2, §3.3, §3.7).",
+  "cases": [
+    {
+      "id": "ref-parent",
+      "name": "^ resolves to the caller's parent",
+      "spec": "§3.2, §3.7",
+      "kind": "resolution",
+      "workspace": "accounts",
+      "caller": "Accounts.2005.Q1.Margin",
+      "reference": "^",
+      "profile": "treecalc-v1",
+      "expect": {
+        "outcome": "resolved",
+        "target": "Accounts.2005.Q1",
+        "engine_ref": "RelativePath{ base: ParentNode, path: [] }"
+      }
+    },
+    {
+      "id": "ref-parent-child",
+      "name": "^.Name resolves to a parent's child",
+      "spec": "§3.2, §3.7",
+      "kind": "resolution",
+      "workspace": "accounts",
+      "caller": "Accounts.2005.Q1.Income",
+      "reference": "^.Margin",
+      "profile": "treecalc-v1",
+      "expect": {
+        "outcome": "resolved",
+        "target": "Accounts.2005.Q1.Margin",
+        "engine_ref": "RelativePath{ base: ParentNode, path: [Margin] }"
+      }
+    },
+    {
+      "id": "ref-grandparent-child",
+      "name": "^^.Name resolves to a grandparent's child",
+      "spec": "§3.2, §3.7",
+      "kind": "resolution",
+      "workspace": "accounts",
+      "caller": "Accounts.2005.Q1.Income",
+      "reference": "^^.Total",
+      "profile": "treecalc-v1",
+      "expect": {
+        "outcome": "resolved",
+        "target": "Accounts.2005.Total",
+        "engine_ref": "RelativePath{ base: Ancestor(2), path: [Total] }"
+      }
+    },
+    {
+      "id": "ref-great-grandparent",
+      "name": "^^^ resolves to the great-grandparent",
+      "spec": "§3.2",
+      "kind": "resolution",
+      "workspace": "accounts",
+      "caller": "Accounts.2005.Q1.Margin",
+      "reference": "^^^",
+      "profile": "treecalc-v1",
+      "expect": {
+        "outcome": "resolved",
+        "target": "Accounts",
+        "engine_ref": "RelativePath{ base: Ancestor(3), path: [] }"
+      },
+      "note": "Margin → Q1 (^) → 2005 (^^) → Accounts (^^^)."
+    },
+    {
+      "id": "ref-ws-root",
+      "name": "[] alone resolves to the workspace root",
+      "spec": "§3.2, §3.7",
+      "kind": "resolution",
+      "workspace": "accounts",
+      "caller": "Accounts.2005.Q1.Income",
+      "reference": "[]",
+      "profile": "treecalc-v1",
+      "expect": {
+        "outcome": "resolved",
+        "target": "/",
+        "engine_ref": "reference to workspace root node"
+      },
+      "note": "[] is a navigation anchor for the workspace root. It may be followed by a path tail; evaluating the anchor itself as a value without an accessor/path tail produces #REF!."
+    },
+    {
+      "id": "ref-ws-rooted-path",
+      "name": "[]path is an absolute path from the workspace root",
+      "spec": "§3.2, §3.7",
+      "kind": "resolution",
+      "workspace": "accounts",
+      "caller": "Accounts.2005.Q1.Income",
+      "reference": "[]Accounts.2005.Q1.Margin",
+      "profile": "treecalc-v1",
+      "expect": {
+        "outcome": "resolved",
+        "target": "Accounts.2005.Q1.Margin",
+        "engine_ref": "ProjectionPath{ projection_path: Accounts.2005.Q1.Margin }"
+      }
+    },
+    {
+      "id": "ref-sheet-alias-resolves",
+      "name": "Sheet!Name resolves identically to Sheet.Name",
+      "spec": "§3.1, §10.3",
+      "kind": "resolution",
+      "workspace": "accounts",
+      "caller": "Accounts.2005.Q1.Income",
+      "reference": "Sheet1!Foo.Bar",
+      "profile": "treecalc-v1",
+      "expect": {
+        "outcome": "resolved",
+        "target": "Sheet1.Foo.Bar",
+        "engine_ref": "RelativePath{ base: Ancestor(4), path: [Sheet1, Foo, Bar] }"
+      },
+      "note": "! is the sheet-position separator alias, so Sheet1!Foo.Bar ≡ Sheet1.Foo.Bar (a bare path, NOT a []-rooted ProjectionPath). Sheet1 resolves by walk-up at root scope (root is Ancestor(4) of Income), then descends Foo.Bar."
+    }
+  ]
+}

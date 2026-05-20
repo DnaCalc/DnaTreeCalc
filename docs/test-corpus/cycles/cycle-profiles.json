@@ -1,0 +1,84 @@
+{
+  "schema_version": "treecalc-corpus-v1",
+  "theme": "cycles/cycle-profiles",
+  "description": "Circular references under each host-configured cycle profile (CORE_MODEL_SPEC §7a). Pins the host-surfaced OUTCOME class per profile; iterated numeric values are Excel/engine-anchored (OxCalc W048 + OxXlPlay/OxReplay) and are NOT asserted here.",
+  "cases": [
+    {
+      "id": "cyc-default-self-blocked",
+      "name": "self-cycle is blocked under the default non-iterative profile",
+      "spec": "§7a, §3.2",
+      "kind": "cycle",
+      "workspace": "cycles",
+      "members": ["Calc.SelfRef"],
+      "config": { "profile": "cycle.non_iterative_stage1" },
+      "expect": { "outcome": "cycle_blocked", "publication": "none", "prior_values": "retained", "diagnostic": "circular_reference" },
+      "note": "Default ≡ Excel with iterative calc off: the region is rejected, members are cycle_blocked, no new values publish, prior values remain visible."
+    },
+    {
+      "id": "cyc-default-scc-blocked",
+      "name": "two-node SCC is blocked under the default non-iterative profile",
+      "spec": "§7a",
+      "kind": "cycle",
+      "workspace": "cycles",
+      "members": ["Calc.A", "Calc.B"],
+      "config": { "profile": "cycle.non_iterative_stage1" },
+      "expect": { "outcome": "cycle_blocked", "publication": "none", "prior_values": "retained" },
+      "note": "A=B+10 and B=A/2 form an SCC; both members block under the default profile."
+    },
+    {
+      "id": "cyc-excel-match-self-published",
+      "name": "self-cycle iterates and publishes under the Excel-match profile",
+      "spec": "§7a",
+      "kind": "cycle",
+      "workspace": "cycles",
+      "members": ["Calc.SelfRef"],
+      "config": { "profile": "cycle.excel_match_iterative", "max_iterations": 100, "max_change": 0.001 },
+      "expect": { "outcome": "published", "publication": "region_atomic", "terminal": "max_iteration", "values_anchor": "excel" },
+      "note": "With iterative calc on, Excel does not raise a circular-reference error; =SelfRef+1 reaches the iteration bound and publishes a terminal value. The exact value is Excel-anchored (OxXlPlay/OxReplay), not asserted here."
+    },
+    {
+      "id": "cyc-deterministic-scc-converged-published",
+      "name": "convergent SCC publishes under the deterministic profile",
+      "spec": "§7a",
+      "kind": "cycle",
+      "workspace": "cycles",
+      "members": ["Calc.A", "Calc.B"],
+      "config": { "profile": "cycle.iterative_deterministic_v0", "max_iterations": 100, "max_change": 0.001 },
+      "expect": { "outcome": "published", "publication": "region_atomic", "terminal": "converged", "values_anchor": "engine" },
+      "note": "A=B+10, B=A/2 has the fixed point A=20, B=10; Jacobi iteration converges within the bound and the region publishes atomically. The value is engine-anchored, not asserted here."
+    },
+    {
+      "id": "cyc-deterministic-self-converged-published",
+      "name": "convergent self-cycle publishes under the deterministic profile",
+      "spec": "§7a",
+      "kind": "cycle",
+      "workspace": "cycles",
+      "members": ["Calc.Converge"],
+      "config": { "profile": "cycle.iterative_deterministic_v0", "max_iterations": 100, "max_change": 0.001 },
+      "expect": { "outcome": "published", "terminal": "converged", "values_anchor": "engine" },
+      "note": "=Converge/2 + 5 has the fixed point 10; converges under deterministic Jacobi iteration."
+    },
+    {
+      "id": "cyc-deterministic-self-divergent-rejected",
+      "name": "divergent self-cycle is rejected under the deterministic profile",
+      "spec": "§7a",
+      "kind": "cycle",
+      "workspace": "cycles",
+      "members": ["Calc.SelfRef"],
+      "config": { "profile": "cycle.iterative_deterministic_v0", "max_iterations": 100, "max_change": 0.001 },
+      "expect": { "outcome": "rejected", "publication": "none", "terminal": "divergent" },
+      "note": "=SelfRef+1 grows without bound; the deterministic profile rejects a non-converging region — contrast cyc-excel-match-self-published, where Excel publishes the bound value."
+    },
+    {
+      "id": "cyc-deterministic-nonnumeric-rejected",
+      "name": "non-numeric cycle is rejected before iteration under the deterministic profile",
+      "spec": "§7a",
+      "kind": "cycle",
+      "workspace": "cycles",
+      "members": ["Calc.TextCycle"],
+      "config": { "profile": "cycle.iterative_deterministic_v0" },
+      "expect": { "outcome": "rejected", "publication": "none", "terminal": "non_numeric" },
+      "note": "=TextCycle & \"x\" has a non-numeric prior; the deterministic profile rejects before iterating."
+    }
+  ]
+}

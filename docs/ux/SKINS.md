@@ -137,7 +137,7 @@ pub struct SkinContext<S: SkinState> {
     /// Capability profile in effect (e.g., "treecalc-v1").
     pub profile: CapabilityProfileId,
 
-    /// Format-resolution helper: walks `::Format` inheritance to give the
+    /// Format-resolution helper: walks Format meta-child inheritance to give the
     /// effective format for a node. Skins call this instead of walking themselves.
     pub format: FormatResolver,
 
@@ -257,7 +257,7 @@ Each is small, typed, persistable. Skins access via `cx.state.with(|s| s.field)`
 
 ## 2.4 `SharedSkinState` — cross-skin state
 
-Some state benefits multiple skins. Lives in `::skins.shared` and is typed too:
+Some state benefits multiple skins. Lives in the `skins/shared` meta-node subtree and is typed too:
 
 ```rust
 #[derive(Serialize, Deserialize, Default, Clone)]
@@ -331,12 +331,12 @@ pub enum WorkspaceIntent {
     MoveNode { node: TreeNodeId, new_parent: TreeNodeId, new_position: usize },
     DeleteNode { node: TreeNodeId, cascade: bool },
 
-    // --- Content edits (single `formula_text` field: leading `=` = formula, else a literal constant) ---
-    EditFormula { node: TreeNodeId, formula_text: String },      // set the content string (constant or =formula)
-    ConvertToFormula { node: TreeNodeId, formula_text: String }, // turn a constant into a =formula
+    // --- Content edits (single content string: "" = Empty, leading `=` = formula, else literal constant) ---
+    EditFormula { node: TreeNodeId, formula: String },           // set the content string (constant or =formula)
+    ConvertToFormula { node: TreeNodeId, formula: String },      // turn a constant into a =formula
     ConvertToLiteral { node: TreeNodeId },                       // freeze: replace a formula with its computed value, written as a constant
 
-    // --- Format / CF edits (writes to ::Format meta-children) ---
+    // --- Format / CF edits (writes to Format meta-children) ---
     SetFormatProperty { node: TreeNodeId, property: FormatPath, value: FormatValue },
     AddCfRule { node: TreeNodeId, rule: ConditionalFormatRule, position: usize },
     RemoveCfRule { node: TreeNodeId, position: usize },
@@ -368,7 +368,7 @@ This is a closed set. Skins compose user gestures into these intents. The dispat
 
 - **Selection / shared-state intents** → direct write to the relevant signal (cheap).
 - **Structural / formula intents** → bridge call → engine recalc → workspace update.
-- **Format intents** → write to the node's `::Format` meta-child (which is a structural edit on a meta-subtree, calc-ignored, but persisted).
+- **Format intents** → write to the node's `Format` meta-child (which is a structural edit on a meta-subtree, calc-ignored, but persisted).
 - **Template intents** → host-level orchestration (read template structure, generate N structural edits to instances).
 - **External-value intents** → bridge's external-value entry point → engine invalidation → cascade.
 
@@ -395,7 +395,7 @@ pub struct TreeNodeState {
     pub sibling_index: usize,
     pub name: String,
     pub is_meta: bool,
-    pub formula_text: String,                  // single content field: leading `=` = formula, else a literal constant
+    pub formula: String,                       // single content string: "" = Empty, leading `=` = formula, else literal constant
     pub computed_value: Option<EvalValue>,
     pub children: Vec<TreeNodeId>,
 }
@@ -418,14 +418,14 @@ impl WorkspaceState {
 
 ## 2.8 `FormatResolver` — format inheritance helper
 
-Formats inherit through ancestor `::Format` meta-children. Skins shouldn't re-implement the walk; they call:
+Formats inherit through ancestor `Format` meta-children. Skins shouldn't re-implement the walk; they call:
 
 ```rust
 pub struct FormatResolver { /* ... */ }
 
 impl FormatResolver {
     /// Resolves a single format property at the given node.
-    /// Walks the node's `::Format` then its ancestors' `::Format`, merging defaults.
+    /// Walks the node's Format meta-child then its ancestors' Format meta-children, merging defaults.
     pub fn resolve(&self, node: TreeNodeId, property: FormatPath) -> Option<FormatValue>;
 
     /// Resolves the full effective format for a node (all properties merged).
@@ -541,7 +541,7 @@ HOST                  SKIN              CONTEXT          STATE STORE      WORKSP
   |                     |--cx.state.with()|                  |               |
   |                     |   (read initial state)              |               |
   |                     |                  |--load from-----> |               |
-  |                     |                  |   ::skins.canvas-flow            |
+  |                     |                  |   skins/canvas-flow meta-state   |
   |                     |                  |<--deserialized---|               |
   |                     |<--CanvasFlowState{...}              |               |
   |                     |                                     |               |
@@ -740,7 +740,7 @@ Each skin owns a meta-namespace under the workspace root. Skin state is persiste
 ```
 .
 ├── (regular content)
-└── ::skins                          (meta; auto-hidden)
+└── skins                            (meta; auto-hidden)
     ├── shared                       (state used by multiple skins)
     │   ├── tree-state
     │   │   └── <nodeId>.collapsed = true | false
@@ -775,7 +775,7 @@ Each skin owns a meta-namespace under the workspace root. Skin state is persiste
 
 ### 4.2 Shared meta-namespace
 
-`::skins.shared` holds state that multiple skins want to read. Cross-skin continuity:
+`skins/shared` holds state that multiple skins want to read. Cross-skin continuity:
 
 - **`tree-state.<nodeId>.collapsed`** — collapse/expand state. Any tree-rendering skin honors it.
 - **`pinned-nodes`** — list of "favorite" nodes a user has pinned across the workspace.
@@ -875,13 +875,13 @@ v1 ships with built-in skins only. The architecture doesn't preclude either futu
 
 Two distinct visual concerns:
 
-**Format (user's data appearance).** Per-node `::Format` meta-children describe how the *data value* looks: number format, font, fill color, conditional rules, data bars, icon sets. These are properties the user owns and edits via the Format Editor.
+**Format (user's data appearance).** Per-node `Format` meta-children describe how the *data value* looks: number format, font, fill color, conditional rules, data bars, icon sets. These are properties the user owns and edits via the Format Editor.
 
 **Skin styling (chrome appearance).** Skin-level theming describes how the *application* looks: panel colors, accent, font in chrome, layout shape, spacing. These are properties the skin owns.
 
 **The rule:** *formats describe the value; skins describe the frame.* Where the value appears in a skin's layout, the user's format wins. Surrounding chrome stays in the skin's theme.
 
-Concrete: `MyNode::Format.Fill.Color = "yellow"`.
+Concrete: node `MyNode` has a meta-child path `Format.Fill.Color = "yellow"`.
 - Cell view: cell's value background = yellow.
 - Canvas: card's value-display region = yellow background; card's header/footer = skin's theme.
 - Outline-table: value column cell = yellow; row chrome = skin's theme.
@@ -893,7 +893,7 @@ The value's appearance stays consistent across skins. The user can format their 
 
 1. **Skin capability declares supported format properties.** A minimalist or read-only "presentation" skin may declare it doesn't render data bars or icon sets; those format properties are silently ignored on that skin. The user sees the value with reduced visual decoration. Switching to a fuller skin restores all formatting.
 2. **Skin defaults fill in for unset formats.** When a property is unset, the skin's theme provides the default (e.g., default text color = skin accent). Once the user sets an explicit format, that wins. This lets unstyled workspaces still look coherent under any skin.
-3. **Format inheritance is a host-level walk, not a skin concern.** When `Account::Format.NumberFormat` is set and a descendant has no `::Format.NumberFormat`, the host's format-resolution walker returns the ancestor's value. Skins call the host's `resolve_format(node_id, property)` API rather than implementing inheritance themselves.
+3. **Format inheritance is a host-level walk, not a skin concern.** When `Account` has `Format.NumberFormat` and a descendant has no local `Format.NumberFormat`, the host's format-resolution walker returns the ancestor's value. Skins call the host's `resolve_format(node_id, property)` API rather than implementing inheritance themselves.
 
 ### 9.2 Conditional formatting
 
@@ -903,11 +903,11 @@ Excel's CF model — multiple rules per cell, ordered evaluation, "Stop If True"
 - Multiple rules per node/cell with ordered evaluation.
 - "Stop If True" rule attribute that halts evaluation on a true match.
 - Action accumulation across rules (rule 1 sets font, rule 2 sets icon — both apply unless one stops).
-- Subtree-level CF (a CF rule at an ancestor's `::Format.ConditionalFormat` applies to descendants too).
+- Subtree-level CF (a CF rule at an ancestor's `Format.ConditionalFormat` applies to descendants too).
 
 The TreeCalc CF UX (mockup 05 §Conditional formatting) presents the user with an ordered rule list and per-rule edit/delete/reorder. The engine must support the underlying semantics for this UX to be honest about what it does.
 
-Tracked as an engine prerequisite in [`CORE_MODEL_SPEC.md`](../model/CORE_MODEL_SPEC.md) §6 and raised through `HANDOVER_OXCALC_engine_prereqs.md` when cross-repo work is needed.
+Tracked as engine prerequisites in [`CORE_MODEL_SPEC.md`](../model/CORE_MODEL_SPEC.md) §6 and raised through targeted handovers in [`../handovers/`](../handovers/) when cross-repo work is needed.
 
 ---
 

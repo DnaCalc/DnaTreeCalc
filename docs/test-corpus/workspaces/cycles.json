@@ -1,0 +1,15 @@
+{
+  "schema_version": "treecalc-workspace-v1",
+  "workspace_id": "cycles",
+  "description": "Fixtures with reference cycles for the §7a cycle-profile cases. Calc.SelfRef (=SelfRef+1) is a divergent self-cycle; Calc.Converge (=Converge/2+5) is a convergent self-cycle (→10); Calc.A/Calc.B (=B+10, =A/2) are a convergent two-node SCC (→20,10); Calc.Downstream (=A+1) depends on the region; Calc.TextCycle (=TextCycle & \"x\") is a non-numeric self-cycle.",
+  "profile": "treecalc-v1",
+  "nodes": [
+    { "node_id": "Calc", "formula": "" },
+    { "node_id": "Calc.SelfRef", "formula": "=SelfRef + 1" },
+    { "node_id": "Calc.Converge", "formula": "=Converge / 2 + 5" },
+    { "node_id": "Calc.A", "formula": "=B + 10" },
+    { "node_id": "Calc.B", "formula": "=A / 2" },
+    { "node_id": "Calc.Downstream", "formula": "=A + 1" },
+    { "node_id": "Calc.TextCycle", "formula": "=TextCycle & \"x\"" }
+  ]
+}

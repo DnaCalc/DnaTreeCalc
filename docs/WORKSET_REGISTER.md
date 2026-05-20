@@ -86,7 +86,7 @@ Engine prerequisites in OxCalc/OxFml/OxFunc (Spec `model/CORE_MODEL_SPEC.md` §6
 - **Purpose:** The skin framework — `WorkspaceSkin` trait, `SkinContext`, intent dispatch, shared primitive library, per-skin meta-namespaces, skin switcher.
 - **Depends on:** W003.
 - **Spec sections:** `ux/SKINS.md`.
-- **Closure condition:** two skins coexist and switch at runtime with per-skin state persisted in `::skins.*` meta-namespaces; shared tree-state honored across skins.
+- **Closure condition:** two skins coexist and switch at runtime with per-skin state persisted in the `skins/*` meta-node subtree; shared tree-state honored across skins.
 - **Initial epic lanes:** skin trait + registry; primitive library lift from OneCalc; meta-namespace persistence.
 - **Verification:** Local + cross-skin equivalence (the same workspace renders/edits correctly across skins) + per-skin meta-state round-trip. Scaffolding: cross-skin equivalence harness; skin-state persistence tests.
 - **Status:** OPEN
@@ -101,10 +101,10 @@ Engine prerequisites in OxCalc/OxFml/OxFunc (Spec `model/CORE_MODEL_SPEC.md` §6
 - **Status:** OPEN
 
 ### W007_meta_nodes_formatting_templates
-- **Purpose:** Meta-nodes (`is_meta`), per-node formatting via `::Format` meta-children with inheritance, and host-level templates (instantiate, per-leaf override, sync).
+- **Purpose:** Meta-nodes (`is_meta`), per-node formatting via `Format` meta-children with inheritance, and host-level templates (instantiate, per-leaf override, sync).
 - **Depends on:** W004, W005. Engine prereqs (`is_meta` flag, transactional batch edit) via handover.
 - **Spec sections:** `model/META_NODES.md`; `model/CORE_MODEL_SPEC.md` §7b; `ux/REQUIREMENTS.md` §2.8.
-- **Closure condition:** templates instantiate and sync; format editor reads/writes `::Format`; inheritance walk works.
+- **Closure condition:** templates instantiate and sync; format editor reads/writes `Format` meta-children; inheritance walk works.
 - **Initial epic lanes:** is_meta plumbing; format editor + inheritance; template registry + sync.
 - **Verification:** Local for template instantiate/sync/override semantics; Excel anchor for number-format and conditional-format **rendering** via OxReplay display-faithful views (where the format model is Excel-aligned). Scaffolding: format/CF fixture corpus; template-sync test fixtures.
 - **Status:** OPEN

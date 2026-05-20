@@ -1,0 +1,55 @@
+{
+  "schema_version": "treecalc-corpus-v1",
+  "theme": "references/sibling-offsets",
+  "description": "@PREV / @NEXT positional sibling navigators (CORE_MODEL_SPEC §3.2, §3.5, §3.7). Sibling order is the workspace node array order.",
+  "cases": [
+    {
+      "id": "ref-prev-tail",
+      "name": "@PREV.Name reads the previous sibling's child",
+      "spec": "§3.2, §3.7",
+      "kind": "resolution",
+      "workspace": "accounts",
+      "caller": "Accounts.2005.Q2",
+      "reference": "@PREV.Net",
+      "profile": "treecalc-v1",
+      "expect": {
+        "outcome": "resolved",
+        "target": "Accounts.2005.Q1.Net",
+        "engine_ref": "SiblingOffset{ offset: -1, tail: [Net] }"
+      },
+      "note": "Under 2005 the order is [Q1, Q2, Total]; Q2's previous sibling is Q1."
+    },
+    {
+      "id": "ref-next-tail",
+      "name": "@NEXT.Name reads the next sibling's child",
+      "spec": "§3.2, §3.7",
+      "kind": "resolution",
+      "workspace": "accounts",
+      "caller": "Accounts.2005.Q1",
+      "reference": "@NEXT.Margin",
+      "profile": "treecalc-v1",
+      "expect": {
+        "outcome": "resolved",
+        "target": "Accounts.2005.Q2.Margin",
+        "engine_ref": "SiblingOffset{ offset: +1, tail: [Margin] }"
+      },
+      "note": "Q1's next sibling is Q2; descend child Margin."
+    },
+    {
+      "id": "ref-next-out-of-range",
+      "name": "@NEXT past the last sibling errors",
+      "spec": "§3.5",
+      "kind": "resolution",
+      "workspace": "accounts",
+      "caller": "Accounts.2005.Total",
+      "reference": "@NEXT",
+      "profile": "treecalc-v1",
+      "expect": {
+        "outcome": "error",
+        "reason": "#REF!: Total is the last child of 2005, so @NEXT is out of range",
+        "engine_ref": "SiblingOffset{ offset: +1, tail: [] }"
+      },
+      "note": "@PREV/@NEXT are single refs that produce #REF! on out-of-range (§3.5 family table)."
+    }
+  ]
+}

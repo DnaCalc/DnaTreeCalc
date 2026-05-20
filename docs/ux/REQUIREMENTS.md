@@ -258,7 +258,7 @@ All creations are committed atomically and trigger recalc as needed.
 ### 3.6 Value entry (constant-content node)
 
 When the node's content is a constant (no leading `=`, not formula-derived):
-- Single value: the editor accepts one content string; if it starts with `=` it's a formula, otherwise a literal constant (number/logical/text per Excel cell-entry rules — CORE_MODEL_SPEC §6).
+- Single value: the editor accepts one content string; `""` is the empty node value, a leading `=` is a formula, and any other entry is a literal constant (number/logical/text per Excel cell-entry rules — CORE_MODEL_SPEC §6).
 - Array constant: the value detail panel renders an editable grid. Paste from clipboard (CSV/TSV) supported. Resizing the array is by adding/removing rows or columns.
 - Switching between constant and formula: the user can toggle ("convert to formula" / "freeze to constant").
 

@@ -1,0 +1,13 @@
+{
+  "schema_version": "treecalc-workspace-v1",
+  "workspace_id": "meta-demo",
+  "description": "Fixture for meta-node invisibility (CORE_MODEL_SPEC §2, §6 item 9). Under Section, sibling order is [Rate, Config, Item]; Config is is_meta=true so it and its descendant Secret are invisible to formulas and skipped by positional operators. Node content is a single 'formula' field (§6): '' is the node-level Empty value, a leading = is a formula, and any other entry is a literal constant.",
+  "profile": "treecalc-v1",
+  "nodes": [
+    { "node_id": "Section", "formula": "" },
+    { "node_id": "Section.Rate", "formula": "0.1" },
+    { "node_id": "Section.Config", "formula": "", "is_meta": true },
+    { "node_id": "Section.Config.Secret", "formula": "42", "is_meta": true },
+    { "node_id": "Section.Item", "formula": "=Rate" }
+  ]
+}

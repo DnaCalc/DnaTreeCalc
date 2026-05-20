@@ -1,0 +1,156 @@
+{
+  "schema_version": "treecalc-corpus-v1",
+  "theme": "import/defined-names",
+  "description": "Excel defined-name import: sheets + defined names only, dots unroll to paths, intermediates stubbed, zero formula source-text rewriting (CORE_MODEL_SPEC §10).",
+  "cases": [
+    {
+      "id": "imp-dotted-unroll-stubs",
+      "name": "dotted workbook name unrolls to a path with stub intermediates",
+      "spec": "§10.1, §10.2",
+      "kind": "import",
+      "excel": {
+        "defined_names": [
+          { "name": "My.Region.Sales", "scope": "workbook", "formula": "=100" }
+        ]
+      },
+      "expect": {
+        "nodes": [
+          { "node_id": "My", "formula": "#NAME?", "stub": true },
+          { "node_id": "My.Region", "formula": "#NAME?", "stub": true },
+          { "node_id": "My.Region.Sales", "formula": "=100", "stub": false }
+        ]
+      },
+      "note": "My and My.Region were not defined names, so they become #NAME?-producing stubs; the formula lives on the leaf."
+    },
+    {
+      "id": "imp-sheet-node",
+      "name": "a sheet becomes a first-level node",
+      "spec": "§10.1",
+      "kind": "import",
+      "excel": { "sheets": ["Sheet1"] },
+      "expect": {
+        "nodes": [
+          { "node_id": "Sheet1", "formula": "", "stub": false }
+        ]
+      }
+    },
+    {
+      "id": "imp-sheet-spaced-bracket-escape",
+      "name": "a spaced sheet name is bracket-escaped",
+      "spec": "§10.1",
+      "kind": "import",
+      "excel": { "sheets": ["Sales Q1"] },
+      "expect": {
+        "nodes": [
+          { "node_id": "[Sales Q1]", "formula": "", "stub": false }
+        ]
+      },
+      "note": "Spaces are outside the bare-identifier set, so the segment is bracket-escaped (§3.4)."
+    },
+    {
+      "id": "imp-sheet-scoped-name",
+      "name": "a sheet-scoped name nests under its sheet",
+      "spec": "§10.1",
+      "kind": "import",
+      "excel": {
+        "sheets": ["Sheet1"],
+        "defined_names": [
+          { "name": "Total", "scope": { "sheet": "Sheet1" }, "formula": "=1" }
+        ]
+      },
+      "expect": {
+        "nodes": [
+          { "node_id": "Sheet1", "formula": "", "stub": false },
+          { "node_id": "Sheet1.Total", "formula": "=1", "stub": false }
+        ]
+      }
+    },
+    {
+      "id": "imp-sheet-scoped-dotted",
+      "name": "a sheet-scoped dotted name unrolls under its sheet",
+      "spec": "§10.1",
+      "kind": "import",
+      "excel": {
+        "sheets": ["Sheet1"],
+        "defined_names": [
+          { "name": "Region.Total", "scope": { "sheet": "Sheet1" }, "formula": "=1" }
+        ]
+      },
+      "expect": {
+        "nodes": [
+          { "node_id": "Sheet1", "formula": "", "stub": false },
+          { "node_id": "Sheet1.Region", "formula": "#NAME?", "stub": true },
+          { "node_id": "Sheet1.Region.Total", "formula": "=1", "stub": false }
+        ]
+      }
+    },
+    {
+      "id": "imp-formula-text-unchanged",
+      "name": "defined-name formulas import without source-text rewriting",
+      "spec": "§10.3",
+      "kind": "import",
+      "excel": {
+        "defined_names": [
+          { "name": "A.Total", "scope": "workbook", "formula": "=SUM(A.X, A.Y, A.Z)" }
+        ]
+      },
+      "expect": {
+        "nodes": [
+          { "node_id": "A", "formula": "#NAME?", "stub": true },
+          { "node_id": "A.Total", "formula": "=SUM(A.X, A.Y, A.Z)", "stub": false }
+        ]
+      },
+      "note": "Dotted argument names read as tree paths with no rewriting of the formula text."
+    },
+    {
+      "id": "imp-cross-workbook-alias",
+      "name": "cross-workbook reference registers a workspace alias",
+      "spec": "§10.4",
+      "kind": "import",
+      "excel": {
+        "defined_names": [
+          { "name": "Linked", "scope": "workbook", "formula": "=[Other.xlsx]Sheet2!Foo" }
+        ]
+      },
+      "expect": {
+        "nodes": [
+          { "node_id": "Linked", "formula": "=[Other.xlsx]Sheet2!Foo", "stub": false }
+        ],
+        "aliases": [
+          { "alias": "Other.xlsx", "kind": "workspace" }
+        ]
+      },
+      "note": "[Other.xlsx] is registered as a workspace alias; the formula text is left intact (§10.4)."
+    },
+    {
+      "id": "imp-grid-function-out-of-scope",
+      "name": "grid-position functions have no defined-name analog",
+      "spec": "§10.5",
+      "kind": "import",
+      "excel": {
+        "defined_names": [
+          { "name": "Pos", "scope": "workbook", "formula": "=OFFSET(Base, 1, 0)" }
+        ]
+      },
+      "expect": {
+        "outcome": "eval-error",
+        "reason": "OFFSET is a grid-position function with no defined-name analog; it errors at evaluation (§10.5)"
+      }
+    },
+    {
+      "id": "imp-dynamic-indirect-out-of-scope",
+      "name": "dynamic-string INDIRECT building grid refs is out of scope",
+      "spec": "§10.5",
+      "kind": "import",
+      "excel": {
+        "defined_names": [
+          { "name": "Dyn", "scope": "workbook", "formula": "=INDIRECT(\"A\" & N)" }
+        ]
+      },
+      "expect": {
+        "outcome": "out-of-scope",
+        "reason": "dynamic-string INDIRECT builds A1-style cell refs at runtime; grid usage is excluded by the no-grid constraint (§10.5)"
+      }
+    }
+  ]
+}

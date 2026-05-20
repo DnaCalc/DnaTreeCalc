@@ -1,0 +1,68 @@
+{
+  "schema_version": "treecalc-corpus-v1",
+  "theme": "references/syntax",
+  "description": "Pure parse-level acceptance/rejection of the path surface: the ! sheet-separator alias rule (§3.1) and the bracket-then-caret rule (§3.3). These are profile-agnostic syntax facts within treecalc-v1; profile gating itself lives in profiles/gating.json.",
+  "cases": [
+    {
+      "id": "syn-sheet-alias-accept",
+      "name": "! accepted at the sheet position",
+      "spec": "§3.1",
+      "kind": "syntax",
+      "reference": "Sheet1!Foo.Bar",
+      "profile": "treecalc-v1",
+      "expect": {
+        "parse": "accept",
+        "equivalent_to": "Sheet1.Foo.Bar"
+      },
+      "note": "! is accepted as a separator alias only immediately after the first identifier (the sheet position)."
+    },
+    {
+      "id": "syn-midpath-bang-reject",
+      "name": "mid-path ! is rejected",
+      "spec": "§3.1",
+      "kind": "syntax",
+      "reference": "Sheet1.Foo!Bar",
+      "profile": "treecalc-v1",
+      "expect": {
+        "parse": "reject",
+        "reason": "! is allowed only at the first separator position (after the first identifier), not mid-path"
+      }
+    },
+    {
+      "id": "syn-leading-bang-reject",
+      "name": "leading ! is rejected",
+      "spec": "§3.1",
+      "kind": "syntax",
+      "reference": "!Foo",
+      "profile": "treecalc-v1",
+      "expect": {
+        "parse": "reject",
+        "reason": "leading ! has no first identifier to follow"
+      }
+    },
+    {
+      "id": "syn-bracket-caret-reject",
+      "name": "^ after a bracket selector is rejected",
+      "spec": "§3.3",
+      "kind": "syntax",
+      "reference": "[]^.Margin",
+      "profile": "treecalc-v1",
+      "expect": {
+        "parse": "reject",
+        "reason": "a bracket prefix is absolute from the selected workspace root; the up-step ^ is meaningless after it"
+      }
+    },
+    {
+      "id": "syn-leading-hash-name-reject",
+      "name": "leading [#Name] is not a meta-accessor form",
+      "spec": "§3.3, §3.5, §9",
+      "kind": "syntax",
+      "reference": "[#Name]",
+      "profile": "treecalc-v1",
+      "expect": {
+        "parse": "reject",
+        "reason": "standalone meta accessors use @NAME; # special items are accepted only in a structured-reference/table tail such as Table[#Headers]"
+      }
+    }
+  ]
+}

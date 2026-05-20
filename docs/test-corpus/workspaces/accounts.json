@@ -1,0 +1,22 @@
+{
+  "schema_version": "treecalc-workspace-v1",
+  "workspace_id": "accounts",
+  "description": "Multi-node fixture used by the §3 resolution cases. Mirrors the Accounts/2005/Q1 example tree from CORE_MODEL_SPEC §3.2. Sibling order is array order: under 2005 = [Q1, Q2, Total]; under Q1 = [Income, Margin, Net]; under Q2 = [Margin, Net]. Node content is a single 'formula' field (§6): '' is the node-level Empty value, a leading = is a formula, and any other entry is a literal constant.",
+  "profile": "treecalc-v1",
+  "nodes": [
+    { "node_id": "Accounts", "formula": "" },
+    { "node_id": "Accounts.2005", "formula": "" },
+    { "node_id": "Accounts.2005.Q1", "formula": "" },
+    { "node_id": "Accounts.2005.Q1.Income", "formula": "=Sales*Margin" },
+    { "node_id": "Accounts.2005.Q1.Income.Sales", "formula": "10" },
+    { "node_id": "Accounts.2005.Q1.Margin", "formula": "0.2" },
+    { "node_id": "Accounts.2005.Q1.Net", "formula": "=Income*(1-Margin)" },
+    { "node_id": "Accounts.2005.Q2", "formula": "" },
+    { "node_id": "Accounts.2005.Q2.Margin", "formula": "0.25" },
+    { "node_id": "Accounts.2005.Q2.Net", "formula": "100" },
+    { "node_id": "Accounts.2005.Total", "formula": "=Q1.Net+Q2.Net" },
+    { "node_id": "Sheet1", "formula": "" },
+    { "node_id": "Sheet1.Foo", "formula": "" },
+    { "node_id": "Sheet1.Foo.Bar", "formula": "1" }
+  ]
+}

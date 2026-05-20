@@ -1,0 +1,119 @@
+{
+  "schema_version": "treecalc-corpus-v1",
+  "theme": "references/walkup",
+  "description": "Bare-name lexical walk-up resolution: own children first, then each ancestor's children one scope at a time, first match wins (CORE_MODEL_SPEC §3.2, §3.7).",
+  "cases": [
+    {
+      "id": "ref-walkup-own-child",
+      "name": "bare name resolves to own child first",
+      "spec": "§3.2, §3.7",
+      "kind": "resolution",
+      "workspace": "accounts",
+      "caller": "Accounts.2005.Q1.Income",
+      "reference": "Sales",
+      "profile": "treecalc-v1",
+      "expect": {
+        "outcome": "resolved",
+        "target": "Accounts.2005.Q1.Income.Sales",
+        "engine_ref": "RelativePath{ base: SelfNode, path: [Sales] }"
+      },
+      "note": "Walk-up searches the caller's OWN children first; Income has child Sales."
+    },
+    {
+      "id": "ref-walkup-sibling",
+      "name": "bare name resolves to a sibling (parent scope)",
+      "spec": "§3.2, §3.7",
+      "kind": "resolution",
+      "workspace": "accounts",
+      "caller": "Accounts.2005.Q1.Income",
+      "reference": "Margin",
+      "profile": "treecalc-v1",
+      "expect": {
+        "outcome": "resolved",
+        "target": "Accounts.2005.Q1.Margin",
+        "engine_ref": "RelativePath{ base: ParentNode, path: [Margin] }"
+      },
+      "note": "Income has no child Margin; next scope is Q1's children, where Margin (sibling of Income) matches."
+    },
+    {
+      "id": "ref-walkup-ancestor-scope",
+      "name": "bare name resolves at a deeper enclosing scope",
+      "spec": "§3.2",
+      "kind": "resolution",
+      "workspace": "accounts",
+      "caller": "Accounts.2005.Q1.Income.Sales",
+      "reference": "Margin",
+      "profile": "treecalc-v1",
+      "expect": {
+        "outcome": "resolved",
+        "target": "Accounts.2005.Q1.Margin",
+        "engine_ref": "RelativePath{ base: Ancestor(2), path: [Margin] }"
+      },
+      "note": "Sales has no child Margin; Income has none; Q1's children include Margin. Q1 is Ancestor(2) of Sales."
+    },
+    {
+      "id": "ref-walkup-ancestor-by-name",
+      "name": "an ancestor is findable by its own name",
+      "spec": "§3.2",
+      "kind": "resolution",
+      "workspace": "accounts",
+      "caller": "Accounts.2005.Q1.Income.Sales",
+      "reference": "Q1",
+      "profile": "treecalc-v1",
+      "expect": {
+        "outcome": "resolved",
+        "target": "Accounts.2005.Q1",
+        "engine_ref": "RelativePath{ base: Ancestor(3), path: [Q1] }"
+      },
+      "note": "Walk-up reaches 2005's children, which include Q1. 2005 is Ancestor(3) of Sales. (§3.2 consequence bullet.)"
+    },
+    {
+      "id": "ref-walkup-descent",
+      "name": "bare descent: sibling then its child",
+      "spec": "§3.2, §3.7",
+      "kind": "resolution",
+      "workspace": "accounts",
+      "caller": "Accounts.2005.Total",
+      "reference": "Q1.Margin",
+      "profile": "treecalc-v1",
+      "expect": {
+        "outcome": "resolved",
+        "target": "Accounts.2005.Q1.Margin",
+        "engine_ref": "RelativePath{ base: ParentNode, path: [Q1, Margin] }"
+      },
+      "note": "Q1 resolves by walk-up (sibling of Total under 2005); then descend into child Margin."
+    },
+    {
+      "id": "ref-walkup-unresolved",
+      "name": "no scope matches → Unresolved",
+      "spec": "§3.2, §3.7",
+      "kind": "resolution",
+      "workspace": "accounts",
+      "caller": "Accounts.2005.Q1.Income",
+      "reference": "Nonexistent",
+      "profile": "treecalc-v1",
+      "expect": {
+        "outcome": "unresolved",
+        "engine_ref": "Unresolved"
+      },
+      "note": "No node named Nonexistent in any enclosing scope up to root."
+    },
+    {
+      "id": "ref-selfref-cycle",
+      "name": "self-reference resolves to self and cycles",
+      "spec": "§3.2",
+      "kind": "resolution",
+      "workspace": "accounts",
+      "caller": "Accounts.2005.Q1.Net",
+      "reference": "Net",
+      "profile": "treecalc-v1",
+      "expect": {
+        "outcome": "resolved",
+        "target": "Accounts.2005.Q1.Net",
+        "engine_ref": "RelativePath{ base: SelfNode, path: [Net] }",
+        "calc": "cycle"
+      },
+      "note": "A node's formula naming its own name resolves to self; under the default profile evaluation produces a circular-reference error (§3.2). Cycle handling across profiles is covered by the cycles/ theme (§7a)."
+    }
+  ]
+}

@@ -50,6 +50,13 @@ The user experience.
 | [`ux/SKINS.md`](ux/SKINS.md) | The Winamp-style skin architecture: layered design, `WorkspaceSkin` trait, `SkinContext`, intent dispatch, per-skin meta-namespaces, formatting-vs-skin-styling boundary, call traces, phasing. The load-bearing UI architecture. |
 | [`ux/TECHNICAL.md`](ux/TECHNICAL.md) | Implementation/integration plan: tech stack (Leptos/WASM, extends DnaOneCalc), crate layout, state model, OxCalc bridge, persistence format, per-component plan, UDF hosting, performance, build phasing, verification host. |
 | [`ux/prototypes/index.html`](ux/prototypes/index.html) | Eight visual HTML mockups — the first eight skins: workspace shell, array value, template editor, outline-table, format editor, Excel-style cell, nodes-across, canvas flow. Open `index.html` to navigate. |
+| [`ux/design-references/`](ux/design-references/) | Loose visual references and mood-board notes for possible future skins or prototype directions. Not locked product design. |
+
+---
+
+## Verification corpus
+
+The executable, spec-derived test corpus lives in [`test-corpus/`](test-corpus/) — declarative JSON cases that pin TreeCalc's **novel surface** (path-syntax → engine-reference mapping, walk-up resolution, profile gating, import mapping), with a pwsh validator (`test-corpus/tools/validate-corpus.ps1`) as the local-tier check until the OxCalc-bridge runner lands (W002). It deliberately does **not** retest engine / Excel-aligned behavior (function semantics, values, formats, dates, error codes) — that stays Excel-anchored in OxFunc/OxFml/OxCalc + OxReplay and is never reimplemented here. See [`test-corpus/README.md`](test-corpus/README.md) for the TreeCalc-vs-OxCalc boundary and the gate-tier mapping ([`../OPERATIONS.md`](../OPERATIONS.md) §6).
 
 ---
 

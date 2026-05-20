@@ -1,0 +1,95 @@
+{
+  "schema_version": "treecalc-corpus-v1",
+  "theme": "profiles/gating",
+  "description": "Capability-profile gating (CORE_MODEL_SPEC §4). Every TreeCalc-specific extension parses/binds under treecalc-v1 and is rejected at parse/bind time under strict-excel. Profile-agnostic surface (scalar array literals, function semantics) is accepted under both. Capability mismatch is a bind-time error, never silent drift.",
+  "cases": [
+    {
+      "id": "prof-caret-anchor",
+      "name": "^ up-step: treecalc-v1 only",
+      "spec": "§4",
+      "kind": "profile",
+      "reference": "^.Total",
+      "profiles": { "treecalc-v1": "accept", "strict-excel": "reject" },
+      "note": "tree-path syntax (^ up-step)."
+    },
+    {
+      "id": "prof-ws-selector",
+      "name": "[] / []path workspace selector: treecalc-v1 only",
+      "spec": "§4",
+      "kind": "profile",
+      "reference": "[]Sheet1.Foo",
+      "profiles": { "treecalc-v1": "accept", "strict-excel": "reject" }
+    },
+    {
+      "id": "prof-children-sugar",
+      "name": ".* children sugar: treecalc-v1 only",
+      "spec": "§4",
+      "kind": "profile",
+      "reference": "Sheet1.*",
+      "profiles": { "treecalc-v1": "accept", "strict-excel": "reject" }
+    },
+    {
+      "id": "prof-recursive-descent",
+      "name": "** recursive descent: treecalc-v1 only",
+      "spec": "§4",
+      "kind": "profile",
+      "reference": "Accounts.**.Margin",
+      "profiles": { "treecalc-v1": "accept", "strict-excel": "reject" }
+    },
+    {
+      "id": "prof-meta-accessor",
+      "name": "@-meta-accessor family: treecalc-v1 only",
+      "spec": "§4",
+      "kind": "profile",
+      "reference": "@PREV",
+      "profiles": { "treecalc-v1": "accept", "strict-excel": "reject" }
+    },
+    {
+      "id": "prof-bracket-escape",
+      "name": "bracket-escaped name segment: treecalc-v1 only",
+      "spec": "§4",
+      "kind": "profile",
+      "reference": "[Sales Q1]",
+      "profiles": { "treecalc-v1": "accept", "strict-excel": "reject" }
+    },
+    {
+      "id": "prof-ref-array-literal",
+      "name": "reference-array literal {Foo, Bar}: treecalc-v1 only",
+      "spec": "§4",
+      "kind": "profile",
+      "reference": "{Foo, Bar}",
+      "profiles": { "treecalc-v1": "accept", "strict-excel": "reject" },
+      "note": "References inside {...} are admitted only under treecalc-v1 (§6 item 4)."
+    },
+    {
+      "id": "prof-scalar-array-literal",
+      "name": "scalar array literal {1, 2, 3}: profile-agnostic",
+      "spec": "§4",
+      "kind": "profile",
+      "reference": "{1, 2, 3}",
+      "profiles": { "treecalc-v1": "accept", "strict-excel": "accept" },
+      "note": "Scalar array literals are identical under any profile (profile gates the input surface, not value semantics)."
+    },
+    {
+      "id": "prof-function-semantics",
+      "name": "function call: profile-agnostic",
+      "spec": "§4",
+      "kind": "profile",
+      "reference": "SUM(1, 2, 3)",
+      "profiles": { "treecalc-v1": "accept", "strict-excel": "accept" },
+      "note": "OxFunc function semantics are profile-agnostic; only the reference/literal input surface is gated."
+    },
+    {
+      "id": "prof-indirect-dispatch",
+      "name": "INDIRECT string parsed per active profile",
+      "spec": "§4, §10.3",
+      "kind": "profile",
+      "reference": "INDIRECT(\"Sheet1.Foo\")",
+      "profiles": {
+        "treecalc-v1": { "verdict": "accept", "as": "tree-path" },
+        "strict-excel": { "verdict": "accept", "as": "A1/R1C1" }
+      },
+      "note": "Same function, accepted under both; the string argument is parsed as a tree path under treecalc-v1 and as A1/R1C1 under strict-excel (§6 item 7)."
+    }
+  ]
+}

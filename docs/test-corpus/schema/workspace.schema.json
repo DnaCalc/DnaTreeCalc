@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dnacalc.dev/treecalc/test-corpus/workspace.schema.json",
+  "title": "TreeCalc corpus workspace fixture",
+  "description": "A shared multi-node tree fixture referenced by resolution cases. node_id is the canonical dotted path (the node identity surface). Sibling order is the array order.",
+  "type": "object",
+  "required": ["schema_version", "workspace_id", "nodes"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "treecalc-workspace-v1" },
+    "workspace_id": { "type": "string" },
+    "description": { "type": "string" },
+    "profile": { "enum": ["treecalc-v1", "strict-excel"] },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["node_id"],
+        "additionalProperties": false,
+        "properties": {
+          "node_id": {
+            "type": "string",
+            "description": "Canonical dotted path = node identity. Intermediate ancestors must also appear as nodes."
+          },
+          "formula": {
+            "type": "string",
+            "description": "Node content (single field). Empty string = node-level Empty value; leading '=' = formula; otherwise a literal constant (number/logical/text per Excel cell-entry rules, CORE_MODEL_SPEC §6). Formula evaluation cannot produce top-level Empty; =\"\" is an empty string text value."
+          },
+          "is_meta": {
+            "type": "boolean",
+            "default": false,
+            "description": "When true, this node and its descendant subtree are invisible to formula resolution and not bound/evaluated (CORE_MODEL_SPEC §2, §6 item 9)."
+          }
+        }
+      }
+    }
+  }
+}

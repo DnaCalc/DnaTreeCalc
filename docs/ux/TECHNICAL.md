@@ -200,7 +200,7 @@ pub struct TreeNodeState {
     pub parent_id: Option<TreeNodeId>,
     pub sibling_index: usize,
     pub name: String,
-    pub formula_text: String,                         // single content field: leading `=` = formula, else a literal constant (CORE_MODEL_SPEC §6)
+    pub formula: String,                              // single content field: "" = Empty, leading `=` = formula, else literal constant (CORE_MODEL_SPEC §6)
     pub is_meta: bool,
     pub hidden: bool,
     pub layout_metadata: Option<NodeLayoutMetadata>,  // canvas position, etc.
@@ -252,7 +252,7 @@ pub struct SkinRegistryState {
 }
 ```
 
-Per-skin state lives in the workspace tree itself as meta-nodes under `::skins.<skin_id>` (see skin architecture §4). The state model has no global "layout choice" field; each skin owns its state, persisted alongside the workspace data. Shared cross-skin state (e.g., tree-collapse) lives under `::skins.shared`.
+Per-skin state lives in the workspace tree itself as meta-nodes under the `skins/<skin_id>` meta-subtree (see skin architecture §4). The state model has no global "layout choice" field; each skin owns its state, persisted alongside the workspace data. Shared cross-skin state (e.g., tree-collapse) lives under `skins/shared`.
 
 This change pushes layout state out of the in-memory `TreeCalcHostState` and into the persisted tree, which is the right place for state that survives sessions, switches between skins, and respects the meta-node lifecycle.
 
@@ -360,6 +360,11 @@ A `.dnatree` file is a JSON document (or msgpack for size; decide on a flag). Sc
 {
   "schema_version": 1,
   "capability_profile_id": "treecalc-v1",
+  "cycle_config": {
+    "profile": "cycle.non_iterative_stage1",
+    "max_iterations": 100,
+    "max_change": 0.001
+  },
   "metadata": {
     "created_at": "...",
     "modified_at": "...",
@@ -378,7 +383,7 @@ A `.dnatree` file is a JSON document (or msgpack for size; decide on a flag). Sc
         "parent_id": "<TreeNodeId or null>",
         "sibling_index": 0,
         "name": "Accounts",
-        "formula_text": "",
+        "formula": "",
         "is_meta": false,
         "hidden": false,
         "children": ["<TreeNodeId>", "..."],
@@ -584,7 +589,7 @@ Auto-backup to a sibling `.dnatree.bak` file on each save. Configurable retentio
 
 From the engine prerequisites in [`CORE_MODEL_SPEC.md`](../model/CORE_MODEL_SPEC.md) §6, TreeCalc needs the sibling lanes to provide:
 
-1. New `ReferenceKind` variants for tree references.
+1. Unified reference/range abstraction: tree references and opaque tree-reference arrays must coexist with Excel grid references/ranges, preserving reference identity for reference-sensitive functions and dereferencing to values for ordinary functions.
 2. `SelfNode` base variant in `RelativePath`.
 3. Set-membership dependency edge type.
 4. Reference-array literals.
@@ -594,6 +599,8 @@ From the engine prerequisites in [`CORE_MODEL_SPEC.md`](../model/CORE_MODEL_SPEC
 8. Transactional batch editing.
 9. `is_meta` per-node attribute.
 10. Conditional-formatting rule semantics needed by the format surface.
+11. Constant-entry classification on the TreeCalc channel, including `""` -> `Empty`, with the formula branch parsing tree paths under `treecalc-v1`.
+12. Circular-reference cycle profiles and iterative bounds carried in the host/recalc compatibility basis.
 
 The host UX depends on items 1, 2, 8, and 9 directly; the others are formula-language extensions visible through the editor.
 
@@ -688,4 +695,4 @@ This technical plan covers all components, services, and integration points requ
 
 The phasing in §10 gives a buildable path from empty TreeCalc to full-featured product. Each phase delivers a usable subset.
 
-Engine prerequisites (§8.3) are tracked as local spec content and raised through `HANDOVER_OXCALC_engine_prereqs.md` when cross-repo work is needed. TreeCalc UX can begin once the foundational items (multi-node bridge, is_meta flag) are available, with later items unblocking later phases.
+Engine prerequisites (§8.3) are tracked as local spec content and raised through targeted handovers in [`../handovers/`](../handovers/) when cross-repo work is needed. TreeCalc UX can begin once the foundational items (multi-node bridge, is_meta flag) are available, with later items unblocking later phases.

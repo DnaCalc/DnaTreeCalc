@@ -1,0 +1,38 @@
+{
+  "schema_version": "treecalc-corpus-v1",
+  "theme": "references/meta-nodes",
+  "description": "Meta-node invisibility: a node with is_meta=true and its descendant subtree are invisible to formula resolution and skipped by positional operators (CORE_MODEL_SPEC §2, §6 item 9).",
+  "cases": [
+    {
+      "id": "meta-invisible-name",
+      "name": "a name that exists only inside a meta subtree is Unresolved",
+      "spec": "§2, §3.2, §6 item 9",
+      "kind": "resolution",
+      "workspace": "meta-demo",
+      "caller": "Section.Item",
+      "reference": "Secret",
+      "profile": "treecalc-v1",
+      "expect": {
+        "outcome": "unresolved",
+        "engine_ref": "Unresolved"
+      },
+      "note": "Secret lives under Section.Config (is_meta=true), so it is not reachable from formulas; walk-up skips meta subtrees."
+    },
+    {
+      "id": "meta-positional-skip",
+      "name": "@PREV skips a meta sibling",
+      "spec": "§6 item 9",
+      "kind": "resolution",
+      "workspace": "meta-demo",
+      "caller": "Section.Item",
+      "reference": "@PREV",
+      "profile": "treecalc-v1",
+      "expect": {
+        "outcome": "resolved",
+        "target": "Section.Rate",
+        "engine_ref": "SiblingOffset{ offset: -1 } over non-meta siblings"
+      },
+      "note": "Sibling order under Section is [Rate, Config(meta), Item]; @PREV from Item skips meta Config and lands on Rate."
+    }
+  ]
+}
