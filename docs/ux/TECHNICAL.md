@@ -221,19 +221,16 @@ pub struct SelectionState {
 
 ```rust
 pub struct UiChromeState {
-    pub nav_rail_open: bool,
-    pub nav_rail_width: f32,
-    pub drill_panel_open: bool,
-    pub dependency_panel_open: bool,
-    pub format_editor_open: bool,
-    pub template_editor_open: Option<TemplateId>,
-    pub show_meta_nodes: bool,
+    pub focused_mount_slot: SkinMountSlotId,
+    pub show_meta_nodes: bool,                        // global host visibility policy; skins decide how to render revealed meta rows
     pub view_mode: ViewMode,                          // Edit / ReadOnly / Developer
     pub theme: ThemeChoice,
     pub modal_dialogs: VecDeque<ModalDialog>,         // queue of open modals
     pub toasts: VecDeque<Toast>,                      // notification stack
 }
 ```
+
+Panel sizes, nav-rail width, drill open/closed state, inspector selection, and skin-specific pane choices are not chrome state. They belong to the mounted skin's typed state, or to `SkinRegistryState.mounted` when a whole skin instance is mounted into a pane.
 
 ### 3.5 Skin state (superseding LayoutState)
 
@@ -472,7 +469,7 @@ Auto-backup to a sibling `.dnatree.bak` file on each save. Configurable retentio
 
 - HTML5 canvas + SVG layer for connecting lines.
 - Each node rendered as a card (a Leptos component positioned absolutely).
-- Drag to reposition; position saved as `NodeLayoutMetadata`.
+- Drag to reposition; position saved in `CanvasFlowState.positions` under the `skins/canvas-flow` meta-namespace.
 - Connections drawn between nodes that reference each other (computed from the dependency graph).
 - Zoom and pan.
 
@@ -627,10 +624,12 @@ The host UX depends on items 1, 2, 8, and 9 directly; the others are formula-lan
 | §2.11 Workspace-level views | individual components — settings panel, templates index/list |
 | §3 Editing actions | §3 state model + §6 components; reducer in app/reducer.rs |
 | §3.10 Keybindings | command_palette + per-component key handlers |
-| §4 Layout modes (skins) | §3.5 SkinRegistryState + per-skin meta-namespaces; SKINS.md; §6.5/§6.6/§6.7 skin-specific components |
+| §4 Skin surfaces and composition | §3.5 SkinRegistryState + per-skin meta-namespaces; SKINS.md; §6.5/§6.6/§6.7 skin-specific components |
 | §5 Specific patterns | various components (array_grid for §5.1; tree_row + template_editor for §5.4; format_editor for §5.5) |
 | §6 Adaptive behaviors | per-skin state in meta-namespaces (§3.5) + adaptive rendering selection within a skin |
 | §7 Cross-cutting | §5 persistence; §7 performance; §3 state model |
+
+For feature-level traceability from visible prototype affordances to skins, primitives, host state, intents, services, OxFml/OxCalc boundaries, and render updates, see [`TRACEABILITY.md`](TRACEABILITY.md).
 
 | Spec section (DESIGN doc §) | Tech enables |
 |---|---|

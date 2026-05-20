@@ -57,18 +57,18 @@
     padding: 10px 20px;
     display: flex; align-items: center; gap: 14px;
   }
-  .layout-tabs { display: flex; gap: 4px; }
-  .layout-tab {
+  .skin-tabs { display: flex; gap: 4px; }
+  .skin-tab {
     font-size: 12px; padding: 5px 12px; border-radius: var(--tc-radius-control);
     cursor: pointer; color: var(--tc-color-muted);
     border: 1px solid transparent;
   }
-  .layout-tab.active {
+  .skin-tab.active {
     background: var(--tc-color-accent);
     color: white;
     font-weight: 600;
   }
-  .layout-tab:not(.active):hover { background: var(--tc-color-surface-subtle); color: var(--tc-color-text); }
+  .skin-tab:not(.active):hover { background: var(--tc-color-surface-subtle); color: var(--tc-color-text); }
   .toolbar .scope-line { font-size: 12px; color: var(--tc-color-muted); }
   .toolbar .scope-line strong { color: var(--tc-color-text); font-family: var(--tc-font-mono); }
   .toolbar .spacer { flex: 1; }
@@ -236,11 +236,11 @@
   </div>
 
   <div class="toolbar">
-    <div class="layout-tabs">
-      <div class="layout-tab">Editor</div>
-      <div class="layout-tab active">Outline-table</div>
-      <div class="layout-tab">Notebook</div>
-      <div class="layout-tab">Canvas</div>
+    <div class="skin-tabs">
+      <div class="skin-tab">Editor</div>
+      <div class="skin-tab active">Outline-table</div>
+      <div class="skin-tab">Notebook</div>
+      <div class="skin-tab">Canvas</div>
     </div>
     <div class="scope-line">Showing <strong>.Accounts.2026</strong> and descendants · 36 nodes</div>
     <div class="spacer"></div>

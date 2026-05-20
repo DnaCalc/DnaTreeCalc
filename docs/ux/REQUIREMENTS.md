@@ -1,6 +1,6 @@
 # DNA TreeCalc — UX Requirements (Conceptual)
 
-This is the conceptual UX requirements document. It pins down what the user-facing application must present and let the user do. It does not commit to layout, styling, or technical implementation — those are covered by [`prototypes/`](prototypes/) (visual prototypes) and [`TECHNICAL.md`](TECHNICAL.md) (implementation/integration).
+This is the conceptual UX requirements document. It pins down what the user-facing application must present and let the user do. It does not commit to layout, styling, or technical implementation — those are covered by [`prototypes/`](prototypes/) (visual prototypes), [`SKINS.md`](SKINS.md) (skin architecture), [`TRACEABILITY.md`](TRACEABILITY.md) (prototype-to-implementation flow mapping), and [`TECHNICAL.md`](TECHNICAL.md) (implementation/integration).
 
 This document cross-references [`CORE_MODEL_SPEC.md`](../model/CORE_MODEL_SPEC.md) for the underlying language and engine model.
 
@@ -40,7 +40,7 @@ The shell must accommodate all three. P1 is the design driver; P2 is a view-only
 
 ## 2. Presentation areas
 
-The UX consists of distinct presentation areas. Each is a named region with specific content and interactions. The shell composes them in a layout; multiple layouts are supported (§4).
+The UX consists of distinct presentation areas. Each is a named region with specific content and interactions. The shell composes them through mounted skins; multiple skins can present the same workspace (§4).
 
 ### 2.1 Workspace shell chrome
 
@@ -62,7 +62,7 @@ The UX consists of distinct presentation areas. Each is a named region with spec
 
 The rail virtualizes for large trees (tens of thousands of nodes). Filter / search narrows visible rows.
 
-**2.1.3 Working area (center / right).** The variable-content region whose layout depends on the selected node and the chosen presentation mode (§4). Default is the three-pane "node editor" layout:
+**2.1.3 Working area (center / right).** The variable-content region whose composition depends on the selected node and the mounted skin (§4). Default is the three-pane `triple-editor` skin:
 - Formula editor on top.
 - Value detail / array view / drill in the middle.
 - Diagnostics / dependency map / structural-edit context at bottom.
@@ -119,7 +119,7 @@ Displays the selected node's computed value. Adapts to the value's shape:
 Side affordances:
 - "Pin this value" — keep the value display visible even when another node is selected.
 - "Copy value as text" — clipboard support for scalars and rendered arrays.
-- "Show in canvas" — promotes the node to the free-canvas layout (§4.3).
+- "Show in canvas" — mounts or focuses the canvas skin and adds/focuses the node there (§4.3).
 
 ### 2.5 Drill panel (walk-tree)
 
@@ -330,13 +330,13 @@ Ctrl+. opens a command palette with fuzzy-search over all available commands. Ea
 
 ---
 
-## 4. Layout modes — reframed as skins
+## 4. Skin surfaces and composition
 
 > **Updated 2026-05-19:** the modes below are not alternative layouts the user picks one of; they are **skins** — parallel front-ends to the same core, switchable at runtime, each with its own persisted state in dedicated meta-namespaces. See [`SKINS.md`](SKINS.md) for the architecture. The functional requirements per skin below remain valid; only their relationship to each other has changed (parallel, not exclusive).
 
 ### 4.1 Three-pane node editor (default)
 
-The default editing layout: formula editor + value detail + diagnostics/drill. Reused from DnaOneCalc, extended for tree context.
+The default editing skin: formula editor + value detail + diagnostics/drill. Reused from DnaOneCalc, extended for tree context.
 
 **Strengths:** familiar (Excel-adjacent, OneCalc-style), keyboard-friendly, focused.
 
@@ -591,7 +591,7 @@ Decisions implicit in this requirements doc:
 | Decision | Locked |
 |---|---|
 | Primary persona | Modeler (P1) |
-| Default layout | Three-pane node editor (§4.1) |
+| Default skin | Three-pane node editor / TripleEditor (§4.1) |
 | Tree outline visibility | Always visible (left rail); collapsible |
 | Meta-nodes default visibility | Hidden in tree by default |
 | Excel keybindings | Adopted where they map (F2, Enter, Esc, Tab, F4, etc.) |
@@ -612,8 +612,9 @@ Dials worth surfacing for further user input:
 
 ## 10. Status
 
-This UX requirements document is comprehensive at the conceptual level. It covers all presentation areas, editing actions, layout modes, and interaction patterns identified through the design conversation. Cross-references to the design spec confirm coverage of all locked language and engine features.
+This UX requirements document is comprehensive at the conceptual level. It covers all presentation areas, editing actions, skin surfaces, and interaction patterns identified through the design conversation. Cross-references to the design spec confirm coverage of all locked language and engine features.
 
 Next:
 - [`prototypes/`](prototypes/) — visual HTML mockups grounded in these requirements.
+- [`TRACEABILITY.md`](TRACEABILITY.md) — fine-detail mapping from prototype features through skin state, host internals, intents, and OxFml/OxCalc flows.
 - [`TECHNICAL.md`](TECHNICAL.md) — the implementation/integration plan, tech stack, and component architecture.

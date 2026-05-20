@@ -18,8 +18,9 @@ For someone new to the project:
 4. [`ux/REQUIREMENTS.md`](ux/REQUIREMENTS.md) — what the application must present and let users do.
 5. [`ux/SKINS.md`](ux/SKINS.md) — the skin architecture (the load-bearing UI design decision).
 6. [`ux/prototypes/index.html`](ux/prototypes/index.html) — the visual mockups (the eight skins, rendered).
-7. [`ux/TECHNICAL.md`](ux/TECHNICAL.md) — how to build it.
-8. [`interop/EXCEL_EXPORT_AND_REPLAY.md`](interop/EXCEL_EXPORT_AND_REPLAY.md) — export and verification against Excel.
+7. [`ux/TRACEABILITY.md`](ux/TRACEABILITY.md) — maps prototype affordances to skins, primitives, host state, DnaTreeCalc services, and OxFml/OxCalc flows.
+8. [`ux/TECHNICAL.md`](ux/TECHNICAL.md) — how to build it.
+9. [`interop/EXCEL_EXPORT_AND_REPLAY.md`](interop/EXCEL_EXPORT_AND_REPLAY.md) — export and verification against Excel.
 
 ---
 
@@ -46,10 +47,11 @@ The user experience.
 
 | Document | Covers |
 |---|---|
-| [`ux/REQUIREMENTS.md`](ux/REQUIREMENTS.md) | Conceptual UX requirements: personas, presentation areas, editing actions, keybindings, layout modes (reframed as skins), interaction patterns, adaptive behaviors, cross-cutting concerns, coverage check. |
+| [`ux/REQUIREMENTS.md`](ux/REQUIREMENTS.md) | Conceptual UX requirements: personas, presentation areas, editing actions, keybindings, skin surfaces, interaction patterns, adaptive behaviors, cross-cutting concerns, coverage check. |
 | [`ux/SKINS.md`](ux/SKINS.md) | The Winamp-style skin architecture: layered design, `WorkspaceSkin` trait, `SkinContext`, intent dispatch, per-skin meta-namespaces, formatting-vs-skin-styling boundary, call traces, phasing. The load-bearing UI architecture. |
 | [`ux/TECHNICAL.md`](ux/TECHNICAL.md) | Implementation/integration plan: tech stack (Leptos/WASM, extends DnaOneCalc), crate layout, state model, OxCalc bridge, persistence format, per-component plan, UDF hosting, performance, build phasing, verification host. |
 | [`ux/prototypes/index.html`](ux/prototypes/index.html) | Eight visual HTML mockups — the first eight skins: workspace shell, array value, template editor, outline-table, format editor, Excel-style cell, nodes-across, canvas flow. Open `index.html` to navigate. |
+| [`ux/TRACEABILITY.md`](ux/TRACEABILITY.md) | Fine-detail UX traceability: prototype-to-skin mapping, feature ownership, state/intent/engine boundaries, and concrete flows from editor text to OxCalc publication and invalidation/resize back to display updates. |
 | [`ux/design-references/`](ux/design-references/) | Loose visual references and mood-board notes for possible future skins or prototype directions. Not locked product design. |
 
 ---

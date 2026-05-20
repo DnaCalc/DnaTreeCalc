@@ -730,7 +730,7 @@ A reusable component library. Skins compose these. The library is the "Winamp bu
 - `LassoSelection` — drag-rectangle multi-select.
 - `GroupHandle` — group banner + collapse/promote actions.
 - `StatusFoot` — bottom status bar with calc state, deps, hints.
-- `ContextStrip` — top context bar with filename, profile, layout-tabs.
+- `ContextStrip` — top context bar with filename, profile, and skin switcher.
 - `BreadcrumbPath` — node-path breadcrumb.
 
 Primitives are pure Leptos components with well-defined props. They don't read core state directly; the skin reads state and passes the relevant slice to each primitive.
@@ -842,6 +842,8 @@ When a user reorganizes the canvas (drag a node to a new position):
 ---
 
 ## 6. Mapping existing mockups to skins
+
+This section gives the short identity map. The detailed feature-by-feature mapping lives in [`TRACEABILITY.md`](TRACEABILITY.md), which traces each prototype affordance through primitives, state ownership, DnaTreeCalc services, intents, and OxFml/OxCalc boundaries.
 
 | Mockup | Skin id | Category | State |
 |---|---|---|---|
@@ -982,10 +984,11 @@ After Phase G, the architecture is mature. Future skins, custom user skins, and 
 
 ## 14. Cross-references
 
-- [`REQUIREMENTS.md`](REQUIREMENTS.md) — the "layout modes" sections (§4) are reframed as "skins" with the same per-mode requirements.
+- [`REQUIREMENTS.md`](REQUIREMENTS.md) — the skin surfaces sections (§4) carry the per-skin functional requirements.
 - [`TECHNICAL.md`](TECHNICAL.md) — §3.5 (LayoutState) is replaced by the SkinState model described here.
 - [`META_NODES.md`](../model/META_NODES.md) — per-skin meta-namespaces are the canonical application of meta-nodes (alongside templates and formats).
 - [`prototypes/`](prototypes/) — the eight mockups are the first eight skin implementations.
+- [`TRACEABILITY.md`](TRACEABILITY.md) — detailed prototype-to-skin and skin-to-engine traceability.
 
 ---
 
