@@ -371,6 +371,8 @@ pub enum WorkspaceIntent {
 }
 ```
 
+This closed set is also the **canonical command taxonomy** the host builds on beyond skins: model-affecting intents are the unit of undo/redo (CORE_MODEL §8a), so one intent — or one batched group — is one undoable step, and the command palette (REQUIREMENTS §3.11) surfaces the same set. Defining commands once here keeps skins, undo, and the palette in lockstep.
+
 This is a closed set. Skins compose user gestures into these intents. The dispatcher routes:
 
 - **Selection intents** → direct write to DnaTreeCalc host state (cheap).
@@ -840,6 +842,10 @@ When a user reorganizes the canvas (drag a node to a new position):
 - These writes are outside the calculation undo stack by default; a skin may offer its own local view-state undo where useful.
 - The change persists with the workspace.
 - Other skins ignore it.
+
+### 5.5 Focus management
+
+Because skins mount and unmount at runtime, **focus is a contract concern, not a late accessibility detail.** On a switch (or a pane-composition change) the host restores a deterministic focus target: the element bound to the shared `selection` if the incoming skin can render it, else the skin's declared primary surface. Each skin declares its focusable entry point; the host owns focus on the chrome (context strip, skin switcher) and hands focus to the mounted skin on activation. Keyboard-completeness ([`REQUIREMENTS.md`](REQUIREMENTS.md) §6.3) depends on focus surviving switches — a skin must never leave focus orphaned on a torn-down node.
 
 ---
 

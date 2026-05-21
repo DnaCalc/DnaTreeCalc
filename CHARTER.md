@@ -66,6 +66,8 @@ DNA TreeCalc consumes the **infrastructure (Ox\*) lanes** and parallels its **si
 
 **TreeCalc owns:** the tree/reference model surface, host UX (the skin architecture), structural editing, templates, and the model→Excel mapping. It owns no engine, no Excel-COM, and no comparison machinery — those belong to the Ox\* lanes. The guiding rule is *right responsibility in the right repo* — direct API calls to the right surfaces, no shims scattered across repos.
 
+Put plainly, **TreeCalc is the UX-interaction and verification surface for the OxCalc / OxFml / OxFunc + replay stack.** It consumes engine types directly — no wrapper types, no re-interpretation seams, no parallel libraries — and where the engine carries a deeper model than the host displays (immutable structure-tree versioning, value caching, calc tracing), TreeCalc *leans on it* rather than reconstructing it host-side. Undoing a node edit, for instance, is the engine's version model surfacing through the host, not a host-side inverse-edit replay.
+
 ## Where we want to end (success criteria)
 
 TreeCalc succeeds when:

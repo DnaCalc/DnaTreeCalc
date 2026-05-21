@@ -43,7 +43,9 @@ W001 → W002 → W005 → { W003, W004 } → W006 → W007 → W008 → W009 �
 
 **Slice then flesh.** W005 is a deliberate **walking skeleton**: the thinnest real slice that runs end-to-end — minimal skin framework + minimal shell + two skins of different types + bare-name walk-up resolution over the W002 bridge + `.dnatree` persistence + the first end-to-end tests — proving the whole stack (engine bridge → shell → skins → tests) at the most limited scope. Everything after it *fleshes out* a working, visible, tested base: W003 deepens the shell and editing, W004 completes the reference model, W006 adds the remaining skins and hardens the framework. **W005 deliberately owns thin slices of the shell (W003), resolution (W004), and a second skin (W006); those worksets own the full depth.** This is why W005 precedes W003/W004 despite the numbering — worksets are not executed strictly by number. The v1 bar is the **minimum lovable skin set** — `triple-editor` + `outline-table` (skeleton) + `cell-view` (W006 must-have); `canvas-flow` and `nodes-across` are enrichment, not v1 gates.
 
-Engine prerequisites in OxCalc/OxFml/OxFunc (Spec `model/CORE_MODEL_SPEC.md` §6) gate several worksets; those are coordinated via handovers, not owned here.
+**Cross-cutting from the foundation.** Two build targets are stood up early — the browser WASM shell and the native **Tauri** desktop shell (the native-code-hosting vehicle; `ux/TECHNICAL.md` §1, §1.1) — so neither is retrofitted. A **performance measurement harness** with timed stress workloads (`ux/TECHNICAL.md` §7.6; `docs/test-corpus/perf/`) is scaffolding built as soon as the bridge supports it, since iterating on engine+host speed is part of the proving-ground mission, not a late add.
+
+Engine prerequisites in OxCalc/OxFml/OxFunc (Spec `model/CORE_MODEL_SPEC.md` §6) gate several worksets; those are coordinated via handovers, not owned here. New since the seed map: version-based undo (§6 item 13), table-node unpacking (§6 item 14 — Tables are a cross-repo build area, in scope), and node-as-function invocation (§6 item 15).
 
 ---
 

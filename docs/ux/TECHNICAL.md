@@ -15,14 +15,14 @@ Inherited from DNA OneCalc, unchanged baseline:
 | Layer | Choice |
 |---|---|
 | UI framework | Leptos 0.8+ (Rust reactive) |
-| Runtime target | CSR on WASM (browser); SSR/CLI for verification |
+| Runtime target | Browser WASM (CSR) + native Windows desktop via **Tauri** (same UI in a webview); CLI for verification |
 | DOM binding | `web-sys` 0.3 |
 | Engine access | Direct via re-exported `oxfml_core`, `oxfunc_core`, and new `oxcalc-core` |
 | Persistence (browser) | localStorage with explicit file save/load via the File System Access API or download/upload pattern |
 | Persistence (native) | File I/O for `.dnatree` workspace files |
 | Serialization | `serde_json` with `arbitrary_precision` (consistent with OneCalc's choice for numeric safety) |
 | Styling | CSS design tokens, embedded `<style>` block (consistent with OneCalc) |
-| Build | `wasm-pack` / `trunk` for browser; `cargo` for native verification host |
+| Build | `trunk` / `wasm-pack` for the browser shell; **Tauri** for the native desktop build; `cargo` for the verification CLI |
 
 New dependencies for TreeCalc:
 
@@ -34,7 +34,7 @@ New dependencies for TreeCalc:
 | Drag-and-drop | `web-sys` Drag/Drop API via thin wrappers; no heavy library needed |
 | UDF hosting (VBA + .xll) | Shared UDF-hosting core (see §2.4) — consumed, not reimplemented |
 
-No Tauri, no Electron, no React/Vue. The TreeCalc shell is pure Leptos/WASM in browser; a parallel native CLI for verification (analogous to OneCalc's split).
+**Two runtime shells from the start, one UI codebase** (no Electron, no React/Vue). The same Leptos UI runs as (1) a **browser WASM shell** (CSR on WASM) and (2) a **native Windows desktop build via Tauri** — the Leptos UI hosted in a native webview, *not* a native-widget stack. The native build exists from the start because it can **load native `.dll` libraries in-process** — `.xll` add-ins and VBA-hosted native code — which the browser sandbox cannot; native-code UDF hosting is therefore a native-build capability, while the browser build runs pure calc (§1.1). A parallel native CLI handles verification (analogous to OneCalc's split). Stack choices must keep the Tauri target viable from the foundation worksets onward — Leptos targets both browser-WASM and a Tauri webview from one codebase, so this is an additive shell, not a second UI.
 
 ### 1.1 UDF hosting (VBA and .xll) — consumed via a shared core
 
@@ -46,6 +46,8 @@ TreeCalc supports user-defined functions through two Excel-compatible mechanisms
 **Intent:** both capabilities are developed **first in DNA OneCalc**, then a **shared core is extracted** that multiple hosts (OneCalc, TreeCalc, future DNA Calc) consume. TreeCalc does **not** reimplement UDF hosting — it depends on the shared core directly. This matches the "right stuff in the right repo" principle: UDF hosting is a cross-host concern, owned by a shared crate, consumed by hosts.
 
 Practical consequence for TreeCalc planning: the UDF-hosting dependency is not on TreeCalc's critical path for v1 (the core tree/calc/skin work doesn't need it), and lands when the shared core is extracted from OneCalc. TreeCalc's formula evaluation routes UDF calls through the shared core the same way OneCalc does. The `.xll` native path is newer than the VBA path; both arrive in TreeCalc by consuming the shared core, not by per-host work.
+
+Note the split in timing: the **native Tauri shell is on the early path** — it is the delivery vehicle and the only target that can load native `.dll` code in-process (§1) — whereas **UDF hosting itself** lands later with the shared core. The native build is established early; it gains native-code UDFs when the shared core arrives.
 
 ---
 
@@ -272,6 +274,8 @@ The bridge pattern from OneCalc generalizes:
 
 ## 4. OxCalc bridge pattern
 
+The bridge is a **thin projection of engine types for rendering and intent routing — not a re-interpretation layer.** TreeCalc consumes `EvalValue`, diagnostics, the dependency graph, and calc-state from OxCalc/OxFml directly (CORE_MODEL §5.1); the request/result shapes below carry engine data into the UI and host intents back, and must not grow host-side reimplementations of engine semantics. This mirrors DnaOneCalc's direct-use bridge pattern — any shape here that drifts toward re-interpreting engine behavior is a simplification target.
+
 ### 4.1 Tree bridge interface
 
 ```rust
@@ -420,9 +424,11 @@ Skin state, template definitions, format data, template rollout tags, and other 
 - **In-browser:** primary persistence is localStorage (auto-save key `dnatreecalc.workspace.v1`). Explicit "Save to disk" prompts a download. "Open from disk" uses file-input or File System Access API.
 - **Native:** standard file I/O. Watch the file for external changes; prompt user on conflict.
 
-### 5.3 Migration
+### 5.3 Migration and forward-compatibility
 
 Schema version bumped on format changes. Loader detects version and runs migration steps. Old workspaces opened in newer hosts: migrated in place (with backup). Newer workspaces opened in older hosts: refused with a clear error.
+
+**Unknown-field preservation.** Within a compatible schema version, the loader preserves fields it does not recognize and writes them back unchanged on save, so a workspace touched by a newer point-release (additive fields only) survives a round-trip through an older host without data loss. This applies only to additive, version-compatible fields; a `schema_version` bump beyond what the host knows is still refused (above), not silently round-tripped.
 
 ### 5.4 Backups
 
@@ -483,7 +489,7 @@ Auto-backup to a sibling `.dnatree.bak` file on each save. Configurable retentio
 
 ### 6.7 Table editor (`table_editor.rs`)
 
-- For Table-valued nodes.
+- For table nodes (CORE_MODEL §7c).
 - Standard grid editor with column headers, optional totals row.
 - Column-level formula editing (per cell evaluates the column formula in row context).
 - Add/remove rows and columns.
@@ -558,6 +564,16 @@ Auto-backup to a sibling `.dnatree.bak` file on each save. Configurable retentio
 - Recalcs trigger UI updates via `Effect`, not synchronous within reducers.
 - Long operations (template sync, Excel import) show progress and remain cancellable.
 
+### 7.6 Performance measurement and the stress corpus
+
+Measurement is central to the project's purpose: TreeCalc exists in part to stress OxCalc's coordinator / dependency / invalidation / epoch model under a real multi-node workload (CHARTER). The emphasis is on **automated, repeatable, timed runs we can iterate on — not fixed clock-time budgets to pass.**
+
+- **Named stress workloads** in the test corpus (`docs/test-corpus/perf/`): deep tree, wide tree, large-array-on-many-nodes, structural-edit storm, RTD churn. These are the models we time.
+- **Timed runs through the real stack** — recalc and structural-edit timing captured via the bridge, so we iterate on engine + host together as the workloads grow.
+- **Excel comparison includes timing, not just output** — the same workloads are timed in Excel via the OxXlPlay / OxReplay path (the verification harness already constructs and observes Excel), so divergence in *speed* is visible alongside divergence in *value*.
+- **Per-node recalc profiling** feeds the workspace status overview (REQUIREMENTS §2.11.1), extending "health" from error/cycle counts to slow-node visibility.
+- **No clock-time success gates now.** What must be in place is the *harness and the timed runs* (early scaffolding, like the test corpus), so concrete targets can be set later from real data rather than guessed now. Engine-internal targets remain OxCalc's; TreeCalc owns the workloads and the measurement surface (CORE_MODEL §5.1).
+
 ---
 
 ## 8. New low-level requirements (build or borrow)
@@ -567,7 +583,7 @@ Auto-backup to a sibling `.dnatree.bak` file on each save. Configurable retentio
 - Virtualized tree outline (no off-the-shelf Leptos component fits cleanly).
 - Free canvas with drag-positioning and connection-line rendering.
 - Format editor (number format, font, etc.) — Leptos UI bindings to a format-code parser (OxFml owns the parser).
-- Structured-table editor for Table-valued nodes.
+- Structured-table editor for table nodes (CORE_MODEL §7c).
 - Template editor.
 
 ### 8.2 Components to borrow / reuse
@@ -595,8 +611,11 @@ From the engine prerequisites in [`CORE_MODEL_SPEC.md`](../model/CORE_MODEL_SPEC
 10. Conditional-formatting rule semantics needed by the format surface.
 11. Constant-entry classification on the TreeCalc channel, including `""` -> `Empty`, with the formula branch parsing tree paths under `treecalc-v1`.
 12. Circular-reference cycle profiles and iterative bounds carried in the host/recalc compatibility basis.
+13. Version-based undo/redo support — immutable structure-tree versioning the host navigates; OxFml caching role.
+14. Table-node unpacking into engine constructs (a Table is not an OxFunc value).
+15. Node-as-function invocation — a call on a tree-reference that resolves to a lambda-valued node.
 
-The host UX depends on items 1, 2, 8, and 9 directly; the others are formula-language extensions visible through the editor.
+The host UX depends on items 1, 2, 8, 9, 13, and 14 directly; the others are formula-language extensions visible through the editor.
 
 ---
 
@@ -609,10 +628,10 @@ The host UX depends on items 1, 2, 8, and 9 directly; the others are formula-lan
 | §2.3 Formula editor | §6.2 reused from OneCalc |
 | §2.4 Value detail | §6.3 value_detail.rs |
 | §2.5 Drill panel | reused from OneCalc, no new component |
-| §2.6 Dependency map | §6.11 dependency_map.rs |
-| §2.7 Table value editor | §6.8 table_editor.rs |
-| §2.8 Format editor | §6.9 format_editor.rs |
-| §2.9 Template editor | §6.10 template_editor.rs |
+| §2.6 Dependency map | §6.10 dependency_map.rs |
+| §2.7 Table editor | §6.7 table_editor.rs |
+| §2.8 Format editor | §6.8 format_editor.rs |
+| §2.9 Template editor | §6.9 template_editor.rs |
 | §2.10 Diagnostics | inline in editor; reused from OneCalc |
 | §2.11 Workspace-level views | individual components — settings panel, templates index/list |
 | §3 Editing actions | §3 state model + §6 components; reducer in app/reducer.rs |
@@ -640,14 +659,14 @@ For feature-level traceability from visible prototype affordances to skins, prim
 
 A natural build order based on dependencies:
 
-1. **Phase 0 — Foundation + skin scaffold.** Factor reusable OneCalc components into a shared crate, define `RegisteredSkin` / `WorkspaceSkin` / `SkinContext`, and mount the first shell through the skin registry from the start.
+1. **Phase 0 — Foundation + skin scaffold.** Factor reusable OneCalc components into a shared crate, define `RegisteredSkin` / `WorkspaceSkin` / `SkinContext`, and mount the first shell through the skin registry from the start. Establish **both build targets** here — the browser WASM shell and the native **Tauri** desktop shell — so the native-code-hosting path (§1, §1.1) is viable from the start rather than retrofitted.
 2. **Phase 1 — Tree shell in TripleEditor.** Workspace state, tree outline (nav rail), basic node creation/deletion/rename. TripleEditor uses reused formula-editor primitives and persists its panel state through `skins.triple-editor` meta-nodes. Single-node evaluation via bridge. Persistence via localStorage and explicit file save.
 3. **Phase 2 — Multi-node calc.** OxCalc bridge integration. Recalc and dependency graph in place. Status display per node. Reference resolution with walk-up.
 4. **Phase 3 — Editing breadth.** Multi-select, move, drag-and-drop. Rename-propagation prompt. Search.
 5. **Phase 4 — Additional skins and adaptive renderers.** OutlineTable, CellView, and active-skin renderer choices for scalars/arrays/tables/templates.
 6. **Phase 5 — Meta-nodes and formatting.** is_meta flag plumbing. Format editor. Format inheritance walking.
 7. **Phase 6 — Templates.** Template editor. Instance link tracking, hidden rollout tags, and on-demand validate/sync (initially N individual edits; later transactional once OxCalc supports it).
-8. **Phase 7 — Tables.** Table editor for Table-valued nodes. Structured-reference syntax in the editor.
+8. **Phase 7 — Tables.** Table editor for table nodes (CORE_MODEL §7c). Structured-reference syntax in the editor.
 9. **Phase 8 — Canvas.** Free-canvas layout. Connection rendering. Drag-positioning.
 10. **Phase 9 — Excel I/O.** Import per spec §10. Export with bidirectional fidelity caveats. Cross-workspace alias management.
 11. **Phase 10 — Polish.** Accessibility, theming, command palette, undo/redo refinement, performance tuning for large workspaces.

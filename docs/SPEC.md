@@ -4,6 +4,8 @@ This file is the index for **the Spec**: the combined requirements + design + to
 
 The Spec is a structured **set**, not one monolithic file — grouped into three areas: **model** (the calculation/language model), **interop** (Excel import/export/verification), and **ux** (the user experience — requirements, technical plan, skin architecture, prototypes). Edit it freely as the design evolves; beads that change behavior update the Spec documents they touch.
 
+The v1 boundary — what's in scope, what's deferred (with an architectural hook), and what's parked for later — is drawn in one place: [`SCOPE.md`](SCOPE.md). Consult it before treating something as a gap.
+
 For *how we work* (worksets, beads, handovers), see [`../OPERATIONS.md`](../OPERATIONS.md) and [`WORKSET_REGISTER.md`](WORKSET_REGISTER.md).
 
 ---
@@ -31,7 +33,7 @@ The calculation and language model — what TreeCalc *is* underneath the UI.
 
 | Document | Covers |
 |---|---|
-| [`model/CORE_MODEL_SPEC.md`](model/CORE_MODEL_SPEC.md) | Core tree model; reference syntax (`.` separator, `^` ancestors, `[]`/`[ws]` workspace anchors, bracket-escape, walk-up scope, set-producing operators); capability profile (`treecalc-v1` vs `strict-excel`); Excel-alignment principle; values & arrays; engine prerequisites; calc-state display; structural editing; templates; **Excel defined-name import** (§10); compact grammar. The authoritative spec. |
+| [`model/CORE_MODEL_SPEC.md`](model/CORE_MODEL_SPEC.md) | Core tree model; reference syntax (`.` separator, `^` ancestors, `[]`/`[ws]` workspace anchors, bracket-escape, walk-up scope, set-producing operators); capability profile (`treecalc-v1` vs `strict-excel`); Excel-alignment principle; values & arrays; engine prerequisites; ownership boundary (§5.1); recalculation, calc-state & diagnostics (§7); templates; **tables** (§7c); structural editing & **undo/redo** (§8a); **node-as-function** (§3.8); **Excel defined-name import** (§10); compact grammar. The authoritative spec. |
 | [`model/META_NODES.md`](model/META_NODES.md) | The `is_meta` per-node flag — host-managed tree data (templates, formatting, per-skin UI state) invisible to formulas. Single-flag design; behavior; canonical uses; engine ask. |
 
 ## Interop

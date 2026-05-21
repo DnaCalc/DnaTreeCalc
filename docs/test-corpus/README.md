@@ -81,8 +81,10 @@ docs/test-corpus/
   cycles/              §7a — circular references under each cycle profile
   templates/           §7b — template instantiate/sync/divergence (META_NODES)
   formatting/          §6 (item 10) — Format meta-children + inheritance (META_NODES)
+  tables/              §7c — table-node structured refs + column formulas (engine-unpacked)
   import/              §10 — Excel defined-name → tree mapping
   value-equivalence/   Excel anchor — whole-workspace recompute + export round-trip
+  perf/                stress workloads (deep/wide/large-array/edit-storm) — timed runs, not value assertions (ux/TECHNICAL §7.6)
   tools/
     validate-corpus.ps1
 ```
@@ -139,10 +141,12 @@ maps cleanly onto the work plan and can be switched on area-by-area as the engin
 | Workset | Themes | What it pins |
 |---|---|---|
 | **W002** engine seam | `constants/`, `cycles/` | entry classification (§2/§6); cycle profiles (§7a) |
-| **W004** reference model | `references/*`, `profiles/`, `dynamic-references/`, `structural-edits/`, `arrays/` | §3 resolution + set membership, §4 gating, INDIRECT/CTRO, §8 edit propagation, §6 arrays |
+| **W004** reference model | `references/*`, `profiles/`, `dynamic-references/`, `structural-edits/`, `arrays/` | §3 resolution + set membership, §4 gating, INDIRECT/CTRO, §8 edit propagation, §6 arrays, §3.8 node-as-function |
 | **W007** meta/format/templates | `templates/`, `formatting/` | §7b templates; `Format` inheritance (META_NODES) |
 | **W008** import | `import/`, `value-equivalence/import-*` | §10 defined-name import + recompute-equals-Excel |
 | **W009** export/replay | `value-equivalence/export-*` | export round-trip; whole-workspace value-equivalence |
+| **Tables** (cross-repo) | `tables/` | §7c structured-ref resolution + column formulas; pending the table-node unpacking handover |
+| cross-cutting | `perf/` | timed stress workloads (`ux/TECHNICAL.md` §7.6) — measured, not asserted pass/fail |
 
 The matrix in the validator output is the live source of truth; this table is the human overview.
 

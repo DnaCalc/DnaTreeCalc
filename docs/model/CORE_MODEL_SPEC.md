@@ -13,6 +13,13 @@ Layering (per-product repos are authoritative):
 | OxCalc | Multi-node coordinator, dependency graph, invalidation closure, atomic publication, epochs, tree-substrate types (`TreeNodeId`, `TreeReference`) |
 | DNA TreeCalc | User-facing host — workspace persistence, UI, structural editing, cross-workspace orchestration |
 
+Formula authority rule: DNA TreeCalc stores and edits node formula/content text
+but does not parse or bind it. OxFml owns parsing, literal-entry
+classification for non-empty entries, formula binding, and TreeCalc-profile
+reference syntax. OxCalc owns the internal tree model used to resolve the
+OxFml bind/reference structures into dependencies, invalidation, runtime
+reference carriers, and publication consequences.
+
 The OxCalc substrate uses tree-node-id semantics (not coordinates) and exposes the reference variants `DirectNode`, `RelativePath`, `SiblingOffset`, `DynamicResolved`, `ProjectionPath`, `Unresolved`. TreeCalc is the host on top of an already-tree-shaped engine; this document describes the user-facing surface the host provides.
 
 ## 2. Core Model
@@ -98,6 +105,8 @@ To force a specific resolution and override the walk-up, the user writes an expl
 ```
 
 Aliases are registered in a section of the workspace persistence file mapping short names to external workspace files. Direct paths work for ad-hoc references; the UI offers "promote to alias". A bracket prefix is always absolute from the selected workspace's root — `^` (up-step) is meaningless after a bracket selector and is rejected by the parser. The default is live-latest: a cross-workspace reference reads whatever the external workspace currently publishes.
+
+**Resolution policy (Excel-aligned, deliberately simple).** Cross-workspace references resolve against workspaces **currently loaded** in the running host. A reference into a loaded workspace reads its latest published values — live-latest, exactly as Excel reads an open source workbook. A reference into a workspace that is **not loaded fails**: it resolves to an unavailable-external state surfaced as an error, never a silent stale value. Loading the referenced workspace makes such references resolve; closing it makes them fail again. This is intentionally not over-engineered — there is no background eviction policy or on-disk value cache to reason about: *loaded means referenceable, not-loaded means fail*. Pinned snapshots are a possible future addition (see [`../SCOPE.md`](../SCOPE.md)), not v1 behavior. A cross-workspace cycle (A → B → A) is detected through the engine's normal cycle handling (§7a): the cross-workspace edge is the `HostSensitive` dependency the engine already sees.
 
 Engine mapping: bind layer produces an `External(ExternalRef)` carrier (OxFml). From OxCalc-Tree's view, this is a `HostSensitive` reference. The host adapter loads external workspaces, caches their published values, and signals invalidation on external republish.
 
@@ -225,6 +234,18 @@ Sheet1.**                         every descendant of Sheet1
 | `@ANCESTORS`, `@PRECEDING`, `@FOLLOWING`, `**` | set-membership references (new carrier — see §6) |
 | `ref.@NAME` / `@INDEX` / `@FORMULA` | text/number values resolved at evaluation, not structural refs |
 
+### 3.8 Node-as-function (invoking a lambda-valued node)
+
+It is a core Excel premise that a defined name holding a `LAMBDA` value is callable by name (`=MyLambda(5)`). TreeCalc generalizes this to nodes: **any reference that resolves to a lambda-valued node is invocable with argument syntax.**
+
+```
+Doubler(5)                        invoke the lambda held by the resolved node `Doubler`
+My.brother.node(1, 2, "A")        resolve the path, then invoke the lambda it holds
+^.Rate(x)                         invoke the lambda on the parent's child `Rate`
+```
+
+The path resolves by the ordinary rules (§3.1–§3.3); the resolved node's value must be a `Lambda` (§6); the call applies arguments to it. Only **single-reference** resolutions are callable — a call on a set-producing reference (`.*`, `**`, `@ANCESTORS`, …) is an error unless explicitly designed later. The caller depends on the callee node's value, so editing the `LAMBDA` re-binds and re-evaluates callers. The call surface is profile-gated to `treecalc-v1`; under `strict-excel` only Excel's own defined-name LAMBDA invocation applies. LAMBDA invocation semantics (arity, closure, error codes) are OxFml/OxFunc's and Excel-aligned — the novel surface is only the tree-path-as-callee. Engine prerequisite §6 item 15; raised in [`../handovers/HANDOVER_OXFML_lambda_node_invocation.md`](../handovers/HANDOVER_OXFML_lambda_node_invocation.md).
+
 ## 4. Capability Profile
 
 Every TreeCalc-specific extension to the formula language is gated by a named profile carried in `OxCalcTreeHostCapabilitySnapshot.capability_profile_id` (the existing capability-snapshot field in `oxcalc-core/src/consumer.rs`). Under a strict-Excel profile, the engine rejects all TreeCalc syntax at parse/bind time.
@@ -245,6 +266,7 @@ The profile is a named, versioned bundle. Future profiles (`treecalc-v2`, etc.) 
 - Reference-array literals `{Foo, Bar}`
 - Bare-name lexical walk-up scope rule (replaces Excel's defined-name lookup)
 - `INDIRECT(string)` parsing the string as a tree path (under strict-excel, the same function parses as A1/R1C1)
+- Node-as-function invocation: a call applied to a path that resolves to a lambda-valued node (`Doubler(5)`, §3.8)
 
 **What stays profile-agnostic** (identical behavior under any profile):
 
@@ -278,6 +300,23 @@ Beyond the tree/node structure and the reference-identifier surface, align with 
 
 Most design questions have a fast answer: what does Excel do? Capitalization (`@NAME` not `@name`), single-quoting (`'Sales Q1'` not backtick), case-insensitive name lookup, error-code shapes (`#REF!`, `#VALUE!`, `#CALC!`) all follow from this.
 
+### 5.1 Ownership boundary — what TreeCalc does *not* specify
+
+A corollary of the alignment principle and the layering table (§1): several surfaces TreeCalc relies on are **owned by the engine / Excel lanes and are not re-specified here.** TreeCalc consumes them directly — no wrapper types, no re-interpretation seams — and where behavior is Excel-defined, the gate is "matches Excel" ([`../../OPERATIONS.md`](../../OPERATIONS.md) §6). When TreeCalc needs new behavior from one of these, it raises a handover; it does not grow a host-side reimplementation.
+
+| Surface | Owner | TreeCalc's role |
+|---|---|---|
+| Error algebra and error-code shapes (`#REF!`, `#VALUE!`, `#CALC!`, …) | OxFunc | Surface / display only |
+| Function & operator semantics, value coercion, array lifting | OxFunc | Consume `EvalValue` directly |
+| Number-format catalog and format-code value-types | OxFml | Edit / apply via the format surface |
+| Date / time / timezone / calendar semantics (incl. 1900/1904 date system) | OxFunc | Excel-anchored; surfaced only |
+| Recalculation model — manual/auto calc modes, recalc trigger, volatile-function behavior | OxCalc / OxFml | Host the trigger UX (§7); engine recomputes |
+| Value caching, invalidation closure, GC of bind artifacts, epochs | OxCalc | Lean on; never reconstruct host-side |
+| Cycle detection and iteration at scale | OxCalc | Select profile + bounds (§7a) |
+| Conditional-formatting rule semantics | OxFml | Editor UX + inheritance walk (§6 item 10) |
+
+A "gap" in one of these is not a TreeCalc spec gap — it is a sibling responsibility, tracked as an engine prerequisite (§6) and raised as a topic handover. This list is what keeps the host thin.
+
 ## 6. Values, Arrays, and Engine Prerequisites
 
 **Per-node observable value is either `Empty` or an `EvalValue`.** `Empty` is the value of a node whose formula text is the empty string. It is not a formula-evaluation result: no `=...` formula, array formula, or non-empty literal entry can evaluate a node to top-level `Empty`. Formula output may be an empty string (`""`), which is a text value and is distinct from `Empty`. Dereferencing a reference to an empty node can return the `Empty` value to a caller, matching Excel's blank-cell distinction.
@@ -309,9 +348,19 @@ The following pieces are TreeCalc-specific extensions that depend on engine work
 11. **Constant entry classification on the TreeCalc channel** — OxFml's cell-entry classification (`OXFML_DNA_ONECALC_DOWNSTREAM_CONSUMER_CONTRACT.md` §2.1A: leading `=` formula, `'` text escape, finite-number/`TRUE`-`FALSE`/quoted-string/verbatim-text constant) must be reachable from the TreeCalc host channel, with TreeCalc's explicit empty-string → `Empty` case and the formula branch parsing tree-path references under `treecalc-v1` rather than WorksheetA1, plus Excel-aligned implicit number-format inference on number constants. Raised in `docs/handovers/HANDOVER_OXFML_constant_input.md`.
 12. **Circular-reference cycle profiles** — the host selects a cycle profile and supplies iterative bounds (Maximum Iterations, Maximum Change) via the compatibility basis; OxCalc owns the profiles and the iteration (`docs/spec/core-engine/w048-cycles/`): `cycle.non_iterative_stage1` (default — reject / `cycle_blocked`), `cycle.excel_match_iterative` (Excel-faithful for the current single-host-scoped covered surface), `cycle.iterative_deterministic_v0` (deterministic Jacobi). See §7a and `docs/handovers/HANDOVER_OXCALC_iterative_cycle_config.md`.
 
-## 7. Calc-State Display
+13. **Version-based undo/redo support** — immutable structure-tree versioning the host can navigate, so undo/redo of structural and formula edits surfaces prior engine versions (including prior calc results) without host-side inverse-edit replay; OxFml's bind/value caching (green/black tree) participates in what is retained vs. recomputed. The host owns the command taxonomy and app-level interaction undo; the model-version layer is OxCalc's. See §8a and `docs/handovers/HANDOVER_OXCALC_undo_versioning.md`.
 
-The engine maintains an invalidation vocabulary (`clean` / `dirty_pending` / `needed` / `evaluating` / `verified_clean` / `publish_ready` / `rejected_pending_repair` / `cycle_blocked`). TreeCalc does not distinguish `verified_clean` from `clean` in user-visible state. The full displayed-status taxonomy is settled by UX design. Whether a cycle is an error or is iterated is profile-governed — see §7a.
+14. **Table-node unpacking** — the TreeCalc table-node concept (columns, headers, optional totals, column formulas, structured references) is lowered by OxFml/OxCalc into engine constructs (column arrays / references, per-row column-formula evaluation, structured-ref binding). A Table is **not** a value in the OxFunc universe; there is no `EvalValue::Table`. See §7c and `docs/handovers/HANDOVER_OXCALC_table_node_model.md`.
+
+15. **Node-as-function invocation** — OxFml's bind layer accepts a call applied to a tree-reference carrier that resolves (single-reference) to a lambda-valued node, under `treecalc-v1`; LAMBDA invocation semantics remain OxFml/OxFunc and Excel-aligned. See §3.8 and `docs/handovers/HANDOVER_OXFML_lambda_node_invocation.md`.
+
+## 7. Recalculation, Calc-State, and Diagnostics
+
+**Recalculation model (Excel- / DnaOneCalc-faithful).** Recalculation is owned by OxCalc/OxFml and behaves as in Excel and the proven DnaOneCalc host: there are **manual and automatic calc modes**, an explicit recalc trigger (the F9 equivalent) in manual mode, and **volatile functions** (`RAND`, `NOW`, `TODAY`, …) recompute on each recalc as Excel does. TreeCalc hosts the calc-mode setting and the recalc trigger in its chrome; it does not implement recalculation, scheduling, or volatility itself (§5.1). Nothing here is novel — it is called out only so the obvious is on record.
+
+**Calc-state.** The engine maintains an invalidation vocabulary (`clean` / `dirty_pending` / `needed` / `evaluating` / `verified_clean` / `publish_ready` / `rejected_pending_repair` / `cycle_blocked`). TreeCalc does not distinguish `verified_clean` from `clean` in user-visible state. The full displayed-status taxonomy is settled by UX design. Whether a cycle is an error or is iterated is profile-governed — see §7a.
+
+**Diagnostics.** Diagnostics shown to the user are a **thin presentation mapping over what the engine reports** — TreeCalc adds no parallel diagnostic taxonomy and no wrapper types (§5.1). The host classifies each engine-reported diagnostic into a small display set — *parse*, *bind / unresolved*, *capability-mismatch*, *cycle*, *external-unavailable*, *runtime-error* — at one of four severities (*error / warning / info / hint*), and links it to its source position or offending dependency. The underlying error values and codes are OxFunc's. Diagnostics are recomputed on load alongside calc state, not persisted as truth. This is the canonical statement; [`../ux/REQUIREMENTS.md`](../ux/REQUIREMENTS.md) §2.10/§5.7/§5.8 present the surfaces.
 
 ## 7a. Circular References and Iterative Calculation
 
@@ -370,6 +419,14 @@ When OxCalc gains transactional batch editing (see §6.8), each per-instance syn
 - **Detach instance** — drop the instance link; subtree becomes independent.
 - **Fit-check** (future) — given an arbitrary subtree, report which templates it could be mapped to and what current diff would result.
 
+## 7c. Tables
+
+A **Table** is a first-class TreeCalc node concept: a node that carries tabular structure — named columns, a header row, optional totals, per-column formulas, and Excel-style structured references (`path[Col]`, `path[@Col]`, `path[[#Headers],[Col]]`, §3.3). Tables are **in scope and fully realized**, not deferred.
+
+**A Table is a node concept, not a value.** There is no `EvalValue::Table` in the OxFunc universe (§6). The table-ness lives in the TreeCalc node — its column children and host metadata; the engine **unpacks** it into constructs it already understands — column arrays / references, per-row column-formula evaluation, structured-reference binding — Excel-Table-faithfully. This keeps the OxFunc value universe unchanged and the host thin: TreeCalc owns the table-node concept and its editor ([`../ux/REQUIREMENTS.md`](../ux/REQUIREMENTS.md) §2.7) and export ([`../interop/EXCEL_EXPORT_AND_REPLAY.md`](../interop/EXCEL_EXPORT_AND_REPLAY.md) §4.4); OxFml/OxCalc own the lowering.
+
+**What's settled vs. open.** Settled: the structured-reference grammar (§3.3, adopted from Excel verbatim) and that Tables are not an OxFunc value. Open and owned cross-repo (engine prerequisite §6 item 14, [`../handovers/HANDOVER_OXCALC_table_node_model.md`](../handovers/HANDOVER_OXCALC_table_node_model.md)): the exact lowering model — how a column reference resolves to an array / reference, how a column formula evaluates per row, how `[#Headers]` / `[#Data]` / `[#Totals]` select slices, the dependency edges a table reference creates, and the per-cell value surface returned to the host. The table editor and Excel export rest on that engine behavior, not on host reconstruction.
+
 ## 8. Structural Editing
 
 User gestures on the tree:
@@ -382,6 +439,18 @@ User gestures on the tree:
 - **Delete** — references to the deleted node become `Unresolved`; undo affords recovery.
 
 The engine-side semantics for each gesture (rebind vs. recalc vs. publication consequence) are the open piece in §6.5 — UI surfaces the engine's resolution rather than pretending the engine guarantees more.
+
+## 8a. Undo / Redo
+
+Undo/redo is **layered**, and only the middle layer touches the engine. The host does not fake undo by reconstructing inverse edits; where the engine carries a version model, the host leans on it (§5.1; CHARTER).
+
+| Layer | What | Where it lives |
+|---|---|---|
+| Interaction | Keystroke-level formula-editor text, button actions, view / mode changes | TreeCalc host — local view affordances; outside the model undo stack |
+| Model edits | Node add / move / delete / rename, formula and content changes | **OxCalc version-based undo** — navigate immutable structure-tree versions; prior calc results stay viewable. OxFml caching (green/black tree) participates |
+| Calc runs | Recalc (F9), RTD refresh, future scripting | **Not undoable** — any calc-trace history is engine-internal, not a host undo step |
+
+All model-edit undo/redo is expressed through the **command taxonomy** (the closed `WorkspaceIntent` set; [`../ux/SKINS.md`](../ux/SKINS.md) §2.6), so one user action — even when it expands into several engine edits, as template sync does — is one undoable step. This is an **ongoing area**, built out as commands are added rather than finished at one workset; the model-version layer needs an OxCalc interface and semantics (engine prerequisite §6 item 13, [`../handovers/HANDOVER_OXCALC_undo_versioning.md`](../handovers/HANDOVER_OXCALC_undo_versioning.md)). What is fixed now: undo/redo exists, it is command-taxonomy-driven, and it leans on the engine's version model without faking.
 
 ## 9. Compact Grammar Sketch
 

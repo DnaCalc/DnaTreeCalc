@@ -29,6 +29,8 @@ The shell must accommodate all three. P1 is the design driver; P2 is a view-only
 
 ### 1.3 Non-goals (for v1)
 
+The full v1 scope boundary — in-scope, deferred-with-architectural-hook, and the long-term parking lot — is canonical in [`../SCOPE.md`](../SCOPE.md). The headline non-goals:
+
 - Multi-user collaborative editing (single-user only).
 - Mobile / touch-primary UX (desktop / laptop with keyboard is the design target).
 - Charting and visualization (deferred; basic value-shape rendering only).
@@ -114,7 +116,7 @@ Displays the selected node's computed value. Adapts to the value's shape:
 - **Reference value:** displays "Reference to [path]" with a click-through to navigate.
 - **Lambda value:** displays the lambda signature; not invokable directly from this panel.
 - **Error value:** the error code (#REF!, #VALUE!, #CALC!, #NAME?, #DIV/0!, etc.) with diagnostic context.
-- **Table value:** structured-table view (see §2.7 below).
+- **Table node:** structured-table view (see §2.7 below).
 
 Side affordances:
 - "Pin this value" — keep the value display visible even when another node is selected.
@@ -146,9 +148,9 @@ A panel showing the selected node's relationship to others. Two flavors:
 
 **2.6.2 Graph view (optional, on-demand).** A graph-visualization of dependencies within a subtree. Nodes as boxes, edges as arrows. Useful for moderate-size subtrees; impractical for full workspaces. Triggered explicitly ("Show dependency graph for this subtree").
 
-### 2.7 Table value editor
+### 2.7 Table editor
 
-When a node's value is a Table (§2.4 of spec — note: tables are deferred to a future spec section), the value detail panel renders a structured-table editor:
+When a node is a **Table** (the table-node concept — CORE_MODEL §7c; in scope, not deferred), the value detail panel renders a structured-table editor:
 
 - Column headers with names, optional totals row.
 - Data rows displayed as a grid.
@@ -184,7 +186,7 @@ When the user opens a template (a meta-flagged subtree), the template editor app
 
 ### 2.10 Diagnostics panel
 
-Per-node diagnostic surface. Renders:
+Per-node diagnostic surface. The category + severity model is canonical in CORE_MODEL §7 — a thin presentation mapping over engine-reported diagnostics, with no host-side taxonomy or wrapper types. Renders:
 - Parse errors with positions.
 - Bind errors (unresolved references, type mismatches).
 - Calc errors (#REF!, #DIV/0!, etc.) with originating context.
@@ -280,10 +282,12 @@ When the node's content is a constant (no leading `=`, not formula-derived):
 
 ### 3.9 Undo / redo
 
-- Ctrl+Z undoes the last operation (single atomic step from the user's perspective, even if internally composed of N engine edits).
-- Ctrl+Y / Ctrl+Shift+Z redoes.
+Undo/redo is layered (CORE_MODEL §8a): **interaction** undo (formula-editor keystrokes, view / mode changes) is local to the host; **model edits** (add / move / delete / rename, formula / content changes) undo by navigating OxCalc's version model, so prior calc results stay viewable; **calc runs** (recalc / F9, RTD refresh) are not undoable.
+
+- Ctrl+Z undoes the last model operation (single atomic step from the user's perspective, even if internally composed of N engine edits); Ctrl+Y / Ctrl+Shift+Z redoes.
+- Model undo/redo is expressed through the command taxonomy (the closed `WorkspaceIntent` set; SKINS §2.6), so one user action — e.g. template sync — is one undoable step, not N.
 - Undo history persists for the session (not across workspace close).
-- Operations grouped per logical action — e.g., template sync is one undoable step, not N.
+- This is an ongoing area built out as commands are added, leaning on OxCalc versioning rather than host-side inverse edits (engine prerequisite CORE_MODEL §6 item 13).
 
 ### 3.10 Keyboard shortcuts
 
@@ -467,7 +471,6 @@ Per-node state from the engine's invalidation vocabulary, mapped to user-visible
 
 - Copy node: clipboard carries node identity + structure + formula text.
 - Paste as new node: instantiates the structure at the paste destination with new identity (renaming on collision).
-- Paste as link (Ctrl+Shift+V): creates a reference-only node pointing to the original.
 - Copy value: clipboard receives the formatted value text (scalar or array as CSV/TSV).
 - Cross-workspace copy: tracked, prompts the user to register an alias if the source workspace is opened separately.
 
@@ -562,10 +565,10 @@ This section verifies the requirements cover all the spec's scope.
 | §7b Templates | §2.9 template editor; §5.4 template/instance UX |
 | §8 Structural editing | §3 actions (create, delete, rename, move) |
 | §10 Excel import | §3.12 workspace-level actions; §2.11.4 import status |
-| Tables | §2.7 table editor (deferred but UX surface defined) |
+| Tables (CORE_MODEL §7c) | §2.7 table editor — in scope; node concept the engine unpacks |
 | Meta-nodes (formatting use) | §2.8 format editor; §5.5 formatting UX |
 
-Gaps flagged for future work:
+Gaps flagged for future work (consolidated in [`../SCOPE.md`](../SCOPE.md)):
 - **Charting and visualization** — explicit non-goal for v1; eventual integration with the canvas layout (§4.3).
 - **Multi-user collaboration** — out of v1 scope; persistence format leaves room.
 - **External data connectors** — not addressed (but RTD / async-streaming value updates ARE in scope; mechanism in OxCalc, host pushes, skins observe).
