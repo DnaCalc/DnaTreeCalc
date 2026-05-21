@@ -25,7 +25,7 @@ Developed by DNA Kode, as part of the DNA Calc program.
 
 ## Status
 
-Design/planning stage. Git and the bead store are initialized. The implementation tree (Rust workspace) is not yet scaffolded. Execution state lives in `br`; start with `br ready`.
+Design/planning stage moving into the first W002 implementation slice. Git, the bead store, and the initial Rust workspace skeleton are initialized. Execution state lives in `br`; start with `br ready`.
 
 ## License
 
