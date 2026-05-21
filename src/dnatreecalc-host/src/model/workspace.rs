@@ -67,6 +67,7 @@ pub struct WorkspaceNodeFixture {
 pub struct WorkspaceModel {
     pub workspace_id: String,
     pub profile: CapabilityProfileId,
+    pub node_order: Vec<String>,
     pub root_paths: Vec<String>,
     pub nodes: BTreeMap<String, WorkspaceNode>,
 }
@@ -141,6 +142,11 @@ impl TryFrom<WorkspaceFixture> for WorkspaceModel {
         Ok(Self {
             workspace_id: fixture.workspace_id,
             profile: fixture.profile.unwrap_or(CapabilityProfileId::TreecalcV1),
+            node_order: fixture
+                .nodes
+                .iter()
+                .map(|node| node.node_id.clone())
+                .collect(),
             root_paths,
             nodes,
         })

@@ -1,0 +1,425 @@
+use std::collections::BTreeMap;
+
+use oxcalc_core::consumer::{
+    OxCalcTreeDocument, OxCalcTreeEnvironment, OxCalcTreeRecalcRequest, OxCalcTreeRuntimeFacade,
+};
+use oxcalc_core::formula::{
+    FixtureFormulaAst, FixtureFormulaBinaryOp, TreeFormulaBinding, TreeFormulaCatalog,
+    TreeReference,
+};
+use oxcalc_core::structural::{
+    BindArtifactId, FormulaArtifactId, StructuralNode, StructuralNodeKind, StructuralSnapshot,
+    StructuralSnapshotId, TreeNodeId,
+};
+
+use super::bridge::{OxCalcTreeBridge, OxCalcTreeBridgeError};
+use super::types::{
+    NodeCalcStateProjection, PreparedBinaryOp, PreparedFormula, PreparedFormulaCatalog,
+    PreparedFormulaOperand, TreeRecalcRequest, TreeRecalcResult,
+};
+use crate::model::{NodeContentKind, WorkspaceModel, WorkspaceNode};
+
+#[derive(Debug, Default)]
+pub struct LiveOxCalcTreeBridge {
+    facade: OxCalcTreeRuntimeFacade,
+}
+
+impl LiveOxCalcTreeBridge {
+    #[must_use]
+    pub fn new(environment: OxCalcTreeEnvironment) -> Self {
+        Self {
+            facade: OxCalcTreeRuntimeFacade::new(environment),
+        }
+    }
+}
+
+impl OxCalcTreeBridge for LiveOxCalcTreeBridge {
+    fn execute_recalc(
+        &self,
+        request: TreeRecalcRequest,
+    ) -> Result<TreeRecalcResult, OxCalcTreeBridgeError> {
+        let submission = PreparedSubmission::try_from_request(&request)?;
+        let result = self
+            .facade
+            .execute(
+                OxCalcTreeDocument {
+                    structural_snapshot: submission.structural_snapshot.clone(),
+                    formula_catalog: submission.formula_catalog.clone(),
+                    seeded_published_values: BTreeMap::new(),
+                },
+                OxCalcTreeRecalcRequest {
+                    candidate_result_id: request.candidate_result_id,
+                    publication_id: request.publication_id,
+                    compatibility_basis: request.compatibility_basis,
+                    artifact_token_basis: request.artifact_token_basis,
+                },
+            )
+            .map_err(|error| OxCalcTreeBridgeError::Upstream(error.to_string()))?;
+
+        let published_values = result
+            .published_values
+            .iter()
+            .filter_map(|(node_id, value)| {
+                submission
+                    .paths_by_node_id
+                    .get(node_id)
+                    .map(|path| (path.clone(), value.clone()))
+            })
+            .collect();
+
+        let node_states = result
+            .node_states
+            .iter()
+            .filter_map(|(node_id, state)| {
+                submission
+                    .paths_by_node_id
+                    .get(node_id)
+                    .map(|path| (path.clone(), NodeCalcStateProjection::from(*state)))
+            })
+            .collect();
+
+        let evaluation_order = result
+            .evaluation_order
+            .iter()
+            .filter_map(|node_id| submission.paths_by_node_id.get(node_id).cloned())
+            .collect();
+
+        let dependency_edges_by_owner =
+            project_dependency_edges(&result.dependency_graph.edges_by_owner, &submission);
+
+        Ok(TreeRecalcResult {
+            run_state: result.run_state,
+            dependency_graph: result.dependency_graph,
+            invalidation_closure: result.invalidation_closure,
+            evaluation_order,
+            dependency_edges_by_owner,
+            published_values,
+            node_states,
+            diagnostics: result.diagnostics,
+        })
+    }
+}
+
+fn project_dependency_edges(
+    edges_by_owner: &BTreeMap<TreeNodeId, Vec<oxcalc_core::dependency::DependencyEdge>>,
+    submission: &PreparedSubmission,
+) -> BTreeMap<String, Vec<String>> {
+    edges_by_owner
+        .iter()
+        .filter_map(|(owner, edges)| {
+            let owner_path = submission.paths_by_node_id.get(owner)?;
+            let target_paths = edges
+                .iter()
+                .filter_map(|edge| {
+                    submission
+                        .paths_by_node_id
+                        .get(&edge.target_node_id)
+                        .cloned()
+                })
+                .collect::<Vec<_>>();
+            Some((owner_path.clone(), target_paths))
+        })
+        .collect()
+}
+
+struct PreparedSubmission {
+    structural_snapshot: StructuralSnapshot,
+    formula_catalog: TreeFormulaCatalog,
+    paths_by_node_id: BTreeMap<TreeNodeId, String>,
+}
+
+impl PreparedSubmission {
+    fn try_from_request(request: &TreeRecalcRequest) -> Result<Self, OxCalcTreeBridgeError> {
+        let node_ids_by_path = assign_node_ids(&request.workspace);
+        let paths_by_node_id = node_ids_by_path
+            .iter()
+            .map(|(path, node_id)| (*node_id, path.clone()))
+            .collect::<BTreeMap<_, _>>();
+        let root_node_id = root_node_id(&request.workspace, &node_ids_by_path)?;
+        let structural_snapshot = build_structural_snapshot(
+            &request.workspace,
+            &request.formula_catalog,
+            &node_ids_by_path,
+            root_node_id,
+        )?;
+        let formula_catalog = build_formula_catalog(&request.formula_catalog, &node_ids_by_path)?;
+
+        Ok(Self {
+            structural_snapshot,
+            formula_catalog,
+            paths_by_node_id,
+        })
+    }
+}
+
+fn assign_node_ids(workspace: &WorkspaceModel) -> BTreeMap<String, TreeNodeId> {
+    workspace
+        .node_order
+        .iter()
+        .enumerate()
+        .map(|(index, path)| {
+            (
+                path.clone(),
+                TreeNodeId(u64::try_from(index + 1).expect("usize node index fits into u64")),
+            )
+        })
+        .collect()
+}
+
+fn root_node_id(
+    workspace: &WorkspaceModel,
+    node_ids_by_path: &BTreeMap<String, TreeNodeId>,
+) -> Result<TreeNodeId, OxCalcTreeBridgeError> {
+    if workspace.root_paths.len() != 1 {
+        return Err(OxCalcTreeBridgeError::InvalidWorkspace(format!(
+            "W002 bridge smoke expects exactly one root, found {}",
+            workspace.root_paths.len()
+        )));
+    }
+
+    node_ids_by_path
+        .get(&workspace.root_paths[0])
+        .copied()
+        .ok_or_else(|| {
+            OxCalcTreeBridgeError::InvalidWorkspace(format!(
+                "root {} has no assigned OxCalc node id",
+                workspace.root_paths[0]
+            ))
+        })
+}
+
+fn build_structural_snapshot(
+    workspace: &WorkspaceModel,
+    formula_catalog: &PreparedFormulaCatalog,
+    node_ids_by_path: &BTreeMap<String, TreeNodeId>,
+    root_node_id: TreeNodeId,
+) -> Result<StructuralSnapshot, OxCalcTreeBridgeError> {
+    let mut nodes = Vec::new();
+
+    for path in &workspace.node_order {
+        let node = workspace.node(path).ok_or_else(|| {
+            OxCalcTreeBridgeError::InvalidWorkspace(format!("node {path} missing from workspace"))
+        })?;
+        nodes.push(build_structural_node(
+            node,
+            formula_catalog,
+            node_ids_by_path,
+        )?);
+    }
+
+    StructuralSnapshot::create(StructuralSnapshotId(1), root_node_id, nodes)
+        .map_err(|error| OxCalcTreeBridgeError::InvalidWorkspace(error.to_string()))
+}
+
+fn build_structural_node(
+    node: &WorkspaceNode,
+    formula_catalog: &PreparedFormulaCatalog,
+    node_ids_by_path: &BTreeMap<String, TreeNodeId>,
+) -> Result<StructuralNode, OxCalcTreeBridgeError> {
+    let node_id = node_id_for(&node.path, node_ids_by_path)?;
+    let parent_id = node
+        .parent_path
+        .as_deref()
+        .map(|parent| node_id_for(parent, node_ids_by_path))
+        .transpose()?;
+    let child_ids = node
+        .child_paths
+        .iter()
+        .map(|child| node_id_for(child, node_ids_by_path))
+        .collect::<Result<Vec<_>, _>>()?;
+    let has_prepared_formula = formula_catalog.contains_path(&node.path);
+
+    let kind = if parent_id.is_none() {
+        StructuralNodeKind::Root
+    } else if has_prepared_formula {
+        StructuralNodeKind::Calculation
+    } else {
+        match node.content.kind() {
+            NodeContentKind::Empty => StructuralNodeKind::Container,
+            NodeContentKind::Constant => StructuralNodeKind::Constant,
+            NodeContentKind::Formula => {
+                return Err(OxCalcTreeBridgeError::FormulaBindingUnavailable(format!(
+                    "node {} has formula text but no prepared OxCalc formula binding",
+                    node.path
+                )));
+            }
+        }
+    };
+
+    let (formula_artifact_id, bind_artifact_id) = if has_prepared_formula {
+        (
+            Some(FormulaArtifactId(formula_artifact_id(&node.path))),
+            Some(BindArtifactId(bind_artifact_id(&node.path))),
+        )
+    } else {
+        (None, None)
+    };
+
+    let constant_value = if node.content.kind() == NodeContentKind::Constant {
+        Some(node.content.text().to_string())
+    } else {
+        None
+    };
+
+    Ok(StructuralNode {
+        node_id,
+        kind,
+        symbol: node.name.clone(),
+        parent_id,
+        child_ids,
+        formula_artifact_id,
+        bind_artifact_id,
+        constant_value,
+    })
+}
+
+fn build_formula_catalog(
+    formula_catalog: &PreparedFormulaCatalog,
+    node_ids_by_path: &BTreeMap<String, TreeNodeId>,
+) -> Result<TreeFormulaCatalog, OxCalcTreeBridgeError> {
+    let mut bindings = Vec::new();
+
+    for (path, formula) in formula_catalog.bindings() {
+        let owner_node_id = node_id_for(path, node_ids_by_path)?;
+        let expression = prepared_formula_to_fixture_ast(formula, node_ids_by_path)?
+            .to_tree_formula(owner_node_id);
+        bindings.push(TreeFormulaBinding {
+            owner_node_id,
+            formula_artifact_id: FormulaArtifactId(formula_artifact_id(path)),
+            bind_artifact_id: Some(BindArtifactId(bind_artifact_id(path))),
+            expression,
+        });
+    }
+
+    Ok(TreeFormulaCatalog::new(bindings))
+}
+
+fn prepared_formula_to_fixture_ast(
+    formula: &PreparedFormula,
+    node_ids_by_path: &BTreeMap<String, TreeNodeId>,
+) -> Result<FixtureFormulaAst, OxCalcTreeBridgeError> {
+    match formula {
+        PreparedFormula::Literal { value } => Ok(FixtureFormulaAst::Literal {
+            value: value.clone(),
+        }),
+        PreparedFormula::Binary { op, left, right } => Ok(FixtureFormulaAst::Binary {
+            op: match op {
+                PreparedBinaryOp::Add => FixtureFormulaBinaryOp::Add,
+                PreparedBinaryOp::Subtract => FixtureFormulaBinaryOp::Subtract,
+                PreparedBinaryOp::Multiply => FixtureFormulaBinaryOp::Multiply,
+                PreparedBinaryOp::Divide => FixtureFormulaBinaryOp::Divide,
+            },
+            left: Box::new(prepared_operand_to_fixture_ast(left, node_ids_by_path)?),
+            right: Box::new(prepared_operand_to_fixture_ast(right, node_ids_by_path)?),
+        }),
+    }
+}
+
+fn prepared_operand_to_fixture_ast(
+    operand: &PreparedFormulaOperand,
+    node_ids_by_path: &BTreeMap<String, TreeNodeId>,
+) -> Result<FixtureFormulaAst, OxCalcTreeBridgeError> {
+    match operand {
+        PreparedFormulaOperand::Literal { value } => Ok(FixtureFormulaAst::Literal {
+            value: value.clone(),
+        }),
+        PreparedFormulaOperand::DirectNode { path } => {
+            let target_node_id = node_id_for(path, node_ids_by_path)?;
+            Ok(FixtureFormulaAst::Reference(TreeReference::DirectNode {
+                target_node_id,
+            }))
+        }
+    }
+}
+
+fn node_id_for(
+    path: &str,
+    node_ids_by_path: &BTreeMap<String, TreeNodeId>,
+) -> Result<TreeNodeId, OxCalcTreeBridgeError> {
+    node_ids_by_path.get(path).copied().ok_or_else(|| {
+        OxCalcTreeBridgeError::InvalidWorkspace(format!(
+            "node {path} has no assigned OxCalc node id"
+        ))
+    })
+}
+
+fn formula_artifact_id(path: &str) -> String {
+    format!("formula:{}", path.replace('.', "/"))
+}
+
+fn bind_artifact_id(path: &str) -> String {
+    format!("bind:{}", path.replace('.', "/"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use oxcalc_core::consumer::OxCalcTreeRunState;
+
+    use crate::model::{WorkspaceFixture, WorkspaceNodeFixture};
+
+    #[test]
+    fn live_bridge_executes_minimal_named_node_smoke_fixture() {
+        let workspace = WorkspaceModel::try_from(WorkspaceFixture {
+            schema_version: "treecalc-workspace-v1".to_string(),
+            workspace_id: "w002-smoke".to_string(),
+            description: None,
+            profile: None,
+            nodes: vec![
+                WorkspaceNodeFixture {
+                    node_id: "Root".to_string(),
+                    formula: String::new(),
+                    is_meta: false,
+                },
+                WorkspaceNodeFixture {
+                    node_id: "Root.A".to_string(),
+                    formula: "2".to_string(),
+                    is_meta: false,
+                },
+                WorkspaceNodeFixture {
+                    node_id: "Root.B".to_string(),
+                    formula: "=A+3".to_string(),
+                    is_meta: false,
+                },
+            ],
+        })
+        .unwrap();
+
+        let bridge = LiveOxCalcTreeBridge::default();
+        let result = bridge
+            .execute_recalc(TreeRecalcRequest {
+                workspace,
+                formula_catalog: PreparedFormulaCatalog::new([(
+                    "Root.B",
+                    PreparedFormula::Binary {
+                        op: PreparedBinaryOp::Add,
+                        left: PreparedFormulaOperand::DirectNode {
+                            path: "Root.A".to_string(),
+                        },
+                        right: PreparedFormulaOperand::Literal {
+                            value: "3".to_string(),
+                        },
+                    },
+                )]),
+                candidate_result_id: "cand:w002-smoke".to_string(),
+                publication_id: "pub:w002-smoke".to_string(),
+                compatibility_basis: "snapshot:w002-smoke".to_string(),
+                artifact_token_basis: "snapshot:w002-smoke".to_string(),
+                capability_profile_id: "treecalc-v1".to_string(),
+                cycle_config: Default::default(),
+            })
+            .unwrap();
+
+        assert_eq!(result.run_state, OxCalcTreeRunState::Published);
+        assert_eq!(result.published_values["Root.B"], "5");
+        assert_eq!(
+            result.dependency_edges_by_owner["Root.B"],
+            vec!["Root.A".to_string()]
+        );
+        assert_eq!(result.node_states["Root.B"], NodeCalcStateProjection::Clean);
+        assert!(result.evaluation_order.contains(&"Root.B".to_string()));
+        assert!(result.diagnostics.iter().any(|diagnostic| {
+            diagnostic == "oxcalc_tree_environment_runtime_lane:local_sequential_treecalc"
+        }));
+    }
+}
