@@ -264,11 +264,11 @@ impl SkinState for TripleEditorState {
 }
 ```
 
-Each is small, typed, persistable. Skins access via `cx.state.with(|s| s.field)` for reads and `cx.state.update(|s| s.field = new_value)` for writes. The DnaTreeCalc host handles serialization to `skins/<skin_id>` meta-nodes. This is facade state, not engine state.
+Each is small, typed, persistable. Skins access via `cx.state.with(|s| s.field)` for reads and `cx.state.update(|s| s.field = new_value)` for writes. The DnaTreeCalc host handles serialization to `skins.<skin_id>` meta-nodes. This is facade state, not engine state.
 
 ## 2.4 `SharedSkinState` — cross-skin state
 
-Some state benefits multiple skins. Lives in the `skins/shared` meta-node subtree and is typed too:
+Some state benefits multiple skins. Lives in the `skins.shared` meta-node subtree and is typed too:
 
 ```rust
 #[derive(Serialize, Deserialize, Default, Clone)]
@@ -547,7 +547,7 @@ HOST                  SKIN              CONTEXT          STATE STORE      WORKSP
   |                     |--cx.state.with()|                  |               |
   |                     |   (read initial state)              |               |
   |                     |                  |--load from-----> |               |
-  |                     |                  |   skins/canvas-flow meta-state   |
+  |                     |                  |   skins.canvas-flow meta-state   |
   |                     |                  |<--deserialized---|               |
   |                     |<--CanvasFlowState{...}              |               |
   |                     |                                     |               |
@@ -741,6 +741,8 @@ Primitives are pure Leptos components with well-defined props. They don't read c
 
 Each skin owns a meta-namespace under the workspace root. Skin state is persisted as meta-nodes (`is_meta = true`), invisible to formulas, host-managed by DnaTreeCalc.
 
+**Path notation (canonical).** The meta subtrees — `skins` (holding `skins.shared` plus one `skins.<skin-id>` per skin), each node's `Format`, and `Templates` — are `is_meta` nodes addressed by ordinary `.`-separated tree paths (e.g. `skins.canvas-flow`, `skins.shared`, `Format.NumberFormat`). There is no `::` prefix and no `/` separator; the `[#…]` form in [`../model/CORE_MODEL_SPEC.md`](../model/CORE_MODEL_SPEC.md) §3.3 is a separate structured-reference specifier, not meta-namespace addressing.
+
 ### 4.1 Namespace layout
 
 ```
@@ -781,7 +783,7 @@ Each skin owns a meta-namespace under the workspace root. Skin state is persiste
 
 ### 4.2 Shared meta-namespace
 
-`skins/shared` holds state that multiple skins want to read. Cross-skin continuity:
+`skins.shared` holds state that multiple skins want to read. Cross-skin continuity:
 
 - **`tree-state.<nodeId>.collapsed`** — collapse/expand state. Any tree-rendering skin honors it.
 - **`pinned-nodes`** — list of "favorite" nodes a user has pinned across the workspace.
@@ -921,7 +923,7 @@ Excel's CF model — multiple rules per cell, ordered evaluation, "Stop If True"
 
 The TreeCalc CF UX (mockup 05 §Conditional formatting) presents the user with an ordered rule list and per-rule edit/delete/reorder. The engine must support the underlying semantics for this UX to be honest about what it does.
 
-Tracked as engine prerequisites in [`CORE_MODEL_SPEC.md`](../model/CORE_MODEL_SPEC.md) §6 and raised through targeted handovers in [`../handovers/`](../handovers/) when cross-repo work is needed.
+Tracked as engine prerequisite §6 item 10 in [`CORE_MODEL_SPEC.md`](../model/CORE_MODEL_SPEC.md) and raised as a concrete handover: [`../handovers/HANDOVER_OXFML_conditional_formatting.md`](../handovers/HANDOVER_OXFML_conditional_formatting.md).
 
 ---
 

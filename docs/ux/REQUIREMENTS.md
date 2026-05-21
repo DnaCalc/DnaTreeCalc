@@ -358,31 +358,21 @@ Nodes can be positioned anywhere on a 2D canvas. Each node is a card showing nam
 
 **Strengths:** visual organization, dashboard-like presentation, custom layouts.
 
-**Constraints:** position is skin-owned facade metadata, not part of the calculation tree. Persisted under the canvas skin's `skins/canvas-flow` meta-namespace.
+**Constraints:** position is skin-owned facade metadata, not part of the calculation tree. Persisted under the canvas skin's `skins.canvas-flow` meta-namespace.
 
 **Use cases:** dashboards, narrative presentations, building visual mental models.
 
-### 4.4 Notebook (linear with indentation)
-
-A vertical scroll of nodes in tree order. Non-leaf nodes precede their children; indentation indicates nesting. Each node is a "cell" with editable formula and value.
-
-**Strengths:** narrative top-to-bottom flow, good for presentation and reports.
-
-**Constraints:** scales poorly for wide trees; awkward for deep trees.
-
-**Use cases:** report-style presentations, tutorials, exported documents.
-
-### 4.5 Adaptive / auto-layout
+### 4.4 Adaptive / auto-layout
 
 The mounted skin chooses renderers or subviews based on each subtree's shape:
 - Templated uniform subtrees (Q1/Q2/Q3/Q4 with parallel inner structure) → grid view, one column per instance.
 - Tabular data (table-valued nodes) → table view.
-- Mostly-leaf flat nodes → list or notebook.
+- Mostly-leaf flat nodes → list.
 - Mostly-deep narrow nodes → outline.
 
 User overrides are stored as per-skin meta-state. This is not a core workspace layout mode and does not add per-node layout fields to regular nodes.
 
-### 4.6 Drill-down
+### 4.5 Drill-down
 
 The shell supports "summary-at-parent, expand-to-children" interactions. A parent node's formula commonly summarizes its children (`SUM(.*)`, `AVG(.*)`, etc.). The display:
 - Shows the parent's summary value prominently.
@@ -390,11 +380,11 @@ The shell supports "summary-at-parent, expand-to-children" interactions. A paren
 - Supports expand-all / collapse-all per subtree.
 - Allows drill from a parent summary directly to the contributing children (click the summary, jump to the children's values).
 
-### 4.7 Multi-pane / split view
+### 4.6 Multi-pane / split view
 
 The user can split the working area into multiple panes, each mounting a skin instance against the same workspace with its own focus scope. Useful for comparison, side-by-side editing, or watching a value while editing a dependency.
 
-### 4.8 Read-only / presentation mode
+### 4.7 Read-only / presentation mode
 
 A "viewer" mode hides editor surfaces. Tree is navigable; values and arrays are visible; no editing. Used for sharing workspaces with reviewers or for "publish to readers" workflow.
 
@@ -521,7 +511,7 @@ Based on workspace size, the shell adapts:
 
 - Autosave to a workspace file on each significant edit (debounced).
 - localStorage fallback for browser-resident workspaces (same pattern as DnaOneCalc).
-- Workspace file format records: tree structure, formulas, values (or recompute on load), formats (as meta-data), template meta-subtrees and rollout tags, cross-workspace alias manifest, capability profile, and per-skin UI state under `skins/*` meta-namespaces.
+- Workspace file format records: tree structure, formulas, values (or recompute on load), formats (as meta-data), template meta-subtrees and rollout tags, cross-workspace alias manifest, capability profile, and per-skin UI state under `skins.*` meta-namespaces.
 - Explicit "Save As" for naming and choosing location.
 
 ### 7.2 Versioning

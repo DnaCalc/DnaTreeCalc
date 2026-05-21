@@ -80,7 +80,7 @@ docs/test-corpus/
   dynamic-references/  §6 (item 1), §10.3 — INDIRECT-driven dynamic (CTRO) references
   cycles/              §7a — circular references under each cycle profile
   templates/           §7b — template instantiate/sync/divergence (META_NODES)
-  formatting/          §6 (item 10) — ::Format meta-children + inheritance (META_NODES)
+  formatting/          §6 (item 10) — Format meta-children + inheritance (META_NODES)
   import/              §10 — Excel defined-name → tree mapping
   value-equivalence/   Excel anchor — whole-workspace recompute + export round-trip
   tools/
@@ -140,7 +140,7 @@ maps cleanly onto the work plan and can be switched on area-by-area as the engin
 |---|---|---|
 | **W002** engine seam | `constants/`, `cycles/` | entry classification (§2/§6); cycle profiles (§7a) |
 | **W004** reference model | `references/*`, `profiles/`, `dynamic-references/`, `structural-edits/`, `arrays/` | §3 resolution + set membership, §4 gating, INDIRECT/CTRO, §8 edit propagation, §6 arrays |
-| **W007** meta/format/templates | `templates/`, `formatting/` | §7b templates; `::Format` inheritance (META_NODES) |
+| **W007** meta/format/templates | `templates/`, `formatting/` | §7b templates; `Format` inheritance (META_NODES) |
 | **W008** import | `import/`, `value-equivalence/import-*` | §10 defined-name import + recompute-equals-Excel |
 | **W009** export/replay | `value-equivalence/export-*` | export round-trip; whole-workspace value-equivalence |
 

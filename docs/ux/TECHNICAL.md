@@ -96,7 +96,6 @@ DnaTreeCalc/
 │   │       │   │   ├── template_editor.rs   # template editing
 │   │       │   │   ├── canvas.rs            # CanvasFlow skin primitives/body
 │   │       │   │   ├── outline_table.rs     # OutlineTable skin primitives/body
-│   │       │   │   ├── notebook.rs          # Notebook skin primitives/body
 │   │       │   │   ├── dependency_map.rs    # dependencies panel
 │   │       │   │   ├── search.rs            # workspace search
 │   │       │   │   ├── command_palette.rs   # Ctrl+. palette
@@ -151,7 +150,6 @@ The following are TreeCalc-specific:
 - `ui/components/nav_rail.rs`, `tree_row.rs` — tree outline.
 - `ui/components/canvas.rs` — free-canvas layout.
 - `ui/components/outline_table.rs` — tree-table hybrid.
-- `ui/components/notebook.rs` — notebook layout.
 - `ui/components/table_editor.rs` — structured-table editor.
 - `ui/components/format_editor.rs` — format meta editor.
 - `ui/components/template_editor.rs` — template editing.
@@ -251,7 +249,7 @@ pub struct SkinRegistryState {
 
 `RegisteredSkin` is the object-safe registration wrapper around concrete `WorkspaceSkin<State = S>` implementations. Concrete skins keep typed state; the registry stores erased factories, manifests, and capabilities so Rust's associated-state type does not leak into `Vec<Box<dyn ...>>`.
 
-Per-skin state lives in the workspace tree itself as meta-nodes under the `skins/<skin_id>` meta-subtree (see skin architecture §4). The state model has no global "layout choice" field; each skin owns its state, persisted alongside the workspace data. Shared cross-skin state (e.g., tree-collapse) lives under `skins/shared`.
+Per-skin state lives in the workspace tree itself as meta-nodes under the `skins.<skin_id>` meta-subtree (see skin architecture §4). The state model has no global "layout choice" field; each skin owns its state, persisted alongside the workspace data. Shared cross-skin state (e.g., tree-collapse) lives under `skins.shared`.
 
 This change pushes layout state out of the in-memory `TreeCalcHostState` and into the persisted tree, which is the right place for state that survives sessions, switches between skins, and respects the meta-node lifecycle.
 
@@ -415,6 +413,8 @@ A `.dnatree` file is a JSON document (or msgpack for size; decide on a flag). Sc
 
 Skin state, template definitions, format data, template rollout tags, and other host bookkeeping persist as meta-nodes in the tree. Runtime indexes such as `TemplateIndex`, skin-state lookup tables, and format caches are rebuilt from that tree on load; any future cached index must be treated as disposable acceleration, not semantic truth.
 
+**Round-trip is a W005 closure item.** Save → reopen → identical workspace is verified by the walking skeleton ([`IMPLEMENTATION_MATRIX.md`](IMPLEMENTATION_MATRIX.md) `UX-IO-001`, scenario `S14`); the canonical `.dnatree` round-trip fixture lands with the serializer in W005 (its byte shape is the serializer's, not hand-authored ahead of it).
+
 ### 5.2 Save / load flow
 
 - **In-browser:** primary persistence is localStorage (auto-save key `dnatreecalc.workspace.v1`). Explicit "Save to disk" prompts a download. "Open from disk" uses file-input or File System Access API.
@@ -469,7 +469,7 @@ Auto-backup to a sibling `.dnatree.bak` file on each save. Configurable retentio
 
 - HTML5 canvas + SVG layer for connecting lines.
 - Each node rendered as a card (a Leptos component positioned absolutely).
-- Drag to reposition; position saved in `CanvasFlowState.positions` under the `skins/canvas-flow` meta-namespace.
+- Drag to reposition; position saved in `CanvasFlowState.positions` under the `skins.canvas-flow` meta-namespace.
 - Connections drawn between nodes that reference each other (computed from the dependency graph).
 - Zoom and pan.
 
@@ -481,14 +481,7 @@ Auto-backup to a sibling `.dnatree.bak` file on each save. Configurable retentio
 - Indentation in the name column indicates depth.
 - Sub-tree expand/collapse via row-prefix triangles.
 
-### 6.7 Notebook (`notebook.rs`)
-
-- Vertical scroll of node cells.
-- Each cell shows name + formula + value, with depth-based indentation or border treatment.
-- Supports inline editing.
-- Smaller / simpler than `outline_table.rs`; closer to Jupyter notebook style.
-
-### 6.8 Table editor (`table_editor.rs`)
+### 6.7 Table editor (`table_editor.rs`)
 
 - For Table-valued nodes.
 - Standard grid editor with column headers, optional totals row.
@@ -496,14 +489,14 @@ Auto-backup to a sibling `.dnatree.bak` file on each save. Configurable retentio
 - Add/remove rows and columns.
 - Structured-reference autocomplete (`[@Col]`, `[#Headers]`, etc.) using the existing OneCalc completion machinery extended with structured-ref tokens.
 
-### 6.9 Format editor (`format_editor.rs`)
+### 6.8 Format editor (`format_editor.rs`)
 
 - Reads/writes the selected node's `Format` meta-child (creating it lazily).
 - Property-by-property editors: number format with live preview, font, fill, conditional rules, data bars, icon sets.
 - Each property can be a literal or a formula (toggle).
 - "Inherited from..." indicator and "override" action when a format is inherited.
 
-### 6.10 Template editor (`template_editor.rs`)
+### 6.9 Template editor (`template_editor.rs`)
 
 - Opens in a dedicated panel or modal.
 - Renders the template's structure as a sub-tree outline.
@@ -511,20 +504,20 @@ Auto-backup to a sibling `.dnatree.bak` file on each save. Configurable retentio
 - Side panel lists instances; click to navigate.
 - "Sync" / "Validate" action triggers the template-sync service. The service uses the persisted template id mapping plus hidden rollout meta-node tags to diff the current instance against the current template on demand; it does not maintain detailed live template-state records while the user edits an instance.
 
-### 6.11 Dependency map (`dependency_map.rs`)
+### 6.10 Dependency map (`dependency_map.rs`)
 
 - Two sub-views: list (depends-on / depended-on-by) and graph (optional).
 - List view: simple categorized list of node references with click-to-navigate.
 - Graph view: when invoked, renders a force-directed layout (or a hierarchical layout for shallow trees). Uses SVG; the graph is a separate canvas-like layer.
 
-### 6.12 Search (`search.rs`)
+### 6.11 Search (`search.rs`)
 
 - Inline search field invoked by Ctrl+F.
 - Live-filter as the user types.
 - Result list with click-to-navigate.
 - Filter chips for the search scope (name / formula / value / all).
 
-### 6.13 Command palette (`command_palette.rs`)
+### 6.12 Command palette (`command_palette.rs`)
 
 - Ctrl+. opens a centered modal.
 - Fuzzy-search over `CommandRegistry`.
@@ -648,10 +641,10 @@ For feature-level traceability from visible prototype affordances to skins, prim
 A natural build order based on dependencies:
 
 1. **Phase 0 — Foundation + skin scaffold.** Factor reusable OneCalc components into a shared crate, define `RegisteredSkin` / `WorkspaceSkin` / `SkinContext`, and mount the first shell through the skin registry from the start.
-2. **Phase 1 — Tree shell in TripleEditor.** Workspace state, tree outline (nav rail), basic node creation/deletion/rename. TripleEditor uses reused formula-editor primitives and persists its panel state through `skins/triple-editor` meta-nodes. Single-node evaluation via bridge. Persistence via localStorage and explicit file save.
+2. **Phase 1 — Tree shell in TripleEditor.** Workspace state, tree outline (nav rail), basic node creation/deletion/rename. TripleEditor uses reused formula-editor primitives and persists its panel state through `skins.triple-editor` meta-nodes. Single-node evaluation via bridge. Persistence via localStorage and explicit file save.
 3. **Phase 2 — Multi-node calc.** OxCalc bridge integration. Recalc and dependency graph in place. Status display per node. Reference resolution with walk-up.
 4. **Phase 3 — Editing breadth.** Multi-select, move, drag-and-drop. Rename-propagation prompt. Search.
-5. **Phase 4 — Additional skins and adaptive renderers.** OutlineTable, CellView, Notebook-style presentation, and active-skin renderer choices for scalars/arrays/tables/templates.
+5. **Phase 4 — Additional skins and adaptive renderers.** OutlineTable, CellView, and active-skin renderer choices for scalars/arrays/tables/templates.
 6. **Phase 5 — Meta-nodes and formatting.** is_meta flag plumbing. Format editor. Format inheritance walking.
 7. **Phase 6 — Templates.** Template editor. Instance link tracking, hidden rollout tags, and on-demand validate/sync (initially N individual edits; later transactional once OxCalc supports it).
 8. **Phase 7 — Tables.** Table editor for Table-valued nodes. Structured-reference syntax in the editor.

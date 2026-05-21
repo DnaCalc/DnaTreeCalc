@@ -22,7 +22,7 @@ These epic beads were created during W001 bootstrap. Use this table only to pair
 | W002_engine_seam_and_bridge | `dtc-d6o` |
 | W003_tree_shell_and_core_editing | `dtc-mm0` |
 | W004_reference_model_and_resolution | `dtc-z0i` |
-| W005_skin_architecture_and_primitives | `dtc-osq` |
+| W005_walking_skeleton_min_end_to_end | `dtc-osq` |
 | W006_additional_skins | `dtc-366` |
 | W007_meta_nodes_formatting_templates | `dtc-fks` |
 | W008_excel_import | `dtc-xlx` |
@@ -34,11 +34,14 @@ These epic beads were created during W001 bootstrap. Use this table only to pair
 ## Default sequence
 
 ```
-W001 → W002 → W005 → W003 → W004 → W006 → W007 → W008 → W009 → W010
-(bootstrap)   (engine  (skin   (shell)  (refs)  (more   (meta/  (excel  (excel  (UDF)
-              bridge)  scaffold)                 skins)  fmt/    import) export
-                                                        templ)          + replay)
+W001 → W002 → W005 → { W003, W004 } → W006 → W007 → W008 → W009 → W010
+(boot)  (engine (walking   (flesh out:     (more     (meta/  (import)(export)(UDF)
+        bridge)  skeleton)   shell+editing,  skins +   fmt/
+                             reference       framework templ)
+                             model)          hardening)
 ```
+
+**Slice then flesh.** W005 is a deliberate **walking skeleton**: the thinnest real slice that runs end-to-end — minimal skin framework + minimal shell + two skins of different types + bare-name walk-up resolution over the W002 bridge + `.dnatree` persistence + the first end-to-end tests — proving the whole stack (engine bridge → shell → skins → tests) at the most limited scope. Everything after it *fleshes out* a working, visible, tested base: W003 deepens the shell and editing, W004 completes the reference model, W006 adds the remaining skins and hardens the framework. **W005 deliberately owns thin slices of the shell (W003), resolution (W004), and a second skin (W006); those worksets own the full depth.** This is why W005 precedes W003/W004 despite the numbering — worksets are not executed strictly by number. The v1 bar is the **minimum lovable skin set** — `triple-editor` + `outline-table` (skeleton) + `cell-view` (W006 must-have); `canvas-flow` and `nodes-across` are enrichment, not v1 gates.
 
 Engine prerequisites in OxCalc/OxFml/OxFunc (Spec `model/CORE_MODEL_SPEC.md` §6) gate several worksets; those are coordinated via handovers, not owned here.
 
@@ -65,39 +68,39 @@ Engine prerequisites in OxCalc/OxFml/OxFunc (Spec `model/CORE_MODEL_SPEC.md` §6
 - **Status:** OPEN
 
 ### W003_tree_shell_and_core_editing
-- **Purpose:** The workspace shell and core structural editing — nav-rail tree outline, node CRUD (insert/rename/move/delete), the three-pane editor skin, persistence to `.dnatree`.
-- **Depends on:** W002, W005 skin scaffold. Worksets need not be executed strictly by number; TreeCalc's first usable shell is built through the skin interface from the start, not retrofitted later.
-- **Spec sections:** `ux/REQUIREMENTS.md`; `ux/TECHNICAL.md` §6; `ux/SKINS.md` (triple-editor); `ux/TRACEABILITY.md`; `ux/IMPLEMENTATION_MATRIX.md`.
-- **Closure condition:** a user can build, edit, save, and reopen a tree of named nodes in the three-pane skin.
-- **Initial epic lanes:** nav rail + tree rows; structural edit service; persistence; registered TripleEditor skin; UX trace slices `UX-SH`, `UX-TR`, `UX-FE`, `UX-VA`, `UX-ST`.
-- **Verification:** Local + a UX click-through on the running shell; save/reopen round-trip test. Scaffolding: skin click-through harness; persistence round-trip fixture.
+- **Purpose:** *Flesh out* the workspace shell and structural editing from the W005 skeleton — the full nav rail (virtualized rows, search/filter, drag-reorder, context menu, breadcrumb, meta-visibility toggle), the full structural-edit service (insert/rename/move/delete), the full three-pane TripleEditor experience, and complete `.dnatree` persistence (all meta-namespaces, undo grouping).
+- **Depends on:** W005 (the walking skeleton — which already proves the minimal shell, skin mount, and persistence). Collaborates with W004 on rename/move propagation.
+- **Spec sections:** `ux/REQUIREMENTS.md` §2–§3; `ux/TECHNICAL.md` §6; `ux/SKINS.md`; `ux/TRACEABILITY.md`; `ux/IMPLEMENTATION_MATRIX.md`.
+- **Closure condition:** a user can build, edit, save, and reopen a substantial tree of named nodes in the three-pane skin, with full node CRUD and the nav-rail affordances.
+- **Initial epic lanes:** nav-rail features; structural-edit service; full persistence + undo; TripleEditor depth. Activates UX trace slices `UX-SH`, `UX-TR`, `UX-FE`, `UX-VA`, `UX-ST`.
+- **Verification:** Local + a UX click-through on the running shell + save/reopen round-trip. Scaffolding: reuse the skeleton's click-through + persistence harnesses.
 - **Status:** OPEN
 
 ### W004_reference_model_and_resolution
-- **Purpose:** The reference surface — bare-name walk-up scope, `^` ancestors, `[]`/`[ws]` anchors, bracket-escape, set-producing operators, rename/move propagation prompts.
-- **Depends on:** W002, W003. Engine prereqs (SelfNode, set-membership deps) via handover.
-- **Spec sections:** `model/CORE_MODEL_SPEC.md` §3, §6.
-- **Closure condition:** references resolve per spec; rename/move propagation prompt works; editor hover shows resolved bindings.
-- **Initial epic lanes:** bind integration; walk-up resolution; propagation UX.
-- **Verification:** Local case-corpus of resolution cases authored in Spec §3 (bare-name walk-up, `^`/`^^`, `[]`/`[ws]`, profile rejections — each an input→expected-resolution row); Excel anchor for the Excel-aligned name-scope behavior where it maps. Scaffolding: reference-resolution fixture corpus driven from the spec cases.
+- **Purpose:** *Flesh out* the reference surface from the skeleton's bare-name walk-up — `^`/`^^` ancestors, `[]`/`[ws]` anchors + cross-workspace, bracket-escaping, sibling-offsets, set-producing operators (`.*`/`@CHILDREN`/`@ANCESTORS`/`**`), `INDIRECT`/dynamic (CTRO) references, capability-profile gating, and rename/move propagation prompts.
+- **Depends on:** W005 (the skeleton's bridge + walk-up base). Engine prereqs (SelfNode, set-membership deps, profile selectors, dynamic refs) via handover.
+- **Spec sections:** `model/CORE_MODEL_SPEC.md` §3, §4, §6.
+- **Closure condition:** references resolve per spec across the full surface; rename/move propagation prompt works; editor hover shows resolved bindings.
+- **Initial epic lanes:** anchors + sibling-offsets; set-membership + recursive descent; cross-workspace + aliases; profile gating; INDIRECT/dynamic; propagation UX.
+- **Verification:** Local — **progressively activate** the authored corpus themes (`references/*`, `profiles/`, `dynamic-references/`, `structural-edits/`) from `pending` to `active` against the bridge as each sub-surface lands; Excel anchor for name-scope behavior where it maps. Scaffolding: the test corpus (`docs/test-corpus/`, already authored) + the skeleton's corpus runner.
 - **Status:** OPEN
 
-### W005_skin_architecture_and_primitives
-- **Purpose:** The skin framework — `WorkspaceSkin` trait, `SkinContext`, intent dispatch, shared primitive library, per-skin meta-namespaces, skin switcher.
-- **Depends on:** W002. This is foundational UI infrastructure; W003 consumes it for the first shell.
-- **Spec sections:** `ux/SKINS.md`; `ux/TRACEABILITY.md`; `ux/IMPLEMENTATION_MATRIX.md`.
-- **Closure condition:** the skin registry/composition layer mounts TripleEditor through the skin interface, and a second minimal skin or test skin proves per-skin state persisted in the `skins/*` meta-node subtree; shared tree-state is honored across mounted skins.
-- **Initial epic lanes:** skin trait + registry; primitive library lift from OneCalc; meta-namespace persistence; UX trace slices `UX-SK`, `UX-SH`, shared-state parts of `UX-TR`.
-- **Verification:** Local + cross-skin equivalence (the same workspace renders/edits correctly across skins) + per-skin meta-state round-trip. Scaffolding: cross-skin equivalence harness; skin-state persistence tests.
+### W005_walking_skeleton_min_end_to_end
+- **Purpose:** The **walking skeleton** — the thinnest real slice that runs end-to-end through the skin types. Minimal skin framework (`WorkspaceSkin`, `SkinContext`, `Dispatcher` + a minimal closed `WorkspaceIntent`, registry + switcher, `SkinStateHandle`); a minimal shell (context strip, nav rail, one main mount slot, status foot); **two minimal skins of different categories** (`triple-editor` + `outline-table`) to prove runtime switching; minimal bare-name walk-up resolution wired through the W002 bridge; minimal `.dnatree` persistence; and the **first end-to-end test surfaces** (a corpus runner + a UX click-through).
+- **Depends on:** W002 (the bridge — done). This is the pivot: it owns *thin* slices of the shell (W003), resolution (W004), and a second skin (W006); those worksets own the full depth.
+- **Spec sections:** `ux/SKINS.md` §1–§2, §7; `ux/IMPLEMENTATION_MATRIX.md` (`UX-SK`, thin `UX-SH`/`UX-TR`/`UX-FE`/`UX-VA`; scenario cards S1–S4); `ux/TRACEABILITY.md` (F1, F8, F9); `model/CORE_MODEL_SPEC.md` §3.2 (bare-name walk-up only).
+- **Closure condition:** the skeleton runs — a tiny workspace loads; editing a node formula updates its value through the **real bridge**; switching `triple-editor` ↔ `outline-table` preserves shared selection with **no recalc**; save/reopen round-trips. The **first slice of the test corpus is activated** (`references/walkup` cases the minimal resolution supports, flipped `pending→active` and green against the bridge via the corpus runner), and a **UX click-through passes**.
+- **Initial epic lanes:** minimal skin framework + registry/switcher; minimal shell + nav rail; two minimal skins; bare-name walk-up over the bridge; `.dnatree` round-trip; **corpus runner v1** (activate-a-slice) + **click-through harness v1**.
+- **Verification:** Local — the corpus runner over the activated walk-up slice + reducer/projection tests — plus a UX click-through (edit→value, switch-skin→no-recalc, save/reopen). This workset *first runs* the test-corpus **activation** model and the UX-matrix harness for real. Scaffolding: corpus runner v1; click-through harness v1; a tiny end-to-end workspace fixture.
 - **Status:** OPEN
 
-### W006_additional_skins
-- **Purpose:** The remaining v1 skins — cell-view, outline-table, nodes-across, canvas-flow — on the primitive library.
-- **Depends on:** W003, W005.
-- **Spec sections:** `ux/SKINS.md` §6; `ux/TRACEABILITY.md`; `ux/IMPLEMENTATION_MATRIX.md`; `ux/prototypes/`.
-- **Closure condition:** the prototyped skins render and edit the same workspace; canvas group→template affordance works.
-- **Initial epic lanes:** cell-view; outline-table; nodes-across; canvas-flow; UX trace slices `UX-CV`, `UX-GR`, additional-skin parts of `UX-VA`.
-- **Verification:** Local + per-skin click-through; reuse the W005 cross-skin equivalence harness across the new skins.
+### W006_additional_skins_and_framework_hardening
+- **Purpose:** The remaining v1 skins on the hardened framework, plus the hardening itself. **Minimum lovable skin set:** the skeleton already ships `triple-editor` + `outline-table`; **`cell-view` is the must-have completion** (Excel-fluent data entry) — those three are the v1 bar (CHARTER's "good enough to use"). **`canvas-flow` and `nodes-across` are nice-to-have enrichment** that may land after v1 proves out. Hardening, as the skins stress the framework: the full shared primitive library lift from OneCalc, full `SkinState` (schema migration + GC), shared-state depth, multi-slot composition, the `FormatResolver` seam, and the cross-skin equivalence harness.
+- **Depends on:** W005 (skeleton), W003 (shell affordances the skins reuse).
+- **Spec sections:** `ux/SKINS.md` §3, §6, §7; `ux/TRACEABILITY.md`; `ux/IMPLEMENTATION_MATRIX.md` (`UX-CV`, `UX-GR`, remaining `UX-VA`/`UX-SK`); `ux/prototypes/`.
+- **Closure condition:** the must-have `cell-view` renders/edits the same workspace and switches cleanly with the skeleton's skins (no recalc); the nice-to-have skins (`canvas-flow`, `nodes-across`) land as enrichment, with the canvas group→template affordance.
+- **Initial epic lanes:** primitive library lift; skin-state hardening (migration/GC); **cell-view (must-have)**; **canvas-flow + nodes-across (nice-to-have)**; cross-skin equivalence harness.
+- **Verification:** Local + per-skin click-through + cross-skin equivalence. Scaffolding: cross-skin equivalence harness (reused thereafter).
 - **Status:** OPEN
 
 ### W007_meta_nodes_formatting_templates

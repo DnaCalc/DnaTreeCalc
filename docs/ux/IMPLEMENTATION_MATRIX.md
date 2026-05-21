@@ -44,7 +44,7 @@ prototype affordance -> UX trace ID -> component/service contract -> scenario ch
 | ID | Slice | Prototypes | Workset | Build surface | Required checks |
 |---|---|---|---|---|---|
 | `UX-SK-001` | Register built-in skins and mount one main-slot skin | 01, index | W005 | `RegisteredSkin`, `SkinRegistryState`, `WorkspaceShell` | Unit: registry lists built-ins; render smoke mounts TripleEditor |
-| `UX-SK-002` | Hydrate typed skin state from meta-nodes | 01, 08 | W005 | `SkinStateHandle<S>`, meta loader | Round-trip: `skins/<skin_id>` state survives save/load |
+| `UX-SK-002` | Hydrate typed skin state from meta-nodes | 01, 08 | W005 | `SkinStateHandle<S>`, meta loader | Round-trip: `skins.<skin_id>` state survives save/load |
 | `UX-SK-003` | Switch focused mount slot without recalc | 04, 06-08 | W005 | skin switcher, mount lifecycle | No-engine-call assertion; selection survives switch |
 | `UX-SK-004` | Mount inspector/specialty skin beside editor | 03, 05 | W005/W006 | `SkinMountSlot`, pane host | Browser: editor plus inspector both observe same selection |
 | `UX-SH-001` | Context strip shows filename/profile/recalc state | 01-08 | W003 | `ContextStrip`, workspace/session state | Projection check from host state to strip model |
@@ -80,7 +80,7 @@ prototype affordance -> UX trace ID -> component/service contract -> scenario ch
 | `UX-CV-002` | Canvas drag/group/pan/zoom never calls OxCalc | 08 | W006 | canvas interactions | No-engine-call interaction test |
 | `UX-CV-003` | Canvas auto-layout reads graph and writes positions | 08 | W006/W002 | canvas layout service | Unit: graph+state -> new positions |
 | `UX-CV-004` | NodesAcross orders columns from scope and graph | 07 | W006/W002 | node column projection | Projection test from graph fixture |
-| `UX-IO-001` | Save/load rehydrates workspace plus skin namespaces | all | W003/W005 | persistence service | Round-trip: tree + `skins/*` + templates/format |
+| `UX-IO-001` | Save/load rehydrates workspace plus skin namespaces | all | W003/W005 | persistence service | Round-trip: tree + `skins.*` + templates/format |
 | `UX-IO-002` | Export/copy value uses published values, not skin display state | 02 | W009 | export/value command service | Unit: copy/export from value projection |
 | `UX-RX-001` | OxCalc invalidation updates calc pips before final value | 01, 04, 08 | W002/W003 | bridge subscription, calc-state projection | Scenario: dirty -> evaluating -> clean/error |
 | `UX-RX-002` | External streaming update uses same render path as recalc | 01, 08 | W002/W003 | external value adapter | Trace: external update -> invalidation -> render |
@@ -290,12 +290,14 @@ Invariants:
 
 ## 5. Scenario Cards
 
+Scenarios reuse the corpus workspaces under [`../test-corpus/workspaces/`](../test-corpus/workspaces/): `accounts` is the canonical example tree (`Accounts.2005.…`); `arrays`, `templates`, `formatting`, `cycles`, and `dynamic` cover the specialized cases. Sharing examples with the model corpus avoids drift.
+
 ### S1. First shell mount
 
 Trace IDs: `UX-SK-001`, `UX-SH-001`, `UX-TR-001`.
 
 Setup:
-- workspace with `Accounts`, `2026`, `Q2`, `Income`, `Net`;
+- the `accounts` corpus workspace (`Accounts.2005.Q1.{Income, Margin, Net}`);
 - `triple-editor` is default skin;
 - no persisted skin state yet.
 
@@ -308,7 +310,7 @@ Expected:
 - context strip shows filename/profile;
 - tree rows render regular nodes;
 - selected node is visible;
-- default `skins/triple-editor` state is seeded only when needed;
+- default `skins.triple-editor` state is seeded only when needed;
 - no recalc happens unless loading policy requires an initial calculation.
 
 Check shape:
@@ -482,7 +484,7 @@ Actions:
 - save/reopen.
 
 Expected:
-- positions/pan/zoom/routing persist under `skins/canvas-flow`;
+- positions/pan/zoom/routing persist under `skins.canvas-flow`;
 - no OxCalc call happens for those interactions;
 - wires redraw from existing graph and new geometry;
 - reopened workspace restores view state.
@@ -584,7 +586,7 @@ Actions:
 
 Expected:
 - regular tree is intact;
-- `skins/*` state rehydrates by skin id;
+- `skins.*` state rehydrates by skin id;
 - format resolver sees format meta;
 - template index rebuilds from meta-subtrees and rollout tags;
 - unused skin namespaces are preserved.
@@ -638,7 +640,7 @@ Trace events must be deterministic enough for tests and cheap enough to leave co
 | Harness | First useful workset | Proves |
 |---|---|---|
 | Skin registry unit harness | W005 | registration, object-safe mount, lifecycle |
-| Skin-state round-trip fixture | W005 | typed state persists through `skins/*` meta nodes |
+| Skin-state round-trip fixture | W005 | typed state persists through `skins.*` meta nodes |
 | Tree projection fixture | W003 | visible rows, collapse, meta visibility, selection |
 | Intent/dispatcher trace fixture | W003/W005 | gestures route through the right boundary |
 | Fake OxFml/OxCalc bridge harness | W002/W003 | editor-to-publication and invalidation-to-display flows |
@@ -693,5 +695,7 @@ Before implementing a visible prototype feature, answer:
 If no row fits, add one here before implementing. That is the UX-side equivalent of adding a test-corpus case for a new semantic surface.
 
 ## 10. Status
+
+**Machine-checkable index.** The trace slices, scenarios, and harnesses here are mirrored in [`ux-trace-manifest.json`](ux-trace-manifest.json), each tagged with a `workset` + `status` (`pending`/`active`) and validated by [`tools/validate-ux-matrix.ps1`](tools/validate-ux-matrix.ps1). That manifest is the **UX analog of the model test corpus** (`docs/test-corpus/`): it prints a by-workset/by-status coverage matrix so "tests ↔ work areas, progressively activated" is uniform across model and UX. Today everything is `pending`; the **W005 walking skeleton** flips its first thin slice to `active` (the corpus runner + click-through harness come online there), and each remaining slice flips as its workset delivers it and a harness covers it.
 
 This matrix is intentionally more implementation-shaped than the requirements and traceability documents. It should evolve as soon as code exists: rows that prove useful can become test fixture names, scenario IDs, or bead acceptance checks. Rows that prove wrong should be corrected here rather than worked around in code.

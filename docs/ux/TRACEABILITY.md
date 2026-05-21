@@ -19,8 +19,8 @@ Every prototype feature must land in one of these lanes:
 | Lane | Owner | Persistence | OxCalc involvement | Examples |
 |---|---|---|---|---|
 | Calculation workspace | DnaTreeCalc host, via `WorkspaceIntent` | regular tree nodes in `.dnatree` | yes, for bind/recalc/invalidation | node formula, node name, node move, delete |
-| Host facade state | DnaTreeCalc host state | host state or `skins/shared` meta-node subtree | no | selection, recent selections, pinned nodes, meta visibility |
-| Per-skin state | mounted skin through host `SkinStateHandle<S>` | `skins/<skin_id>` meta-node subtree | no | canvas positions, zoom, column widths, expanded array rows |
+| Host facade state | DnaTreeCalc host state | host state or `skins.shared` meta-node subtree | no | selection, recent selections, pinned nodes, meta visibility |
+| Per-skin state | mounted skin through host `SkinStateHandle<S>` | `skins.<skin_id>` meta-node subtree | no | canvas positions, zoom, column widths, expanded array rows |
 | Host meta data | DnaTreeCalc host services | meta-node subtree | usually no; sync may generate regular edits | `Format`, `Templates`, rollout tags, workspace config |
 | Engine result state | OxCalc result published into host state | optionally cached in workspace/session | source is OxCalc | values, calc state, dependency graph, diagnostics |
 | Visual-only style | skin/theme/component CSS | skin code/theme tokens | no | panel colors, font pairing, density, card rhythm |
@@ -62,7 +62,7 @@ The dispatcher decides whether the request is a cheap host update, a meta-node w
 | Array grid | 02, 06, 07 | `ArrayGrid` | grid viewport/scroll/widths | constant-array edit if editable | array view model, format resolver | reads OxCalc array; edits recalc only when node content is constant | value shape/cell signal plus grid state |
 | Shape-change indicator | 02, 06 | `ArrayShapeBadge` | view model cache | none | value diff service | compares prior/current OxCalc value shape | workspace value signal |
 | Diff highlight | 02 | `ArrayGrid` | transient render state | none | value diff service | no engine call | prior/current value diff |
-| Pin value | 02 | `PinButton` | `skins/shared.pinned` | shared state update | shared skin-state service | none | shared state signal |
+| Pin value | 02 | `PinButton` | `skins.shared.pinned` | shared state update | shared skin-state service | none | shared state signal |
 | Export value | 02 | `ExportButton` | no semantic state | export command | export service | may use published value only | toast/progress |
 | Show in canvas | 02 | `ShowInCanvasButton` | canvas skin state + mount slot | skin switch/mount plus canvas focus | skin registry, canvas state | none | mounted skin + canvas state |
 | Drill tree | 01 | `DrillPanel` | panel open/details | trace request | drill/audit service | OxFml prepared-call trace; value source from OxCalc | trace result signal |
@@ -156,7 +156,7 @@ The dispatcher decides whether the request is a cheap host update, a meta-node w
 
 1. User drags a node card or lasso-selects a group in `canvas-flow`.
 2. Selection changes use `SelectNode` / `SelectMany`; canvas-specific positions/groups use `cx.state.update(...)`.
-3. DnaTreeCalc persists positions/groups under `skins/canvas-flow`.
+3. DnaTreeCalc persists positions/groups under `skins.canvas-flow`.
 4. No OxCalc call occurs for pan, zoom, drag, grouping, routing mode, or manual layout.
 5. Wires are redrawn from the OxCalc dependency graph plus current card geometry.
 6. Auto-layout reads the dependency graph and current canvas state, computes new positions, and writes positions back to `CanvasFlowState`.
@@ -167,7 +167,7 @@ The dispatcher decides whether the request is a cheap host update, a meta-node w
 1. User chooses a skin in the context strip or opens an inspector beside the main editor.
 2. `SkinRegistryState.mounted` changes for the focused mount slot.
 3. Outgoing `SkinHandle.on_deactivate` flushes pending state.
-4. Host hydrates the incoming skin's typed state from `skins/<skin_id>` and builds `SkinContext<S>`.
+4. Host hydrates the incoming skin's typed state from `skins.<skin_id>` and builds `SkinContext<S>`.
 5. Host calls `skin.mount(cx)` and mounts the returned view.
 6. Workspace, selection, calc state, format resolver, and shared skin state survive the switch.
 7. No OxCalc rebind/recalc happens merely because a skin changed.
@@ -208,11 +208,11 @@ The dispatcher decides whether the request is a cheap host update, a meta-node w
 | Node computed value | OxCalc published result | `TreeNodeId` | cache/session or saved value if chosen | OxCalc bridge only | source result |
 | Node calc state | OxCalc published result | `TreeNodeId` | session/result cache | OxCalc bridge only | source result |
 | Dependency graph | OxCalc published result | node ids/edges | session/result cache | OxCalc bridge only | source result |
-| Selection | DnaTreeCalc host | node ids | session and/or `skins/shared` | skins via selection intents | none |
-| Collapse state | shared skin state | node ids | `skins/shared` meta | skins via shared state handle | none |
-| Pins/recent selections | shared skin state | node ids | `skins/shared` meta | skins via shared state handle | none |
-| Canvas positions | canvas skin state | node ids | `skins/canvas-flow` meta | canvas skin via state handle | none |
-| Canvas groups | canvas skin state | group id -> node ids | `skins/canvas-flow` meta | canvas skin via state handle | none |
+| Selection | DnaTreeCalc host | node ids | session and/or `skins.shared` | skins via selection intents | none |
+| Collapse state | shared skin state | node ids | `skins.shared` meta | skins via shared state handle | none |
+| Pins/recent selections | shared skin state | node ids | `skins.shared` meta | skins via shared state handle | none |
+| Canvas positions | canvas skin state | node ids | `skins.canvas-flow` meta | canvas skin via state handle | none |
+| Canvas groups | canvas skin state | group id -> node ids | `skins.canvas-flow` meta | canvas skin via state handle | none |
 | Table/outline column widths | skin state | column ids | skin meta namespace | owning skin via state handle | none |
 | Expanded array rows | skin state | node ids | skin meta namespace | owning skin via state handle | none |
 | Format properties | DnaTreeCalc format meta service | node id/property path | `Format` meta-child | format intents | none for literal format |
@@ -319,7 +319,7 @@ Before W003/W005/W006 implementation, a review pass should be able to answer yes
 | Can resize and adaptive display changes be explained without recalc? | F10 |
 | Are template definitions clearly calc-ignored until sync/instantiate emits regular edits? | F6, `META_NODES.md` |
 | Are format edits meta/facade changes rather than engine state? | F5, `SKINS.md` section 9 |
-| Does every skin persist only its own view state under `skins/<skin_id>`? | section 5, `SKINS.md` section 4 |
+| Does every skin persist only its own view state under `skins.<skin_id>`? | section 5, `SKINS.md` section 4 |
 | Are OneCalc visual cues optional rather than normative? | `prototypes/index.html`, design-reference notes |
 
 The prototype HTML remains static and illustrative. This traceability document is the bridge that turns those pictures into implementable UX contracts.

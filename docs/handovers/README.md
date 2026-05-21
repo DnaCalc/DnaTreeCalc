@@ -23,6 +23,7 @@ Authored:
 
 - `HANDOVER_OXFML_constant_input.md` — adopt OxFml's §2.1A cell-entry classification on the tree-reference channel (constant vs. formula by leading `=`). Engine prereq §6 item 11.
 - `HANDOVER_OXCALC_iterative_cycle_config.md` — host-config contract for circular-reference cycle profiles + iterative bounds, plus the diagnostic surface back. Engine prereq §6 item 12.
+- `HANDOVER_OXFML_conditional_formatting.md` — Excel-faithful conditional-formatting semantics (ordered rules, Stop-If-True, action accumulation, subtree CF) + the computed-format-property boundary. Engine prereq §6 item 10.
 
 Anticipated:
 
