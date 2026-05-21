@@ -36,7 +36,7 @@ The full v1 scope boundary — in-scope, deferred-with-architectural-hook, and t
 - Charting and visualization (deferred; basic value-shape rendering only).
 - Locale-customized rendering beyond what OxFml's existing locale machinery provides.
 
-**Notable in-scope (clarification 2026-05-19):** Real-time / async-streaming external data values (RTD-style pushes from streaming sources) are explicitly in scope. The mechanism lives in OxCalc — the engine supports values that arrive asynchronously and propagate through the dependency graph as invalidations. The host's job is to provide a bridge adapter that feeds those updates into the engine and to render the resulting value changes; skins observe workspace state and re-render normally. No skin-specific accommodation needed beyond the standard signal subscription model.
+**Notable in-scope (clarification 2026-05-19; refined for the sans-executor engine model):** Real-time / async-streaming external data values (RTD-style updates from streaming sources) are explicitly in scope. The **host owns the connection** to the streaming source and is the one notified when an update is available; it then calls into OxCalc **synchronously to process the update — exactly like an F9 recalc** (CORE_MODEL §7; [`../handovers/HANDOVER_OXCALC_engine_handle_and_incremental_edit.md`](../handovers/HANDOVER_OXCALC_engine_handle_and_incremental_edit.md)). OxCalc owns no connection, no thread, and pushes nothing on its own; it recomputes the invalidation closure and returns. Skins observe workspace state and re-render normally — no skin-specific accommodation. F9, RTD updates, and (later) async-function completions are one mechanism: host-driven processing of an update against the engine.
 
 ---
 
@@ -456,6 +456,7 @@ Per-node state from the engine's invalidation vocabulary, mapped to user-visible
 - Clean (no badge / green dot) — value is current.
 - Dirty / pending — yellow dot.
 - Evaluating — animated spinner.
+- Async-pending — awaiting a host-driven completion (async function / RTD); the `#GETTING_DATA` analog, distinct from evaluating (CORE_MODEL §7).
 - Error — red dot with error code.
 - Cycle-blocked — orange warning icon.
 - (Note: `verified_clean` is not distinguished from `clean` per spec §7.)

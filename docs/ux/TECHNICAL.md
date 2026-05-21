@@ -206,6 +206,8 @@ pub struct TreeNodeState {
 }
 ```
 
+**System of record (host product model vs. engine canonical structure).** OxCalc owns custody of the canonical calc tree-model (CORE_MODEL §1; [`../handovers/HANDOVER_OXCALC_engine_handle_and_incremental_edit.md`](../handovers/HANDOVER_OXCALC_engine_handle_and_incremental_edit.md) §5). `WorkspaceState` is the host's **product model** — it carries what the engine doesn't (meta-nodes, formats, skin state, file handle, aliases, template bookkeeping) and stewards persistence and edit orchestration. Structural and content edits are applied by calling the engine handle; computed values, calc-state, and pinned-version identity are **projected from the engine result** (`last_published_result`), never authored independently. Whether `nodes` is the structural source-of-truth the host syncs into the engine, or a projection the host reads back from the engine-owned structure, is the sync contract being pinned with OxCalc (handover §5) — either way the engine is custodian of the calc structure and the host never reconstructs engine-owned values.
+
 ### 3.3 Selection state
 
 ```rust
@@ -276,26 +278,35 @@ The bridge pattern from OneCalc generalizes:
 
 The bridge is a **thin projection of engine types for rendering and intent routing — not a re-interpretation layer.** TreeCalc consumes `EvalValue`, diagnostics, the dependency graph, and calc-state from OxCalc/OxFml directly (CORE_MODEL §5.1); the request/result shapes below carry engine data into the UI and host intents back, and must not grow host-side reimplementations of engine semantics. This mirrors DnaOneCalc's direct-use bridge pattern — any shape here that drifts toward re-interpreting engine behavior is a simplification target.
 
+**The interaction shape is host-driven and sans-executor** (see [`../handovers/HANDOVER_OXCALC_engine_handle_and_incremental_edit.md`](../handovers/HANDOVER_OXCALC_engine_handle_and_incremental_edit.md)). OxCalc owns custody of the canonical tree model (CORE_MODEL §1); the host holds an **engine handle** whose internals OxCalc owns and is the only thing to mutate. Every advance — open, edit, recalc (F9), external-value update (RTD), async resume — is a **synchronous call in**; results, invalidation, and any pending-completion tokens come back as **return-value data, never engine→host callbacks**. OxCalc owns no thread and nothing ticks between calls; concurrency, the RTD connection, and any async runtime are the host's. The OxCalc consumer facade (`OxCalcTreeEnvironment` / `Document` / `Request` / `Result` / `RuntimeFacade`) currently implements one-shot execution as the **first slice** of this handle model; the bridge below is a thin adapter over that facade, not a parallel seam.
+
 ### 4.1 Tree bridge interface
 
 ```rust
+// Thin host adapter over OxCalc's consumer facade (`OxCalcTreeRuntimeFacade`).
+// Host-driven and sans-executor: every call is synchronous, results return as data,
+// and there are NO engine→host callbacks. The handle's internals are OxCalc-owned;
+// the host owns only the handle's lifetime.
 pub trait OxCalcTreeBridge {
-    /// Submit a structural snapshot for evaluation.
-    fn execute_recalc(&self, request: TreeRecalcRequest) -> TreeRecalcResult;
+    /// Open a handle over an initial document (pins initial structural truth:
+    /// structural snapshot + formula catalog + seeded published values).
+    fn open(&self, document: OxCalcTreeDocument) -> EngineHandle;
 
-    /// Begin a transactional batch of structural edits.
-    fn begin_transaction(&self) -> TransactionHandle;
+    /// Apply a model edit (add/move/delete/rename, formula/content change) against the
+    /// handle and recompute. Each model edit yields a new pinned version
+    /// (candidate → publication; CORE_MODEL §8a). Synchronous; returns the result.
+    fn apply_and_recalc(&self, handle: &mut EngineHandle, edit: EngineEdit) -> TreeRecalcResult;
 
-    /// Commit a transaction; produces a publication candidate.
-    fn commit_transaction(&self, handle: TransactionHandle) -> Result<TreeRecalcResult, TreeRecalcError>;
+    /// Recalc / step without a structural edit — F9, external-value processing, async resume.
+    /// Returns result data (plus pending-completion tokens once async lands). No callback.
+    fn recalc(&self, handle: &mut EngineHandle, request: TreeRecalcRequest) -> TreeRecalcResult;
 
-    /// Roll back a transaction.
-    fn rollback_transaction(&self, handle: TransactionHandle);
-
-    /// Subscribe to invalidation events for incremental UI updates.
-    fn subscribe_invalidation(&self, callback: Box<dyn Fn(InvalidationEvent)>);
+    /// Release the handle.
+    fn close(&self, handle: EngineHandle);
 }
 ```
+
+V1's one-shot facade effectively re-opens per run; the **retained handle is the agreed contract direction** (handover). A transactional batch (group N edits → one publication; CORE_MODEL §6 item 8) is a batching feature *on* the handle, not a separate session model, and lands when OxCalc exposes it. There is **no `subscribe_invalidation`** — invalidation comes back inside `TreeRecalcResult`, and the host updates its signals from the returned closure.
 
 ### 4.2 Request and result shapes
 
@@ -322,20 +333,21 @@ pub struct TreeRecalcResult {
 }
 ```
 
+These shapes are host-side projections of OxCalc's facade objects (`OxCalcTreeRecalcRequest` / `OxCalcTreeRecalcResult`) — they carry engine data, not host reinterpretation (§4 intro). When async-function support lands, `run_state` gains a `Pending` / `AwaitingCompletion` variant carrying completion tokens; the host performs the async work and resumes via a synchronous `recalc` call (host-driven, per the engine-handle handover §3). F9, RTD updates, and async completions are the same call shape.
+
 ### 4.3 Live bridge implementation
 
 ```rust
 pub struct LiveOxCalcTreeBridge {
     runtime: OxCalcTreeRuntimeFacade,
-    cache: TreeRecalcCache,                            // keyed by snapshot+catalog hash
-    subscriptions: Vec<Box<dyn Fn(InvalidationEvent)>>,
+    handle: EngineHandle,        // engine-owned internals; the host holds the handle (no callbacks)
 }
 ```
 
-Caching strategy:
-- Per-node value cache survives across recalcs when the node's formula and inputs are unchanged.
-- Invalidation closure from each recalc result tells the bridge which cache entries to drop.
-- Transaction handle owns a snapshot delta; commit applies the delta to engine state.
+State and caching:
+- The engine handle retains published values, the dependency graph, and pinned versions across edits (CORE_MODEL §1, §8a); the host does not re-seed them per call once the retained handle lands.
+- Each result's invalidation closure tells the host which projected views to refresh — pulled from the return value, not pushed via a subscription.
+- A model edit produces a new pinned version; undo/redo navigate versions (CORE_MODEL §8a), and a cancelled recalc abandons the in-flight candidate, leaving the last publication intact.
 
 ### 4.4 Engine integration with formula editor
 
