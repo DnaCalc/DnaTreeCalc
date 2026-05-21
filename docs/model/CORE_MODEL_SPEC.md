@@ -10,15 +10,18 @@ Layering (per-product repos are authoritative):
 |---|---|
 | OxFunc | Value universe (`EvalValue`), function/operator semantics, coercion, error algebra, array lifting |
 | OxFml | Grammar, parse, bind, single-node evaluator, format-code parsing, LAMBDA/LET, completion/signature-help |
-| OxCalc | Multi-node coordinator, dependency graph, invalidation closure, atomic publication, epochs, tree-substrate types (`TreeNodeId`, `TreeReference`) |
-| DNA TreeCalc | User-facing host — workspace persistence, UI, structural editing, cross-workspace orchestration |
+| OxCalc | Tree model custody and structure, multi-node coordinator, dependency graph, invalidation closure, atomic publication, epochs, tree-substrate types (`TreeNodeId`, `TreeReference`) |
+| DNA TreeCalc | User-facing host — workspace persistence, UI, structural-edit orchestration, cross-workspace orchestration |
 
-Formula authority rule: DNA TreeCalc stores and edits node formula/content text
-but does not parse or bind it. OxFml owns parsing, literal-entry
-classification for non-empty entries, formula binding, and TreeCalc-profile
-reference syntax. OxCalc owns the internal tree model used to resolve the
-OxFml bind/reference structures into dependencies, invalidation, runtime
-reference carriers, and publication consequences.
+Model and formula authority rule: DNA TreeCalc loads, creates, and updates the
+tree model through the OxCalc contract, but OxCalc is the tree model custodian.
+DNA TreeCalc presents and persists formula/content edits, but does not parse or
+bind them. OxFml owns generic parsing, literal-entry classification for
+non-empty entries, formula binding, and generic host-context integration.
+OxCalc supplies the TreeCalc host formula context and owns the tree model
+structure used to resolve the OxFml bind/reference structures into
+dependencies, invalidation, runtime reference carriers, and publication
+consequences.
 
 The OxCalc substrate uses tree-node-id semantics (not coordinates) and exposes the reference variants `DirectNode`, `RelativePath`, `SiblingOffset`, `DynamicResolved`, `ProjectionPath`, `Unresolved`. TreeCalc is the host on top of an already-tree-shaped engine; this document describes the user-facing surface the host provides.
 
@@ -244,11 +247,46 @@ My.brother.node(1, 2, "A")        resolve the path, then invoke the lambda it ho
 ^.Rate(x)                         invoke the lambda on the parent's child `Rate`
 ```
 
-The path resolves by the ordinary rules (§3.1–§3.3); the resolved node's value must be a `Lambda` (§6); the call applies arguments to it. Only **single-reference** resolutions are callable — a call on a set-producing reference (`.*`, `**`, `@ANCESTORS`, …) is an error unless explicitly designed later. The caller depends on the callee node's value, so editing the `LAMBDA` re-binds and re-evaluates callers. The call surface is profile-gated to `treecalc-v1`; under `strict-excel` only Excel's own defined-name LAMBDA invocation applies. LAMBDA invocation semantics (arity, closure, error codes) are OxFml/OxFunc's and Excel-aligned — the novel surface is only the tree-path-as-callee. Engine prerequisite §6 item 15; raised in [`../handovers/HANDOVER_OXFML_lambda_node_invocation.md`](../handovers/HANDOVER_OXFML_lambda_node_invocation.md).
+The path resolves by the ordinary rules (§3.1–§3.3); the resolved node's value must be a `Lambda` (§6); the call applies arguments to it. Only **single-reference** resolutions are callable — a call on a set-producing reference (`.*`, `**`, `@ANCESTORS`, …) is an error unless explicitly designed later. The caller depends on the callee node's value, so editing the `LAMBDA` re-binds and re-evaluates callers. The call surface is admitted only when the OxCalc-supplied host formula context exposes the TreeCalc capability profile (currently `host-capabilities:treecalc-v1`); under a strict-Excel context only Excel's own defined-name LAMBDA invocation applies. LAMBDA invocation semantics (arity, closure, error codes) are OxFml/OxFunc's and Excel-aligned — the novel surface is only the tree-path-as-callee. Engine prerequisite §6 item 15; raised in [`../handovers/HANDOVER_OXFML_lambda_node_invocation.md`](../handovers/HANDOVER_OXFML_lambda_node_invocation.md).
+
+### 3.9 Name And Call Resolution
+
+TreeCalc deliberately shares formula surface with functions, UDFs, defined
+names, node names, and lambda-valued nodes. The binding model therefore uses a
+resolution hierarchy rather than treating every identifier as a node.
+
+1. OxFml parses generic formula structure: calls, argument lists, operators,
+   literals, arrays, `LET`, `LAMBDA`, and source spans.
+2. OxFml must match observed Excel behavior for name shadowing across built-in
+   functions, registered UDFs, workbook/sheet defined names, and defined-name
+   `LAMBDA` invocation before product semantics are frozen.
+3. TreeCalc node names and lambda-valued nodes map onto the closest
+   Excel-defined-name lane, unless an explicit TreeCalc extension is recorded.
+4. OxCalc's host namespace is consulted for node names, defined names,
+   relative paths, and set-producing selectors in the lanes admitted by that
+   Excel-matched rule.
+5. In non-call position, bare names resolve through the OxCalc host namespace
+   unless an Excel-defined function/UDF/name rule applies.
+6. Explicit tree paths or explicit host-reference syntax bind through OxCalc's
+   host namespace and can be used when a node name collides with a function or
+   UDF name.
+7. Ambiguities are bind diagnostics, not runtime guesses; the diagnostic must
+   name the winning resolution layer or the required explicit-disambiguation
+   syntax.
+
+Example: if a TreeCalc node name collides with an Excel function, UDF, or
+defined-name lambda, the binder must follow the Excel-matched rule for the
+corresponding category or require explicit tree-path syntax. The exact collision
+matrix is an engine requirement, not settled in this host spec.
 
 ## 4. Capability Profile
 
-Every TreeCalc-specific extension to the formula language is gated by a named profile carried in `OxCalcTreeHostCapabilitySnapshot.capability_profile_id` (the existing capability-snapshot field in `oxcalc-core/src/consumer.rs`). Under a strict-Excel profile, the engine rejects all TreeCalc syntax at parse/bind time.
+Every TreeCalc-specific extension to the formula language is gated by a named
+host formula context / capability profile carried in
+`OxCalcTreeHostCapabilitySnapshot.capability_profile_id` (the existing
+capability-snapshot field in `oxcalc-core/src/consumer.rs`). Under a
+strict-Excel context, the engine rejects all TreeCalc syntax at parse/bind
+time.
 
 Two relevant profile values:
 
@@ -277,7 +315,8 @@ The profile is a named, versioned bundle. Future profiles (`treecalc-v2`, etc.) 
 
 Obligations on each layer:
 
-- OxFml parser/binder consults `capability_profile_id` for profile-gated grammar and lookup rules.
+- OxFml parser/binder consumes the OxCalc-supplied host formula context for
+  profile-gated host reference syntax and lookup rules.
 - OxFunc remains profile-agnostic: function semantics are identical under any profile. The profile gates the *input surface* (which references and literals can be written) and the parsing of string-valued arguments to `INDIRECT`. What a function does, once it has its inputs, is fixed.
 - OxCalc honors the profile when integrating bind artifacts: only the reference variants admissible under the profile appear in dependency graphs.
 - Capability mismatch is a bind-time error with a clear message — never a runtime error and never silent semantic drift.
@@ -338,21 +377,21 @@ The following pieces are TreeCalc-specific extensions that depend on engine work
 1. **Unified `ReferenceKind` / reference-view abstraction** in OxFunc/OxFml/OxCalc: tree single-node, tree node-set (children/ancestors/preceding/following/descendants/explicit), and tree-dynamic (runtime-resolved via INDIRECT) must coexist with Excel grid references/ranges behind an abstraction that supports both "dereference to values before calling the function" and "preserve opaque reference/range identity for reference-sensitive functions." Iteration logic should plug into shared per-kind dispatch where possible, but the exact abstraction boundary is a design area, not a solved TreeCalc-local detail.
 2. **`SelfNode` base variant** in OxCalc's `RelativePath` (or `Ancestor(0)` generalization) so the walk-up scope resolution can capture own-child matches.
 3. **Set-membership dependency edge type** in OxCalc's `DependencyGraph`: "this formula depends on the set of children of node X" must invalidate when the set's membership changes structurally (add / remove / rename of a matching child). Same machinery covers `@ANCESTORS`, `@PRECEDING`/`@FOLLOWING`, and `**`.
-4. **Reference-array literals** `{Foo, Bar}` — OxFml binder grammar admits references inside `{...}` (not only scalars) under the `treecalc-v1` profile.
+4. **Reference-array literals** `{Foo, Bar}` — OxFml's bind layer admits host references inside `{...}` (not only scalars) when the active OxCalc-supplied host formula context exposes the TreeCalc capability profile.
 5. **Cross-workspace orchestration** via `HostSensitive` — the host adapter loads external workspaces, caches their published values, and signals invalidation on external republish.
 6. **Structural-edit semantics** — node rename / move / formula replacement / add / remove: when does each force rebind vs. recalc vs. publication-visible structural delta. Specified in `OxCalc/docs/spec/core-engine/CORE_ENGINE_TREECALC_SEMANTIC_COMPLETION_PLAN.md`. The rename-propagation prompt UX depends on the engine's resolution.
-7. **Profile-aware `INDIRECT`** — string argument parsed as a tree path under `treecalc-v1`, as A1/R1C1 under `strict-excel`. Function lives in OxFunc; parsing dispatches on the active profile.
+7. **Profile-aware `INDIRECT`** — string argument parsed as a tree path under the TreeCalc host formula context, as A1/R1C1 under `strict-excel`. Function lives in OxFunc; string-reference parsing dispatches on the active host formula context / profile.
 8. **Transactional batch structural editing** in OxCalc — `begin / N edits / commit-or-rollback` atomically as one publication candidate. Useful broadly (multi-node refactors, paste, undo) and specifically needed for clean template sync. Queued as a fundamental engine feature.
 9. **`is_meta` per-node attribute** (boolean, default false). When true on any node, that node and its entire descendant subtree are invisible to formula reference resolution AND are not bound or evaluated by the engine. Bind layer skips meta-flagged nodes and their descendants when resolving references (resulting in `Unresolved` on lookup failure). Positional operators (`@PREV`/`@NEXT`/`@INDEX`/`.*`) on regular siblings skip meta neighbors. Templates and per-node format both use this flag; future meta-node uses (configuration, named lambdas, annotations) inherit the same mechanism. Storage / filter strategy is OxCalc's choice.
 10. **Conditional-formatting rule semantics for the format surface** — confirm or add support for ordered multiple rules, `Stop If True`, action accumulation across rules, and subtree-level format inheritance inputs. The format engine details live in OxFml/OxFunc, but TreeCalc's format editor and Excel verification depend on this behavior being explicit and reusable rather than reconstructed in the host. Raised in `docs/handovers/HANDOVER_OXFML_conditional_formatting.md`.
-11. **Constant entry classification on the TreeCalc channel** — OxFml's cell-entry classification (`OXFML_DNA_ONECALC_DOWNSTREAM_CONSUMER_CONTRACT.md` §2.1A: leading `=` formula, `'` text escape, finite-number/`TRUE`-`FALSE`/quoted-string/verbatim-text constant) must be reachable from the TreeCalc host channel, with TreeCalc's explicit empty-string → `Empty` case and the formula branch parsing tree-path references under `treecalc-v1` rather than WorksheetA1, plus Excel-aligned implicit number-format inference on number constants. Raised in `docs/handovers/HANDOVER_OXFML_constant_input.md`.
+11. **Constant entry classification on the TreeCalc channel** — OxFml's cell-entry classification (`OXFML_DNA_ONECALC_DOWNSTREAM_CONSUMER_CONTRACT.md` §2.1A: leading `=` formula, `'` text escape, finite-number/`TRUE`-`FALSE`/quoted-string/verbatim-text constant) must be reachable from the TreeCalc host channel, with TreeCalc's explicit empty-string → `Empty` case and the formula branch parsed/bound through the OxCalc-supplied TreeCalc host formula context rather than WorksheetA1, plus Excel-aligned implicit number-format inference on number constants. Raised in `docs/handovers/HANDOVER_OXFML_constant_input.md`.
 12. **Circular-reference cycle profiles** — the host selects a cycle profile and supplies iterative bounds (Maximum Iterations, Maximum Change) via the compatibility basis; OxCalc owns the profiles and the iteration (`docs/spec/core-engine/w048-cycles/`): `cycle.non_iterative_stage1` (default — reject / `cycle_blocked`), `cycle.excel_match_iterative` (Excel-faithful for the current single-host-scoped covered surface), `cycle.iterative_deterministic_v0` (deterministic Jacobi). See §7a and `docs/handovers/HANDOVER_OXCALC_iterative_cycle_config.md`.
 
 13. **Version-based undo/redo support** — immutable structure-tree versioning the host can navigate, so undo/redo of structural and formula edits surfaces prior engine versions (including prior calc results) without host-side inverse-edit replay; OxFml's bind/value caching (green/black tree) participates in what is retained vs. recomputed. The host owns the command taxonomy and app-level interaction undo; the model-version layer is OxCalc's. See §8a and `docs/handovers/HANDOVER_OXCALC_undo_versioning.md`.
 
 14. **Table-node unpacking** — the TreeCalc table-node concept (columns, headers, optional totals, column formulas, structured references) is lowered by OxFml/OxCalc into engine constructs (column arrays / references, per-row column-formula evaluation, structured-ref binding). A Table is **not** a value in the OxFunc universe; there is no `EvalValue::Table`. See §7c and `docs/handovers/HANDOVER_OXCALC_table_node_model.md`.
 
-15. **Node-as-function invocation** — OxFml's bind layer accepts a call applied to a tree-reference carrier that resolves (single-reference) to a lambda-valued node, under `treecalc-v1`; LAMBDA invocation semantics remain OxFml/OxFunc and Excel-aligned. See §3.8 and `docs/handovers/HANDOVER_OXFML_lambda_node_invocation.md`.
+15. **Node-as-function invocation** — OxFml's bind layer accepts a call applied to a host-reference carrier that OxCalc resolves as a single lambda-valued node when the active host formula context exposes the TreeCalc capability profile; LAMBDA invocation semantics remain OxFml/OxFunc and Excel-aligned. See §3.8 and `docs/handovers/HANDOVER_OXFML_lambda_node_invocation.md`.
 
 ## 7. Recalculation, Calc-State, and Diagnostics
 
