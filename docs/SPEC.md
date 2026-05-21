@@ -19,8 +19,9 @@ For someone new to the project:
 5. [`ux/SKINS.md`](ux/SKINS.md) — the skin architecture (the load-bearing UI design decision).
 6. [`ux/prototypes/index.html`](ux/prototypes/index.html) — the visual mockups (the eight skins, rendered).
 7. [`ux/TRACEABILITY.md`](ux/TRACEABILITY.md) — maps prototype affordances to skins, primitives, host state, DnaTreeCalc services, and OxFml/OxCalc flows.
-8. [`ux/TECHNICAL.md`](ux/TECHNICAL.md) — how to build it.
-9. [`interop/EXCEL_EXPORT_AND_REPLAY.md`](interop/EXCEL_EXPORT_AND_REPLAY.md) — export and verification against Excel.
+8. [`ux/IMPLEMENTATION_MATRIX.md`](ux/IMPLEMENTATION_MATRIX.md) — UX-side implementation driver: trace IDs, scenario cards, contracts, harness expectations, and workset entry criteria.
+9. [`ux/TECHNICAL.md`](ux/TECHNICAL.md) — how to build it.
+10. [`interop/EXCEL_EXPORT_AND_REPLAY.md`](interop/EXCEL_EXPORT_AND_REPLAY.md) — export and verification against Excel.
 
 ---
 
@@ -52,6 +53,7 @@ The user experience.
 | [`ux/TECHNICAL.md`](ux/TECHNICAL.md) | Implementation/integration plan: tech stack (Leptos/WASM, extends DnaOneCalc), crate layout, state model, OxCalc bridge, persistence format, per-component plan, UDF hosting, performance, build phasing, verification host. |
 | [`ux/prototypes/index.html`](ux/prototypes/index.html) | Eight visual HTML mockups — the first eight skins: workspace shell, array value, template editor, outline-table, format editor, Excel-style cell, nodes-across, canvas flow. Open `index.html` to navigate. |
 | [`ux/TRACEABILITY.md`](ux/TRACEABILITY.md) | Fine-detail UX traceability: prototype-to-skin mapping, feature ownership, state/intent/engine boundaries, and concrete flows from editor text to OxCalc publication and invalidation/resize back to display updates. |
+| [`ux/IMPLEMENTATION_MATRIX.md`](ux/IMPLEMENTATION_MATRIX.md) | UX-side work driver built from traceability: stable trace IDs, implementation slices, component/service contracts, scenario cards, trace events, harness expectations, and workset entry criteria. |
 | [`ux/design-references/`](ux/design-references/) | Loose visual references and mood-board notes for possible future skins or prototype directions. Not locked product design. |
 
 ---
@@ -68,6 +70,7 @@ The executable, spec-derived test corpus lives in [`test-corpus/`](test-corpus/)
 - **Engine prerequisites** for OxCalc / OxFml / OxFunc are listed in `model/CORE_MODEL_SPEC.md` §6 and raised through `docs/handovers/` when cross-repo work is needed.
 - **Meta-nodes** (`model/META_NODES.md`) are the substrate for three features that recur across the docs: templates, formatting, and per-skin UI state.
 - The relationship to Excel runs in both directions: **import** (`model/CORE_MODEL_SPEC.md` §10) and **export/verify** (`interop/EXCEL_EXPORT_AND_REPLAY.md`).
+- UX implementation is anchored from the other side by `ux/IMPLEMENTATION_MATRIX.md`: prototype affordances are assigned trace IDs and scenario checks so W003/W005/W006 can drive from visible behavior into host services and engine boundaries.
 
 ## Status
 

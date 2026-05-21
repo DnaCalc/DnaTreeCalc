@@ -67,9 +67,9 @@ Engine prerequisites in OxCalc/OxFml/OxFunc (Spec `model/CORE_MODEL_SPEC.md` §6
 ### W003_tree_shell_and_core_editing
 - **Purpose:** The workspace shell and core structural editing — nav-rail tree outline, node CRUD (insert/rename/move/delete), the three-pane editor skin, persistence to `.dnatree`.
 - **Depends on:** W002, W005 skin scaffold. Worksets need not be executed strictly by number; TreeCalc's first usable shell is built through the skin interface from the start, not retrofitted later.
-- **Spec sections:** `ux/REQUIREMENTS.md`; `ux/TECHNICAL.md` §6; `ux/SKINS.md` (triple-editor); `ux/TRACEABILITY.md`.
+- **Spec sections:** `ux/REQUIREMENTS.md`; `ux/TECHNICAL.md` §6; `ux/SKINS.md` (triple-editor); `ux/TRACEABILITY.md`; `ux/IMPLEMENTATION_MATRIX.md`.
 - **Closure condition:** a user can build, edit, save, and reopen a tree of named nodes in the three-pane skin.
-- **Initial epic lanes:** nav rail + tree rows; structural edit service; persistence; registered TripleEditor skin.
+- **Initial epic lanes:** nav rail + tree rows; structural edit service; persistence; registered TripleEditor skin; UX trace slices `UX-SH`, `UX-TR`, `UX-FE`, `UX-VA`, `UX-ST`.
 - **Verification:** Local + a UX click-through on the running shell; save/reopen round-trip test. Scaffolding: skin click-through harness; persistence round-trip fixture.
 - **Status:** OPEN
 
@@ -85,18 +85,18 @@ Engine prerequisites in OxCalc/OxFml/OxFunc (Spec `model/CORE_MODEL_SPEC.md` §6
 ### W005_skin_architecture_and_primitives
 - **Purpose:** The skin framework — `WorkspaceSkin` trait, `SkinContext`, intent dispatch, shared primitive library, per-skin meta-namespaces, skin switcher.
 - **Depends on:** W002. This is foundational UI infrastructure; W003 consumes it for the first shell.
-- **Spec sections:** `ux/SKINS.md`; `ux/TRACEABILITY.md`.
+- **Spec sections:** `ux/SKINS.md`; `ux/TRACEABILITY.md`; `ux/IMPLEMENTATION_MATRIX.md`.
 - **Closure condition:** the skin registry/composition layer mounts TripleEditor through the skin interface, and a second minimal skin or test skin proves per-skin state persisted in the `skins/*` meta-node subtree; shared tree-state is honored across mounted skins.
-- **Initial epic lanes:** skin trait + registry; primitive library lift from OneCalc; meta-namespace persistence.
+- **Initial epic lanes:** skin trait + registry; primitive library lift from OneCalc; meta-namespace persistence; UX trace slices `UX-SK`, `UX-SH`, shared-state parts of `UX-TR`.
 - **Verification:** Local + cross-skin equivalence (the same workspace renders/edits correctly across skins) + per-skin meta-state round-trip. Scaffolding: cross-skin equivalence harness; skin-state persistence tests.
 - **Status:** OPEN
 
 ### W006_additional_skins
 - **Purpose:** The remaining v1 skins — cell-view, outline-table, nodes-across, canvas-flow — on the primitive library.
 - **Depends on:** W003, W005.
-- **Spec sections:** `ux/SKINS.md` §6; `ux/TRACEABILITY.md`; `ux/prototypes/`.
+- **Spec sections:** `ux/SKINS.md` §6; `ux/TRACEABILITY.md`; `ux/IMPLEMENTATION_MATRIX.md`; `ux/prototypes/`.
 - **Closure condition:** the prototyped skins render and edit the same workspace; canvas group→template affordance works.
-- **Initial epic lanes:** cell-view; outline-table; nodes-across; canvas-flow.
+- **Initial epic lanes:** cell-view; outline-table; nodes-across; canvas-flow; UX trace slices `UX-CV`, `UX-GR`, additional-skin parts of `UX-VA`.
 - **Verification:** Local + per-skin click-through; reuse the W005 cross-skin equivalence harness across the new skins.
 - **Status:** OPEN
 

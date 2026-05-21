@@ -629,7 +629,7 @@ The host UX depends on items 1, 2, 8, and 9 directly; the others are formula-lan
 | §6 Adaptive behaviors | per-skin state in meta-namespaces (§3.5) + adaptive rendering selection within a skin |
 | §7 Cross-cutting | §5 persistence; §7 performance; §3 state model |
 
-For feature-level traceability from visible prototype affordances to skins, primitives, host state, intents, services, OxFml/OxCalc boundaries, and render updates, see [`TRACEABILITY.md`](TRACEABILITY.md).
+For feature-level traceability from visible prototype affordances to skins, primitives, host state, intents, services, OxFml/OxCalc boundaries, and render updates, see [`TRACEABILITY.md`](TRACEABILITY.md). For implementation slices, scenario cards, component contracts, trace events, and harness expectations, see [`IMPLEMENTATION_MATRIX.md`](IMPLEMENTATION_MATRIX.md).
 
 | Spec section (DESIGN doc §) | Tech enables |
 |---|---|

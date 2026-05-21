@@ -10,6 +10,7 @@ Read with:
 - [`SKINS.md`](SKINS.md) for the skin contract.
 - [`TECHNICAL.md`](TECHNICAL.md) for module layout and bridge shapes.
 - [`prototypes/`](prototypes/) for visual sketches.
+- [`IMPLEMENTATION_MATRIX.md`](IMPLEMENTATION_MATRIX.md) for trace IDs, scenario cards, contracts, and harness expectations derived from this map.
 
 ## 1. Traceability Rule
 
@@ -105,7 +106,7 @@ The dispatcher decides whether the request is a cheap host update, a meta-node w
 ### F2. Constant entry and empty-node behavior
 
 1. User types into a formula/value entry surface for node `N`.
-2. If the text is `""`, DnaTreeCalc stores `formula = ""`; the node is empty and has the `Empty` value.
+2. If the entry text is blank, DnaTreeCalc stores blank node content; the node is empty and has the `Empty` value.
 3. If the text starts with `=`, it follows F1 as a formula.
 4. If the text does not start with `=`, the same `EditFormula` intent stores that text as the node content string.
 5. OxFml classifies the no-equals content as an Excel-style literal constant during bind/evaluation.
@@ -322,3 +323,5 @@ Before W003/W005/W006 implementation, a review pass should be able to answer yes
 | Are OneCalc visual cues optional rather than normative? | `prototypes/index.html`, design-reference notes |
 
 The prototype HTML remains static and illustrative. This traceability document is the bridge that turns those pictures into implementable UX contracts.
+
+For implementation planning, use [`IMPLEMENTATION_MATRIX.md`](IMPLEMENTATION_MATRIX.md). It assigns stable trace IDs to this document's flows and turns them into workset-oriented slices, scenario checks, contract cards, and harness expectations.

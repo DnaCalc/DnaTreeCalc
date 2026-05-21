@@ -1,6 +1,6 @@
 # DNA TreeCalc — UX Requirements (Conceptual)
 
-This is the conceptual UX requirements document. It pins down what the user-facing application must present and let the user do. It does not commit to layout, styling, or technical implementation — those are covered by [`prototypes/`](prototypes/) (visual prototypes), [`SKINS.md`](SKINS.md) (skin architecture), [`TRACEABILITY.md`](TRACEABILITY.md) (prototype-to-implementation flow mapping), and [`TECHNICAL.md`](TECHNICAL.md) (implementation/integration).
+This is the conceptual UX requirements document. It pins down what the user-facing application must present and let the user do. It does not commit to layout, styling, or technical implementation — those are covered by [`prototypes/`](prototypes/) (visual prototypes), [`SKINS.md`](SKINS.md) (skin architecture), [`TRACEABILITY.md`](TRACEABILITY.md) (prototype-to-implementation flow mapping), [`IMPLEMENTATION_MATRIX.md`](IMPLEMENTATION_MATRIX.md) (UX-side implementation driver), and [`TECHNICAL.md`](TECHNICAL.md) (implementation/integration).
 
 This document cross-references [`CORE_MODEL_SPEC.md`](../model/CORE_MODEL_SPEC.md) for the underlying language and engine model.
 
@@ -617,4 +617,5 @@ This UX requirements document is comprehensive at the conceptual level. It cover
 Next:
 - [`prototypes/`](prototypes/) — visual HTML mockups grounded in these requirements.
 - [`TRACEABILITY.md`](TRACEABILITY.md) — fine-detail mapping from prototype features through skin state, host internals, intents, and OxFml/OxCalc flows.
+- [`IMPLEMENTATION_MATRIX.md`](IMPLEMENTATION_MATRIX.md) — trace IDs, scenario cards, contracts, harness expectations, and workset entry criteria derived from the traceability map.
 - [`TECHNICAL.md`](TECHNICAL.md) — the implementation/integration plan, tech stack, and component architecture.

@@ -989,6 +989,7 @@ After Phase G, the architecture is mature. Future skins, custom user skins, and 
 - [`META_NODES.md`](../model/META_NODES.md) — per-skin meta-namespaces are the canonical application of meta-nodes (alongside templates and formats).
 - [`prototypes/`](prototypes/) — the eight mockups are the first eight skin implementations.
 - [`TRACEABILITY.md`](TRACEABILITY.md) — detailed prototype-to-skin and skin-to-engine traceability.
+- [`IMPLEMENTATION_MATRIX.md`](IMPLEMENTATION_MATRIX.md) — trace IDs and scenario cards that drive W003/W005/W006 implementation from the skin side.
 
 ---
 
