@@ -45,3 +45,39 @@ Likely **confirm**, not **add**: §2.1A already owns the classification and remo
 for OneCalc. The TreeCalc ask is to make that same behavior available on the tree-reference channel.
 If it is already channel-agnostic, the response is a confirmation plus the channel id and a note on
 the implicit-number-format scope (item 3).
+
+## TreeCalc W002 integration note (2026-05-21)
+
+TreeCalc now has a local Rust host skeleton and a first OxCalc bridge smoke path:
+
+- local crate: `DnaTreeCalc/src/dnatreecalc-host`;
+- bridge boundary: `adapters::oxcalc::LiveOxCalcTreeBridge`;
+- local smoke fixture: `Root.A = 2`, prepared `Root.B = A + 3`, submitted through OxCalc's
+  `OxCalcTreeRuntimeFacade`;
+- local quarantine: the smoke path uses a TreeCalc-local `PreparedFormulaCatalog` to carry the
+  engine-ready expression. It deliberately does **not** claim that TreeCalc formula text is bound yet.
+
+That means the remaining OxFml unblocker is precise:
+
+1. **Entry classification API.** TreeCalc needs the same Excel-style entry classifier used for
+   `WorksheetA1`, callable for a TreeCalc formula channel. The host can handle the empty-string
+   `Empty` branch locally, but every non-empty constant/formula classification should be OxFml-owned.
+2. **Tree formula channel id.** Please confirm the channel id TreeCalc should pass for formula entries
+   whose reference grammar is `treecalc-v1`, and whether this is an existing `FormulaChannelKind` or
+   a new one.
+3. **Bind artifact into OxCalc.** Please confirm the output TreeCalc should hand to OxCalc for
+   formula entries: direct `TreeFormula` / reference carriers, a bind packet that OxCalc lowers into
+   `TreeFormulaCatalog`, or another consumer-facing object. The local `PreparedFormulaCatalog` is only
+   a temporary smoke-test carrier.
+4. **Minimum W002 activation.** TreeCalc will keep `docs/test-corpus/constants/entry-classification.json`
+   pending until this response identifies the API and value/format result surface. Once answered, the
+   first active slice will be ordinary constants plus the leading-`=` formula discriminator.
+
+Sibling-review checklist:
+
+- confirm whether §2.1A is already channel-agnostic internally;
+- name the TreeCalc channel id / enum variant;
+- name the constant-classification result type and implicit-format fields;
+- name the formula-bind output TreeCalc should pass toward OxCalc;
+- identify any OxFml workset/bead needed before TreeCalc should remove the temporary prepared-formula
+  carrier from the W002 smoke path.

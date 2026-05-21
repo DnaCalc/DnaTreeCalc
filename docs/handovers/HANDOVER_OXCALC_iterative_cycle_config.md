@@ -30,3 +30,46 @@ Evidence: OxCalc `docs/spec/core-engine/w048-cycles/` — `W048_ITERATIVE_PROFIL
 
 Part **confirm** (profiles, defaults, current single-host-scoped evidence, and the TreeCalc publish path
 already exist), part **coordinate** (production host-facing field names + the diagnostic surface).
+
+## TreeCalc W002 integration note (2026-05-21)
+
+TreeCalc now has the first local Rust bridge smoke path wired to OxCalc's consumer facade:
+
+- local crate: `DnaTreeCalc/src/dnatreecalc-host`;
+- local bridge: `adapters::oxcalc::LiveOxCalcTreeBridge`;
+- consumed OxCalc surface: `OxCalcTreeEnvironment`, `OxCalcTreeDocument`,
+  `OxCalcTreeRecalcRequest`, `OxCalcTreeRecalcResult`, and `OxCalcTreeRuntimeFacade`;
+- local smoke fixture: `Root.A = 2`, prepared `Root.B = A + 3`, with published value,
+  dependency edge, diagnostics, and node-state projection observed.
+
+The current OxCalc consumer facade gives TreeCalc a good acyclic smoke path, but cycle configuration is
+still not a production host contract from TreeCalc's point of view:
+
+1. `OxCalcTreeHostCapabilitySnapshot` currently carries `capability_profile_id` and runtime-effect
+   booleans, but TreeCalc does not see a typed cycle-profile field or iterative bounds field there.
+2. `OxCalcTreeRecalcRequest` carries `compatibility_basis` as a string. If cycle profile and bounds are
+   meant to ride there for now, TreeCalc needs the exact encoding and whether it is temporary or
+   production-facing.
+3. TreeCalc's local `CycleConfig` (`profile_id`, `maximum_iterations`, `maximum_change`) is currently
+   host-side only and is **not submitted to OxCalc** by the W002 smoke path. It exists to preserve the
+   workspace/config boundary while waiting for this response.
+4. `docs/test-corpus/cycles/cycle-profiles.json` remains pending until TreeCalc can submit cycle config
+   and assert typed diagnostics/results against the real facade.
+
+Minimum unblocker for TreeCalc W002/W005:
+
+- a typed place to submit cycle profile id and iterative bounds, or an explicit instruction that cycle
+  cases stay out of the first W002 active corpus slice;
+- the typed diagnostic/result fields TreeCalc should project for non-iterative cycle blocking and
+  iterative terminal states;
+- the current coverage label TreeCalc should use for `cycle.excel_match_iterative` in UI/spec text.
+
+Sibling-review checklist:
+
+- confirm whether cycle config belongs in `OxCalcTreeEnvironment`, `OxCalcTreeHostCapabilitySnapshot`,
+  `OxCalcTreeRuntimePolicy`, `OxCalcTreeRecalcRequest`, or a new structured compatibility object;
+- name the exact fields and defaults for Maximum Iterations and Maximum Change;
+- name the host-facing cycle diagnostic/result fields (`CircularReference` equivalent,
+  cycle-region membership, iteration trace, terminal classification);
+- state whether W002 should keep cycle corpus cases pending until a later OxCalc workset, or can activate
+  a non-iterative subset against the current facade.
