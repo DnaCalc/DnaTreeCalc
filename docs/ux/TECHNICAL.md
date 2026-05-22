@@ -622,7 +622,7 @@ From the engine prerequisites in [`CORE_MODEL_SPEC.md`](../model/CORE_MODEL_SPEC
 9. `is_meta` per-node attribute.
 10. Conditional-formatting rule semantics needed by the format surface.
 11. Constant-entry classification on the TreeCalc channel, including `""` -> `Empty`, with the formula branch parsing tree paths under `treecalc-v1`.
-12. Circular-reference cycle profiles and iterative bounds carried in the host/recalc compatibility basis.
+12. Circular-reference cycle profiles and iterative bounds carried in the typed `cycle_config` field on the recalc request (OxCalc consumer contract §6.3, W055; not the compatibility basis); cycle outcomes in `cycle_diagnostics` (§6.4).
 13. Version-based undo/redo support — immutable structure-tree versioning the host navigates; OxFml caching role.
 14. Table-node unpacking into engine constructs (a Table is not an OxFunc value).
 15. Node-as-function invocation — a call on a tree-reference that resolves to a lambda-valued node.

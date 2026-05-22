@@ -1,6 +1,6 @@
 # HANDOVER_OXCALC_iterative_cycle_config
 
-Status: Open
+Status: Responded
 Target: OxCalc
 Ask: Confirm the production host-facing contract by which a TreeCalc workspace (a) selects a cycle profile and (b) supplies iterative bounds (Maximum Iterations, Maximum Change), plus (c) the circular-reference diagnostic surface returned to the host.
 Context: TreeCalc exposes Excel-style circular-reference handling at the workspace level (CORE_MODEL_SPEC §7a). OxCalc W048 owns the cycle profiles and the iteration itself; current W048 evidence covers the declared single-host-scoped TreeCalc/TraceCalc surface. We still need the exact production host-facing contract so TreeCalc can pass config and surface results faithfully.
@@ -73,3 +73,27 @@ Sibling-review checklist:
   cycle-region membership, iteration trace, terminal classification);
 - state whether W002 should keep cycle corpus cases pending until a later OxCalc workset, or can activate
   a non-iterative subset against the current facade.
+
+## Resolution (from OxCalc consumer contract §6.3 / §6.4, W055)
+
+OxCalc answered this in `CORE_ENGINE_OXCALCTREE_CONSUMER_INTERFACE_AND_HOST_CONTRACT_V1.md`:
+
+- **Profile + bounds channel:** a typed `cycle_config` field on `OxCalcTreeRecalcRequest` (§6.3, W055).
+  `cycle_config.cycle_profile_id` admits `cycle.non_iterative_stage1` (the default when `cycle_config`
+  is absent), `cycle.excel_match_iterative`, and `cycle.iterative_deterministic_v0`;
+  `cycle_config.maximum_iterations` / `maximum_change` carry host overrides, profile defaults otherwise.
+  **`compatibility_basis` must not be used as the cycle channel.**
+- **Diagnostics back:** a typed `cycle_diagnostics` field on `OxCalcTreeRecalcResult` (§6.4) — cycle
+  region, selected profile, region source, members, root/report node, member order, terminal state,
+  publication decision, reject kind, and iteration-trace summary; plus a typed
+  `Worksheet.CircularReference` equivalent for non-iterative rejection. Hosts read these typed facts,
+  not string diagnostics.
+
+Spec updated accordingly: `CORE_MODEL_SPEC.md` §7a + §6 item 12 and `ux/TECHNICAL.md` §8.3 now reference
+the typed `cycle_config` / `cycle_diagnostics` fields rather than the compatibility basis.
+
+Residual (scoped, not blocking): the **coverage label** for `cycle.excel_match_iterative` — W048
+evidence is single-host-scoped, and cross-version / multithread scope remain dimensions; §7a's
+Excel-alignment-boundary note already hedges this. The W002 corpus (`cycles/cycle-profiles.json`) can
+activate the non-iterative subset against the typed field; iterative-value assertions stay
+Excel/engine-anchored.
