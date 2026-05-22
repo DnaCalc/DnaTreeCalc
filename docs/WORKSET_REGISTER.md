@@ -67,7 +67,8 @@ Engine prerequisites in OxCalc/OxFml/OxFunc (Spec `model/CORE_MODEL_SPEC.md` §6
 - **Closure condition:** a workspace of named nodes evaluates end-to-end via the bridge; per-node values and calc-state are observable.
 - **Initial epic lanes:** bridge contract; live-edit orchestration; calc-state plumbing.
 - **Verification:** Local (bridge + recalc unit tests over a small multi-node fixture). Excel anchor deferred to W009. Scaffolding: bridge test harness + a minimal multi-node workspace fixture.
-- **Status:** OPEN
+- **Current closure note:** W002 is closed for the narrowed executable bridge scope: `LiveOxCalcTreeBridge` submits a named-node workspace through the real OxCalc facade and observes published values, dependency edges, node state, evaluation order, and diagnostics under `cargo test --workspace`. The W002 corpus validator remains green with zero active W002 corpus cases by design: `constants/entry-classification` is pending on the OxFml TreeCalc entry-classification API, and `cycles/cycle-profiles` is pending on executable typed `cycle_config` / `cycle_diagnostics` fields in the current OxCalc consumer facade. Those are exact successor blockers, not hidden W002 closure claims.
+- **Status:** CLOSED
 
 ### W003_tree_shell_and_core_editing
 - **Purpose:** *Flesh out* the workspace shell and structural editing from the W005 skeleton — the full nav rail (virtualized rows, search/filter, drag-reorder, context menu, breadcrumb, meta-visibility toggle), the full structural-edit service (insert/rename/move/delete), the full three-pane TripleEditor experience, and complete `.dnatree` persistence (all meta-namespaces, undo grouping).
