@@ -1,0 +1,15 @@
+{
+  "schema_version": "treecalc-workspace-v1",
+  "workspace_id": "children-raw-active",
+  "description": "Narrow active W005 fixture for raw TreeCalc children formulas currently supported by OxCalc public prebind.",
+  "profile": "treecalc-v1",
+  "nodes": [
+    { "node_id": "Root", "formula": "" },
+    { "node_id": "Root.DirectChildren", "formula": "=SUM(@CHILDREN)" },
+    { "node_id": "Root.DirectChildren.A", "formula": "2" },
+    { "node_id": "Root.DirectChildren.B", "formula": "3" },
+    { "node_id": "Root.ChildrenSugar", "formula": "=SUM(.*)" },
+    { "node_id": "Root.ChildrenSugar.A", "formula": "5" },
+    { "node_id": "Root.ChildrenSugar.B", "formula": "7" }
+  ]
+}
