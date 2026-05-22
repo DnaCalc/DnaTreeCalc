@@ -102,12 +102,30 @@ pub enum PreparedFormula {
         left: PreparedFormulaOperand,
         right: PreparedFormulaOperand,
     },
+    OpaqueOxfml {
+        source_text: String,
+        reference_carriers: Vec<PreparedFormulaReferenceCarrier>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PreparedFormulaOperand {
     Literal { value: String },
     DirectNode { path: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PreparedFormulaReferenceCarrier {
+    DirectNode {
+        source_token: String,
+        path: String,
+    },
+    ChildrenV1 {
+        source_token: String,
+        base_path: String,
+        source_token_text: String,
+        source_span_utf8: Option<(usize, usize)>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

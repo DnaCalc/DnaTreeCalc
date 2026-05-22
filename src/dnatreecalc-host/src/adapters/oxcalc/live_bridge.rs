@@ -4,8 +4,9 @@ use oxcalc_core::consumer::{
     OxCalcTreeDocument, OxCalcTreeEnvironment, OxCalcTreeRecalcRequest, OxCalcTreeRuntimeFacade,
 };
 use oxcalc_core::formula::{
-    FixtureFormulaAst, FixtureFormulaBinaryOp, TreeFormulaBinding, TreeFormulaCatalog,
-    TreeReference,
+    FixtureFormulaAst, FixtureFormulaBinaryOp, TreeCalcChildrenReferenceCollection,
+    TreeCalcReferenceCollection, TreeFormula, TreeFormulaBinding, TreeFormulaCatalog,
+    TreeFormulaReferenceCarrier, TreeReference,
 };
 use oxcalc_core::structural::{
     BindArtifactId, FormulaArtifactId, StructuralNode, StructuralNodeKind, StructuralSnapshot,
@@ -15,7 +16,7 @@ use oxcalc_core::structural::{
 use super::bridge::{OxCalcTreeBridge, OxCalcTreeBridgeError};
 use super::types::{
     NodeCalcStateProjection, PreparedBinaryOp, PreparedFormula, PreparedFormulaCatalog,
-    PreparedFormulaOperand, TreeRecalcRequest, TreeRecalcResult,
+    PreparedFormulaOperand, PreparedFormulaReferenceCarrier, TreeRecalcRequest, TreeRecalcResult,
 };
 use crate::model::{NodeContentKind, WorkspaceModel, WorkspaceNode};
 
@@ -281,8 +282,8 @@ fn build_formula_catalog(
 
     for (path, formula) in formula_catalog.bindings() {
         let owner_node_id = node_id_for(path, node_ids_by_path)?;
-        let expression = prepared_formula_to_fixture_ast(formula, node_ids_by_path)?
-            .to_tree_formula(owner_node_id);
+        let expression =
+            prepared_formula_to_tree_formula(formula, owner_node_id, node_ids_by_path)?;
         bindings.push(TreeFormulaBinding {
             owner_node_id,
             formula_artifact_id: FormulaArtifactId(formula_artifact_id(path)),
@@ -292,6 +293,31 @@ fn build_formula_catalog(
     }
 
     Ok(TreeFormulaCatalog::new(bindings))
+}
+
+fn prepared_formula_to_tree_formula(
+    formula: &PreparedFormula,
+    owner_node_id: TreeNodeId,
+    node_ids_by_path: &BTreeMap<String, TreeNodeId>,
+) -> Result<TreeFormula, OxCalcTreeBridgeError> {
+    match formula {
+        PreparedFormula::Literal { .. } | PreparedFormula::Binary { .. } => {
+            Ok(prepared_formula_to_fixture_ast(formula, node_ids_by_path)?
+                .to_tree_formula(owner_node_id))
+        }
+        PreparedFormula::OpaqueOxfml {
+            source_text,
+            reference_carriers,
+        } => {
+            let carriers = reference_carriers
+                .iter()
+                .map(|carrier| {
+                    prepared_reference_carrier_to_tree_carrier(carrier, node_ids_by_path)
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(TreeFormula::opaque_oxfml(source_text.clone(), carriers))
+        }
+    }
 }
 
 fn prepared_formula_to_fixture_ast(
@@ -312,6 +338,46 @@ fn prepared_formula_to_fixture_ast(
             left: Box::new(prepared_operand_to_fixture_ast(left, node_ids_by_path)?),
             right: Box::new(prepared_operand_to_fixture_ast(right, node_ids_by_path)?),
         }),
+        PreparedFormula::OpaqueOxfml { .. } => Err(OxCalcTreeBridgeError::InvalidWorkspace(
+            "opaque OxFml source is already a TreeFormula and cannot be lowered through fixture AST"
+                .to_string(),
+        )),
+    }
+}
+
+fn prepared_reference_carrier_to_tree_carrier(
+    carrier: &PreparedFormulaReferenceCarrier,
+    node_ids_by_path: &BTreeMap<String, TreeNodeId>,
+) -> Result<TreeFormulaReferenceCarrier, OxCalcTreeBridgeError> {
+    match carrier {
+        PreparedFormulaReferenceCarrier::DirectNode { source_token, path } => {
+            Ok(TreeFormulaReferenceCarrier::named(
+                source_token.clone(),
+                TreeReference::DirectNode {
+                    target_node_id: node_id_for(path, node_ids_by_path)?,
+                },
+            ))
+        }
+        PreparedFormulaReferenceCarrier::ChildrenV1 {
+            source_token,
+            base_path,
+            source_token_text,
+            source_span_utf8,
+        } => {
+            let base_node_id = node_id_for(base_path, node_ids_by_path)?;
+            let mut collection =
+                TreeCalcChildrenReferenceCollection::new(base_node_id, source_token_text.clone());
+            if let Some((start_byte, end_byte)) = source_span_utf8 {
+                collection = collection.with_source_span_utf8(*start_byte, *end_byte);
+            }
+
+            Ok(TreeFormulaReferenceCarrier::named(
+                source_token.clone(),
+                TreeReference::ReferenceCollection(TreeCalcReferenceCollection::ChildrenV1(
+                    collection,
+                )),
+            ))
+        }
     }
 }
 
@@ -421,5 +487,82 @@ mod tests {
         assert!(result.diagnostics.iter().any(|diagnostic| {
             diagnostic == "oxcalc_tree_environment_runtime_lane:local_sequential_treecalc"
         }));
+    }
+
+    #[test]
+    fn live_bridge_executes_opaque_oxfml_source_with_children_carrier() {
+        let workspace = WorkspaceModel::try_from(WorkspaceFixture {
+            schema_version: "treecalc-workspace-v1".to_string(),
+            workspace_id: "w005-children-carrier".to_string(),
+            description: None,
+            profile: None,
+            nodes: vec![
+                WorkspaceNodeFixture {
+                    node_id: "Root".to_string(),
+                    formula: String::new(),
+                    is_meta: false,
+                },
+                WorkspaceNodeFixture {
+                    node_id: "Root.Inputs".to_string(),
+                    formula: "=SUM(TREECALC_CHILDREN_INPUT)".to_string(),
+                    is_meta: false,
+                },
+                WorkspaceNodeFixture {
+                    node_id: "Root.Inputs.A".to_string(),
+                    formula: "2".to_string(),
+                    is_meta: false,
+                },
+                WorkspaceNodeFixture {
+                    node_id: "Root.Inputs.B".to_string(),
+                    formula: "3".to_string(),
+                    is_meta: false,
+                },
+            ],
+        })
+        .unwrap();
+
+        let bridge = LiveOxCalcTreeBridge::default();
+        let result = bridge
+            .execute_recalc(TreeRecalcRequest {
+                workspace,
+                formula_catalog: PreparedFormulaCatalog::new([(
+                    "Root.Inputs",
+                    PreparedFormula::OpaqueOxfml {
+                        source_text: "=SUM(TREECALC_CHILDREN_INPUT)".to_string(),
+                        reference_carriers: vec![PreparedFormulaReferenceCarrier::ChildrenV1 {
+                            source_token: "TREECALC_CHILDREN_INPUT".to_string(),
+                            base_path: "Root.Inputs".to_string(),
+                            source_token_text: "@CHILDREN".to_string(),
+                            source_span_utf8: None,
+                        }],
+                    },
+                )]),
+                candidate_result_id: "cand:w005-children-carrier".to_string(),
+                publication_id: "pub:w005-children-carrier".to_string(),
+                compatibility_basis: "snapshot:w005-children-carrier".to_string(),
+                artifact_token_basis: "snapshot:w005-children-carrier".to_string(),
+                capability_profile_id: "treecalc-v1".to_string(),
+                cycle_config: Default::default(),
+            })
+            .unwrap();
+
+        assert_eq!(result.run_state, OxCalcTreeRunState::Published);
+        assert_eq!(result.published_values["Root.Inputs"], "5");
+        assert_eq!(
+            result.dependency_edges_by_owner["Root.Inputs"],
+            vec!["Root.Inputs.A".to_string(), "Root.Inputs.B".to_string()]
+        );
+        assert!(
+            result
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.contains("oxfml_prepared_formula_key"))
+        );
+        assert!(
+            result
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.contains("oxfml_runtime_prepared_formula_key"))
+        );
     }
 }

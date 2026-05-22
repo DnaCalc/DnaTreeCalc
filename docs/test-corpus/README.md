@@ -170,7 +170,7 @@ parallel parser to make activation possible.
 | `references/syntax`, `references/escaping`, `profiles/gating` | W004 parser/binder runner | OxFml parses under the OxCalc-supplied TreeCalc capability profile and rejects under `strict-excel` where specified. |
 | `references/cross-workspace` | W004 external workspace runner | Host loads the aliased workspace, OxCalc receives the external/host-sensitive edge, and unavailable externals surface as diagnostics. |
 | `references/meta-nodes`, `formatting/`, `templates/` | W004/W007 bridge runners | `is_meta` filtering is honored by binding/positional operators; W007 then consumes the same flag for format/template host data. |
-| `references/set-membership`, `references/literals` | W004 reference-collection runner | Ordered reference collections, recursive descent, explicit reference literals, duplicate preservation, and mixed scalar/reference rejection are asserted through bridge results. |
+| `references/set-membership`, `references/literals` | W004 reference-collection runner | Ordered reference collections (`@CHILDREN`/`.*`, `@PRECEDING`, `@FOLLOWING`, `@ANCESTORS`), recursive `**`, explicit reference literals, duplicate preservation, and mixed scalar/reference rejection are asserted through bridge results. |
 | `dynamic-references/indirect` | W004 CTRO runner | `INDIRECT` strings rebind at calc time through the engine overlay; TreeCalc asserts outcome/diagnostics only. |
 | `references/node-functions` | W004 node-call runner | Single-reference lambda-valued nodes are invocable through OxFml/OxCalc; set-valued callees reject. |
 | `tables/structured-references` | W004 table runner after table-node handover | Structured refs lower through the agreed OxFml/OxCalc table contract; TreeCalc asserts target kind and surfaced values. |
@@ -178,6 +178,22 @@ parallel parser to make activation possible.
 | `structural-edits/` | W004 structural-edit runner | Rename/move/delete/insert operations go through OxCalc structural edit APIs and post-edit binding consequences match cases. |
 | `constants/`, `cycles/` | W002 bridge runners | Entry classification and cycle diagnostics are exposed through the TreeCalc channel. |
 | `import/`, `value-equivalence/` | W008/W009 import/replay runners | Import/export flows emit replay bundles; OxXlPlay observes Excel and OxReplay governs comparison. |
+
+### Current bridge activation floor
+
+As of the W004/W005 name-reference rollout, the local Rust bridge can submit
+opaque OxFml formula source through OxCalc's public `TreeFormula` interface with
+explicit typed reference carriers. The first exercised slice is a
+`TreeCalcReferenceCollection::ChildrenV1` carrier over `@CHILDREN`, passed with a
+neutral formal-input token and evaluated by OxCalc/OxFml as `SUM` over the
+published child values.
+
+That is real bridge evidence, but it is not enough to mark any corpus family
+`active`: the runner still cannot submit original TreeCalc user text such as
+`=SUM(@CHILDREN)` or `=A+3` and receive typed host-reference bind artifacts from
+the public OxCalc/OxFml context without DnaTreeCalc parsing the formula. The
+typed blocker is tracked in bead `dtc-osq.2`; until that interface lands, corpus
+themes stay `pending`.
 
 ## Runner contract
 
