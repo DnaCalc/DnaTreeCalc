@@ -87,6 +87,11 @@ impl PreparedFormulaCatalog {
     }
 
     #[must_use]
+    pub fn get(&self, path: &str) -> Option<&PreparedFormula> {
+        self.bindings.get(path)
+    }
+
+    #[must_use]
     pub fn bindings(&self) -> &BTreeMap<String, PreparedFormula> {
         &self.bindings
     }

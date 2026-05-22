@@ -181,19 +181,28 @@ parallel parser to make activation possible.
 
 ### Current bridge activation floor
 
-As of the W004/W005 name-reference rollout, the local Rust bridge can submit
-opaque OxFml formula source through OxCalc's public `TreeFormula` interface with
-explicit typed reference carriers. The first exercised slice is a
-`TreeCalcReferenceCollection::ChildrenV1` carrier over `@CHILDREN`, passed with a
-neutral formal-input token and evaluated by OxCalc/OxFml as `SUM` over the
-published child values.
+As of the W004/W005 raw-prebind adoption, the local Rust bridge can submit
+original TreeCalc formula text for the first `ChildrenV1` slice through OxCalc's
+public `prebind_treecalc_formula_text(owner_node_id, source_text)` interface.
+Focused bridge tests exercise `=SUM(@CHILDREN)` and `=SUM(.*)` with no
+DnaTreeCalc-local parser or carrier shim; OxCalc rewrites the source handed to
+OxFml, returns the `TreeFormula`/`TreeCalcReferenceCollection::ChildrenV1`
+carrier, and the live OxCalc/OxFml/OxFunc path publishes the sum of the child
+values.
 
-That is real bridge evidence, but it is not enough to mark any corpus family
-`active`: the runner still cannot submit original TreeCalc user text such as
-`=SUM(@CHILDREN)` or `=A+3` and receive typed host-reference bind artifacts from
-the public OxCalc/OxFml context without DnaTreeCalc parsing the formula. The
-typed blocker is tracked in bead `dtc-osq.2`; until that interface lands, corpus
+That is real bridge evidence, but it is still not enough to mark a corpus family
+`active`: there is no repo-local JSON corpus runner that selects active themes
+and asserts their cases through the bridge. The authored
+`references/set-membership` theme also contains broader selectors beyond the
+current public prebind slice. Until a runner exists and a narrow theme/case set
+is separated or selected for only free-standing `@CHILDREN` / `.*`, corpus
 themes stay `pending`.
+
+The remaining raw-formula blocker is narrowed in bead `dtc-osq.2`: unsupported
+families include qualified children (`base.@CHILDREN` / qualified `.*`), walk-up
+and dotted names such as `=A+3`, table structured references, node-as-function
+calls, recursive/walk-up collections, dynamic references, and profile-gated
+syntax.
 
 ## Runner contract
 

@@ -5,8 +5,9 @@ use oxcalc_core::consumer::{
 };
 use oxcalc_core::formula::{
     FixtureFormulaAst, FixtureFormulaBinaryOp, TreeCalcChildrenReferenceCollection,
-    TreeCalcReferenceCollection, TreeFormula, TreeFormulaBinding, TreeFormulaCatalog,
-    TreeFormulaReferenceCarrier, TreeReference,
+    TreeCalcFormulaTextPrebindDiagnostic, TreeCalcReferenceCollection, TreeFormula,
+    TreeFormulaBinding, TreeFormulaCatalog, TreeFormulaReferenceCarrier, TreeReference,
+    prebind_treecalc_formula_text, treecalc_formula_text_needs_prebind,
 };
 use oxcalc_core::structural::{
     BindArtifactId, FormulaArtifactId, StructuralNode, StructuralNodeKind, StructuralSnapshot,
@@ -143,7 +144,11 @@ impl PreparedSubmission {
             &node_ids_by_path,
             root_node_id,
         )?;
-        let formula_catalog = build_formula_catalog(&request.formula_catalog, &node_ids_by_path)?;
+        let formula_catalog = build_formula_catalog(
+            &request.workspace,
+            &request.formula_catalog,
+            &node_ids_by_path,
+        )?;
 
         Ok(Self {
             structural_snapshot,
@@ -228,11 +233,11 @@ fn build_structural_node(
         .iter()
         .map(|child| node_id_for(child, node_ids_by_path))
         .collect::<Result<Vec<_>, _>>()?;
-    let has_prepared_formula = formula_catalog.contains_path(&node.path);
+    let has_oxcalc_formula = has_oxcalc_formula_binding(node, formula_catalog);
 
     let kind = if parent_id.is_none() {
         StructuralNodeKind::Root
-    } else if has_prepared_formula {
+    } else if has_oxcalc_formula {
         StructuralNodeKind::Calculation
     } else {
         match node.content.kind() {
@@ -247,7 +252,7 @@ fn build_structural_node(
         }
     };
 
-    let (formula_artifact_id, bind_artifact_id) = if has_prepared_formula {
+    let (formula_artifact_id, bind_artifact_id) = if has_oxcalc_formula {
         (
             Some(FormulaArtifactId(formula_artifact_id(&node.path))),
             Some(BindArtifactId(bind_artifact_id(&node.path))),
@@ -274,16 +279,42 @@ fn build_structural_node(
     })
 }
 
+fn has_oxcalc_formula_binding(
+    node: &WorkspaceNode,
+    formula_catalog: &PreparedFormulaCatalog,
+) -> bool {
+    formula_catalog.contains_path(&node.path)
+        || (node.content.kind() == NodeContentKind::Formula
+            && treecalc_formula_text_needs_prebind(node.content.text()))
+}
+
 fn build_formula_catalog(
+    workspace: &WorkspaceModel,
     formula_catalog: &PreparedFormulaCatalog,
     node_ids_by_path: &BTreeMap<String, TreeNodeId>,
 ) -> Result<TreeFormulaCatalog, OxCalcTreeBridgeError> {
     let mut bindings = Vec::new();
 
-    for (path, formula) in formula_catalog.bindings() {
+    for path in &workspace.node_order {
+        let node = workspace.node(path).ok_or_else(|| {
+            OxCalcTreeBridgeError::InvalidWorkspace(format!("node {path} missing from workspace"))
+        })?;
         let owner_node_id = node_id_for(path, node_ids_by_path)?;
-        let expression =
-            prepared_formula_to_tree_formula(formula, owner_node_id, node_ids_by_path)?;
+        let expression = if let Some(formula) = formula_catalog.get(path) {
+            prepared_formula_to_tree_formula(formula, owner_node_id, node_ids_by_path)?
+        } else if node.content.kind() == NodeContentKind::Formula
+            && treecalc_formula_text_needs_prebind(node.content.text())
+        {
+            prebind_treecalc_formula_text(owner_node_id, node.content.text()).map_err(|error| {
+                OxCalcTreeBridgeError::FormulaBindingUnavailable(format!(
+                    "node {path} raw TreeCalc formula text cannot be prebound by current OxCalc surface: {}",
+                    format_prebind_diagnostics(&error.diagnostics)
+                ))
+            })?
+        } else {
+            continue;
+        };
+
         bindings.push(TreeFormulaBinding {
             owner_node_id,
             formula_artifact_id: FormulaArtifactId(formula_artifact_id(path)),
@@ -293,6 +324,22 @@ fn build_formula_catalog(
     }
 
     Ok(TreeFormulaCatalog::new(bindings))
+}
+
+fn format_prebind_diagnostics(diagnostics: &[TreeCalcFormulaTextPrebindDiagnostic]) -> String {
+    diagnostics
+        .iter()
+        .map(|diagnostic| {
+            format!(
+                "{:?} at {:?} for '{}': {}",
+                diagnostic.code,
+                diagnostic.source_span_utf8,
+                diagnostic.source_token_text,
+                diagnostic.detail
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("; ")
 }
 
 fn prepared_formula_to_tree_formula(
@@ -490,10 +537,10 @@ mod tests {
     }
 
     #[test]
-    fn live_bridge_executes_opaque_oxfml_source_with_children_carrier() {
+    fn live_bridge_prebinds_raw_children_formula_text_through_oxcalc() {
         let workspace = WorkspaceModel::try_from(WorkspaceFixture {
             schema_version: "treecalc-workspace-v1".to_string(),
-            workspace_id: "w005-children-carrier".to_string(),
+            workspace_id: "w005-children-raw".to_string(),
             description: None,
             profile: None,
             nodes: vec![
@@ -504,7 +551,7 @@ mod tests {
                 },
                 WorkspaceNodeFixture {
                     node_id: "Root.Inputs".to_string(),
-                    formula: "=SUM(TREECALC_CHILDREN_INPUT)".to_string(),
+                    formula: "=SUM(@CHILDREN)".to_string(),
                     is_meta: false,
                 },
                 WorkspaceNodeFixture {
@@ -525,22 +572,11 @@ mod tests {
         let result = bridge
             .execute_recalc(TreeRecalcRequest {
                 workspace,
-                formula_catalog: PreparedFormulaCatalog::new([(
-                    "Root.Inputs",
-                    PreparedFormula::OpaqueOxfml {
-                        source_text: "=SUM(TREECALC_CHILDREN_INPUT)".to_string(),
-                        reference_carriers: vec![PreparedFormulaReferenceCarrier::ChildrenV1 {
-                            source_token: "TREECALC_CHILDREN_INPUT".to_string(),
-                            base_path: "Root.Inputs".to_string(),
-                            source_token_text: "@CHILDREN".to_string(),
-                            source_span_utf8: None,
-                        }],
-                    },
-                )]),
-                candidate_result_id: "cand:w005-children-carrier".to_string(),
-                publication_id: "pub:w005-children-carrier".to_string(),
-                compatibility_basis: "snapshot:w005-children-carrier".to_string(),
-                artifact_token_basis: "snapshot:w005-children-carrier".to_string(),
+                formula_catalog: PreparedFormulaCatalog::default(),
+                candidate_result_id: "cand:w005-children-raw".to_string(),
+                publication_id: "pub:w005-children-raw".to_string(),
+                compatibility_basis: "snapshot:w005-children-raw".to_string(),
+                artifact_token_basis: "snapshot:w005-children-raw".to_string(),
                 capability_profile_id: "treecalc-v1".to_string(),
                 cycle_config: Default::default(),
             })
@@ -563,6 +599,103 @@ mod tests {
                 .diagnostics
                 .iter()
                 .any(|diagnostic| diagnostic.contains("oxfml_runtime_prepared_formula_key"))
+        );
+    }
+
+    #[test]
+    fn live_bridge_prebinds_raw_children_sugar_formula_text_through_oxcalc() {
+        let workspace = WorkspaceModel::try_from(WorkspaceFixture {
+            schema_version: "treecalc-workspace-v1".to_string(),
+            workspace_id: "w005-children-sugar-raw".to_string(),
+            description: None,
+            profile: None,
+            nodes: vec![
+                WorkspaceNodeFixture {
+                    node_id: "Root".to_string(),
+                    formula: String::new(),
+                    is_meta: false,
+                },
+                WorkspaceNodeFixture {
+                    node_id: "Root.Inputs".to_string(),
+                    formula: "=SUM(.*)".to_string(),
+                    is_meta: false,
+                },
+                WorkspaceNodeFixture {
+                    node_id: "Root.Inputs.A".to_string(),
+                    formula: "2".to_string(),
+                    is_meta: false,
+                },
+                WorkspaceNodeFixture {
+                    node_id: "Root.Inputs.B".to_string(),
+                    formula: "3".to_string(),
+                    is_meta: false,
+                },
+            ],
+        })
+        .unwrap();
+
+        let bridge = LiveOxCalcTreeBridge::default();
+        let result = bridge
+            .execute_recalc(TreeRecalcRequest {
+                workspace,
+                formula_catalog: PreparedFormulaCatalog::default(),
+                candidate_result_id: "cand:w005-children-sugar-raw".to_string(),
+                publication_id: "pub:w005-children-sugar-raw".to_string(),
+                compatibility_basis: "snapshot:w005-children-sugar-raw".to_string(),
+                artifact_token_basis: "snapshot:w005-children-sugar-raw".to_string(),
+                capability_profile_id: "treecalc-v1".to_string(),
+                cycle_config: Default::default(),
+            })
+            .unwrap();
+
+        assert_eq!(result.run_state, OxCalcTreeRunState::Published);
+        assert_eq!(result.published_values["Root.Inputs"], "5");
+        assert_eq!(
+            result.dependency_edges_by_owner["Root.Inputs"],
+            vec!["Root.Inputs.A".to_string(), "Root.Inputs.B".to_string()]
+        );
+    }
+
+    #[test]
+    fn live_bridge_keeps_unsupported_qualified_children_formula_pending_upstream() {
+        let workspace = WorkspaceModel::try_from(WorkspaceFixture {
+            schema_version: "treecalc-workspace-v1".to_string(),
+            workspace_id: "w005-qualified-children-pending".to_string(),
+            description: None,
+            profile: None,
+            nodes: vec![
+                WorkspaceNodeFixture {
+                    node_id: "Root".to_string(),
+                    formula: String::new(),
+                    is_meta: false,
+                },
+                WorkspaceNodeFixture {
+                    node_id: "Root.Inputs".to_string(),
+                    formula: "=SUM(base.@CHILDREN)".to_string(),
+                    is_meta: false,
+                },
+            ],
+        })
+        .unwrap();
+
+        let bridge = LiveOxCalcTreeBridge::default();
+        let error = bridge
+            .execute_recalc(TreeRecalcRequest {
+                workspace,
+                formula_catalog: PreparedFormulaCatalog::default(),
+                candidate_result_id: "cand:w005-qualified-children-pending".to_string(),
+                publication_id: "pub:w005-qualified-children-pending".to_string(),
+                compatibility_basis: "snapshot:w005-qualified-children-pending".to_string(),
+                artifact_token_basis: "snapshot:w005-qualified-children-pending".to_string(),
+                capability_profile_id: "treecalc-v1".to_string(),
+                cycle_config: Default::default(),
+            })
+            .expect_err("qualified children syntax is outside the current OxCalc prebind surface");
+
+        assert!(
+            error
+                .to_string()
+                .contains("UnsupportedQualifiedHostReference")
         );
     }
 }
