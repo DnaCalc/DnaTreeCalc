@@ -17,7 +17,7 @@ $corpusRoot = Split-Path -Parent $PSScriptRoot
 $knownProfiles = @('treecalc-v1', 'strict-excel')
 $knownCycleProfiles = @('cycle.non_iterative_stage1', 'cycle.excel_match_iterative', 'cycle.iterative_deterministic_v0')
 $knownKinds = @('resolution', 'classification', 'profile', 'syntax', 'import', 'cycle', 'dynamic',
-  'membership', 'constant', 'edit', 'template', 'format', 'value_equivalence')
+  'membership', 'constant', 'edit', 'template', 'format', 'table', 'value_equivalence')
 $knownStatuses = @('pending', 'active')
 
 $errors = [System.Collections.Generic.List[string]]::new()
@@ -177,6 +177,15 @@ foreach ($entry in $caseDocs) {
       'format' {
         if (-not $c.workspace) { Add-Err "CASE   ${rel} [$cid]: format missing 'workspace'" }
         if ($set -and $c.node -and -not (InWs $set $c.node)) { Add-Err "CASE   ${rel} [$cid]: node '$($c.node)' not in '$ws'" }
+      }
+      'table' {
+        foreach ($req in 'workspace', 'table', 'reference') { if (-not $c.$req) { Add-Err "CASE   ${rel} [$cid]: table missing '$req'" } }
+        if ($c.expect.outcome -notin 'resolved', 'error') { Add-Err "CASE   ${rel} [$cid]: bad table expect.outcome '$($c.expect.outcome)'" }
+        if ($set) {
+          if ($c.table -and -not (InWs $set $c.table)) { Add-Err "CASE   ${rel} [$cid]: table '$($c.table)' not in '$ws'" }
+          if ($c.caller -and -not (InWs $set $c.caller)) { Add-Err "CASE   ${rel} [$cid]: caller '$($c.caller)' not in '$ws'" }
+          if ($c.expect.target -and -not (InWs $set $c.expect.target)) { Add-Err "CASE   ${rel} [$cid]: target '$($c.expect.target)' not in '$ws'" }
+        }
       }
       'value_equivalence' {
         if (-not $c.workspace) { Add-Err "CASE   ${rel} [$cid]: value_equivalence missing 'workspace'" }

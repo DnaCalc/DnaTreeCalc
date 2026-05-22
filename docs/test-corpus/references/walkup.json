@@ -101,6 +101,23 @@
       "note": "No node named Nonexistent in any enclosing scope up to root."
     },
     {
+      "id": "ref-walkup-case-insensitive-canonical",
+      "name": "lookup is case-insensitive and reports the canonical display path",
+      "spec": "§2, §3.2, §5",
+      "kind": "resolution",
+      "workspace": "accounts",
+      "caller": "Accounts.2005.Q1.Income",
+      "reference": "margin",
+      "profile": "treecalc-v1",
+      "expect": {
+        "outcome": "resolved",
+        "target": "Accounts.2005.Q1.Margin",
+        "canonical_path": "Accounts.2005.Q1.Margin",
+        "engine_ref": "RelativePath{ base: ParentNode, path: [Margin] }"
+      },
+      "note": "Sibling names are unique case-insensitively; lookup ignores case while display preserves the node's stored casing."
+    },
+    {
       "id": "ref-selfref-cycle",
       "name": "self-reference resolves to self and cycles",
       "spec": "§3.2",

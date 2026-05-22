@@ -72,7 +72,7 @@ docs/test-corpus/
   README.md            this file
   schema/              JSON Schemas for the case + workspace shapes
   workspaces/          shared multi-node tree fixtures (referenced by id)
-  references/          §3 — walkup, anchors, sibling-offsets, classification, set-membership, escaping, cross-workspace, meta, syntax
+  references/          §3 — walkup, anchors, sibling-offsets, classification, set-membership, literals, node-functions, escaping, cross-workspace, meta, syntax
   profiles/            §4 — treecalc-v1 vs strict-excel gating
   constants/           §2/§6 — entry classification (constant vs formula)
   structural-edits/    §8 — rename/move/delete/insert propagation
@@ -121,6 +121,10 @@ Section references (`§3.2`, etc.) are into [`../model/CORE_MODEL_SPEC.md`](../m
 | `import` | `excel` | `{ nodes: [{ node_id, formula, stub? }], aliases? }` **or** `{ outcome: out-of-scope\|eval-error, reason }` (§10) |
 | `cycle` | `workspace`, `members`, `config` | `{ outcome: cycle_blocked\|published\|rejected, terminal?, publication?, values_anchor? }` — host-surfaced outcome per cycle profile (§7a); iterated *values* are Excel/engine-anchored, not asserted here |
 | `dynamic` | `workspace`, `caller`, `reference` | `{ outcome: resolved\|unresolved\|error\|cycle_blocked, target?, depends_on?, engine_ref? }` + optional `given` (runtime selector values) — INDIRECT / CTRO dynamic references (§6 item 1, §10.3) |
+| `membership` | `workspace`, `caller`, `reference` | `{ outcome: resolved\|unresolved, members: [], ordered?, engine_ref? }` — ordered reference collections such as `.*`, `@ANCESTORS`, `**`, and `{Foo, Bar}` (§3.5b, §6) |
+| `edit` | `workspace`, `edit`, `caller?`, `reference?` | `{ outcome: resolved\|unresolved\|rebound\|error, rewritten_to?, rebinds_to? }` — post-edit binding consequence (§8) |
+| `table` | `workspace`, `table`, `reference` | `{ outcome: resolved\|error, target?, target_kind?, engine_ref?, values_anchor? }` — table structured-reference lowering and column-formula binding (§7c) |
+| `constant`, `template`, `format`, `value_equivalence` | kind-specific fields | Host/corpus fixtures outside the reference surface; see their theme descriptions. |
 
 ---
 
@@ -132,8 +136,9 @@ maps cleanly onto the work plan and can be switched on area-by-area as the engin
 - `workset` — the [`WORKSET_REGISTER.md`](../WORKSET_REGISTER.md) id whose completion makes these
   cases runnable (e.g. `W004`).
 - `status` — `pending` (authored + well-formed, but no executable runner yet) or `active` (wired to a
-  runner/check). Today everything is `pending`; flip a theme to `active` when its workset delivers the
-  behavior and the runner can bind it.
+  runner/check). A theme flips to `active` only when a repo-local runner binds it through the real
+  OxCalc bridge and asserts the declared outcome. Do not activate a theme with a TreeCalc-local
+  parser or resolver.
 
 `validate-corpus.ps1` prints a coverage matrix grouped by workset + status. The future runner selects
 `status: active` themes; this validator checks the well-formedness of every theme regardless.
@@ -141,14 +146,38 @@ maps cleanly onto the work plan and can be switched on area-by-area as the engin
 | Workset | Themes | What it pins |
 |---|---|---|
 | **W002** engine seam | `constants/`, `cycles/` | entry classification (§2/§6); cycle profiles (§7a) |
-| **W004** reference model | `references/*`, `profiles/`, `dynamic-references/`, `structural-edits/`, `arrays/` | §3 resolution + set membership, §4 gating, INDIRECT/CTRO, §8 edit propagation, §6 arrays, §3.8 node-as-function |
+| **W004** reference model | `references/*`, `profiles/`, `dynamic-references/`, `structural-edits/`, `arrays/`, `tables/` | §3 resolution + set membership, §4 gating, INDIRECT/CTRO, §8 edit propagation, §6 arrays/reference literals, §3.8 node-as-function, §7c structured refs |
 | **W007** meta/format/templates | `templates/`, `formatting/` | §7b templates; `Format` inheritance (META_NODES) |
 | **W008** import | `import/`, `value-equivalence/import-*` | §10 defined-name import + recompute-equals-Excel |
 | **W009** export/replay | `value-equivalence/export-*` | export round-trip; whole-workspace value-equivalence |
-| **Tables** (cross-repo) | `tables/` | §7c structured-ref resolution + column formulas; pending the table-node unpacking handover |
+| **Tables** (W004, cross-repo prereq) | `tables/` | §7c structured-ref resolution + column formulas; activation waits for the table-node unpacking handover and then runs through the OxCalc bridge |
 | cross-cutting | `perf/` | timed stress workloads (`ux/TECHNICAL.md` §7.6) — measured, not asserted pass/fail |
 
 The matrix in the validator output is the live source of truth; this table is the human overview.
+
+### Pending-to-active routes
+
+Every family below starts as `pending`: the JSON is the durable contract, and
+`validate-corpus.ps1` proves only well-formedness. A family becomes `active`
+when the named runner path exists and passes through the OxCalc bridge. The
+bridge runner owns parse/bind/resolve assertions; TreeCalc does not implement a
+parallel parser to make activation possible.
+
+| Corpus family | First active route | Activation gate |
+|---|---|---|
+| `references/walkup` | W005 corpus runner v1 | Bare walk-up and dotted descent bind through OxCalc; expected target/canonical path assertions pass. |
+| `references/anchors`, `references/sibling-offsets` | W004 reference runner | Ancestor/root/workspace anchors and `@PREV`/`@NEXT` bind through OxCalc bridge variants. |
+| `references/syntax`, `references/escaping`, `profiles/gating` | W004 parser/binder runner | OxFml parses under the OxCalc-supplied TreeCalc capability profile and rejects under `strict-excel` where specified. |
+| `references/cross-workspace` | W004 external workspace runner | Host loads the aliased workspace, OxCalc receives the external/host-sensitive edge, and unavailable externals surface as diagnostics. |
+| `references/meta-nodes`, `formatting/`, `templates/` | W004/W007 bridge runners | `is_meta` filtering is honored by binding/positional operators; W007 then consumes the same flag for format/template host data. |
+| `references/set-membership`, `references/literals` | W004 reference-collection runner | Ordered reference collections, recursive descent, explicit reference literals, duplicate preservation, and mixed scalar/reference rejection are asserted through bridge results. |
+| `dynamic-references/indirect` | W004 CTRO runner | `INDIRECT` strings rebind at calc time through the engine overlay; TreeCalc asserts outcome/diagnostics only. |
+| `references/node-functions` | W004 node-call runner | Single-reference lambda-valued nodes are invocable through OxFml/OxCalc; set-valued callees reject. |
+| `tables/structured-references` | W004 table runner after table-node handover | Structured refs lower through the agreed OxFml/OxCalc table contract; TreeCalc asserts target kind and surfaced values. |
+| `arrays/` | W004 array/reference runner | Array-valued nodes and reference collections travel through the bridge without inter-node spill; Excel-aligned scalar array values remain engine/Excel anchored. |
+| `structural-edits/` | W004 structural-edit runner | Rename/move/delete/insert operations go through OxCalc structural edit APIs and post-edit binding consequences match cases. |
+| `constants/`, `cycles/` | W002 bridge runners | Entry classification and cycle diagnostics are exposed through the TreeCalc channel. |
+| `import/`, `value-equivalence/` | W008/W009 import/replay runners | Import/export flows emit replay bundles; OxXlPlay observes Excel and OxReplay governs comparison. |
 
 ## Runner contract
 
@@ -158,8 +187,9 @@ When the `OxCalcTree` bridge exists (W002), a Rust runner consumes this corpus:
    under `profile` via the bridge, assert resolved node / `engine_ref` / `Unresolved` / reject matches `expect`.
 2. **classification** — assert the bound reference's cardinality / result-kind.
 3. **profile** — assert accept/reject (and INDIRECT parse-interpretation) under each profile id.
-4. **import** — drive the importer; assert the produced node set + stub formulas + aliases.
-5. **value-equivalence workspaces** — emit a replay bundle → OxXlPlay constructs + observes Excel →
+4. **membership / table / dynamic / edit** — execute the typed bridge operation for the family and assert ordered members, table target shape, CTRO dependency outcome, or post-edit rebinding consequence.
+5. **import** — drive the importer; assert the produced node set + stub formulas + aliases.
+6. **value-equivalence workspaces** — emit a replay bundle → OxXlPlay constructs + observes Excel →
    OxReplay diffs. Excel comparison / witness governance is OxReplay's; never duplicated here.
 
 Integration is **file/CLI-based** (JSON in, structured results out — OPERATIONS §6). The bridge

@@ -1,0 +1,21 @@
+{
+  "schema_version": "treecalc-workspace-v1",
+  "workspace_id": "tables",
+  "description": "Fixture for table-node structured references (CORE_MODEL_SPEC §7c). SalesTable is a table node with columns and row/total host surfaces; these nodes are placeholders for corpus target validation until OxFml/OxCalc table lowering is executable.",
+  "profile": "treecalc-v1",
+  "nodes": [
+    { "node_id": "SalesTable", "formula": "", "table": true },
+    { "node_id": "SalesTable.Columns", "formula": "" },
+    { "node_id": "SalesTable.Columns.Region", "formula": "" },
+    { "node_id": "SalesTable.Columns.Amount", "formula": "" },
+    { "node_id": "SalesTable.Columns.Tax", "formula": "=[@Amount] * 0.1" },
+    { "node_id": "SalesTable.Headers", "formula": "" },
+    { "node_id": "SalesTable.Headers.Region", "formula": "Region" },
+    { "node_id": "SalesTable.Headers.Amount", "formula": "Amount" },
+    { "node_id": "SalesTable.Totals", "formula": "" },
+    { "node_id": "SalesTable.Totals.Amount", "formula": "=SUM(SalesTable[Amount])" },
+    { "node_id": "Sheet1", "formula": "" },
+    { "node_id": "Sheet1.Report", "formula": "=SUM(SalesTable[Amount])" },
+    { "node_id": "Sheet1.RowFormulaHost", "formula": "=[@Amount] * 2" }
+  ]
+}

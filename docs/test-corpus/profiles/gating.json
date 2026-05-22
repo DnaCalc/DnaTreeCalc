@@ -64,6 +64,24 @@
       "note": "References inside {...} are admitted only under treecalc-v1 (§6 item 4)."
     },
     {
+      "id": "prof-node-as-function",
+      "name": "tree-path node-as-function invocation: treecalc-v1 only",
+      "spec": "§3.8, §4",
+      "kind": "profile",
+      "reference": "^.Rate(10)",
+      "profiles": { "treecalc-v1": "accept", "strict-excel": "reject" },
+      "note": "Strict Excel still admits ordinary defined-name LAMBDA calls where Excel would, but not TreeCalc path syntax as a call callee."
+    },
+    {
+      "id": "prof-table-structured-ref",
+      "name": "table structured references are profile-gated in TreeCalc host context",
+      "spec": "§3.3, §4, §7c",
+      "kind": "profile",
+      "reference": "SalesTable[Amount]",
+      "profiles": { "treecalc-v1": "accept", "strict-excel": "reject" },
+      "note": "The TreeCalc host admits table-node structured refs only through its capability profile; Excel grid hosts own their separate table context."
+    },
+    {
       "id": "prof-scalar-array-literal",
       "name": "scalar array literal {1, 2, 3}: profile-agnostic",
       "spec": "§4",

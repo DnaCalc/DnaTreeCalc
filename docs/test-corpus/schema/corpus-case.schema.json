@@ -23,7 +23,7 @@
         "id": { "type": "string", "description": "Stable, corpus-unique id." },
         "name": { "type": "string" },
         "spec": { "type": "string", "description": "CORE_MODEL_SPEC section citation, e.g. '§3.2, §3.7'." },
-        "kind": { "enum": ["resolution", "classification", "profile", "syntax", "import", "cycle", "dynamic", "membership", "constant", "edit", "template", "format", "value_equivalence"] },
+        "kind": { "enum": ["resolution", "classification", "profile", "syntax", "import", "cycle", "dynamic", "membership", "constant", "edit", "template", "format", "table", "value_equivalence"] },
         "note": { "type": "string" },
         "profile": { "enum": ["treecalc-v1", "strict-excel"], "description": "Active profile for resolution/classification/syntax cases (default treecalc-v1)." },
         "workspace": { "type": "string", "description": "resolution: workspace_id of the fixture." },

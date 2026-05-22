@@ -1,0 +1,15 @@
+{
+  "schema_version": "treecalc-workspace-v1",
+  "workspace_id": "lambdas",
+  "description": "Fixture for node-as-function invocation (CORE_MODEL_SPEC §3.8). Lambda-valued nodes live in the same tree/reference namespace as other nodes; calls are parsed by OxFml and resolved through the OxCalc TreeCalc host context.",
+  "profile": "treecalc-v1",
+  "nodes": [
+    { "node_id": "Functions", "formula": "" },
+    { "node_id": "Functions.Doubler", "formula": "=LAMBDA(x, x * 2)" },
+    { "node_id": "Functions.Rate", "formula": "=LAMBDA(x, x * 0.1)" },
+    { "node_id": "Functions.CallDoubler", "formula": "=Doubler(5)" },
+    { "node_id": "Functions.Nested", "formula": "" },
+    { "node_id": "Functions.Nested.CallParentRate", "formula": "=^.Rate(10)" },
+    { "node_id": "Functions.BadSetCall", "formula": "=@CHILDREN(1)" }
+  ]
+}

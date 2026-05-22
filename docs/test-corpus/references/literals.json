@@ -1,0 +1,68 @@
+{
+  "schema_version": "treecalc-corpus-v1",
+  "theme": "references/literals",
+  "workset": "W004",
+  "status": "pending",
+  "description": "Reference-array literals and mixed-array rejection (CORE_MODEL_SPEC §4, §6). A literal made only of references is a reference collection carried through the bridge; scalar array literals remain ordinary arrays; mixed scalar/reference arrays are rejected under treecalc-v1 rather than coerced by the host.",
+  "cases": [
+    {
+      "id": "lit-ref-array-two-members",
+      "name": "reference literal preserves source order",
+      "spec": "§4, §6",
+      "kind": "membership",
+      "workspace": "accounts",
+      "caller": "Accounts.2005.Total",
+      "reference": "{Q1.Margin, Q2.Margin}",
+      "expect": {
+        "outcome": "resolved",
+        "ordered": true,
+        "members": ["Accounts.2005.Q1.Margin", "Accounts.2005.Q2.Margin"],
+        "engine_ref": "explicit tree reference collection"
+      },
+      "note": "Both entries are references resolved from the caller scope; the resulting reference collection preserves literal order."
+    },
+    {
+      "id": "lit-ref-array-duplicates-preserved",
+      "name": "explicit reference literals preserve duplicates",
+      "spec": "§3.5b, §6",
+      "kind": "membership",
+      "workspace": "accounts",
+      "caller": "Accounts.2005.Total",
+      "reference": "{Q1.Margin, Q1.Margin}",
+      "expect": {
+        "outcome": "resolved",
+        "ordered": true,
+        "members": ["Accounts.2005.Q1.Margin", "Accounts.2005.Q1.Margin"]
+      },
+      "note": "Navigation-produced collections do not duplicate nodes, but explicit reference literals preserve duplicate entries."
+    },
+    {
+      "id": "lit-ref-array-cardinality",
+      "name": "reference literal is a set-valued reference",
+      "spec": "§3.5b, §6",
+      "kind": "classification",
+      "reference": "{Q1.Margin, Q2.Margin}",
+      "expect": { "cardinality": "set", "result_kind": "explicit-ref-set" }
+    },
+    {
+      "id": "lit-mixed-ref-scalar-reject",
+      "name": "mixed reference/scalar array literal is rejected",
+      "spec": "§4, §6",
+      "kind": "syntax",
+      "reference": "{Q1.Margin, 1}",
+      "profile": "treecalc-v1",
+      "expect": {
+        "parse": "reject",
+        "reason": "TreeCalc v1 has scalar arrays and reference collections, but no mixed scalar/reference array value"
+      }
+    },
+    {
+      "id": "lit-scalar-array-not-ref",
+      "name": "scalar array literal is value-valued, not a reference collection",
+      "spec": "§4, §6",
+      "kind": "classification",
+      "reference": "{1, 2, 3}",
+      "expect": { "cardinality": "value", "result_kind": "scalar-array" }
+    }
+  ]
+}

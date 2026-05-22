@@ -1,0 +1,56 @@
+{
+  "schema_version": "treecalc-corpus-v1",
+  "theme": "references/node-functions",
+  "workset": "W004",
+  "status": "pending",
+  "description": "Node-as-function invocation for lambda-valued nodes (CORE_MODEL_SPEC §3.8). OxFml parses the call and OxCalc resolves the callee as a single TreeCalc reference; LAMBDA arity/closure/value semantics remain OxFml/OxFunc owned.",
+  "cases": [
+    {
+      "id": "fn-bare-lambda-node-call",
+      "name": "bare lambda-valued node is callable",
+      "spec": "§3.8",
+      "kind": "resolution",
+      "workspace": "lambdas",
+      "caller": "Functions.CallDoubler",
+      "reference": "Doubler(5)",
+      "profile": "treecalc-v1",
+      "expect": {
+        "outcome": "resolved",
+        "target": "Functions.Doubler",
+        "engine_ref": "single host reference used as call callee",
+        "calc": "lambda-invocation"
+      },
+      "note": "The callee reference resolves by ordinary walk-up; invocation semantics and result value are Excel/LAMBDA-aligned upstream."
+    },
+    {
+      "id": "fn-relative-lambda-node-call",
+      "name": "relative path callee is callable",
+      "spec": "§3.8",
+      "kind": "resolution",
+      "workspace": "lambdas",
+      "caller": "Functions.Nested.CallParentRate",
+      "reference": "^.Rate(10)",
+      "profile": "treecalc-v1",
+      "expect": {
+        "outcome": "resolved",
+        "target": "Functions.Rate",
+        "engine_ref": "RelativePath{ base: ParentNode, path: [Rate] } used as call callee",
+        "calc": "lambda-invocation"
+      }
+    },
+    {
+      "id": "fn-set-callee-reject",
+      "name": "set-valued reference cannot be a call callee",
+      "spec": "§3.8",
+      "kind": "resolution",
+      "workspace": "lambdas",
+      "caller": "Functions.BadSetCall",
+      "reference": "@CHILDREN(1)",
+      "profile": "treecalc-v1",
+      "expect": {
+        "outcome": "error",
+        "reason": "only single-reference resolutions are callable; a set-producing reference cannot be invoked"
+      }
+    }
+  ]
+}

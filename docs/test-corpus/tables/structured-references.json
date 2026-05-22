@@ -1,0 +1,103 @@
+{
+  "schema_version": "treecalc-corpus-v1",
+  "theme": "tables/structured-references",
+  "workset": "W004",
+  "status": "pending",
+  "description": "Full table structured-reference surface (CORE_MODEL_SPEC §3.3, §7c): column refs, implicit current-row refs, special items, composite refs, and table column formulas. TreeCalc owns the table-node host concept; OxFml/OxCalc own structured-ref parsing/lowering and dependency edges.",
+  "cases": [
+    {
+      "id": "tbl-column-ref",
+      "name": "Table[Column] resolves to the table column reference",
+      "spec": "§3.3, §7c",
+      "kind": "table",
+      "workspace": "tables",
+      "caller": "Sheet1.Report",
+      "table": "SalesTable",
+      "reference": "SalesTable[Amount]",
+      "expect": {
+        "outcome": "resolved",
+        "target": "SalesTable.Columns.Amount",
+        "target_kind": "column-reference",
+        "engine_ref": "structured-ref column lowered by OxFml/OxCalc"
+      }
+    },
+    {
+      "id": "tbl-current-row-ref",
+      "name": "[@Column] resolves in a column-formula row context",
+      "spec": "§3.3, §7c",
+      "kind": "table",
+      "workspace": "tables",
+      "caller": "SalesTable.Columns.Tax",
+      "table": "SalesTable",
+      "reference": "[@Amount]",
+      "expect": {
+        "outcome": "resolved",
+        "target": "SalesTable.Columns.Amount",
+        "target_kind": "current-row-column-reference",
+        "engine_ref": "implicit current-row structured-ref lowered by OxFml/OxCalc"
+      },
+      "note": "The runner asserts row-context legality and per-row dependency shape through the table-node contract."
+    },
+    {
+      "id": "tbl-special-headers",
+      "name": "Table[#Headers] selects the header region",
+      "spec": "§3.3, §7c",
+      "kind": "table",
+      "workspace": "tables",
+      "caller": "Sheet1.Report",
+      "table": "SalesTable",
+      "reference": "SalesTable[#Headers]",
+      "expect": {
+        "outcome": "resolved",
+        "target": "SalesTable.Headers",
+        "target_kind": "header-region"
+      }
+    },
+    {
+      "id": "tbl-special-totals-column",
+      "name": "Table[[#Totals],[Column]] selects a totals cell/region",
+      "spec": "§3.3, §7c",
+      "kind": "table",
+      "workspace": "tables",
+      "caller": "Sheet1.Report",
+      "table": "SalesTable",
+      "reference": "SalesTable[[#Totals],[Amount]]",
+      "expect": {
+        "outcome": "resolved",
+        "target": "SalesTable.Totals.Amount",
+        "target_kind": "totals-column-reference"
+      }
+    },
+    {
+      "id": "tbl-column-formula",
+      "name": "table column formula binds through structured refs",
+      "spec": "§7c",
+      "kind": "table",
+      "workspace": "tables",
+      "caller": "SalesTable.Columns.Tax",
+      "table": "SalesTable",
+      "reference": "=[@Amount] * 0.1",
+      "expect": {
+        "outcome": "resolved",
+        "target": "SalesTable.Columns.Amount",
+        "target_kind": "column-formula-dependency",
+        "values_anchor": "excel-table"
+      },
+      "note": "TreeCalc asserts the structured-ref dependency and surfaced values; per-row evaluation semantics are Excel/OxFml/OxCalc anchored."
+    },
+    {
+      "id": "tbl-unknown-column",
+      "name": "unknown table column is a bind error",
+      "spec": "§3.3, §7c",
+      "kind": "table",
+      "workspace": "tables",
+      "caller": "Sheet1.Report",
+      "table": "SalesTable",
+      "reference": "SalesTable[Missing]",
+      "expect": {
+        "outcome": "error",
+        "reason": "structured reference names no column in the resolved table"
+      }
+    }
+  ]
+}
