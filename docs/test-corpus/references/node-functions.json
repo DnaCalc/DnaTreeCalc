@@ -14,6 +14,7 @@
       "caller": "Functions.CallDoubler",
       "reference": "Doubler(5)",
       "profile": "treecalc-v1",
+      "activation_dependency": "OxFml W074 must freeze the built-in/UDF/defined-name/defined-name-LAMBDA call precedence lane; until then this maps to the closest Excel defined-name LAMBDA lane and remains pending.",
       "expect": {
         "outcome": "resolved",
         "target": "Functions.Doubler",
@@ -31,6 +32,7 @@
       "caller": "Functions.Nested.CallParentRate",
       "reference": "^.Rate(10)",
       "profile": "treecalc-v1",
+      "activation_dependency": "OxFml W074 must confirm the host-reference-as-call-callee lane for lambda-valued nodes before activation.",
       "expect": {
         "outcome": "resolved",
         "target": "Functions.Rate",
