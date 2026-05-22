@@ -170,7 +170,7 @@ parallel parser to make activation possible.
 | `references/syntax`, `references/escaping`, `profiles/gating` | W004 parser/binder runner | OxFml parses under the OxCalc-supplied TreeCalc capability profile and rejects under `strict-excel` where specified. |
 | `references/cross-workspace` | W004 external workspace runner | Host loads the aliased workspace, OxCalc receives the external/host-sensitive edge, and unavailable externals surface as diagnostics. |
 | `references/meta-nodes`, `formatting/`, `templates/` | W004/W007 bridge runners | `is_meta` filtering is honored by binding/positional operators; W007 then consumes the same flag for format/template host data. |
-| `references/children-raw-active` | W005 active children runner | The current public OxCalc prebind accepts only free-standing raw `=SUM(@CHILDREN)` and `=SUM(.*)` from the node being evaluated. The runner executes the workspace through `LiveOxCalcTreeBridge` and asserts published value plus dependency membership. |
+| `references/children-raw-active` | W005 active children runner | The current public OxCalc prebind accepts free-standing raw `=SUM(@CHILDREN)` / `=SUM(.*)` and focused qualified raw `=SUM(base.@CHILDREN)` / `=SUM(base.*)` through OxCalc's public qualified-base query packet. The runner executes the workspace through `LiveOxCalcTreeBridge` and asserts published value plus dependency membership. |
 | `references/set-membership`, `references/literals` | W004 reference-collection runner | Ordered reference collections (`@CHILDREN`/`.*`, `@PRECEDING`, `@FOLLOWING`, `@ANCESTORS`), recursive `**`, explicit reference literals, duplicate preservation, and mixed scalar/reference rejection are asserted through bridge results. The broad set-membership theme remains pending until the unsupported selectors have public OxCalc bridge support. |
 | `dynamic-references/indirect` | W004 CTRO runner | `INDIRECT` strings rebind at calc time through the engine overlay; TreeCalc asserts outcome/diagnostics only. |
 | `references/node-functions` | W004 node-call runner | Single-reference lambda-valued nodes are invocable through OxFml/OxCalc; set-valued callees reject. |
@@ -184,31 +184,35 @@ parallel parser to make activation possible.
 
 As of the W004/W005 raw-prebind adoption, the local Rust bridge can submit
 original TreeCalc formula text for the first `ChildrenV1` slice through OxCalc's
-public `prebind_treecalc_formula_text(owner_node_id, source_text)` interface.
-Focused bridge tests exercise `=SUM(@CHILDREN)` and `=SUM(.*)` with no
-DnaTreeCalc-local parser or carrier shim; OxCalc rewrites the source handed to
-OxFml, returns the `TreeFormula`/`TreeCalcReferenceCollection::ChildrenV1`
-carrier, and the live OxCalc/OxFml/OxFunc path publishes the sum of the child
-values.
+public `prebind_treecalc_formula_text(owner_node_id, source_text)` interface and
+can consume OxCalc's public qualified-children base-query packet for the focused
+`base.@CHILDREN` / `base.*` forms. DnaTreeCalc resolves only the query base token
+against the tree model and returns typed base-resolution packets to OxCalc; it
+does not parse formula text, construct private span keys, or build reference
+carriers locally. Focused bridge tests exercise `=SUM(@CHILDREN)`, `=SUM(.*)`,
+`=SUM(base.@CHILDREN)`, and `=SUM(base.*)` with no DnaTreeCalc-local parser or
+carrier shim; OxCalc rewrites the source handed to OxFml, returns the
+`TreeFormula`/`TreeCalcReferenceCollection::ChildrenV1` carrier, and the live
+OxCalc/OxFml/OxFunc path publishes the sum of the child values.
 
 The first JSON-backed active slice is now
 `references/children-raw-active` with workspace fixture
 `workspaces/children-raw-active`. The Rust test runner loads that active theme,
 submits the workspace unchanged through `LiveOxCalcTreeBridge`, and asserts only
-the supported free-standing raw children formulas:
-`=SUM(@CHILDREN)` and `=SUM(.*)`. It asserts published values and dependency
-membership, not parser output, and it does not translate strings to carriers in
-DnaTreeCalc.
+the supported focused raw children formulas:
+`=SUM(@CHILDREN)`, `=SUM(.*)`, `=SUM(base.@CHILDREN)`, and `=SUM(base.*)`. It
+asserts published values and dependency membership, not parser output, and it
+does not translate strings to carriers in DnaTreeCalc.
 
 The authored `references/set-membership` theme remains `pending`: it contains
 broader selectors beyond the current public prebind slice. Do not treat the
 active raw-children slice as completion of W004 set-membership.
 
 The remaining raw-formula blocker is narrowed in bead `dtc-osq.2`: unsupported
-families include qualified children (`base.@CHILDREN` / qualified `.*`), walk-up
-and dotted names such as `=A+3`, table structured references, node-as-function
-calls, recursive/walk-up collections, dynamic references, and profile-gated
-syntax.
+families include walk-up and dotted names such as `=A+3`, table structured
+references, node-as-function calls, recursive/walk-up collections, dynamic
+references, cross-workspace and alias/base-token variants beyond this focused
+qualified-children packet, and profile-gated syntax.
 
 ## Runner contract
 

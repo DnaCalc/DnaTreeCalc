@@ -3,7 +3,7 @@
   "theme": "references/children-raw-active",
   "workset": "W005",
   "status": "active",
-  "description": "Narrow W005 active slice for raw TreeCalc children formulas that the current public OxCalc prebind supports. This does not activate the broader W004 set-membership surface.",
+  "description": "Narrow W005 active slice for raw TreeCalc children formulas that the current public OxCalc prebind supports, including the focused qualified children base-query forms. This does not activate the broader W004 set-membership surface.",
   "cases": [
     {
       "id": "active-raw-children-accessor-sum",
@@ -37,7 +37,41 @@
         "published_value": "12",
         "engine_ref": "TreeCalcReferenceCollection::ChildrenV1 over caller"
       },
-      "note": "Only free-standing children sugar is active; qualified forms such as base.* remain pending in W004."
+      "note": "The runner executes the node's original formula text through LiveOxCalcTreeBridge; it does not parse this reference locally."
+    },
+    {
+      "id": "active-raw-qualified-children-accessor-sum",
+      "name": "Raw =SUM(base.@CHILDREN) publishes the sum of the base node's direct children",
+      "spec": "§3.5, §3.5b",
+      "kind": "membership",
+      "workspace": "children-raw-active",
+      "caller": "Root.QualifiedChildren",
+      "reference": "base.@CHILDREN",
+      "expect": {
+        "outcome": "resolved",
+        "ordered": true,
+        "members": ["Root.base.A", "Root.base.B"],
+        "published_value": "24",
+        "engine_ref": "TreeCalcReferenceCollection::ChildrenV1 over caller-resolved base"
+      },
+      "note": "DnaTreeCalc consumes OxCalc's public qualified-children base-query packet and resolves only the base token against the tree model."
+    },
+    {
+      "id": "active-raw-qualified-children-sugar-sum",
+      "name": "Raw =SUM(base.*) publishes the sum of the base node's direct children",
+      "spec": "§3.5, §3.5b",
+      "kind": "membership",
+      "workspace": "children-raw-active",
+      "caller": "Root.QualifiedChildrenSugar",
+      "reference": "base.*",
+      "expect": {
+        "outcome": "resolved",
+        "ordered": true,
+        "members": ["Root.base.A", "Root.base.B"],
+        "published_value": "24",
+        "engine_ref": "TreeCalcReferenceCollection::ChildrenV1 over caller-resolved base"
+      },
+      "note": "DnaTreeCalc does not construct private span keys or parse the full formula; OxCalc owns the scanned query packet and reference carrier."
     }
   ]
 }

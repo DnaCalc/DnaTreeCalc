@@ -63,7 +63,10 @@ fn active_raw_children_corpus_executes_through_live_oxcalc_bridge() {
             case.id
         );
         assert!(
-            matches!(case.reference.as_str(), "@CHILDREN" | ".*"),
+            matches!(
+                case.reference.as_str(),
+                "@CHILDREN" | ".*" | "base.@CHILDREN" | "base.*"
+            ),
             "case {} activates unsupported reference {}",
             case.id,
             case.reference

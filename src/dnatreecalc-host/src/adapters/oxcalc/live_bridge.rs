@@ -1,13 +1,16 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use oxcalc_core::consumer::{
     OxCalcTreeDocument, OxCalcTreeEnvironment, OxCalcTreeRecalcRequest, OxCalcTreeRuntimeFacade,
 };
+use oxcalc_core::dependency::{DependencyDescriptorKind, DependencyGraph};
 use oxcalc_core::formula::{
     FixtureFormulaAst, FixtureFormulaBinaryOp, TreeCalcChildrenReferenceCollection,
-    TreeCalcFormulaTextPrebindDiagnostic, TreeCalcReferenceCollection, TreeFormula,
+    TreeCalcFormulaTextPrebindDiagnostic, TreeCalcQualifiedBaseResolutionLayer,
+    TreeCalcQualifiedChildrenBaseQuery, TreeCalcReferenceCollection, TreeFormula,
     TreeFormulaBinding, TreeFormulaCatalog, TreeFormulaReferenceCarrier, TreeReference,
-    prebind_treecalc_formula_text, treecalc_formula_text_needs_prebind,
+    prebind_treecalc_formula_text_with_resolved_bases, treecalc_formula_text_needs_prebind,
+    treecalc_formula_text_qualified_children_base_queries,
 };
 use oxcalc_core::structural::{
     BindArtifactId, FormulaArtifactId, StructuralNode, StructuralNodeKind, StructuralSnapshot,
@@ -87,7 +90,7 @@ impl OxCalcTreeBridge for LiveOxCalcTreeBridge {
             .collect();
 
         let dependency_edges_by_owner =
-            project_dependency_edges(&result.dependency_graph.edges_by_owner, &submission);
+            project_dependency_edges(&result.dependency_graph, &submission);
 
         Ok(TreeRecalcResult {
             run_state: result.run_state,
@@ -103,23 +106,48 @@ impl OxCalcTreeBridge for LiveOxCalcTreeBridge {
 }
 
 fn project_dependency_edges(
-    edges_by_owner: &BTreeMap<TreeNodeId, Vec<oxcalc_core::dependency::DependencyEdge>>,
+    dependency_graph: &DependencyGraph,
     submission: &PreparedSubmission,
 ) -> BTreeMap<String, Vec<String>> {
-    edges_by_owner
+    dependency_graph
+        .descriptors_by_owner
         .iter()
-        .filter_map(|(owner, edges)| {
+        .filter_map(|(owner, descriptors)| {
             let owner_path = submission.paths_by_node_id.get(owner)?;
-            let target_paths = edges
+            let collection_handles = descriptors
                 .iter()
-                .filter_map(|edge| {
-                    submission
-                        .paths_by_node_id
-                        .get(&edge.target_node_id)
-                        .cloned()
+                .filter_map(|descriptor| {
+                    descriptor
+                        .tree_reference_collection
+                        .as_ref()
+                        .map(|collection| collection.host_ref_handle.clone())
                 })
-                .collect::<Vec<_>>();
-            Some((owner_path.clone(), target_paths))
+                .collect::<BTreeSet<_>>();
+            let mut target_paths = Vec::new();
+            for descriptor in descriptors {
+                if let Some(collection) = descriptor.tree_reference_collection.as_ref() {
+                    target_paths.extend(
+                        collection.member_node_ids.iter().filter_map(|node_id| {
+                            submission.paths_by_node_id.get(node_id).cloned()
+                        }),
+                    );
+                    continue;
+                }
+                if descriptor.kind == DependencyDescriptorKind::TreeReferenceCollectionMemberValue
+                    && descriptor
+                        .source_reference_handle
+                        .as_ref()
+                        .is_some_and(|handle| collection_handles.contains(handle))
+                {
+                    continue;
+                }
+                if let Some(target_node_id) = descriptor.target_node_id {
+                    if let Some(path) = submission.paths_by_node_id.get(&target_node_id) {
+                        target_paths.push(path.clone());
+                    }
+                }
+            }
+            (!target_paths.is_empty()).then(|| (owner_path.clone(), target_paths))
         })
         .collect()
 }
@@ -305,7 +333,18 @@ fn build_formula_catalog(
         } else if node.content.kind() == NodeContentKind::Formula
             && treecalc_formula_text_needs_prebind(node.content.text())
         {
-            prebind_treecalc_formula_text(owner_node_id, node.content.text()).map_err(|error| {
+            let resolved_bases = resolve_qualified_children_base_queries(
+                workspace,
+                path,
+                node.content.text(),
+                node_ids_by_path,
+            )?;
+            prebind_treecalc_formula_text_with_resolved_bases(
+                owner_node_id,
+                node.content.text(),
+                resolved_bases,
+            )
+            .map_err(|error| {
                 OxCalcTreeBridgeError::FormulaBindingUnavailable(format!(
                     "node {path} raw TreeCalc formula text cannot be prebound by current OxCalc surface: {}",
                     format_prebind_diagnostics(&error.diagnostics)
@@ -326,6 +365,82 @@ fn build_formula_catalog(
     Ok(TreeFormulaCatalog::new(bindings))
 }
 
+fn resolve_qualified_children_base_queries(
+    workspace: &WorkspaceModel,
+    caller_path: &str,
+    source_text: &str,
+    node_ids_by_path: &BTreeMap<String, TreeNodeId>,
+) -> Result<Vec<oxcalc_core::formula::TreeCalcQualifiedChildrenBaseResolution>, OxCalcTreeBridgeError>
+{
+    treecalc_formula_text_qualified_children_base_queries(
+        *node_ids_by_path.get(caller_path).ok_or_else(|| {
+            OxCalcTreeBridgeError::InvalidWorkspace(format!(
+                "node {caller_path} missing from node id map"
+            ))
+        })?,
+        source_text,
+    )
+    .into_iter()
+    .map(|query| {
+        let base_path = resolve_qualified_children_base_path(workspace, caller_path, &query)?;
+        let base_node_id = node_id_for(&base_path, node_ids_by_path)?;
+        Ok(query.to_resolution_with_layer(
+            base_node_id,
+            TreeCalcQualifiedBaseResolutionLayer::CallerSuppliedResolvedBase,
+            format!(
+                "dnatreecalc-qualified-children-base:v1:caller={caller_path};base={base_path};token={}",
+                query.base_token_text
+            ),
+        ))
+    })
+    .collect()
+}
+
+fn resolve_qualified_children_base_path(
+    workspace: &WorkspaceModel,
+    caller_path: &str,
+    query: &TreeCalcQualifiedChildrenBaseQuery,
+) -> Result<String, OxCalcTreeBridgeError> {
+    let Some(base_path) =
+        resolve_relative_tree_path(workspace, caller_path, &query.base_token_text)
+    else {
+        return Err(OxCalcTreeBridgeError::FormulaBindingUnavailable(format!(
+            "node {caller_path} cannot resolve qualified children base token '{}' from '{}'",
+            query.base_token_text, query.source_token_text
+        )));
+    };
+    Ok(base_path)
+}
+
+fn resolve_relative_tree_path(
+    workspace: &WorkspaceModel,
+    caller_path: &str,
+    token_text: &str,
+) -> Option<String> {
+    let mut scope = parent_path(caller_path);
+    while let Some(scope_path) = scope {
+        if let Some(path) =
+            find_workspace_path_case_insensitive(workspace, &format!("{scope_path}.{token_text}"))
+        {
+            return Some(path);
+        }
+        scope = parent_path(&scope_path);
+    }
+
+    find_workspace_path_case_insensitive(workspace, token_text)
+}
+
+fn find_workspace_path_case_insensitive(
+    workspace: &WorkspaceModel,
+    candidate: &str,
+) -> Option<String> {
+    workspace
+        .nodes
+        .keys()
+        .find(|path| path.eq_ignore_ascii_case(candidate))
+        .cloned()
+}
+
 fn format_prebind_diagnostics(diagnostics: &[TreeCalcFormulaTextPrebindDiagnostic]) -> String {
     diagnostics
         .iter()
@@ -340,6 +455,10 @@ fn format_prebind_diagnostics(diagnostics: &[TreeCalcFormulaTextPrebindDiagnosti
         })
         .collect::<Vec<_>>()
         .join("; ")
+}
+
+fn parent_path(path: &str) -> Option<String> {
+    path.rsplit_once('.').map(|(parent, _)| parent.to_string())
 }
 
 fn prepared_formula_to_tree_formula(
@@ -657,10 +776,79 @@ mod tests {
     }
 
     #[test]
-    fn live_bridge_keeps_unsupported_qualified_children_formula_pending_upstream() {
+    fn live_bridge_prebinds_qualified_raw_children_formula_text_through_oxcalc() {
         let workspace = WorkspaceModel::try_from(WorkspaceFixture {
             schema_version: "treecalc-workspace-v1".to_string(),
-            workspace_id: "w005-qualified-children-pending".to_string(),
+            workspace_id: "w005-qualified-children-raw".to_string(),
+            description: None,
+            profile: None,
+            nodes: vec![
+                WorkspaceNodeFixture {
+                    node_id: "Root".to_string(),
+                    formula: String::new(),
+                    is_meta: false,
+                },
+                WorkspaceNodeFixture {
+                    node_id: "Root.base".to_string(),
+                    formula: String::new(),
+                    is_meta: false,
+                },
+                WorkspaceNodeFixture {
+                    node_id: "Root.base.A".to_string(),
+                    formula: "11".to_string(),
+                    is_meta: false,
+                },
+                WorkspaceNodeFixture {
+                    node_id: "Root.base.B".to_string(),
+                    formula: "13".to_string(),
+                    is_meta: false,
+                },
+                WorkspaceNodeFixture {
+                    node_id: "Root.Inputs".to_string(),
+                    formula: "=SUM(base.@CHILDREN)".to_string(),
+                    is_meta: false,
+                },
+                WorkspaceNodeFixture {
+                    node_id: "Root.InputsSugar".to_string(),
+                    formula: "=SUM(base.*)".to_string(),
+                    is_meta: false,
+                },
+            ],
+        })
+        .unwrap();
+
+        let bridge = LiveOxCalcTreeBridge::default();
+        let result = bridge
+            .execute_recalc(TreeRecalcRequest {
+                workspace,
+                formula_catalog: PreparedFormulaCatalog::default(),
+                candidate_result_id: "cand:w005-qualified-children-raw".to_string(),
+                publication_id: "pub:w005-qualified-children-raw".to_string(),
+                compatibility_basis: "snapshot:w005-qualified-children-raw".to_string(),
+                artifact_token_basis: "snapshot:w005-qualified-children-raw".to_string(),
+                capability_profile_id: "treecalc-v1".to_string(),
+                cycle_config: Default::default(),
+            })
+            .unwrap();
+
+        assert_eq!(result.run_state, OxCalcTreeRunState::Published);
+        assert_eq!(result.published_values["Root.Inputs"], "24");
+        assert_eq!(result.published_values["Root.InputsSugar"], "24");
+        assert_eq!(
+            result.dependency_edges_by_owner["Root.Inputs"],
+            vec!["Root.base.A".to_string(), "Root.base.B".to_string()]
+        );
+        assert_eq!(
+            result.dependency_edges_by_owner["Root.InputsSugar"],
+            vec!["Root.base.A".to_string(), "Root.base.B".to_string()]
+        );
+    }
+
+    #[test]
+    fn live_bridge_rejects_unresolved_qualified_children_base() {
+        let workspace = WorkspaceModel::try_from(WorkspaceFixture {
+            schema_version: "treecalc-workspace-v1".to_string(),
+            workspace_id: "w005-qualified-children-unresolved".to_string(),
             description: None,
             profile: None,
             nodes: vec![
@@ -683,19 +871,19 @@ mod tests {
             .execute_recalc(TreeRecalcRequest {
                 workspace,
                 formula_catalog: PreparedFormulaCatalog::default(),
-                candidate_result_id: "cand:w005-qualified-children-pending".to_string(),
-                publication_id: "pub:w005-qualified-children-pending".to_string(),
-                compatibility_basis: "snapshot:w005-qualified-children-pending".to_string(),
-                artifact_token_basis: "snapshot:w005-qualified-children-pending".to_string(),
+                candidate_result_id: "cand:w005-qualified-children-unresolved".to_string(),
+                publication_id: "pub:w005-qualified-children-unresolved".to_string(),
+                compatibility_basis: "snapshot:w005-qualified-children-unresolved".to_string(),
+                artifact_token_basis: "snapshot:w005-qualified-children-unresolved".to_string(),
                 capability_profile_id: "treecalc-v1".to_string(),
                 cycle_config: Default::default(),
             })
-            .expect_err("qualified children syntax is outside the current OxCalc prebind surface");
+            .expect_err("qualified children with unresolved base must remain diagnostic");
 
         assert!(
             error
                 .to_string()
-                .contains("UnsupportedQualifiedHostReference")
+                .contains("cannot resolve qualified children base token 'base'")
         );
     }
 }
