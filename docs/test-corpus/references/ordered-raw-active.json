@@ -1,0 +1,69 @@
+{
+  "schema_version": "treecalc-corpus-v1",
+  "theme": "references/ordered-raw-active",
+  "workset": "W004",
+  "status": "active",
+  "description": "Focused W004 active slice for raw ordered TreeCalc collection formulas supported by OxCalc's public ordered-selector query/resolved-collection prebind surface. This does not activate the full W004 set-membership family.",
+  "cases": [
+    {
+      "id": "ordered-preceding-active",
+      "name": "@PRECEDING sums earlier siblings through the live bridge",
+      "spec": "§3.5",
+      "kind": "membership",
+      "workspace": "ordered-raw-active",
+      "caller": "Root.Preceding.Total",
+      "reference": "@PRECEDING",
+      "expect": {
+        "outcome": "resolved",
+        "ordered": true,
+        "members": ["Root.Preceding.A", "Root.Preceding.B"],
+        "published_value": "5"
+      }
+    },
+    {
+      "id": "ordered-following-active",
+      "name": "@FOLLOWING sums later siblings through the live bridge",
+      "spec": "§3.5",
+      "kind": "membership",
+      "workspace": "ordered-raw-active",
+      "caller": "Root.Following.Total",
+      "reference": "@FOLLOWING",
+      "expect": {
+        "outcome": "resolved",
+        "ordered": true,
+        "members": ["Root.Following.A", "Root.Following.B"],
+        "published_value": "10"
+      }
+    },
+    {
+      "id": "ordered-ancestors-active",
+      "name": "@ANCESTORS binds enclosing nodes closest first through the live bridge",
+      "spec": "§3.5",
+      "kind": "membership",
+      "workspace": "ordered-raw-active",
+      "caller": "Root.Ancestors.L1.L2.Total",
+      "reference": "@ANCESTORS",
+      "expect": {
+        "outcome": "resolved",
+        "ordered": true,
+        "members": ["Root.Ancestors.L1.L2", "Root.Ancestors.L1", "Root.Ancestors", "Root"],
+        "published_value": "0"
+      }
+    },
+    {
+      "id": "ordered-recursive-tail-active",
+      "name": "Base.**.Margin sums matching recursive descendants through the live bridge",
+      "spec": "§3.6",
+      "kind": "membership",
+      "workspace": "ordered-raw-active",
+      "caller": "Root.Recursive.TotalMargin",
+      "reference": "Base.**.Margin",
+      "expect": {
+        "outcome": "resolved",
+        "ordered": true,
+        "members": ["Root.Recursive.Base.Q1.Margin", "Root.Recursive.Base.Q2.Margin"],
+        "published_value": "18"
+      }
+    }
+  ]
+}

@@ -6,10 +6,13 @@ use oxcalc_core::consumer::{
 use oxcalc_core::dependency::{DependencyDescriptorKind, DependencyGraph};
 use oxcalc_core::formula::{
     FixtureFormulaAst, FixtureFormulaBinaryOp, TreeCalcChildrenReferenceCollection,
-    TreeCalcFormulaTextPrebindDiagnostic, TreeCalcQualifiedBaseResolutionLayer,
+    TreeCalcFormulaTextPrebindContext, TreeCalcFormulaTextPrebindDiagnostic,
+    TreeCalcOrderedSelectorFamily, TreeCalcOrderedSelectorQuery,
+    TreeCalcOrderedSelectorResolutionLayer, TreeCalcQualifiedBaseResolutionLayer,
     TreeCalcQualifiedChildrenBaseQuery, TreeCalcReferenceCollection, TreeFormula,
     TreeFormulaBinding, TreeFormulaCatalog, TreeFormulaReferenceCarrier, TreeReference,
-    prebind_treecalc_formula_text_with_resolved_bases, treecalc_formula_text_needs_prebind,
+    prebind_treecalc_formula_text_with_context, treecalc_formula_text_needs_prebind,
+    treecalc_formula_text_ordered_selector_queries,
     treecalc_formula_text_qualified_children_base_queries,
 };
 use oxcalc_core::structural::{
@@ -339,10 +342,19 @@ fn build_formula_catalog(
                 node.content.text(),
                 node_ids_by_path,
             )?;
-            prebind_treecalc_formula_text_with_resolved_bases(
+            let resolved_ordered_selectors = resolve_ordered_selector_queries(
+                workspace,
+                path,
+                node.content.text(),
+                node_ids_by_path,
+            )?;
+            prebind_treecalc_formula_text_with_context(
                 owner_node_id,
                 node.content.text(),
-                resolved_bases,
+                &TreeCalcFormulaTextPrebindContext {
+                    qualified_children_bases: resolved_bases,
+                    ordered_selector_resolutions: resolved_ordered_selectors,
+                },
             )
             .map_err(|error| {
                 OxCalcTreeBridgeError::FormulaBindingUnavailable(format!(
@@ -394,6 +406,156 @@ fn resolve_qualified_children_base_queries(
         ))
     })
     .collect()
+}
+
+fn resolve_ordered_selector_queries(
+    workspace: &WorkspaceModel,
+    caller_path: &str,
+    source_text: &str,
+    node_ids_by_path: &BTreeMap<String, TreeNodeId>,
+) -> Result<Vec<oxcalc_core::formula::TreeCalcOrderedSelectorResolution>, OxCalcTreeBridgeError> {
+    treecalc_formula_text_ordered_selector_queries(
+        *node_ids_by_path.get(caller_path).ok_or_else(|| {
+            OxCalcTreeBridgeError::InvalidWorkspace(format!(
+                "node {caller_path} missing from node id map"
+            ))
+        })?,
+        source_text,
+    )
+    .into_iter()
+    .map(|query| {
+        let base_path = resolve_ordered_selector_base_path(workspace, caller_path, &query)?;
+        let member_paths = resolve_ordered_selector_member_paths(workspace, &base_path, &query)?;
+        let base_node_id = node_id_for(&base_path, node_ids_by_path)?;
+        let member_node_ids = member_paths
+            .iter()
+            .map(|path| node_id_for(path, node_ids_by_path))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(query.to_resolution_with_layer(
+            base_node_id,
+            member_node_ids,
+            TreeCalcOrderedSelectorResolutionLayer::CallerSuppliedResolvedCollection,
+            format!(
+                "dnatreecalc-ordered-selector:v1:caller={caller_path};base={base_path};token={}",
+                query.source_token_text
+            ),
+        ))
+    })
+    .collect()
+}
+
+fn resolve_ordered_selector_base_path(
+    workspace: &WorkspaceModel,
+    caller_path: &str,
+    query: &TreeCalcOrderedSelectorQuery,
+) -> Result<String, OxCalcTreeBridgeError> {
+    let Some(base_token_text) = query.base_token_text.as_deref() else {
+        return Ok(caller_path.to_string());
+    };
+    let Some(base_path) = resolve_relative_tree_path(workspace, caller_path, base_token_text)
+    else {
+        return Err(OxCalcTreeBridgeError::FormulaBindingUnavailable(format!(
+            "node {caller_path} cannot resolve ordered selector base token '{}' from '{}'",
+            base_token_text, query.source_token_text
+        )));
+    };
+    Ok(base_path)
+}
+
+fn resolve_ordered_selector_member_paths(
+    workspace: &WorkspaceModel,
+    base_path: &str,
+    query: &TreeCalcOrderedSelectorQuery,
+) -> Result<Vec<String>, OxCalcTreeBridgeError> {
+    match query.family {
+        TreeCalcOrderedSelectorFamily::PrecedingV1 => {
+            ordered_siblings_relative_to(workspace, base_path, SiblingSelection::Preceding)
+        }
+        TreeCalcOrderedSelectorFamily::FollowingV1 => {
+            ordered_siblings_relative_to(workspace, base_path, SiblingSelection::Following)
+        }
+        TreeCalcOrderedSelectorFamily::AncestorsV1 => Ok(ancestor_paths(workspace, base_path)),
+        TreeCalcOrderedSelectorFamily::RecursiveDescendantsV1 => Ok(recursive_descendant_paths(
+            workspace,
+            base_path,
+            query.tail_token_text.as_deref(),
+        )),
+        TreeCalcOrderedSelectorFamily::SiblingSetV1 => {
+            Err(OxCalcTreeBridgeError::FormulaBindingUnavailable(
+                "TreeCalc has no authored raw @SIBLINGS selector in the current corpus".to_string(),
+            ))
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SiblingSelection {
+    Preceding,
+    Following,
+}
+
+fn ordered_siblings_relative_to(
+    workspace: &WorkspaceModel,
+    base_path: &str,
+    selection: SiblingSelection,
+) -> Result<Vec<String>, OxCalcTreeBridgeError> {
+    let parent_path = parent_path(base_path).ok_or_else(|| {
+        OxCalcTreeBridgeError::FormulaBindingUnavailable(format!(
+            "node {base_path} has no parent for ordered sibling selector"
+        ))
+    })?;
+    let parent = workspace.node(&parent_path).ok_or_else(|| {
+        OxCalcTreeBridgeError::InvalidWorkspace(format!(
+            "parent {parent_path} missing while resolving ordered sibling selector"
+        ))
+    })?;
+    let index = parent
+        .child_paths
+        .iter()
+        .position(|path| path == base_path)
+        .ok_or_else(|| {
+            OxCalcTreeBridgeError::InvalidWorkspace(format!(
+                "node {base_path} is not listed under parent {parent_path}"
+            ))
+        })?;
+    let range = match selection {
+        SiblingSelection::Preceding => &parent.child_paths[..index],
+        SiblingSelection::Following => &parent.child_paths[index + 1..],
+    };
+    Ok(range
+        .iter()
+        .filter(|path| workspace.node(path).is_some_and(|node| !node.is_meta))
+        .cloned()
+        .collect())
+}
+
+fn ancestor_paths(workspace: &WorkspaceModel, base_path: &str) -> Vec<String> {
+    let mut paths = Vec::new();
+    let mut current = parent_path(base_path);
+    while let Some(path) = current {
+        if workspace.node(&path).is_some_and(|node| !node.is_meta) {
+            paths.push(path.clone());
+        }
+        current = parent_path(&path);
+    }
+    paths
+}
+
+fn recursive_descendant_paths(
+    workspace: &WorkspaceModel,
+    base_path: &str,
+    tail_token_text: Option<&str>,
+) -> Vec<String> {
+    let prefix = format!("{base_path}.");
+    let tail = tail_token_text.map(|tail| tail.trim_start_matches('.'));
+    workspace
+        .node_order
+        .iter()
+        .filter(|path| path.starts_with(&prefix))
+        .filter(|path| workspace.node(path).is_some_and(|node| !node.is_meta))
+        .filter(|path| tail.is_none_or(|tail| path.rsplit('.').next() == Some(tail)))
+        .cloned()
+        .collect()
 }
 
 fn resolve_qualified_children_base_path(

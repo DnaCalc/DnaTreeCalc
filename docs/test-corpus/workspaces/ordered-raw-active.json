@@ -1,0 +1,29 @@
+{
+  "schema_version": "treecalc-workspace-v1",
+  "workspace_id": "ordered-raw-active",
+  "description": "Focused active fixture for raw ordered TreeCalc collection selectors through the live OxCalc bridge. Each formula uses original TreeCalc syntax; DnaTreeCalc resolves only OxCalc query packets and does not construct reference carriers locally.",
+  "profile": "treecalc-v1",
+  "nodes": [
+    { "node_id": "Root", "formula": "" },
+    { "node_id": "Root.Preceding", "formula": "" },
+    { "node_id": "Root.Preceding.A", "formula": "2" },
+    { "node_id": "Root.Preceding.B", "formula": "3" },
+    { "node_id": "Root.Preceding.Total", "formula": "=SUM(@PRECEDING)" },
+    { "node_id": "Root.Following", "formula": "" },
+    { "node_id": "Root.Following.Total", "formula": "=SUM(@FOLLOWING)" },
+    { "node_id": "Root.Following.A", "formula": "4" },
+    { "node_id": "Root.Following.B", "formula": "6" },
+    { "node_id": "Root.Ancestors", "formula": "" },
+    { "node_id": "Root.Ancestors.L1", "formula": "" },
+    { "node_id": "Root.Ancestors.L1.L2", "formula": "" },
+    { "node_id": "Root.Ancestors.L1.L2.Total", "formula": "=SUM(@ANCESTORS)" },
+    { "node_id": "Root.Recursive", "formula": "" },
+    { "node_id": "Root.Recursive.Base", "formula": "" },
+    { "node_id": "Root.Recursive.Base.Q1", "formula": "" },
+    { "node_id": "Root.Recursive.Base.Q1.Margin", "formula": "7" },
+    { "node_id": "Root.Recursive.Base.Q1.Net", "formula": "100" },
+    { "node_id": "Root.Recursive.Base.Q2", "formula": "" },
+    { "node_id": "Root.Recursive.Base.Q2.Margin", "formula": "11" },
+    { "node_id": "Root.Recursive.TotalMargin", "formula": "=SUM(Base.**.Margin)" }
+  ]
+}

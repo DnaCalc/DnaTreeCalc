@@ -171,7 +171,8 @@ parallel parser to make activation possible.
 | `references/cross-workspace` | W004 external workspace runner | Host loads the aliased workspace, OxCalc receives the external/host-sensitive edge, and unavailable externals surface as diagnostics. |
 | `references/meta-nodes`, `formatting/`, `templates/` | W004/W007 bridge runners | `is_meta` filtering is honored by binding/positional operators; W007 then consumes the same flag for format/template host data. |
 | `references/children-raw-active` | W005 active children runner | The current public OxCalc prebind accepts free-standing raw `=SUM(@CHILDREN)` / `=SUM(.*)` and focused qualified raw `=SUM(base.@CHILDREN)` / `=SUM(base.*)` through OxCalc's public qualified-base query packet. The runner executes the workspace through `LiveOxCalcTreeBridge` and asserts published value plus dependency membership. |
-| `references/set-membership`, `references/literals` | W004 reference-collection runner | Ordered reference collections (`@CHILDREN`/`.*`, `@PRECEDING`, `@FOLLOWING`, `@ANCESTORS`), recursive `**`, explicit reference literals, duplicate preservation, and mixed scalar/reference rejection are asserted through bridge results. The broad set-membership theme remains pending until the unsupported selectors have public OxCalc bridge support. |
+| `references/ordered-raw-active` | W004 active ordered-selector runner | The current public OxCalc ordered-selector query/prebind accepts raw `@PRECEDING`, `@FOLLOWING`, `@ANCESTORS`, and recursive `Base.**.Margin` forms when DnaTreeCalc supplies only resolved base/member packets. The runner executes the workspace through `LiveOxCalcTreeBridge` and asserts published value plus dependency membership. |
+| `references/set-membership`, `references/literals` | W004 reference-collection runner | Ordered reference collections (`@CHILDREN`/`.*`, `@PRECEDING`, `@FOLLOWING`, `@ANCESTORS`), recursive `**`, explicit reference literals, duplicate preservation, and mixed scalar/reference rejection are asserted through bridge results. The broad set-membership theme remains pending until the full family, including non-active base forms and literals, has public OxCalc bridge support. |
 | `dynamic-references/indirect` | W004 CTRO runner | `INDIRECT` strings rebind at calc time through the engine overlay; TreeCalc asserts outcome/diagnostics only. |
 | `references/node-functions` | W004 node-call runner | Single-reference lambda-valued nodes are invocable through OxFml/OxCalc; set-valued callees reject. |
 | `tables/structured-references` | W004 table runner after table-node handover | Structured refs lower through the agreed OxFml/OxCalc table contract; TreeCalc asserts target kind and surfaced values. |
@@ -216,14 +217,21 @@ asserts published values and dependency membership, not parser output, and it
 does not translate strings to carriers in DnaTreeCalc.
 
 The authored `references/set-membership` theme remains `pending`: it contains
-broader selectors beyond the current public prebind slice. Do not treat the
-active raw-children slice as completion of W004 set-membership.
+broader selectors beyond the current public prebind slices. The first W004
+JSON-backed active ordered-selector slice is now
+`references/ordered-raw-active` with workspace fixture
+`workspaces/ordered-raw-active`. The Rust test runner consumes OxCalc's public
+ordered-selector query packets for `@PRECEDING`, `@FOLLOWING`, `@ANCESTORS`,
+and `Base.**.Margin`; DnaTreeCalc resolves only the base/member facts and feeds
+them back to OxCalc. It asserts published values and dependency membership, not
+parser output, and it does not construct reference carriers locally. Do not
+treat either active raw slice as completion of W004 set-membership.
 
 The remaining raw-formula blocker is narrowed in bead `dtc-osq.2`: unsupported
 families include walk-up and dotted names such as `=A+3`, table structured
-references, node-as-function calls, recursive/walk-up collections, dynamic
-references, cross-workspace and alias/base-token variants beyond this focused
-qualified-children packet, and profile-gated syntax.
+references, node-as-function calls, reference literals, dynamic references,
+cross-workspace and alias/base-token variants beyond the focused active query
+packets, traversal-bound policy, and profile-gated syntax.
 
 ## Runner contract
 
