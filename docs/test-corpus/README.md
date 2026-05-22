@@ -177,10 +177,21 @@ parallel parser to make activation possible.
 | `tables/structured-references` | W004 table runner after table-node handover | Structured refs lower through the agreed OxFml/OxCalc table contract; TreeCalc asserts target kind and surfaced values. |
 | `arrays/` | W004 array/reference runner | Array-valued nodes and reference collections travel through the bridge without inter-node spill; Excel-aligned scalar array values remain engine/Excel anchored. |
 | `structural-edits/` | W004 structural-edit runner | Rename/move/delete/insert operations go through OxCalc structural edit APIs and post-edit binding consequences match cases. |
-| `constants/`, `cycles/` | W002 bridge runners | Entry classification and cycle diagnostics are exposed through the TreeCalc channel. |
+| `constants/`, `cycles/` | W002 bridge runners | Pending until the upstream channels are executable in the local bridge: constants wait for the OxFml TreeCalc entry-classification API, and cycle corpus activation waits for the OxCalc consumer facade to expose the typed `cycle_config` / `cycle_diagnostics` fields. The W002 bridge smoke itself is covered by the `LiveOxCalcTreeBridge` Rust tests. |
 | `import/`, `value-equivalence/` | W008/W009 import/replay runners | Import/export flows emit replay bundles; OxXlPlay observes Excel and OxReplay governs comparison. |
 
 ### Current bridge activation floor
+
+The W002 local Rust bridge smoke is implemented in
+`src/dnatreecalc-host/src/adapters/oxcalc/live_bridge.rs`: it submits a tiny
+named-node workspace through `LiveOxCalcTreeBridge`, receives published values,
+dependency edges, node state, evaluation order, and OxCalc diagnostics, and is
+run by `cargo test --workspace`. The authored W002 corpus themes remain
+`pending`: `constants/entry-classification` is blocked on the OxFml TreeCalc
+entry-classification response, while `cycles/cycle-profiles` is blocked on the
+current OxCalc consumer facade not yet carrying the typed cycle request/result
+fields. `validate-corpus.ps1` is therefore expected to report zero active W002
+cases until those two upstream surfaces are executable.
 
 As of the W004/W005 raw-prebind adoption, the local Rust bridge can submit
 original TreeCalc formula text for the first `ChildrenV1` slice through OxCalc's
