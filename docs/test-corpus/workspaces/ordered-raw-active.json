@@ -1,7 +1,7 @@
 {
   "schema_version": "treecalc-workspace-v1",
   "workspace_id": "ordered-raw-active",
-  "description": "Focused active fixture for raw ordered TreeCalc collection selectors through the live OxCalc bridge. Each formula uses original TreeCalc syntax; DnaTreeCalc resolves only OxCalc query packets and does not construct reference carriers locally.",
+  "description": "Focused active fixture for raw ordered TreeCalc collection selectors through the live OxCalc bridge. Each formula uses original TreeCalc syntax; DnaTreeCalc consumes OxCalc query/resolution packets and does not construct reference carriers locally.",
   "profile": "treecalc-v1",
   "nodes": [
     { "node_id": "Root", "formula": "" },
@@ -24,6 +24,22 @@
     { "node_id": "Root.Recursive.Base.Q1.Net", "formula": "100" },
     { "node_id": "Root.Recursive.Base.Q2", "formula": "" },
     { "node_id": "Root.Recursive.Base.Q2.Margin", "formula": "11" },
-    { "node_id": "Root.Recursive.TotalMargin", "formula": "=SUM(Base.**.Margin)" }
+    { "node_id": "Root.Recursive.TotalMargin", "formula": "=SUM(Base.**.Margin)" },
+    { "node_id": "Root.StructuralPreceding", "formula": "" },
+    { "node_id": "Root.StructuralPreceding.A", "formula": "2" },
+    { "node_id": "Root.StructuralPreceding.B", "formula": "3" },
+    { "node_id": "Root.StructuralPreceding.Total", "formula": "=SUM(Root.StructuralPreceding.Total.@PRECEDING)" },
+    { "node_id": "Root.StructuralFollowing", "formula": "" },
+    { "node_id": "Root.StructuralFollowing.Total", "formula": "=SUM(Root.StructuralFollowing.Total.@FOLLOWING)" },
+    { "node_id": "Root.StructuralFollowing.A", "formula": "4" },
+    { "node_id": "Root.StructuralFollowing.B", "formula": "6" },
+    { "node_id": "Root.StructuralRecursive", "formula": "" },
+    { "node_id": "Root.StructuralRecursive.Base", "formula": "" },
+    { "node_id": "Root.StructuralRecursive.Base.Q1", "formula": "" },
+    { "node_id": "Root.StructuralRecursive.Base.Q1.Margin", "formula": "7" },
+    { "node_id": "Root.StructuralRecursive.Base.Q1.Net", "formula": "100" },
+    { "node_id": "Root.StructuralRecursive.Base.Q2", "formula": "" },
+    { "node_id": "Root.StructuralRecursive.Base.Q2.Margin", "formula": "11" },
+    { "node_id": "Root.StructuralRecursive.TotalMargin", "formula": "=SUM(Root.StructuralRecursive.Base.**.Margin)" }
   ]
 }

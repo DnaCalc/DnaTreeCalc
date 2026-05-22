@@ -3,7 +3,7 @@
   "theme": "references/ordered-raw-active",
   "workset": "W004",
   "status": "active",
-  "description": "Focused W004 active slice for raw ordered TreeCalc collection formulas supported by OxCalc's public ordered-selector query/resolved-collection prebind surface. This does not activate the full W004 set-membership family.",
+  "description": "Focused W004 active slice for raw ordered TreeCalc collection formulas supported by OxCalc's public ordered-selector query/resolved-collection prebind surface, including explicit structural path base resolution. This does not activate the full W004 set-membership family.",
   "cases": [
     {
       "id": "ordered-preceding-active",
@@ -62,6 +62,54 @@
         "outcome": "resolved",
         "ordered": true,
         "members": ["Root.Recursive.Base.Q1.Margin", "Root.Recursive.Base.Q2.Margin"],
+        "published_value": "18"
+      }
+    },
+    {
+      "id": "ordered-structural-preceding-active",
+      "name": "Explicit structural path base @PRECEDING sums earlier siblings through the live bridge",
+      "spec": "§3.5",
+      "kind": "membership",
+      "workspace": "ordered-raw-active",
+      "caller": "Root.StructuralPreceding.Total",
+      "reference": "Root.StructuralPreceding.Total.@PRECEDING",
+      "expect": {
+        "outcome": "resolved",
+        "ordered": true,
+        "members": ["Root.StructuralPreceding.A", "Root.StructuralPreceding.B"],
+        "published_value": "5"
+      }
+    },
+    {
+      "id": "ordered-structural-following-active",
+      "name": "Explicit structural path base @FOLLOWING sums later siblings through the live bridge",
+      "spec": "§3.5",
+      "kind": "membership",
+      "workspace": "ordered-raw-active",
+      "caller": "Root.StructuralFollowing.Total",
+      "reference": "Root.StructuralFollowing.Total.@FOLLOWING",
+      "expect": {
+        "outcome": "resolved",
+        "ordered": true,
+        "members": ["Root.StructuralFollowing.A", "Root.StructuralFollowing.B"],
+        "published_value": "10"
+      }
+    },
+    {
+      "id": "ordered-structural-recursive-tail-active",
+      "name": "Explicit structural path base recursive descent sums matching descendants through the live bridge",
+      "spec": "§3.6",
+      "kind": "membership",
+      "workspace": "ordered-raw-active",
+      "caller": "Root.StructuralRecursive.TotalMargin",
+      "reference": "Root.StructuralRecursive.Base.**.Margin",
+      "expect": {
+        "outcome": "resolved",
+        "ordered": true,
+        "members": [
+          "Root.StructuralRecursive.Base.Q1.Margin",
+          "Root.StructuralRecursive.Base.Q2.Margin"
+        ],
         "published_value": "18"
       }
     }

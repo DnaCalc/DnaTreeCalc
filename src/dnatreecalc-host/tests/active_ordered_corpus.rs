@@ -65,7 +65,13 @@ fn active_raw_ordered_selector_corpus_executes_through_live_oxcalc_bridge() {
         assert!(
             matches!(
                 case.reference.as_str(),
-                "@PRECEDING" | "@FOLLOWING" | "@ANCESTORS" | "Base.**.Margin"
+                "@PRECEDING"
+                    | "@FOLLOWING"
+                    | "@ANCESTORS"
+                    | "Base.**.Margin"
+                    | "Root.StructuralPreceding.Total.@PRECEDING"
+                    | "Root.StructuralFollowing.Total.@FOLLOWING"
+                    | "Root.StructuralRecursive.Base.**.Margin"
             ),
             "case {} activates unsupported reference {}",
             case.id,

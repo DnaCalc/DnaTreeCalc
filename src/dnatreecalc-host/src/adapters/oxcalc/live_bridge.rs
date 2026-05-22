@@ -7,9 +7,10 @@ use oxcalc_core::dependency::{DependencyDescriptorKind, DependencyGraph};
 use oxcalc_core::formula::{
     FixtureFormulaAst, FixtureFormulaBinaryOp, TreeCalcChildrenReferenceCollection,
     TreeCalcFormulaTextPrebindContext, TreeCalcFormulaTextPrebindDiagnostic,
-    TreeCalcOrderedSelectorFamily, TreeCalcOrderedSelectorQuery,
-    TreeCalcOrderedSelectorResolutionLayer, TreeCalcQualifiedBaseResolutionLayer,
-    TreeCalcQualifiedChildrenBaseQuery, TreeCalcReferenceCollection, TreeFormula,
+    TreeCalcOrderedSelectorFamily, TreeCalcOrderedSelectorQuery, TreeCalcOrderedSelectorResolution,
+    TreeCalcOrderedSelectorResolutionLayer, TreeCalcOrderedSelectorTraversalPolicy,
+    TreeCalcQualifiedBaseResolutionLayer, TreeCalcQualifiedChildrenBaseQuery,
+    TreeCalcQualifiedChildrenBaseResolution, TreeCalcReferenceCollection, TreeFormula,
     TreeFormulaBinding, TreeFormulaCatalog, TreeFormulaReferenceCarrier, TreeReference,
     prebind_treecalc_formula_text_with_context, treecalc_formula_text_needs_prebind,
     treecalc_formula_text_ordered_selector_queries,
@@ -144,10 +145,10 @@ fn project_dependency_edges(
                 {
                     continue;
                 }
-                if let Some(target_node_id) = descriptor.target_node_id {
-                    if let Some(path) = submission.paths_by_node_id.get(&target_node_id) {
-                        target_paths.push(path.clone());
-                    }
+                if let Some(target_node_id) = descriptor.target_node_id
+                    && let Some(path) = submission.paths_by_node_id.get(&target_node_id)
+                {
+                    target_paths.push(path.clone());
                 }
             }
             (!target_paths.is_empty()).then(|| (owner_path.clone(), target_paths))
@@ -179,6 +180,7 @@ impl PreparedSubmission {
             &request.workspace,
             &request.formula_catalog,
             &node_ids_by_path,
+            &structural_snapshot,
         )?;
 
         Ok(Self {
@@ -323,6 +325,7 @@ fn build_formula_catalog(
     workspace: &WorkspaceModel,
     formula_catalog: &PreparedFormulaCatalog,
     node_ids_by_path: &BTreeMap<String, TreeNodeId>,
+    structural_snapshot: &StructuralSnapshot,
 ) -> Result<TreeFormulaCatalog, OxCalcTreeBridgeError> {
     let mut bindings = Vec::new();
 
@@ -341,12 +344,14 @@ fn build_formula_catalog(
                 path,
                 node.content.text(),
                 node_ids_by_path,
+                structural_snapshot,
             )?;
             let resolved_ordered_selectors = resolve_ordered_selector_queries(
                 workspace,
                 path,
                 node.content.text(),
                 node_ids_by_path,
+                structural_snapshot,
             )?;
             prebind_treecalc_formula_text_with_context(
                 owner_node_id,
@@ -382,8 +387,8 @@ fn resolve_qualified_children_base_queries(
     caller_path: &str,
     source_text: &str,
     node_ids_by_path: &BTreeMap<String, TreeNodeId>,
-) -> Result<Vec<oxcalc_core::formula::TreeCalcQualifiedChildrenBaseResolution>, OxCalcTreeBridgeError>
-{
+    structural_snapshot: &StructuralSnapshot,
+) -> Result<Vec<TreeCalcQualifiedChildrenBaseResolution>, OxCalcTreeBridgeError> {
     treecalc_formula_text_qualified_children_base_queries(
         *node_ids_by_path.get(caller_path).ok_or_else(|| {
             OxCalcTreeBridgeError::InvalidWorkspace(format!(
@@ -394,6 +399,10 @@ fn resolve_qualified_children_base_queries(
     )
     .into_iter()
     .map(|query| {
+        if let Ok(resolution) = query.to_resolution_with_structural_path_base(structural_snapshot) {
+            return Ok(resolution);
+        }
+
         let base_path = resolve_qualified_children_base_path(workspace, caller_path, &query)?;
         let base_node_id = node_id_for(&base_path, node_ids_by_path)?;
         Ok(query.to_resolution_with_layer(
@@ -413,35 +422,76 @@ fn resolve_ordered_selector_queries(
     caller_path: &str,
     source_text: &str,
     node_ids_by_path: &BTreeMap<String, TreeNodeId>,
+    structural_snapshot: &StructuralSnapshot,
 ) -> Result<Vec<oxcalc_core::formula::TreeCalcOrderedSelectorResolution>, OxCalcTreeBridgeError> {
-    treecalc_formula_text_ordered_selector_queries(
-        *node_ids_by_path.get(caller_path).ok_or_else(|| {
-            OxCalcTreeBridgeError::InvalidWorkspace(format!(
-                "node {caller_path} missing from node id map"
-            ))
-        })?,
-        source_text,
-    )
-    .into_iter()
-    .map(|query| {
-        let base_path = resolve_ordered_selector_base_path(workspace, caller_path, &query)?;
-        let member_paths = resolve_ordered_selector_member_paths(workspace, &base_path, &query)?;
-        let base_node_id = node_id_for(&base_path, node_ids_by_path)?;
-        let member_node_ids = member_paths
-            .iter()
-            .map(|path| node_id_for(path, node_ids_by_path))
-            .collect::<Result<Vec<_>, _>>()?;
-        Ok(query.to_resolution_with_layer(
-            base_node_id,
-            member_node_ids,
+    let owner_node_id = *node_ids_by_path.get(caller_path).ok_or_else(|| {
+        OxCalcTreeBridgeError::InvalidWorkspace(format!(
+            "node {caller_path} missing from node id map"
+        ))
+    })?;
+
+    treecalc_formula_text_ordered_selector_queries(owner_node_id, source_text)
+        .into_iter()
+        .map(|query| {
+            let base_path = resolve_ordered_selector_base_path(workspace, caller_path, &query)?;
+            let member_paths =
+                resolve_ordered_selector_member_paths(workspace, &base_path, &query)?;
+            let base_node_id = node_id_for(&base_path, node_ids_by_path)?;
+            let member_node_ids = member_paths
+                .iter()
+                .map(|path| node_id_for(path, node_ids_by_path))
+                .collect::<Result<Vec<_>, _>>()?;
+
+            if let Ok(resolution) = resolve_ordered_selector_with_structural_traversal(
+                &query,
+                structural_snapshot,
+                owner_node_id,
+            ) && resolution.base_node_id == base_node_id
+                && resolution.member_node_ids == member_node_ids
+            {
+                return Ok(resolution);
+            }
+
+            Ok(query.to_resolution_with_layer(
+                base_node_id,
+                member_node_ids,
             TreeCalcOrderedSelectorResolutionLayer::CallerSuppliedResolvedCollection,
             format!(
                 "dnatreecalc-ordered-selector:v1:caller={caller_path};base={base_path};token={}",
                 query.source_token_text
             ),
         ))
-    })
-    .collect()
+        })
+        .collect()
+}
+
+fn resolve_ordered_selector_with_structural_traversal(
+    query: &TreeCalcOrderedSelectorQuery,
+    structural_snapshot: &StructuralSnapshot,
+    owner_node_id: TreeNodeId,
+) -> Result<TreeCalcOrderedSelectorResolution, OxCalcTreeBridgeError> {
+    let policy = TreeCalcOrderedSelectorTraversalPolicy::default();
+    let resolved = if query.base_token_text.is_some() {
+        query
+            .to_resolution_with_structural_path_base_and_traversal(structural_snapshot, policy)
+            .map_err(|error| {
+                OxCalcTreeBridgeError::FormulaBindingUnavailable(format!(
+                    "OxCalc structural ordered selector resolution failed for '{}': {error}",
+                    query.source_token_text
+                ))
+            })?
+    } else {
+        query
+            .to_resolution_with_structural_traversal(structural_snapshot, owner_node_id, policy)
+            .map_err(|error| {
+                OxCalcTreeBridgeError::FormulaBindingUnavailable(format!(
+                    "OxCalc structural ordered selector traversal failed for '{}': {error}",
+                    query.source_token_text
+                ))
+            })?
+    };
+
+    Ok(resolved.resolution)
 }
 
 fn resolve_ordered_selector_base_path(
@@ -1003,6 +1053,200 @@ mod tests {
         assert_eq!(
             result.dependency_edges_by_owner["Root.InputsSugar"],
             vec!["Root.base.A".to_string(), "Root.base.B".to_string()]
+        );
+    }
+
+    #[test]
+    fn live_bridge_uses_oxcalc_structural_path_and_traversal_resolvers() {
+        let workspace = WorkspaceModel::try_from(WorkspaceFixture {
+            schema_version: "treecalc-workspace-v1".to_string(),
+            workspace_id: "w004-structural-resolvers".to_string(),
+            description: None,
+            profile: None,
+            nodes: vec![
+                WorkspaceNodeFixture {
+                    node_id: "Root".to_string(),
+                    formula: String::new(),
+                    is_meta: false,
+                },
+                WorkspaceNodeFixture {
+                    node_id: "Root.Base".to_string(),
+                    formula: String::new(),
+                    is_meta: false,
+                },
+                WorkspaceNodeFixture {
+                    node_id: "Root.Base.A".to_string(),
+                    formula: "11".to_string(),
+                    is_meta: false,
+                },
+                WorkspaceNodeFixture {
+                    node_id: "Root.Base.B".to_string(),
+                    formula: "13".to_string(),
+                    is_meta: false,
+                },
+                WorkspaceNodeFixture {
+                    node_id: "Root.UseChildren".to_string(),
+                    formula: "=SUM(Root.Base.@CHILDREN)".to_string(),
+                    is_meta: false,
+                },
+                WorkspaceNodeFixture {
+                    node_id: "Root.Following".to_string(),
+                    formula: String::new(),
+                    is_meta: false,
+                },
+                WorkspaceNodeFixture {
+                    node_id: "Root.Following.Total".to_string(),
+                    formula: "=SUM(Root.Following.Total.@FOLLOWING)".to_string(),
+                    is_meta: false,
+                },
+                WorkspaceNodeFixture {
+                    node_id: "Root.Following.A".to_string(),
+                    formula: "4".to_string(),
+                    is_meta: false,
+                },
+                WorkspaceNodeFixture {
+                    node_id: "Root.Following.B".to_string(),
+                    formula: "6".to_string(),
+                    is_meta: false,
+                },
+            ],
+        })
+        .unwrap();
+        let node_ids_by_path = assign_node_ids(&workspace);
+        let root_id = root_node_id(&workspace, &node_ids_by_path).unwrap();
+        let structural_snapshot = build_structural_snapshot(
+            &workspace,
+            &PreparedFormulaCatalog::default(),
+            &node_ids_by_path,
+            root_id,
+        )
+        .unwrap();
+
+        let children_resolutions = resolve_qualified_children_base_queries(
+            &workspace,
+            "Root.UseChildren",
+            "=SUM(Root.Base.@CHILDREN)",
+            &node_ids_by_path,
+            &structural_snapshot,
+        )
+        .unwrap();
+        assert_eq!(children_resolutions.len(), 1);
+        assert_eq!(
+            children_resolutions[0].resolution_layer,
+            TreeCalcQualifiedBaseResolutionLayer::OxCalcStructuralPath
+        );
+        assert_eq!(
+            children_resolutions[0].base_node_id,
+            node_ids_by_path["Root.Base"]
+        );
+        assert!(
+            children_resolutions[0]
+                .resolution_identity
+                .contains("treecalc-explicit-host-path:v1")
+        );
+
+        let ordered_query = treecalc_formula_text_ordered_selector_queries(
+            node_ids_by_path["Root.Following.Total"],
+            "=SUM(Root.Following.Total.@FOLLOWING)",
+        )
+        .into_iter()
+        .next()
+        .expect("ordered selector query");
+        let ordered_resolution = resolve_ordered_selector_with_structural_traversal(
+            &ordered_query,
+            &structural_snapshot,
+            node_ids_by_path["Root.Following.Total"],
+        )
+        .unwrap();
+
+        assert_eq!(
+            ordered_resolution.resolution_layer,
+            TreeCalcOrderedSelectorResolutionLayer::OxCalcStructuralTraversal
+        );
+        assert_eq!(
+            ordered_resolution.base_node_id,
+            node_ids_by_path["Root.Following.Total"]
+        );
+        assert_eq!(
+            ordered_resolution.member_node_ids,
+            vec![
+                node_ids_by_path["Root.Following.A"],
+                node_ids_by_path["Root.Following.B"]
+            ]
+        );
+        assert!(
+            ordered_resolution
+                .resolution_identity
+                .contains("base_resolution=treecalc-explicit-host-path:v1")
+        );
+    }
+
+    #[test]
+    fn live_bridge_keeps_ordered_traversal_bounds_as_typed_oxcalc_errors() {
+        let workspace = WorkspaceModel::try_from(WorkspaceFixture {
+            schema_version: "treecalc-workspace-v1".to_string(),
+            workspace_id: "w004-traversal-bounds".to_string(),
+            description: None,
+            profile: None,
+            nodes: vec![
+                WorkspaceNodeFixture {
+                    node_id: "Root".to_string(),
+                    formula: String::new(),
+                    is_meta: false,
+                },
+                WorkspaceNodeFixture {
+                    node_id: "Root.Base".to_string(),
+                    formula: String::new(),
+                    is_meta: false,
+                },
+                WorkspaceNodeFixture {
+                    node_id: "Root.Base.A".to_string(),
+                    formula: "1".to_string(),
+                    is_meta: false,
+                },
+                WorkspaceNodeFixture {
+                    node_id: "Root.Base.B".to_string(),
+                    formula: "2".to_string(),
+                    is_meta: false,
+                },
+                WorkspaceNodeFixture {
+                    node_id: "Root.Total".to_string(),
+                    formula: "=SUM(Root.Base.**)".to_string(),
+                    is_meta: false,
+                },
+            ],
+        })
+        .unwrap();
+        let node_ids_by_path = assign_node_ids(&workspace);
+        let root_id = root_node_id(&workspace, &node_ids_by_path).unwrap();
+        let structural_snapshot = build_structural_snapshot(
+            &workspace,
+            &PreparedFormulaCatalog::default(),
+            &node_ids_by_path,
+            root_id,
+        )
+        .unwrap();
+        let query = treecalc_formula_text_ordered_selector_queries(
+            node_ids_by_path["Root.Total"],
+            "=SUM(Root.Base.**)",
+        )
+        .into_iter()
+        .next()
+        .expect("recursive selector query");
+
+        let error = query
+            .to_resolution_with_structural_path_base_and_traversal(
+                &structural_snapshot,
+                TreeCalcOrderedSelectorTraversalPolicy {
+                    max_recursive_descendants: 1,
+                },
+            )
+            .expect_err("small traversal bound should fail before prebind");
+
+        assert!(
+            error
+                .to_string()
+                .contains("exceeded traversal policy treecalc-traversal-bound:v1")
         );
     }
 
