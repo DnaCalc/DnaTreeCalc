@@ -1,7 +1,7 @@
 {
   "schema_version": "treecalc-workspace-v1",
   "workspace_id": "empty-body-tables",
-  "description": "Pending fixture for zero-row table structured-reference support. EmptyHeadersOnly and EmptyHeadersTotals record the current OxCalc projection blocker; the one-row siblings exercise first-row insert and last-row delete transition endpoints that are representable today.",
+  "description": "Active fixture for zero-row table structured-reference support. EmptyHeadersOnly and EmptyHeadersTotals exercise OxCalc/OxFml zero-row table packets and sparse readers; the one-row siblings exercise first-row insert and last-row delete transition endpoints through the same public table contract.",
   "profile": "treecalc-v1",
   "nodes": [
     {
@@ -17,7 +17,7 @@
           "rename_preserves_table_id": true,
           "move_preserves_table_id": true,
           "delete_releases_table_id": true,
-          "note": "Zero-row headers-only table keeps stable table and column handles; current OxCalc projection rejects the empty data body before structured references can execute."
+          "note": "Zero-row headers-only table keeps stable table and column handles while #Data, [Col], #All, #Headers, and [@Col] diagnostics flow through OxCalc/OxFml generic table packets."
         },
         "header": { "present": true },
         "totals": { "present": false },
@@ -47,7 +47,7 @@
           "rename_preserves_table_id": true,
           "move_preserves_table_id": true,
           "delete_releases_table_id": true,
-          "note": "Zero-row headers+totals table keeps stable table and column handles; current OxCalc projection rejects the empty data body before totals references can execute."
+          "note": "Zero-row headers+totals table keeps stable table and column handles while #Totals and data-body references flow through OxCalc/OxFml generic table packets."
         },
         "header": { "present": true },
         "totals": { "present": true },
@@ -70,6 +70,11 @@
         ]
       }
     },
+    { "node_id": "EmptyHeadersOnly.Columns", "formula": "" },
+    { "node_id": "EmptyHeadersOnly.Columns.Amount", "formula": "" },
+    { "node_id": "EmptyHeadersOnly.Headers", "formula": "" },
+    { "node_id": "EmptyHeadersTotals.Totals", "formula": "" },
+    { "node_id": "EmptyHeadersTotals.Totals.Amount", "formula": "" },
     {
       "node_id": "HeadersOnlyAfterFirstRowInsert",
       "formula": "",

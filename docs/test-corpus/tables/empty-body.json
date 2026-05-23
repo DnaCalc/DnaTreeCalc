@@ -2,12 +2,12 @@
   "schema_version": "treecalc-corpus-v1",
   "theme": "tables/empty-body",
   "workset": "W004",
-  "status": "pending",
-  "description": "Pending zero-row table corpus for headers-only and headers+totals tables. DnaTreeCalc owns these product table shapes and transition fixtures, but current OxCalc projection rejects empty data bodies with EmptyDataBodyNotRepresentableByCurrentTableDescriptor before LiveOxCalc structured-reference execution can activate them.",
+  "status": "active",
+  "description": "Active zero-row table corpus for headers-only and headers+totals tables. DnaTreeCalc owns these product table shapes and transition fixtures while consuming OxCalc/OxFml generic structured-reference packets and sparse readers through the real LiveOxCalc bridge.",
   "cases": [
     {
       "id": "tbl-empty-headers-only-data",
-      "name": "headers-only table #Data is blocked by current OxCalc zero-row projection",
+      "name": "headers-only table #Data projects as a zero-row data reference",
       "spec": "section 7c",
       "kind": "table",
       "workspace": "empty-body-tables",
@@ -16,13 +16,15 @@
       "reference": "EmptyHeadersOnly[#Data]",
       "source_formula": "=COUNTA(EmptyHeadersOnly[#Data])",
       "expect": {
-        "outcome": "error",
-        "reason": "EmptyDataBodyNotRepresentableByCurrentTableDescriptor"
+        "outcome": "resolved",
+        "target": "",
+        "target_kind": "composite-data-column-reference",
+        "published_value": "0"
       }
     },
     {
       "id": "tbl-empty-headers-only-column",
-      "name": "headers-only table [Col] is blocked by current OxCalc zero-row projection",
+      "name": "headers-only table [Col] projects as a zero-row data-column reference",
       "spec": "section 7c",
       "kind": "table",
       "workspace": "empty-body-tables",
@@ -31,13 +33,16 @@
       "reference": "EmptyHeadersOnly[Amount]",
       "source_formula": "=SUM(EmptyHeadersOnly[Amount])",
       "expect": {
-        "outcome": "error",
-        "reason": "EmptyDataBodyNotRepresentableByCurrentTableDescriptor"
+        "outcome": "resolved",
+        "target": "EmptyHeadersOnly.Columns.Amount",
+        "target_kind": "data-column-reference",
+        "selected_columns": ["col:amount"],
+        "published_value": "0"
       }
     },
     {
       "id": "tbl-empty-headers-only-all",
-      "name": "headers-only table #All is blocked by current OxCalc zero-row projection",
+      "name": "headers-only table #All projects headers without requiring data rows",
       "spec": "section 7c",
       "kind": "table",
       "workspace": "empty-body-tables",
@@ -46,13 +51,15 @@
       "reference": "EmptyHeadersOnly[#All]",
       "source_formula": "=COUNTA(EmptyHeadersOnly[#All])",
       "expect": {
-        "outcome": "error",
-        "reason": "EmptyDataBodyNotRepresentableByCurrentTableDescriptor"
+        "outcome": "resolved",
+        "target": "EmptyHeadersOnly",
+        "target_kind": "all-region",
+        "published_value": "1"
       }
     },
     {
       "id": "tbl-empty-headers-only-headers",
-      "name": "headers-only table #Headers is blocked by current OxCalc zero-row projection",
+      "name": "headers-only table #Headers projects headers without requiring data rows",
       "spec": "section 7c",
       "kind": "table",
       "workspace": "empty-body-tables",
@@ -61,13 +68,15 @@
       "reference": "EmptyHeadersOnly[#Headers]",
       "source_formula": "=COUNTA(EmptyHeadersOnly[#Headers])",
       "expect": {
-        "outcome": "error",
-        "reason": "EmptyDataBodyNotRepresentableByCurrentTableDescriptor"
+        "outcome": "resolved",
+        "target": "EmptyHeadersOnly.Headers",
+        "target_kind": "header-region",
+        "published_value": "1"
       }
     },
     {
       "id": "tbl-empty-headers-totals-totals",
-      "name": "headers+totals table #Totals is blocked by current OxCalc zero-row projection",
+      "name": "headers+totals table #Totals projects totals without requiring data rows",
       "spec": "section 7c",
       "kind": "table",
       "workspace": "empty-body-tables",
@@ -76,13 +85,15 @@
       "reference": "EmptyHeadersTotals[#Totals]",
       "source_formula": "=COUNTA(EmptyHeadersTotals[#Totals])",
       "expect": {
-        "outcome": "error",
-        "reason": "EmptyDataBodyNotRepresentableByCurrentTableDescriptor"
+        "outcome": "resolved",
+        "target": "EmptyHeadersTotals.Totals",
+        "target_kind": "totals-region",
+        "published_value": "1"
       }
     },
     {
       "id": "tbl-empty-current-row-diagnostic",
-      "name": "headers-only omitted [@Col] diagnostic is blocked until zero-row projection exists",
+      "name": "headers-only omitted [@Col] reports a typed no-current-row diagnostic",
       "spec": "section 7c",
       "kind": "table",
       "workspace": "empty-body-tables",
@@ -90,14 +101,15 @@
       "table": "EmptyHeadersOnly",
       "reference": "[@Amount]",
       "source_formula": "=[@Amount]",
+      "caller_row_offset": 0,
       "expect": {
         "outcome": "error",
-        "reason": "EmptyDataBodyNotRepresentableByCurrentTableDescriptor"
+        "reason": "CallerRowOutOfRange"
       }
     },
     {
       "id": "tbl-first-row-insert-endpoint",
-      "name": "first-row insert endpoint projects and prebinds while zero-row origin remains blocked",
+      "name": "first-row insert endpoint projects and prebinds from the same table contract",
       "spec": "section 7c",
       "kind": "table",
       "workspace": "empty-body-tables",
@@ -107,12 +119,15 @@
       "source_formula": "=SUM(HeadersOnlyAfterFirstRowInsert[Amount])",
       "expect": {
         "outcome": "resolved",
-        "target": "HeadersOnlyAfterFirstRowInsert.Columns.Amount"
+        "target": "HeadersOnlyAfterFirstRowInsert.Columns.Amount",
+        "target_kind": "data-column-reference",
+        "selected_columns": ["col:amount"],
+        "published_value": "1"
       }
     },
     {
       "id": "tbl-last-row-delete-endpoint",
-      "name": "one-row before last-row delete projects while the zero-row target remains blocked",
+      "name": "one-row before last-row delete projects through the same totals contract",
       "spec": "section 7c",
       "kind": "table",
       "workspace": "empty-body-tables",
@@ -122,7 +137,10 @@
       "source_formula": "=SUM(HeadersTotalsBeforeLastRowDelete[[#Totals],[Amount]])",
       "expect": {
         "outcome": "resolved",
-        "target": "HeadersTotalsBeforeLastRowDelete.Totals.Amount"
+        "target": "HeadersTotalsBeforeLastRowDelete.Totals.Amount",
+        "target_kind": "totals-column-reference",
+        "selected_columns": ["col:amount"],
+        "published_value": "0"
       }
     }
   ]

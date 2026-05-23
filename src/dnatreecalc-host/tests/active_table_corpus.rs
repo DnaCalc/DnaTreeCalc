@@ -20,12 +20,12 @@ use oxcalc_core::structured_table::{
     TreeCalcTableLifecycleCallbackPacket, TreeCalcTableLifecycleContractDiagnostic,
     TreeCalcTableLifecycleEventKind, TreeCalcTableLifecycleVersionState,
     TreeCalcTableNodeProjection, TreeCalcTableNodeSnapshot, TreeCalcTableProjectionError,
-    TreeCalcTableRowId, TreeCalcTableSparseReader, TreeCalcTableSparseValue,
-    TreeCalcTableUpdateScenarioKind, classify_treecalc_table_lifecycle_callback,
-    classify_treecalc_table_update, evaluate_treecalc_table_column_formula_rows,
-    evaluate_treecalc_table_totals_formula, lower_structured_table_dependencies,
-    prebind_treecalc_table_structured_references, project_treecalc_table_node_snapshot,
-    validate_treecalc_table_reference_after_update,
+    TreeCalcTableRowId, TreeCalcTableSparseReader, TreeCalcTableSparseReaderError,
+    TreeCalcTableSparseValue, TreeCalcTableUpdateScenarioKind,
+    classify_treecalc_table_lifecycle_callback, classify_treecalc_table_update,
+    evaluate_treecalc_table_column_formula_rows, evaluate_treecalc_table_totals_formula,
+    lower_structured_table_dependencies, prebind_treecalc_table_structured_references,
+    project_treecalc_table_node_snapshot, validate_treecalc_table_reference_after_update,
 };
 use oxfml_core::EvaluationBackend;
 use oxfml_core::consumer::runtime::{RuntimeEnvironment, RuntimeFormulaRequest};
@@ -515,11 +515,11 @@ fn table_lifecycle_product_events_enter_oxcalc_callback_contract() {
 }
 
 #[test]
-fn empty_body_table_corpus_records_current_upstream_blocker() {
+fn active_empty_body_table_corpus_executes_through_oxcalc_table_path() {
     let theme = load_theme(repo_corpus_path("tables/empty-body.json"));
     assert_eq!(theme.schema_version, "treecalc-corpus-v1");
     assert_eq!(theme.theme, "tables/empty-body");
-    assert_eq!(theme.status, CorpusStatus::Pending);
+    assert_eq!(theme.status, CorpusStatus::Active);
 
     let workspace = load_workspace("empty-body-tables");
     for case in &theme.cases {
@@ -533,33 +533,20 @@ fn empty_body_table_corpus_records_current_upstream_blocker() {
             .table_node(&case.table)
             .unwrap_or_else(|| panic!("workspace missing table {}", case.table));
         let snapshot = table_snapshot(&case.table, table);
-        if snapshot.rows.is_empty() {
-            let error = project_treecalc_table_node_snapshot(&snapshot)
-                .expect_err("empty data-body tables are still blocked upstream");
-            assert_eq!(
-                error,
-                TreeCalcTableProjectionError::EmptyDataBodyNotRepresentableByCurrentTableDescriptor,
-                "{} must record the exact current OxCalc blocker",
-                case.id
-            );
-            assert_eq!(case.expect.outcome, "error", "{} outcome", case.id);
-            assert!(
-                case.expect.reason.as_deref().is_some_and(|reason| reason
-                    .contains("EmptyDataBodyNotRepresentableByCurrentTableDescriptor")),
-                "{} must retain the upstream blocker name",
-                case.id
-            );
-            continue;
-        }
-
         let projection = project_treecalc_table_node_snapshot(&snapshot)
-            .unwrap_or_else(|error| panic!("{} transition table failed: {error:?}", case.id));
+            .unwrap_or_else(|error| panic!("{} table failed projection: {error:?}", case.id));
         assert_live_bridge_projects_same_table_context(&case.table, table);
+        let caller_region = case
+            .caller_row_offset
+            .map(|offset| table_data_caller_region(&projection, offset));
+        let enclosing = caller_region.as_ref().map(|_| TableRef {
+            table_id: projection.table_id.clone(),
+        });
         let prebound = prebind_treecalc_table_structured_references(
             case.source_formula.as_deref().unwrap_or(&case.reference),
             std::slice::from_ref(&projection),
-            None,
-            None,
+            enclosing,
+            caller_region.clone(),
         );
         assert!(
             prebound
@@ -572,7 +559,91 @@ fn empty_body_table_corpus_records_current_upstream_blocker() {
                 .flat_map(|prebind| prebind.diagnostics.iter())
                 .collect::<Vec<_>>()
         );
+        let bind_record = &prebound
+            .first()
+            .unwrap_or_else(|| panic!("case {} produced no table prebind", case.id))
+            .bind_record;
+
+        if case.expect.outcome == "error" {
+            let error = TreeCalcTableSparseReader::from_oxfml_bind_record(
+                &snapshot,
+                &projection,
+                bind_record,
+                caller_region.as_ref(),
+                table_sparse_values(table, None, std::iter::empty::<(&str, EvalValue)>()),
+            )
+            .expect_err("zero-row current-row case must stay a typed reader diagnostic");
+            assert_eq!(
+                error,
+                TreeCalcTableSparseReaderError::CallerRowOutOfRange {
+                    row_offset: case.caller_row_offset.unwrap_or_default(),
+                    row_count: 0,
+                },
+                "{} expected typed current-row diagnostic",
+                case.id
+            );
+            assert_eq!(
+                case.expect.reason.as_deref(),
+                Some("CallerRowOutOfRange"),
+                "{} reason",
+                case.id
+            );
+            continue;
+        }
+
         assert_eq!(case.expect.outcome, "resolved", "{} outcome", case.id);
+        let prebind = prebound
+            .first()
+            .unwrap_or_else(|| panic!("case {} produced no table prebind", case.id));
+        assert_case_target(&case.id, &case.expect, prebind, &projection);
+        if let Some(expected_columns) = &case.expect.selected_columns {
+            assert_eq!(
+                &bind_record.selected_column_ids, expected_columns,
+                "{} selected columns",
+                case.id
+            );
+        }
+
+        let formula_values = if projection.table_descriptor.totals_row_present {
+            table_sparse_values(table, None, [("col:amount", EvalValue::Number(0.0))])
+        } else {
+            table_sparse_values(table, None, std::iter::empty::<(&str, EvalValue)>())
+        };
+        let reader = TreeCalcTableSparseReader::from_oxfml_bind_record(
+            &snapshot,
+            &projection,
+            bind_record,
+            caller_region.as_ref(),
+            formula_values,
+        )
+        .unwrap_or_else(|error| panic!("case {} reader failed: {error:?}", case.id));
+        if snapshot.rows.is_empty()
+            && bind_record
+                .selected_sections
+                .iter()
+                .all(|section| *section == oxfml_core::StructuredSectionKind::Data)
+        {
+            assert_eq!(reader.declared_extent().row_count, 0, "{} extent", case.id);
+            assert_eq!(
+                reader
+                    .runtime_binding()
+                    .sparse_reference_values
+                    .declared_rows,
+                0,
+                "{} sparse binding declared rows",
+                case.id
+            );
+        }
+        if let Some(expected_value) = &case.expect.published_value {
+            let observed = evaluate_case_formula(
+                &case.id,
+                case.source_formula.as_deref().unwrap_or(&case.reference),
+                &projection,
+                caller_region,
+                reader.runtime_binding(),
+            );
+            assert_eq!(observed, *expected_value, "{} published value", case.id);
+        }
     }
 }
 
@@ -659,6 +730,13 @@ fn assert_case_target(
                 "{case_id} target path"
             );
         }
+        "totals-region" => {
+            assert_eq!(
+                expected_target,
+                format!("{}.Totals", projection.display_path),
+                "{case_id} target path"
+            );
+        }
         "all-region" => {
             assert_eq!(
                 expected_target, projection.display_path,
@@ -735,7 +813,7 @@ fn assert_target_kind_matches_bind_record(
             &[StructuredSectionKind::Headers],
             "{case_id} target_kind must describe a header structured reference"
         ),
-        "totals-column-reference" => assert_eq!(
+        "totals-column-reference" | "totals-region" => assert_eq!(
             sections,
             &[StructuredSectionKind::Totals],
             "{case_id} target_kind must describe a totals structured reference"
