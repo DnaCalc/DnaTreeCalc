@@ -1,0 +1,160 @@
+{
+  "schema_version": "treecalc-workspace-v1",
+  "workspace_id": "empty-body-tables",
+  "description": "Pending fixture for zero-row table structured-reference support. EmptyHeadersOnly and EmptyHeadersTotals record the current OxCalc projection blocker; the one-row siblings exercise first-row insert and last-row delete transition endpoints that are representable today.",
+  "profile": "treecalc-v1",
+  "nodes": [
+    {
+      "node_id": "EmptyHeadersOnly",
+      "formula": "",
+      "table": {
+        "table_id": "tree-table:empty-headers-only",
+        "table_namespace_version": "table-namespace:empty-headers-only:v1",
+        "row_membership_version": "table-rows:empty-headers-only:membership:v1",
+        "row_order_version": "table-rows:empty-headers-only:order:v1",
+        "column_identity_version": "table-columns:empty-headers-only:v1",
+        "identity_policy": {
+          "rename_preserves_table_id": true,
+          "move_preserves_table_id": true,
+          "delete_releases_table_id": true,
+          "note": "Zero-row headers-only table keeps stable table and column handles; current OxCalc projection rejects the empty data body before structured references can execute."
+        },
+        "header": { "present": true },
+        "totals": { "present": false },
+        "rows": [],
+        "columns": [
+          {
+            "column_id": "col:amount",
+            "name": "Amount",
+            "ordinal": 1,
+            "body": {
+              "kind": "constant-cells"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "node_id": "EmptyHeadersTotals",
+      "formula": "",
+      "table": {
+        "table_id": "tree-table:empty-headers-totals",
+        "table_namespace_version": "table-namespace:empty-headers-totals:v1",
+        "row_membership_version": "table-rows:empty-headers-totals:membership:v1",
+        "row_order_version": "table-rows:empty-headers-totals:order:v1",
+        "column_identity_version": "table-columns:empty-headers-totals:v1",
+        "identity_policy": {
+          "rename_preserves_table_id": true,
+          "move_preserves_table_id": true,
+          "delete_releases_table_id": true,
+          "note": "Zero-row headers+totals table keeps stable table and column handles; current OxCalc projection rejects the empty data body before totals references can execute."
+        },
+        "header": { "present": true },
+        "totals": { "present": true },
+        "rows": [],
+        "columns": [
+          {
+            "column_id": "col:amount",
+            "name": "Amount",
+            "ordinal": 1,
+            "body": {
+              "kind": "constant-cells"
+            },
+            "totals_formula": {
+              "formula_text": "=SUM(EmptyHeadersTotals[Amount])",
+              "formula_stable_id": "formula:EmptyHeadersTotals.Totals.Amount",
+              "bind_artifact_id": "bind:EmptyHeadersTotals.Totals.Amount",
+              "formula_text_version": "v1"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "node_id": "HeadersOnlyAfterFirstRowInsert",
+      "formula": "",
+      "table": {
+        "table_id": "tree-table:first-row-insert",
+        "table_namespace_version": "table-namespace:first-row-insert:v1",
+        "row_membership_version": "table-rows:first-row-insert:membership:v1",
+        "row_order_version": "table-rows:first-row-insert:order:v1",
+        "column_identity_version": "table-columns:first-row-insert:v1",
+        "identity_policy": {
+          "rename_preserves_table_id": true,
+          "move_preserves_table_id": true,
+          "delete_releases_table_id": true,
+          "note": "One-row endpoint for first-row insert from an empty headers-only table."
+        },
+        "header": { "present": true },
+        "totals": { "present": false },
+        "rows": [
+          { "row_id": "row:first", "ordinal": 1 }
+        ],
+        "columns": [
+          {
+            "column_id": "col:amount",
+            "name": "Amount",
+            "ordinal": 1,
+            "body": {
+              "kind": "constant-cells",
+              "constants": [
+                { "row_id": "row:first", "value": "1" }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "node_id": "HeadersTotalsBeforeLastRowDelete",
+      "formula": "",
+      "table": {
+        "table_id": "tree-table:last-row-delete",
+        "table_namespace_version": "table-namespace:last-row-delete:v1",
+        "row_membership_version": "table-rows:last-row-delete:membership:v1",
+        "row_order_version": "table-rows:last-row-delete:order:v1",
+        "column_identity_version": "table-columns:last-row-delete:v1",
+        "identity_policy": {
+          "rename_preserves_table_id": true,
+          "move_preserves_table_id": true,
+          "delete_releases_table_id": true,
+          "note": "One-row endpoint before last-row delete to a zero-row headers+totals table."
+        },
+        "header": { "present": true },
+        "totals": { "present": true },
+        "rows": [
+          { "row_id": "row:last", "ordinal": 1 }
+        ],
+        "columns": [
+          {
+            "column_id": "col:amount",
+            "name": "Amount",
+            "ordinal": 1,
+            "body": {
+              "kind": "constant-cells",
+              "constants": [
+                { "row_id": "row:last", "value": "2" }
+              ]
+            },
+            "totals_formula": {
+              "formula_text": "=SUM(HeadersTotalsBeforeLastRowDelete[Amount])",
+              "formula_stable_id": "formula:HeadersTotalsBeforeLastRowDelete.Totals.Amount",
+              "bind_artifact_id": "bind:HeadersTotalsBeforeLastRowDelete.Totals.Amount",
+              "formula_text_version": "v1"
+            }
+          }
+        ]
+      }
+    },
+    { "node_id": "HeadersOnlyAfterFirstRowInsert.Columns", "formula": "" },
+    { "node_id": "HeadersOnlyAfterFirstRowInsert.Columns.Amount", "formula": "" },
+    { "node_id": "HeadersTotalsBeforeLastRowDelete.Columns", "formula": "" },
+    { "node_id": "HeadersTotalsBeforeLastRowDelete.Columns.Amount", "formula": "" },
+    { "node_id": "HeadersTotalsBeforeLastRowDelete.Totals", "formula": "" },
+    {
+      "node_id": "HeadersTotalsBeforeLastRowDelete.Totals.Amount",
+      "formula": "=SUM(HeadersTotalsBeforeLastRowDelete[Amount])"
+    },
+    { "node_id": "Report", "formula": "" }
+  ]
+}
