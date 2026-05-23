@@ -119,6 +119,23 @@
       }
     },
     {
+      "id": "tbl-special-all",
+      "name": "Table[#All] selects headers, data body, and totals where present",
+      "spec": "section 3.3, section 7c",
+      "kind": "table",
+      "workspace": "tables",
+      "caller": "Sheet1.Report",
+      "table": "SalesTable",
+      "reference": "SalesTable[#All]",
+      "source_formula": "=COUNTA(SalesTable[#All])",
+      "expect": {
+        "outcome": "resolved",
+        "target": "SalesTable",
+        "target_kind": "all-region",
+        "published_value": "13"
+      }
+    },
+    {
       "id": "tbl-composite-data-columns",
       "name": "composite data column range resolves as a structured table selection",
       "spec": "section 3.3, section 7c",
@@ -131,6 +148,7 @@
       "expect": {
         "outcome": "resolved",
         "target_kind": "composite-data-column-reference",
+        "target": "",
         "selected_columns": ["col:amount", "col:tax"],
         "published_value": "66"
       }
@@ -144,10 +162,12 @@
       "caller": "SalesTable.Columns.Tax",
       "table": "SalesTable",
       "reference": "=[@Amount] * 0.1",
+      "caller_row_offset": 0,
       "expect": {
         "outcome": "resolved",
         "target": "SalesTable.Columns.Amount",
         "target_kind": "column-formula-dependency",
+        "selected_columns": ["col:amount"],
         "published_values": ["1", "2", "3"],
         "values_anchor": "excel-table"
       },
@@ -166,6 +186,7 @@
         "outcome": "resolved",
         "target": "SalesTable.Columns.Amount",
         "target_kind": "totals-formula-dependency",
+        "selected_columns": ["col:amount"],
         "published_value": "60",
         "values_anchor": "excel-table"
       }
@@ -182,7 +203,45 @@
       "source_formula": "=SUM(SalesTable[Missing])",
       "expect": {
         "outcome": "error",
-        "reason": "structured reference names no column in the resolved table"
+        "reason": "not present"
+      }
+    },
+    {
+      "id": "tbl-escaped-table-column",
+      "name": "bracket-escaped table and column names preserve source while resolving",
+      "spec": "section 3.3, section 3.4, section 7c",
+      "kind": "table",
+      "workspace": "tables",
+      "caller": "Sheet1.Report",
+      "table": "Sales]Table",
+      "reference": "[Sales]]Table][[Gross]]Amount]]",
+      "source_formula": "=SUM([Sales]]Table][[Gross]]Amount]])",
+      "expect": {
+        "outcome": "resolved",
+        "target": "Sales]Table.Columns.Gross]Amount",
+        "target_kind": "escaped-column-reference",
+        "selected_columns": ["col:gross-amount"],
+        "engine_ref": "bracket-escaped table path lowered by OxCalc public table prebind"
+      }
+    },
+    {
+      "id": "tbl-escaped-current-row-column",
+      "name": "bracket-escaped current-row column reference preserves caller row context",
+      "spec": "section 3.3, section 3.4, section 7c",
+      "kind": "table",
+      "workspace": "tables",
+      "caller": "Sales]Table",
+      "table": "Sales]Table",
+      "reference": "[Sales]]Table][[#This Row],[Gross]]Amount]]",
+      "source_formula": "=[Sales]]Table][[#This Row],[Gross]]Amount]]",
+      "caller_row_offset": 1,
+      "expect": {
+        "outcome": "resolved",
+        "target": "Sales]Table.Columns.Gross]Amount",
+        "target_kind": "escaped-current-row-column-reference",
+        "selected_columns": ["col:gross-amount"],
+        "published_value": "15",
+        "engine_ref": "explicit #This Row structured-ref lowered by OxCalc public table prebind"
       }
     }
   ]

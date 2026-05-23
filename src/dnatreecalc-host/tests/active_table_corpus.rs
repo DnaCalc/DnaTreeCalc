@@ -10,6 +10,7 @@ use dnatreecalc_host::model::{
     WorkspaceFixture, WorkspaceModel, WorkspaceNodeFixture,
 };
 use oxcalc_core::dependency::{DependencyDescriptorKind, InvalidationReasonKind};
+use oxcalc_core::sparse_reader::{SparseCellCoord, SparseCellRead, SparseRangeReader};
 use oxcalc_core::structural::TreeNodeId;
 use oxcalc_core::structured_table::{
     StructuredTableContextPacket, StructuredTableDependencyFactStatus,
@@ -62,10 +63,13 @@ struct TableCase {
 #[derive(Debug, Deserialize)]
 struct TableExpectation {
     outcome: String,
+    target: Option<String>,
     target_kind: Option<String>,
     selected_columns: Option<Vec<String>>,
     published_value: Option<String>,
     published_values: Option<Vec<String>>,
+    reason: Option<String>,
+    engine_ref: Option<String>,
 }
 
 #[test]
@@ -76,10 +80,10 @@ fn active_table_structured_reference_corpus_executes_through_oxcalc_table_path()
     assert_eq!(theme.status, CorpusStatus::Active);
 
     let workspace = load_workspace("tables");
-    let (table, snapshot, projection) = table_evidence(&workspace, "SalesTable");
-    assert_live_bridge_projects_same_table_context(table);
+    let (sales_table, sales_snapshot, sales_projection) = table_evidence(&workspace, "SalesTable");
+    assert_live_bridge_projects_same_table_context("SalesTable", sales_table);
 
-    let tax_report = evaluate_tax_column(&snapshot, &projection, table);
+    let tax_report = evaluate_tax_column(&sales_snapshot, &sales_projection, sales_table);
     assert_eq!(
         tax_report
             .cell_results
@@ -89,7 +93,7 @@ fn active_table_structured_reference_corpus_executes_through_oxcalc_table_path()
         vec!["1", "2", "3"]
     );
 
-    let totals_amount = evaluate_amount_totals(&snapshot, &projection, table);
+    let totals_amount = evaluate_amount_totals(&sales_snapshot, &sales_projection, sales_table);
     assert_eq!(display_value(&totals_amount.value), "60");
 
     for case in &theme.cases {
@@ -99,12 +103,21 @@ fn active_table_structured_reference_corpus_executes_through_oxcalc_table_path()
             "case {} workspace changed",
             case.id
         );
-        assert_eq!(case.table, "SalesTable", "case {} table changed", case.id);
         assert!(
             workspace.node(&case.caller).is_some(),
             "case {} caller fixture is missing",
             case.id
         );
+        let (table, snapshot, projection) = table_evidence(&workspace, &case.table);
+        let formula_values = if case.table == "SalesTable" {
+            table_sparse_values(
+                table,
+                Some(&tax_report),
+                [("col:amount", EvalValue::Number(60.0))],
+            )
+        } else {
+            table_sparse_values(table, None, std::iter::empty::<(&str, EvalValue)>())
+        };
 
         match case.id.as_str() {
             "tbl-column-formula" => {
@@ -114,7 +127,6 @@ fn active_table_structured_reference_corpus_executes_through_oxcalc_table_path()
                     "{} expected row values",
                     case.id
                 );
-                continue;
             }
             "tbl-totals-formula" => {
                 assert_eq!(
@@ -123,7 +135,6 @@ fn active_table_structured_reference_corpus_executes_through_oxcalc_table_path()
                     "{} totals value",
                     case.id
                 );
-                continue;
             }
             _ => {}
         }
@@ -160,6 +171,17 @@ fn active_table_structured_reference_corpus_executes_through_oxcalc_table_path()
             case.id
         );
         if case.expect.outcome == "error" {
+            if let Some(reason) = &case.expect.reason {
+                assert!(
+                    prebound
+                        .iter()
+                        .flat_map(|prebind| prebind.diagnostics.iter())
+                        .any(|diagnostic| diagnostic.message.contains(reason)
+                            || diagnostic.diagnostic_code.contains(reason)),
+                    "{} expected diagnostic reason {reason}",
+                    case.id
+                );
+            }
             assert!(
                 prebound
                     .iter()
@@ -175,6 +197,10 @@ fn active_table_structured_reference_corpus_executes_through_oxcalc_table_path()
             .first()
             .unwrap_or_else(|| panic!("case {} produced no table prebind", case.id))
             .bind_record;
+        let prebind = prebound
+            .first()
+            .unwrap_or_else(|| panic!("case {} produced no table prebind", case.id));
+        assert_case_target(&case.id, &case.expect, prebind, &projection);
         if let Some(expected_columns) = &case.expect.selected_columns {
             assert_eq!(
                 &bind_record.selected_column_ids, expected_columns,
@@ -190,38 +216,239 @@ fn active_table_structured_reference_corpus_executes_through_oxcalc_table_path()
                 &projection,
                 bind_record,
                 caller_region.as_ref(),
-                table_sparse_values(table, &tax_report),
+                formula_values.clone(),
             )
             .unwrap_or_else(|error| panic!("case {} reader failed: {error:?}", case.id));
-            let runtime_binding = reader.runtime_binding();
-            let observed = evaluate_case_formula(
-                &case.id,
-                formula_text,
-                &projection,
-                caller_region,
-                runtime_binding,
-            );
+            let observed = if is_simple_current_row_reference_formula(formula_text, prebind) {
+                reader_value_at_origin(&case.id, &reader)
+            } else {
+                let runtime_binding = reader.runtime_binding();
+                evaluate_case_formula(
+                    &case.id,
+                    formula_text,
+                    &projection,
+                    caller_region,
+                    runtime_binding,
+                )
+            };
             assert_eq!(observed, *expected_value, "{} value", case.id);
         }
 
         assert!(
-            case.expect.target_kind.is_some(),
+            !case
+                .expect
+                .target_kind
+                .as_deref()
+                .unwrap_or_default()
+                .is_empty(),
             "{} must keep a target kind for retained evidence",
             case.id
         );
+        if let Some(engine_ref) = &case.expect.engine_ref {
+            assert!(
+                engine_ref.contains("OxCalc") || engine_ref.contains("OxFml"),
+                "{} engine_ref must name the engine-owned seam",
+                case.id
+            );
+        }
     }
 
-    assert_table_update_scenarios_are_classified(&projection);
+    assert_table_update_scenarios_are_classified(&sales_projection);
 }
 
-fn assert_live_bridge_projects_same_table_context(table: &TableNodeFixture) {
+fn is_simple_current_row_reference_formula(
+    formula_text: &str,
+    prebind: &oxcalc_core::structured_table::TreeCalcTableStructuredReferencePrebind,
+) -> bool {
+    prebind.bind_record.uses_this_row
+        && formula_text
+            .trim()
+            .strip_prefix('=')
+            .is_some_and(|body| body == prebind.source_token_text)
+}
+
+fn reader_value_at_origin(case_id: &str, reader: &TreeCalcTableSparseReader) -> String {
+    match reader.read_at(SparseCellCoord::new(1, 1)) {
+        SparseCellRead::Defined(value) => display_value(&value),
+        SparseCellRead::Blank => panic!("case {case_id} expected a current-row reader value"),
+    }
+}
+
+fn assert_case_target(
+    case_id: &str,
+    expect: &TableExpectation,
+    prebind: &oxcalc_core::structured_table::TreeCalcTableStructuredReferencePrebind,
+    projection: &TreeCalcTableNodeProjection,
+) {
+    let target_kind = expect
+        .target_kind
+        .as_deref()
+        .unwrap_or_else(|| panic!("case {case_id} missing target_kind"));
+    let expected_target = expect
+        .target
+        .as_deref()
+        .unwrap_or_else(|| panic!("case {case_id} missing target"));
+
+    match target_kind {
+        "column-reference"
+        | "data-column-reference"
+        | "current-row-column-reference"
+        | "escaped-column-reference"
+        | "escaped-current-row-column-reference" => {
+            let column_id = expect
+                .selected_columns
+                .as_ref()
+                .and_then(|columns| columns.first())
+                .unwrap_or_else(|| panic!("case {case_id} missing selected column"));
+            let column_name = projection
+                .table_descriptor
+                .columns
+                .iter()
+                .find(|column| &column.column_id == column_id)
+                .map(|column| column.column_name.as_str())
+                .unwrap_or_else(|| panic!("case {case_id} selected unknown column {column_id}"));
+            assert_eq!(
+                expected_target,
+                format!("{}.Columns.{column_name}", projection.display_path),
+                "{case_id} target path"
+            );
+        }
+        "header-region" => {
+            assert_eq!(
+                expected_target,
+                format!("{}.Headers", projection.display_path),
+                "{case_id} target path"
+            );
+        }
+        "totals-column-reference" => {
+            let column_id = expect
+                .selected_columns
+                .as_ref()
+                .and_then(|columns| columns.first())
+                .unwrap_or_else(|| panic!("case {case_id} missing selected column"));
+            let column_name = projection
+                .table_descriptor
+                .columns
+                .iter()
+                .find(|column| &column.column_id == column_id)
+                .map(|column| column.column_name.as_str())
+                .unwrap_or_else(|| panic!("case {case_id} selected unknown column {column_id}"));
+            assert_eq!(
+                expected_target,
+                format!("{}.Totals.{column_name}", projection.display_path),
+                "{case_id} target path"
+            );
+        }
+        "all-region" => {
+            assert_eq!(
+                expected_target, projection.display_path,
+                "{case_id} target path"
+            );
+        }
+        "composite-data-column-reference" => {
+            assert!(
+                expected_target.is_empty(),
+                "{case_id} composite target must stay empty until a single target path exists"
+            );
+        }
+        "column-formula-dependency" | "totals-formula-dependency" => {
+            assert!(
+                expected_target.starts_with(&projection.display_path),
+                "{case_id} formula dependency target path"
+            );
+        }
+        other => panic!("case {case_id} has unknown target_kind {other}"),
+    }
+    assert_target_kind_matches_bind_record(case_id, target_kind, prebind);
+
+    assert_eq!(
+        prebind.resolved_table_id.as_deref(),
+        Some(projection.table_id.as_str()),
+        "{case_id} resolved table id"
+    );
+    assert_eq!(
+        prebind.bind_record.selected_column_ids, prebind.selector_payload.selected_column_ids,
+        "{case_id} selector payload must match bind record columns"
+    );
+}
+
+fn assert_target_kind_matches_bind_record(
+    case_id: &str,
+    target_kind: &str,
+    prebind: &oxcalc_core::structured_table::TreeCalcTableStructuredReferencePrebind,
+) {
+    use oxfml_core::StructuredSectionKind;
+
+    let sections = &prebind.bind_record.selected_sections;
+    match target_kind {
+        "column-reference"
+        | "data-column-reference"
+        | "composite-data-column-reference"
+        | "escaped-column-reference" => {
+            assert_eq!(
+                sections,
+                &[StructuredSectionKind::Data],
+                "{case_id} target_kind must describe a data-region structured reference"
+            );
+            assert!(
+                !prebind.bind_record.uses_this_row,
+                "{case_id} must not use row context"
+            );
+        }
+        "current-row-column-reference" | "escaped-current-row-column-reference" => {
+            assert_eq!(
+                sections,
+                &[StructuredSectionKind::ThisRow],
+                "{case_id} target_kind must describe a current-row structured reference"
+            );
+            assert!(
+                prebind.bind_record.uses_this_row,
+                "{case_id} must use row context"
+            );
+            assert!(
+                prebind.caller_context_dependency,
+                "{case_id} must preserve caller-context dependency"
+            );
+        }
+        "header-region" => assert_eq!(
+            sections,
+            &[StructuredSectionKind::Headers],
+            "{case_id} target_kind must describe a header structured reference"
+        ),
+        "totals-column-reference" => assert_eq!(
+            sections,
+            &[StructuredSectionKind::Totals],
+            "{case_id} target_kind must describe a totals structured reference"
+        ),
+        "all-region" => assert_eq!(
+            sections,
+            &[StructuredSectionKind::All],
+            "{case_id} target_kind must describe an #All structured reference"
+        ),
+        "column-formula-dependency" => {
+            assert!(
+                prebind.bind_record.uses_this_row,
+                "{case_id} column formula must use row context"
+            );
+        }
+        "totals-formula-dependency" => {
+            assert!(
+                sections.contains(&StructuredSectionKind::Data),
+                "{case_id} totals formula must depend on a data structured reference"
+            );
+        }
+        other => panic!("case {case_id} has unknown target_kind {other}"),
+    }
+}
+
+fn assert_live_bridge_projects_same_table_context(table_path: &str, table: &TableNodeFixture) {
     let bridge_workspace = WorkspaceModel::try_from(WorkspaceFixture {
         schema_version: "treecalc-workspace-v1".to_string(),
         workspace_id: "active-table-corpus-bridge".to_string(),
         description: None,
         profile: None,
         nodes: vec![WorkspaceNodeFixture {
-            node_id: "SalesTable".to_string(),
+            node_id: table_path.to_string(),
             formula: String::new(),
             is_meta: false,
             table: Some(table.clone()),
@@ -243,7 +470,7 @@ fn assert_live_bridge_projects_same_table_context(table: &TableNodeFixture) {
         .expect("LiveOxCalcTreeBridge must accept DnaTreeCalc table projection");
 
     assert!(
-        result.table_context_identities["SalesTable"].contains("treecalc.table_context.v1"),
+        result.table_context_identities[table_path].contains("treecalc.table_context.v1"),
         "bridge must retain the table context identity from the real OxCalc table projection"
     );
 }
@@ -384,24 +611,28 @@ fn evaluate_amount_totals(
     .expect("table totals formula evaluates through OxCalc table runtime")
 }
 
-fn table_sparse_values(
+fn table_sparse_values<'a>(
     table: &TableNodeFixture,
-    tax_report: &oxcalc_core::structured_table::TreeCalcTableFormulaRuntimeReport,
+    formula_report: Option<&oxcalc_core::structured_table::TreeCalcTableFormulaRuntimeReport>,
+    totals_values: impl IntoIterator<Item = (&'a str, EvalValue)>,
 ) -> Vec<TreeCalcTableSparseValue> {
     let mut values = table_constant_sparse_values(table);
-    values.extend(tax_report.cell_results.iter().filter_map(|cell| {
-        cell.row_id.as_ref().map(|row_id| {
-            TreeCalcTableSparseValue::data(
-                row_id.0.clone(),
-                tax_report.target_column_id.clone(),
-                cell.value.clone(),
-            )
-        })
-    }));
-    values.push(TreeCalcTableSparseValue::totals(
-        "col:amount",
-        EvalValue::Number(60.0),
-    ));
+    if let Some(formula_report) = formula_report {
+        values.extend(formula_report.cell_results.iter().filter_map(|cell| {
+            cell.row_id.as_ref().map(|row_id| {
+                TreeCalcTableSparseValue::data(
+                    row_id.0.clone(),
+                    formula_report.target_column_id.clone(),
+                    cell.value.clone(),
+                )
+            })
+        }));
+    }
+    values.extend(
+        totals_values
+            .into_iter()
+            .map(|(column_id, value)| TreeCalcTableSparseValue::totals(column_id, value)),
+    );
     values
 }
 

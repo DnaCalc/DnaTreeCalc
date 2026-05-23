@@ -1568,8 +1568,11 @@ mod tests {
         let node_ids_by_path = assign_node_ids(&workspace);
         let table_projections = build_table_projections(&workspace, &node_ids_by_path).unwrap();
 
-        assert_eq!(table_projections.len(), 1);
-        let projection = &table_projections[0];
+        assert_eq!(table_projections.len(), 2);
+        let projection = table_projections
+            .iter()
+            .find(|projection| projection.table_id == "tree-table:sales")
+            .expect("SalesTable projection exists");
         assert_eq!(projection.table_id, "tree-table:sales");
         assert_eq!(projection.table_descriptor.table_name, "SalesTable");
         assert_eq!(
@@ -1607,6 +1610,24 @@ mod tests {
         assert_eq!(
             prebound[0].bind_record.selected_column_ids,
             vec!["col:amount"]
+        );
+        let escaped_prebound = prebind_treecalc_table_structured_references(
+            "=SUM([Sales]]Table][[Gross]]Amount]])",
+            &table_projections,
+            None,
+            None,
+        );
+        assert_eq!(escaped_prebound.len(), 1);
+        assert_eq!(
+            escaped_prebound[0]
+                .bind_record
+                .effective_table_id
+                .as_deref(),
+            Some("tree-table:escaped-sales")
+        );
+        assert_eq!(
+            escaped_prebound[0].bind_record.selected_column_ids,
+            vec!["col:gross-amount"]
         );
 
         let mut first_table = WorkspaceFixture::from_repo_fixture("tables")

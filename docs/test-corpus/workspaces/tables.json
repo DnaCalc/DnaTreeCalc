@@ -76,6 +76,57 @@
         ]
       }
     },
+    {
+      "node_id": "Sales]Table",
+      "formula": "",
+      "table": {
+        "table_id": "tree-table:escaped-sales",
+        "display_path": "Sales]Table",
+        "canonical_path": "Sales]Table",
+        "table_namespace_version": "table-namespace:escaped-sales:v1",
+        "row_membership_version": "table-rows:escaped-sales:membership:v1",
+        "row_order_version": "table-rows:escaped-sales:order:v1",
+        "column_identity_version": "table-columns:escaped-sales:v1",
+        "identity_policy": {
+          "rename_preserves_table_id": true,
+          "move_preserves_table_id": true,
+          "delete_releases_table_id": true,
+          "note": "Escaped table fixture proves bracket-escaped table and column names use the OxCalc table prebind path without TreeCalc host parsing."
+        },
+        "header": { "present": true },
+        "totals": { "present": false },
+        "rows": [
+          { "row_id": "row:escaped-west", "ordinal": 1 },
+          { "row_id": "row:escaped-east", "ordinal": 2 }
+        ],
+        "columns": [
+          {
+            "column_id": "col:gross-amount",
+            "name": "Gross]Amount",
+            "ordinal": 1,
+            "body": {
+              "kind": "constant-cells",
+              "constants": [
+                { "row_id": "row:escaped-west", "value": "5" },
+                { "row_id": "row:escaped-east", "value": "15" }
+              ]
+            }
+          },
+          {
+            "column_id": "col:tax-rate",
+            "name": "Tax]Rate",
+            "ordinal": 2,
+            "body": {
+              "kind": "constant-cells",
+              "constants": [
+                { "row_id": "row:escaped-west", "value": "1" },
+                { "row_id": "row:escaped-east", "value": "2" }
+              ]
+            }
+          }
+        ]
+      }
+    },
     { "node_id": "SalesTable.Columns", "formula": "" },
     { "node_id": "SalesTable.Columns.Region", "formula": "" },
     { "node_id": "SalesTable.Columns.Amount", "formula": "" },
@@ -85,6 +136,9 @@
     { "node_id": "SalesTable.Headers.Amount", "formula": "Amount" },
     { "node_id": "SalesTable.Totals", "formula": "" },
     { "node_id": "SalesTable.Totals.Amount", "formula": "=SUM(SalesTable[Amount])" },
+    { "node_id": "Sales]Table.Columns", "formula": "" },
+    { "node_id": "Sales]Table.Columns.Gross]Amount", "formula": "" },
+    { "node_id": "Sales]Table.Columns.Tax]Rate", "formula": "" },
     { "node_id": "Sheet1", "formula": "" },
     { "node_id": "Sheet1.Report", "formula": "=SUM(SalesTable[Amount])" },
     { "node_id": "Sheet1.RowFormulaHost", "formula": "=[@Amount] * 2" }
