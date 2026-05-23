@@ -1,0 +1,1063 @@
+{
+  "comparison_views": [
+    {
+      "value": {
+        "canonical_locator": "SalesTable",
+        "columns": [
+          {
+            "body_formula": null,
+            "body_kind": "constant_cells",
+            "column_id": "col:region",
+            "column_name": "Region",
+            "data_range_ref": "B4:B6",
+            "ordinal": 1,
+            "totals_formula": null
+          },
+          {
+            "body_formula": null,
+            "body_kind": "constant_cells",
+            "column_id": "col:amount",
+            "column_name": "Amount",
+            "data_range_ref": "C4:C6",
+            "ordinal": 2,
+            "totals_formula": {
+              "bind_artifact_id": "bind:SalesTable.Totals.Amount",
+              "formula_stable_id": "formula:SalesTable.Totals.Amount",
+              "formula_text": "=SUM(SalesTable[Amount])",
+              "formula_text_version": "v1"
+            }
+          },
+          {
+            "body_formula": {
+              "bind_artifact_id": "bind:SalesTable.Columns.Tax",
+              "formula_stable_id": "formula:SalesTable.Columns.Tax",
+              "formula_text": "=[@Amount] * 0.1",
+              "formula_text_version": "v1"
+            },
+            "body_kind": "formula",
+            "column_id": "col:tax",
+            "column_name": "Tax",
+            "data_range_ref": "D4:D6",
+            "ordinal": 3,
+            "totals_formula": null
+          }
+        ],
+        "data_body": [
+          {
+            "cells": [
+              {
+                "column_id": "col:region",
+                "column_name": "Region",
+                "effective_display_text": "West",
+                "formula_text": null,
+                "row_id": "row:west",
+                "value_repr": "West"
+              },
+              {
+                "column_id": "col:amount",
+                "column_name": "Amount",
+                "effective_display_text": "10",
+                "formula_text": null,
+                "row_id": "row:west",
+                "value_repr": "10"
+              },
+              {
+                "column_id": "col:tax",
+                "column_name": "Tax",
+                "effective_display_text": "1",
+                "formula_text": "=[@Amount] * 0.1",
+                "row_id": "row:west",
+                "value_repr": "1"
+              }
+            ],
+            "ordinal": 1,
+            "row_id": "row:west"
+          },
+          {
+            "cells": [
+              {
+                "column_id": "col:region",
+                "column_name": "Region",
+                "effective_display_text": "East",
+                "formula_text": null,
+                "row_id": "row:east",
+                "value_repr": "East"
+              },
+              {
+                "column_id": "col:amount",
+                "column_name": "Amount",
+                "effective_display_text": "20",
+                "formula_text": null,
+                "row_id": "row:east",
+                "value_repr": "20"
+              },
+              {
+                "column_id": "col:tax",
+                "column_name": "Tax",
+                "effective_display_text": "2",
+                "formula_text": "=[@Amount] * 0.1",
+                "row_id": "row:east",
+                "value_repr": "2"
+              }
+            ],
+            "ordinal": 2,
+            "row_id": "row:east"
+          },
+          {
+            "cells": [
+              {
+                "column_id": "col:region",
+                "column_name": "Region",
+                "effective_display_text": "North",
+                "formula_text": null,
+                "row_id": "row:north",
+                "value_repr": "North"
+              },
+              {
+                "column_id": "col:amount",
+                "column_name": "Amount",
+                "effective_display_text": "30",
+                "formula_text": null,
+                "row_id": "row:north",
+                "value_repr": "30"
+              },
+              {
+                "column_id": "col:tax",
+                "column_name": "Tax",
+                "effective_display_text": "3",
+                "formula_text": "=[@Amount] * 0.1",
+                "row_id": "row:north",
+                "value_repr": "3"
+              }
+            ],
+            "ordinal": 3,
+            "row_id": "row:north"
+          }
+        ],
+        "data_body_column_range_refs": [
+          "B4:B6",
+          "C4:C6",
+          "D4:D6"
+        ],
+        "data_body_range_ref": "B4:D6",
+        "display_path": "SalesTable",
+        "engine_identity_refs": {
+          "body_metadata_token": "treecalc.table_body.token.v1;fnv1a64=9fdc78eb8c43ca66",
+          "column_identity": "treecalc.table_columns.identity_token.v1;table=16:tree-table:sales;version=22:table-columns:sales:v1;column_count=1:3",
+          "row_membership_identity": "treecalc.table_rows.membership_token.v1;table=16:tree-table:sales;version=30:table-rows:sales:membership:v1;row_count=1:3",
+          "row_order_identity": "treecalc.table_rows.order_token.v1;table=16:tree-table:sales;version=25:table-rows:sales:order:v1;row_count=1:3",
+          "table_context_identity_present": true,
+          "table_invalidation_identity_present": true,
+          "table_namespace_token": "treecalc.table_namespace.token.v1;fnv1a64=2572d2401459e8a8",
+          "totals_metadata_token": "treecalc.table_totals.token.v1;fnv1a64=230cbd2de17561c6",
+          "virtual_anchor_token": "treecalc.table_anchor.token.v1;fnv1a64=b17f2c9cf3b8fa50"
+        },
+        "header_region_ref": "B3:D3",
+        "header_row": {
+          "cells": [
+            {
+              "column_id": "col:region",
+              "column_name": "Region",
+              "effective_display_text": "Region",
+              "value_repr": "Region",
+              "value_state": "defined"
+            },
+            {
+              "column_id": "col:amount",
+              "column_name": "Amount",
+              "effective_display_text": "Amount",
+              "value_repr": "Amount",
+              "value_state": "defined"
+            },
+            {
+              "column_id": "col:tax",
+              "column_name": "Tax",
+              "effective_display_text": "Tax",
+              "value_repr": "Tax",
+              "value_state": "defined"
+            }
+          ],
+          "present": true
+        },
+        "header_row_present": true,
+        "rows": [
+          {
+            "ordinal": 1,
+            "row_id": "row:west"
+          },
+          {
+            "ordinal": 2,
+            "row_id": "row:east"
+          },
+          {
+            "ordinal": 3,
+            "row_id": "row:north"
+          }
+        ],
+        "source_status": "direct",
+        "table_id": "tree-table:sales",
+        "table_name": "SalesTable",
+        "table_node_id": "node:1",
+        "table_range_ref": "B3:D7",
+        "table_slice_schema": "dna_treecalc.table_slice.v1",
+        "totals_region_ref": "B7:D7",
+        "totals_row": {
+          "cells": [
+            {
+              "column_id": "col:region",
+              "column_name": "Region",
+              "effective_display_text": "",
+              "formula_text": null,
+              "value_repr": "",
+              "value_state": "blank"
+            },
+            {
+              "column_id": "col:amount",
+              "column_name": "Amount",
+              "effective_display_text": "60",
+              "formula_text": "=SUM(SalesTable[Amount])",
+              "value_repr": "60",
+              "value_state": "defined"
+            },
+            {
+              "column_id": "col:tax",
+              "column_name": "Tax",
+              "effective_display_text": "",
+              "formula_text": null,
+              "value_repr": "",
+              "value_state": "blank"
+            }
+          ],
+          "present": true
+        },
+        "totals_row_present": true,
+        "versions": {
+          "column_identity_version": "table-columns:sales:v1",
+          "row_membership_version": "table-rows:sales:membership:v1",
+          "row_order_version": "table-rows:sales:order:v1",
+          "table_namespace_version": "table-namespace:sales:v1"
+        }
+      },
+      "view_family": "table_slice"
+    },
+    {
+      "value": {
+        "nodes": [
+          {
+            "canonical_locator": "tree:tables:Sheet1.Report",
+            "comparison_value": {
+              "boundary": "published_formula_result",
+              "value": {
+                "kind": "number",
+                "number": 60.0
+              },
+              "wire_schema": "oxfunc_value_types.aligned_json.v1"
+            },
+            "corpus_case_id": "tbl-column-ref",
+            "node_id": "Sheet1.Report",
+            "source_formula": "=SUM(SalesTable[Amount])"
+          },
+          {
+            "canonical_locator": "tree:tables:SalesTable.Totals.Amount",
+            "comparison_value": {
+              "boundary": "published_formula_result",
+              "value": {
+                "kind": "number",
+                "number": 60.0
+              },
+              "wire_schema": "oxfunc_value_types.aligned_json.v1"
+            },
+            "formula_stable_id": "formula:SalesTable.Totals.Amount",
+            "node_id": "SalesTable.Totals.Amount",
+            "source_formula": "=SUM(SalesTable[Amount])"
+          }
+        ],
+        "source_status": "direct",
+        "table_cells": [
+          {
+            "canonical_locator": "tree:tables:SalesTable[row=row:west,column=col:region]",
+            "column_id": "col:region",
+            "comparison_value": {
+              "boundary": "published_formula_result",
+              "value": {
+                "kind": "text",
+                "utf16_code_units": [
+                  87,
+                  101,
+                  115,
+                  116
+                ]
+              },
+              "wire_schema": "oxfunc_value_types.aligned_json.v1"
+            },
+            "row_id": "row:west",
+            "table_id": "tree-table:sales"
+          },
+          {
+            "canonical_locator": "tree:tables:SalesTable[row=row:west,column=col:amount]",
+            "column_id": "col:amount",
+            "comparison_value": {
+              "boundary": "published_formula_result",
+              "value": {
+                "kind": "number",
+                "number": 10.0
+              },
+              "wire_schema": "oxfunc_value_types.aligned_json.v1"
+            },
+            "row_id": "row:west",
+            "table_id": "tree-table:sales"
+          },
+          {
+            "canonical_locator": "tree:tables:SalesTable[row=row:west,column=col:tax]",
+            "column_id": "col:tax",
+            "comparison_value": {
+              "boundary": "published_formula_result",
+              "value": {
+                "kind": "number",
+                "number": 1.0
+              },
+              "wire_schema": "oxfunc_value_types.aligned_json.v1"
+            },
+            "row_id": "row:west",
+            "table_id": "tree-table:sales"
+          },
+          {
+            "canonical_locator": "tree:tables:SalesTable[row=row:east,column=col:region]",
+            "column_id": "col:region",
+            "comparison_value": {
+              "boundary": "published_formula_result",
+              "value": {
+                "kind": "text",
+                "utf16_code_units": [
+                  69,
+                  97,
+                  115,
+                  116
+                ]
+              },
+              "wire_schema": "oxfunc_value_types.aligned_json.v1"
+            },
+            "row_id": "row:east",
+            "table_id": "tree-table:sales"
+          },
+          {
+            "canonical_locator": "tree:tables:SalesTable[row=row:east,column=col:amount]",
+            "column_id": "col:amount",
+            "comparison_value": {
+              "boundary": "published_formula_result",
+              "value": {
+                "kind": "number",
+                "number": 20.0
+              },
+              "wire_schema": "oxfunc_value_types.aligned_json.v1"
+            },
+            "row_id": "row:east",
+            "table_id": "tree-table:sales"
+          },
+          {
+            "canonical_locator": "tree:tables:SalesTable[row=row:east,column=col:tax]",
+            "column_id": "col:tax",
+            "comparison_value": {
+              "boundary": "published_formula_result",
+              "value": {
+                "kind": "number",
+                "number": 2.0
+              },
+              "wire_schema": "oxfunc_value_types.aligned_json.v1"
+            },
+            "row_id": "row:east",
+            "table_id": "tree-table:sales"
+          },
+          {
+            "canonical_locator": "tree:tables:SalesTable[row=row:north,column=col:region]",
+            "column_id": "col:region",
+            "comparison_value": {
+              "boundary": "published_formula_result",
+              "value": {
+                "kind": "text",
+                "utf16_code_units": [
+                  78,
+                  111,
+                  114,
+                  116,
+                  104
+                ]
+              },
+              "wire_schema": "oxfunc_value_types.aligned_json.v1"
+            },
+            "row_id": "row:north",
+            "table_id": "tree-table:sales"
+          },
+          {
+            "canonical_locator": "tree:tables:SalesTable[row=row:north,column=col:amount]",
+            "column_id": "col:amount",
+            "comparison_value": {
+              "boundary": "published_formula_result",
+              "value": {
+                "kind": "number",
+                "number": 30.0
+              },
+              "wire_schema": "oxfunc_value_types.aligned_json.v1"
+            },
+            "row_id": "row:north",
+            "table_id": "tree-table:sales"
+          },
+          {
+            "canonical_locator": "tree:tables:SalesTable[row=row:north,column=col:tax]",
+            "column_id": "col:tax",
+            "comparison_value": {
+              "boundary": "published_formula_result",
+              "value": {
+                "kind": "number",
+                "number": 3.0
+              },
+              "wire_schema": "oxfunc_value_types.aligned_json.v1"
+            },
+            "row_id": "row:north",
+            "table_id": "tree-table:sales"
+          }
+        ]
+      },
+      "view_family": "per_node_value"
+    },
+    {
+      "value": {
+        "entries": [
+          {
+            "effective_display_text": "1",
+            "locator": "SalesTable[row=row:west,column=col:tax]",
+            "trust_status": "model_display_string"
+          },
+          {
+            "effective_display_text": "2",
+            "locator": "SalesTable[row=row:east,column=col:tax]",
+            "trust_status": "model_display_string"
+          },
+          {
+            "effective_display_text": "3",
+            "locator": "SalesTable[row=row:north,column=col:tax]",
+            "trust_status": "model_display_string"
+          },
+          {
+            "effective_display_text": "60",
+            "locator": "SalesTable.Totals.Amount",
+            "trust_status": "model_display_string"
+          }
+        ],
+        "render_context": {
+          "context_id": "treecalc-model-display-v1",
+          "context_kind": "treecalc_model_display",
+          "trust_class": "direct"
+        },
+        "source_status": "direct"
+      },
+      "view_family": "effective_display_text"
+    },
+    {
+      "value": {
+        "bridge": "LiveOxCalcTreeBridge",
+        "class_id": "treecalc_table_structured_reference_projection_ready",
+        "engine_surface": "OxCalc W056 structured-table public APIs",
+        "lane_reason_code": "dnatreecalc_w056_table_projection_retained",
+        "outcome_kind": "accepted_execution",
+        "outcome_schema": "dna_treecalc.execution_outcome.v1",
+        "outcome_stage": "live_oxcalc_table_projection",
+        "replay_view_ready": true,
+        "scenario_id": "w056_treecalc_table_structured_references_001"
+      },
+      "view_family": "execution_outcome"
+    },
+    {
+      "value": {
+        "column_identity": "treecalc.table_columns.identity_token.v1;table=16:tree-table:sales;version=22:table-columns:sales:v1;column_count=1:3",
+        "dependencies": [
+          {
+            "caller_context_dependency": false,
+            "case_id": "tbl-column-ref",
+            "host_ref_handle": "treecalc.structured_table_ref.handle.v1;start=1:5;len=2:18",
+            "replay_identity_present": true,
+            "resolved_table_id": "tree-table:sales",
+            "selected_column_ids": [
+              "col:amount"
+            ],
+            "selected_sections": [
+              "data"
+            ],
+            "source_span_utf8": {
+              "len": 18,
+              "start": 5
+            },
+            "source_token_text": "SalesTable[Amount]"
+          },
+          {
+            "caller_context_dependency": true,
+            "case_id": "tbl-path-current-row-ref",
+            "host_ref_handle": "treecalc.structured_table_ref.handle.v1;start=1:1;len=2:19",
+            "replay_identity_present": true,
+            "resolved_table_id": "tree-table:sales",
+            "selected_column_ids": [
+              "col:amount"
+            ],
+            "selected_sections": [
+              "this_row"
+            ],
+            "source_span_utf8": {
+              "len": 19,
+              "start": 1
+            },
+            "source_token_text": "SalesTable[@Amount]"
+          },
+          {
+            "caller_context_dependency": true,
+            "case_id": "tbl-current-row-ref",
+            "host_ref_handle": "treecalc.structured_table_ref.handle.v1;start=1:1;len=1:9",
+            "replay_identity_present": true,
+            "resolved_table_id": "tree-table:sales",
+            "selected_column_ids": [
+              "col:amount"
+            ],
+            "selected_sections": [
+              "this_row"
+            ],
+            "source_span_utf8": {
+              "len": 9,
+              "start": 1
+            },
+            "source_token_text": "[@Amount]"
+          },
+          {
+            "caller_context_dependency": false,
+            "case_id": "tbl-special-headers",
+            "host_ref_handle": "treecalc.structured_table_ref.handle.v1;start=1:8;len=2:20",
+            "replay_identity_present": true,
+            "resolved_table_id": "tree-table:sales",
+            "selected_column_ids": [],
+            "selected_sections": [
+              "headers"
+            ],
+            "source_span_utf8": {
+              "len": 20,
+              "start": 8
+            },
+            "source_token_text": "SalesTable[#Headers]"
+          },
+          {
+            "caller_context_dependency": false,
+            "case_id": "tbl-special-data-column",
+            "host_ref_handle": "treecalc.structured_table_ref.handle.v1;start=1:5;len=2:28",
+            "replay_identity_present": true,
+            "resolved_table_id": "tree-table:sales",
+            "selected_column_ids": [
+              "col:amount"
+            ],
+            "selected_sections": [
+              "data"
+            ],
+            "source_span_utf8": {
+              "len": 28,
+              "start": 5
+            },
+            "source_token_text": "SalesTable[[#Data],[Amount]]"
+          },
+          {
+            "caller_context_dependency": false,
+            "case_id": "tbl-special-totals-column",
+            "host_ref_handle": "treecalc.structured_table_ref.handle.v1;start=1:5;len=2:30",
+            "replay_identity_present": true,
+            "resolved_table_id": "tree-table:sales",
+            "selected_column_ids": [
+              "col:amount"
+            ],
+            "selected_sections": [
+              "totals"
+            ],
+            "source_span_utf8": {
+              "len": 30,
+              "start": 5
+            },
+            "source_token_text": "SalesTable[[#Totals],[Amount]]"
+          },
+          {
+            "caller_context_dependency": false,
+            "case_id": "tbl-special-all",
+            "host_ref_handle": "treecalc.structured_table_ref.handle.v1;start=1:8;len=2:16",
+            "replay_identity_present": true,
+            "resolved_table_id": "tree-table:sales",
+            "selected_column_ids": [],
+            "selected_sections": [
+              "all"
+            ],
+            "source_span_utf8": {
+              "len": 16,
+              "start": 8
+            },
+            "source_token_text": "SalesTable[#All]"
+          },
+          {
+            "caller_context_dependency": false,
+            "case_id": "tbl-composite-data-columns",
+            "host_ref_handle": "treecalc.structured_table_ref.handle.v1;start=1:5;len=2:34",
+            "replay_identity_present": true,
+            "resolved_table_id": "tree-table:sales",
+            "selected_column_ids": [
+              "col:amount",
+              "col:tax"
+            ],
+            "selected_sections": [
+              "data"
+            ],
+            "source_span_utf8": {
+              "len": 34,
+              "start": 5
+            },
+            "source_token_text": "SalesTable[[#Data],[Amount]:[Tax]]"
+          },
+          {
+            "caller_context_dependency": true,
+            "case_id": "tbl-column-formula",
+            "host_ref_handle": "treecalc.structured_table_ref.handle.v1;start=1:1;len=1:9",
+            "replay_identity_present": true,
+            "resolved_table_id": "tree-table:sales",
+            "selected_column_ids": [
+              "col:amount"
+            ],
+            "selected_sections": [
+              "this_row"
+            ],
+            "source_span_utf8": {
+              "len": 9,
+              "start": 1
+            },
+            "source_token_text": "[@Amount]"
+          },
+          {
+            "caller_context_dependency": false,
+            "case_id": "tbl-totals-formula",
+            "host_ref_handle": "treecalc.structured_table_ref.handle.v1;start=1:5;len=2:18",
+            "replay_identity_present": true,
+            "resolved_table_id": "tree-table:sales",
+            "selected_column_ids": [
+              "col:amount"
+            ],
+            "selected_sections": [
+              "data"
+            ],
+            "source_span_utf8": {
+              "len": 18,
+              "start": 5
+            },
+            "source_token_text": "SalesTable[Amount]"
+          }
+        ],
+        "row_membership_identity": "treecalc.table_rows.membership_token.v1;table=16:tree-table:sales;version=30:table-rows:sales:membership:v1;row_count=1:3",
+        "row_order_identity": "treecalc.table_rows.order_token.v1;table=16:tree-table:sales;version=25:table-rows:sales:order:v1;row_count=1:3",
+        "source_status": "direct",
+        "table_context_identity_present": true,
+        "table_id": "tree-table:sales"
+      },
+      "view_family": "dependency_evidence"
+    },
+    {
+      "value": {
+        "classification_api": "classify_treecalc_table_update",
+        "impacts": [
+          {
+            "changed_dependency_kinds": [
+              "structured_table_data_region"
+            ],
+            "invalidation_reasons": [
+              "structured_table_region_changed"
+            ],
+            "prepared_identity_inputs": [],
+            "scenario": "body_cell_edit"
+          },
+          {
+            "changed_dependency_kinds": [
+              "structured_table_identity",
+              "structured_table_column_identity",
+              "structured_table_data_region"
+            ],
+            "invalidation_reasons": [
+              "structured_table_context_changed",
+              "structured_table_region_changed"
+            ],
+            "prepared_identity_inputs": [
+              "structure_context_version",
+              "table_context_identity"
+            ],
+            "scenario": "body_formula_edit"
+          },
+          {
+            "changed_dependency_kinds": [
+              "structured_table_identity",
+              "structured_table_row_membership",
+              "structured_table_row_order",
+              "structured_table_data_region",
+              "structured_table_totals_region",
+              "structured_table_caller_context"
+            ],
+            "invalidation_reasons": [
+              "structured_table_context_changed",
+              "structured_table_row_membership_changed",
+              "structured_table_row_order_changed",
+              "structured_table_region_changed",
+              "structured_table_caller_context_changed"
+            ],
+            "prepared_identity_inputs": [
+              "table_context_identity",
+              "caller_context_identity"
+            ],
+            "scenario": "row_insert"
+          },
+          {
+            "changed_dependency_kinds": [
+              "structured_table_identity",
+              "structured_table_row_membership",
+              "structured_table_row_order",
+              "structured_table_data_region",
+              "structured_table_totals_region",
+              "structured_table_caller_context"
+            ],
+            "invalidation_reasons": [
+              "structured_table_context_changed",
+              "structured_table_row_membership_changed",
+              "structured_table_row_order_changed",
+              "structured_table_region_changed",
+              "structured_table_caller_context_changed"
+            ],
+            "prepared_identity_inputs": [
+              "table_context_identity",
+              "caller_context_identity"
+            ],
+            "scenario": "row_delete"
+          },
+          {
+            "changed_dependency_kinds": [
+              "structured_table_identity",
+              "structured_table_row_order",
+              "structured_table_caller_context"
+            ],
+            "invalidation_reasons": [
+              "structured_table_context_changed",
+              "structured_table_row_order_changed",
+              "structured_table_caller_context_changed"
+            ],
+            "prepared_identity_inputs": [
+              "table_context_identity",
+              "caller_context_identity"
+            ],
+            "scenario": "row_reorder"
+          },
+          {
+            "changed_dependency_kinds": [
+              "structured_table_identity",
+              "structured_table_column_identity",
+              "structured_table_header_text",
+              "structured_table_header_region",
+              "structured_table_data_region",
+              "structured_table_totals_region"
+            ],
+            "invalidation_reasons": [
+              "structured_table_context_changed",
+              "structured_table_column_changed",
+              "structured_table_region_changed"
+            ],
+            "prepared_identity_inputs": [
+              "table_context_identity"
+            ],
+            "scenario": "column_insert"
+          },
+          {
+            "changed_dependency_kinds": [
+              "structured_table_identity",
+              "structured_table_column_identity",
+              "structured_table_header_text",
+              "structured_table_header_region",
+              "structured_table_data_region",
+              "structured_table_totals_region"
+            ],
+            "invalidation_reasons": [
+              "structured_table_context_changed",
+              "structured_table_column_changed",
+              "structured_table_region_changed"
+            ],
+            "prepared_identity_inputs": [
+              "table_context_identity"
+            ],
+            "scenario": "column_delete"
+          },
+          {
+            "changed_dependency_kinds": [
+              "structured_table_identity",
+              "structured_table_column_identity",
+              "structured_table_header_text",
+              "structured_table_header_region",
+              "structured_table_data_region",
+              "structured_table_totals_region"
+            ],
+            "invalidation_reasons": [
+              "structured_table_context_changed",
+              "structured_table_column_changed",
+              "structured_table_region_changed"
+            ],
+            "prepared_identity_inputs": [
+              "table_context_identity"
+            ],
+            "scenario": "column_reorder"
+          },
+          {
+            "changed_dependency_kinds": [
+              "structured_table_identity",
+              "structured_table_column_identity",
+              "structured_table_header_text",
+              "structured_table_header_region",
+              "structured_table_data_region",
+              "structured_table_totals_region"
+            ],
+            "invalidation_reasons": [
+              "structured_table_context_changed",
+              "structured_table_column_changed",
+              "structured_table_region_changed"
+            ],
+            "prepared_identity_inputs": [
+              "table_context_identity"
+            ],
+            "scenario": "column_rename"
+          },
+          {
+            "changed_dependency_kinds": [
+              "structured_table_identity",
+              "structured_table_column_identity",
+              "structured_table_header_text",
+              "structured_table_header_region",
+              "structured_table_data_region",
+              "structured_table_totals_region"
+            ],
+            "invalidation_reasons": [
+              "structured_table_context_changed",
+              "structured_table_column_changed",
+              "structured_table_region_changed"
+            ],
+            "prepared_identity_inputs": [
+              "table_context_identity"
+            ],
+            "scenario": "header_text_edit"
+          },
+          {
+            "changed_dependency_kinds": [
+              "structured_table_identity",
+              "structured_table_totals_region"
+            ],
+            "invalidation_reasons": [
+              "structured_table_context_changed",
+              "structured_table_region_changed"
+            ],
+            "prepared_identity_inputs": [
+              "table_context_identity"
+            ],
+            "scenario": "totals_row_toggle"
+          },
+          {
+            "changed_dependency_kinds": [
+              "structured_table_identity",
+              "structured_table_totals_region"
+            ],
+            "invalidation_reasons": [
+              "structured_table_context_changed",
+              "structured_table_region_changed"
+            ],
+            "prepared_identity_inputs": [
+              "table_context_identity"
+            ],
+            "scenario": "totals_formula_edit"
+          },
+          {
+            "changed_dependency_kinds": [
+              "structured_table_identity",
+              "structured_table_enclosing_table"
+            ],
+            "invalidation_reasons": [
+              "structural_rebind_required",
+              "structured_table_context_changed"
+            ],
+            "prepared_identity_inputs": [
+              "host_namespace_version",
+              "table_context_identity",
+              "resolution_rule_version"
+            ],
+            "scenario": "table_rename"
+          },
+          {
+            "changed_dependency_kinds": [
+              "structured_table_identity",
+              "structured_table_header_region",
+              "structured_table_data_region",
+              "structured_table_totals_region"
+            ],
+            "invalidation_reasons": [
+              "structural_rebind_required",
+              "structured_table_context_changed"
+            ],
+            "prepared_identity_inputs": [
+              "table_context_identity"
+            ],
+            "scenario": "table_move"
+          },
+          {
+            "changed_dependency_kinds": [
+              "structured_table_identity",
+              "structured_table_row_membership",
+              "structured_table_row_order",
+              "structured_table_column_identity",
+              "structured_table_header_text",
+              "structured_table_header_region",
+              "structured_table_data_region",
+              "structured_table_totals_region",
+              "structured_table_caller_context",
+              "structured_table_enclosing_table"
+            ],
+            "invalidation_reasons": [
+              "structural_rebind_required"
+            ],
+            "prepared_identity_inputs": [
+              "host_namespace_version",
+              "table_context_identity",
+              "resolution_rule_version"
+            ],
+            "scenario": "table_delete"
+          },
+          {
+            "changed_dependency_kinds": [],
+            "invalidation_reasons": [],
+            "prepared_identity_inputs": [],
+            "scenario": "save_reopen"
+          },
+          {
+            "changed_dependency_kinds": [
+              "structured_table_identity",
+              "structured_table_enclosing_table"
+            ],
+            "invalidation_reasons": [
+              "structural_rebind_required",
+              "structured_table_context_changed"
+            ],
+            "prepared_identity_inputs": [
+              "host_namespace_version",
+              "table_context_identity",
+              "resolution_rule_version"
+            ],
+            "scenario": "structural_rebind"
+          }
+        ],
+        "source_status": "direct",
+        "table_id": "tree-table:sales"
+      },
+      "view_family": "invalidation_evidence"
+    },
+    {
+      "value": {
+        "artifact_kind": "w056_table_structured_reference_replay",
+        "artifact_refs": [
+          {
+            "kind": "normalized_replay",
+            "path": "docs/test-runs/w056-table-structured-references-001/views/normalized-replay.json"
+          },
+          {
+            "kind": "replay_manifest",
+            "path": "docs/test-runs/w056-table-structured-references-001/oxreplay-manifest.json"
+          },
+          {
+            "kind": "source_corpus",
+            "path": "docs/test-corpus/tables/structured-references.json"
+          },
+          {
+            "kind": "source_workspace",
+            "path": "docs/test-corpus/workspaces/tables.json"
+          }
+        ],
+        "capture_loss": "none",
+        "capture_mode": "model_projection",
+        "host_id": "dna_treecalc",
+        "projection_status": "direct",
+        "source_status": "direct"
+      },
+      "view_family": "retained_artifact_ref"
+    }
+  ],
+  "events": [
+    {
+      "event_id": "treecalc_table_slice_sales",
+      "normalized_family": "treecalc.surface.table_slice.direct:SalesTable",
+      "source_label": "table_slice:SalesTable:direct"
+    },
+    {
+      "event_id": "treecalc_table_dependencies_sales",
+      "normalized_family": "treecalc.surface.dependency_evidence.direct:SalesTable",
+      "source_label": "dependency_evidence:SalesTable:direct"
+    },
+    {
+      "event_id": "treecalc_table_invalidations_sales",
+      "normalized_family": "treecalc.surface.invalidation_evidence.direct:SalesTable",
+      "source_label": "invalidation_evidence:SalesTable:direct"
+    }
+  ],
+  "lane_id": "dna_treecalc",
+  "registry_refs": [
+    {
+      "family": "dnatreecalc.test_corpus",
+      "version": "tables/structured-references@treecalc-corpus-v1:cases=13"
+    },
+    {
+      "family": "dnatreecalc.workspace_fixture",
+      "version": "tables@treecalc-workspace-v1"
+    }
+  ],
+  "scenario_id": "w056_treecalc_table_structured_references_001",
+  "source_metadata": {
+    "adapter_id": "dnatreecalc.oxcalc_table_projection.v1",
+    "bridge_influenced": true,
+    "capture_loss": "none",
+    "capture_loss_summary": [],
+    "capture_mode": "model_projection",
+    "comparison_view_families": [
+      "table_slice",
+      "per_node_value",
+      "effective_display_text",
+      "execution_outcome",
+      "dependency_evidence",
+      "invalidation_evidence",
+      "retained_artifact_ref"
+    ],
+    "cross_producer_aliases": [
+      "xlplay_structured_reference_workbook_001",
+      "xlplay_table_construction_basic_001"
+    ],
+    "interpretation_limits": [
+      {
+        "detail": "This artifact is DnaTreeCalc/OxCalc retained producer evidence; Excel black-box observation is supplied by OxXlPlay.",
+        "kind": "model_projection_not_excel_observation"
+      },
+      {
+        "detail": "Structured-reference parse and bind facts come from OxCalc/OxFml public table packets, not DnaTreeCalc formula parsing.",
+        "kind": "no_private_formula_semantics"
+      }
+    ],
+    "projection_status": "direct",
+    "retained_scope": "primary_sales_table_update_slice",
+    "shared_scenario_alias": "w056_table_structured_references_001",
+    "source_host": "dna_treecalc",
+    "source_refs": [
+      "docs/test-corpus/tables/structured-references.json",
+      "docs/test-corpus/workspaces/tables.json"
+    ],
+    "source_schema_id": "dna_treecalc.w056_table_replay.v1",
+    "unavailable_surfaces": [
+      {
+        "reason": "The active table runner exercises bracket-escaped table and column references; this retained producer artifact keeps the primary SalesTable update/evidence slice for OxReplay intake.",
+        "surface": "escaped_table_retained_table_slice"
+      }
+    ],
+    "uncertainty_summary": [],
+    "workspace_id": "tables"
+  }
+}

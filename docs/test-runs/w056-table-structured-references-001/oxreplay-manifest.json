@@ -1,0 +1,28 @@
+{
+  "adapter_id": "dnatreecalc.oxcalc_table_projection.v1",
+  "bundle_id": "dnatreecalc-w056-table-structured-references-001",
+  "bundle_schema": "replay.bundle.v1",
+  "capture_loss": "none",
+  "capture_mode": "model_projection",
+  "declared_comparison_views": [
+    "table_slice",
+    "per_node_value",
+    "effective_display_text",
+    "execution_outcome",
+    "dependency_evidence",
+    "invalidation_evidence",
+    "retained_artifact_ref"
+  ],
+  "lane_id": "dna_treecalc",
+  "projection_status": "lossless",
+  "registry_refs": [],
+  "scenario_id": "w056_treecalc_table_structured_references_001",
+  "sidecars": [],
+  "source_schema": "dna_treecalc.replay_bundle_seed.v1",
+  "views": [
+    {
+      "artifact_family": "normalized_replay",
+      "path": "views/normalized-replay.json"
+    }
+  ]
+}

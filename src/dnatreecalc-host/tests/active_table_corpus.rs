@@ -31,6 +31,7 @@ use oxfml_core::seam::Locus;
 use oxfml_core::source::FormulaSourceRecord;
 use oxfunc_core::value::{EvalValue, ExcelText};
 use serde::Deserialize;
+use serde_json::{Value, json};
 
 #[derive(Debug, Deserialize)]
 struct CorpusTheme {
@@ -254,6 +255,52 @@ fn active_table_structured_reference_corpus_executes_through_oxcalc_table_path()
     }
 
     assert_table_update_scenarios_are_classified(&sales_projection);
+}
+
+#[test]
+fn retained_table_replay_artifact_matches_live_oxcalc_projection() {
+    let theme = load_theme(repo_corpus_path("tables/structured-references.json"));
+    let workspace = load_workspace("tables");
+    let (sales_table, sales_snapshot, sales_projection) = table_evidence(&workspace, "SalesTable");
+    let tax_report = evaluate_tax_column(&sales_snapshot, &sales_projection, sales_table);
+    let totals_amount = evaluate_amount_totals(&sales_snapshot, &sales_projection, sales_table);
+
+    let artifact = retained_table_replay_artifact(
+        &theme,
+        &workspace,
+        sales_table,
+        &sales_snapshot,
+        &sales_projection,
+        &tax_report,
+        &totals_amount,
+    );
+    let artifact_path = repo_docs_path(
+        "test-runs/w056-table-structured-references-001/views/normalized-replay.json",
+    );
+    let manifest_path =
+        repo_docs_path("test-runs/w056-table-structured-references-001/oxreplay-manifest.json");
+    let manifest = retained_table_replay_manifest();
+    if std::env::var_os("DNATREECALC_UPDATE_RETAINED_TABLE_REPLAY").is_some() {
+        write_pretty_json(&artifact_path, &artifact);
+        write_pretty_json(&manifest_path, &manifest);
+    }
+    let expected_artifact = load_expected_json_or_panic_with_generated(&artifact_path, &artifact);
+    assert_eq!(
+        expected_artifact, artifact,
+        "retained W056 table artifact must stay generated from the live OxCalc table projection"
+    );
+
+    let expected_manifest = load_expected_json_or_panic_with_generated(&manifest_path, &manifest);
+    assert_eq!(
+        expected_manifest, manifest,
+        "retained W056 table manifest must stay aligned with the generated replay view"
+    );
+    assert!(
+        manifest["views"].as_array().is_some_and(|views| views
+            .iter()
+            .any(|view| view["path"] == json!("views/normalized-replay.json"))),
+        "manifest must point OxReplay at the normalized-replay view"
+    );
 }
 
 fn is_simple_current_row_reference_formula(
@@ -720,6 +767,22 @@ fn evaluate_case_formula(
     caller_region: Option<TableCallerRegion>,
     runtime_binding: oxcalc_core::structured_table::TreeCalcStructuredTableRuntimeBinding,
 ) -> String {
+    display_value(&evaluate_case_formula_value(
+        case_id,
+        formula_text,
+        projection,
+        caller_region,
+        runtime_binding,
+    ))
+}
+
+fn evaluate_case_formula_value(
+    case_id: &str,
+    formula_text: &str,
+    projection: &TreeCalcTableNodeProjection,
+    caller_region: Option<TableCallerRegion>,
+    runtime_binding: oxcalc_core::structured_table::TreeCalcStructuredTableRuntimeBinding,
+) -> EvalValue {
     let result = RuntimeEnvironment::new()
         .with_primary_locus(table_primary_locus(projection))
         .with_table_context(
@@ -745,7 +808,7 @@ fn evaluate_case_formula(
         result.syntax_diagnostics,
         result.bind_diagnostics
     );
-    display_value(&result.evaluation.oxfunc_value)
+    result.evaluation.oxfunc_value
 }
 
 fn table_primary_locus(projection: &TreeCalcTableNodeProjection) -> Locus {
@@ -872,6 +935,924 @@ fn assert_table_update_scenarios_are_classified(projection: &TreeCalcTableNodePr
     );
 }
 
+fn retained_table_replay_artifact(
+    theme: &CorpusTheme,
+    workspace: &WorkspaceModel,
+    table: &TableNodeFixture,
+    snapshot: &TreeCalcTableNodeSnapshot,
+    projection: &TreeCalcTableNodeProjection,
+    tax_report: &oxcalc_core::structured_table::TreeCalcTableFormulaRuntimeReport,
+    totals_amount: &oxcalc_core::structured_table::TreeCalcTableFormulaRuntimeCellResult,
+) -> Value {
+    json!({
+        "scenario_id": "w056_treecalc_table_structured_references_001",
+        "lane_id": "dna_treecalc",
+        "events": [
+            {
+                "event_id": "treecalc_table_slice_sales",
+                "source_label": "table_slice:SalesTable:direct",
+                "normalized_family": "treecalc.surface.table_slice.direct:SalesTable"
+            },
+            {
+                "event_id": "treecalc_table_dependencies_sales",
+                "source_label": "dependency_evidence:SalesTable:direct",
+                "normalized_family": "treecalc.surface.dependency_evidence.direct:SalesTable"
+            },
+            {
+                "event_id": "treecalc_table_invalidations_sales",
+                "source_label": "invalidation_evidence:SalesTable:direct",
+                "normalized_family": "treecalc.surface.invalidation_evidence.direct:SalesTable"
+            }
+        ],
+        "registry_refs": [
+            {
+                "family": "dnatreecalc.test_corpus",
+                "version": format!("{}@{}:cases={}", theme.theme, theme.schema_version, theme.cases.len())
+            },
+            {
+                "family": "dnatreecalc.workspace_fixture",
+                "version": format!("{}@treecalc-workspace-v1", workspace.workspace_id)
+            }
+        ],
+        "comparison_views": [
+            {
+                "view_family": "table_slice",
+                "value": retained_table_slice_json(table, snapshot, projection, tax_report, totals_amount)
+            },
+            {
+                "view_family": "per_node_value",
+                "value": retained_per_node_value_json(
+                    theme,
+                    workspace,
+                    table,
+                    snapshot,
+                    projection,
+                    tax_report,
+                    totals_amount,
+                )
+            },
+            {
+                "view_family": "effective_display_text",
+                "value": retained_effective_display_text_json(tax_report, totals_amount)
+            },
+            {
+                "view_family": "execution_outcome",
+                "value": {
+                    "outcome_schema": "dna_treecalc.execution_outcome.v1",
+                    "scenario_id": "w056_treecalc_table_structured_references_001",
+                    "outcome_kind": "accepted_execution",
+                    "outcome_stage": "live_oxcalc_table_projection",
+                    "class_id": "treecalc_table_structured_reference_projection_ready",
+                    "lane_reason_code": "dnatreecalc_w056_table_projection_retained",
+                    "bridge": "LiveOxCalcTreeBridge",
+                    "engine_surface": "OxCalc W056 structured-table public APIs",
+                    "replay_view_ready": true
+                }
+            },
+            {
+                "view_family": "dependency_evidence",
+                "value": retained_dependency_evidence_json(theme, projection)
+            },
+            {
+                "view_family": "invalidation_evidence",
+                "value": retained_invalidation_evidence_json(projection)
+            },
+            {
+                "view_family": "retained_artifact_ref",
+                "value": retained_artifact_refs_json()
+            }
+        ],
+        "source_metadata": {
+            "source_host": "dna_treecalc",
+            "source_schema_id": "dna_treecalc.w056_table_replay.v1",
+            "projection_status": "direct",
+            "capture_mode": "model_projection",
+            "capture_loss": "none",
+            "capture_loss_summary": [],
+            "uncertainty_summary": [],
+            "bridge_influenced": true,
+            "adapter_id": "dnatreecalc.oxcalc_table_projection.v1",
+            "workspace_id": workspace.workspace_id,
+            "source_refs": [
+                "docs/test-corpus/tables/structured-references.json",
+                "docs/test-corpus/workspaces/tables.json"
+            ],
+            "shared_scenario_alias": "w056_table_structured_references_001",
+            "cross_producer_aliases": [
+                "xlplay_structured_reference_workbook_001",
+                "xlplay_table_construction_basic_001"
+            ],
+            "interpretation_limits": [
+                {
+                    "kind": "model_projection_not_excel_observation",
+                    "detail": "This artifact is DnaTreeCalc/OxCalc retained producer evidence; Excel black-box observation is supplied by OxXlPlay."
+                },
+                {
+                    "kind": "no_private_formula_semantics",
+                    "detail": "Structured-reference parse and bind facts come from OxCalc/OxFml public table packets, not DnaTreeCalc formula parsing."
+                }
+            ],
+            "retained_scope": "primary_sales_table_update_slice",
+            "unavailable_surfaces": [
+                {
+                    "surface": "escaped_table_retained_table_slice",
+                    "reason": "The active table runner exercises bracket-escaped table and column references; this retained producer artifact keeps the primary SalesTable update/evidence slice for OxReplay intake."
+                }
+            ],
+            "comparison_view_families": [
+                "table_slice",
+                "per_node_value",
+                "effective_display_text",
+                "execution_outcome",
+                "dependency_evidence",
+                "invalidation_evidence",
+                "retained_artifact_ref"
+            ]
+        }
+    })
+}
+
+fn retained_table_replay_manifest() -> Value {
+    json!({
+        "bundle_id": "dnatreecalc-w056-table-structured-references-001",
+        "scenario_id": "w056_treecalc_table_structured_references_001",
+        "bundle_schema": "replay.bundle.v1",
+        "source_schema": "dna_treecalc.replay_bundle_seed.v1",
+        "lane_id": "dna_treecalc",
+        "adapter_id": "dnatreecalc.oxcalc_table_projection.v1",
+        "capture_mode": "model_projection",
+        "projection_status": "lossless",
+        "capture_loss": "none",
+        "registry_refs": [],
+        "sidecars": [],
+        "views": [
+            {
+                "artifact_family": "normalized_replay",
+                "path": "views/normalized-replay.json"
+            }
+        ],
+        "declared_comparison_views": [
+            "table_slice",
+            "per_node_value",
+            "effective_display_text",
+            "execution_outcome",
+            "dependency_evidence",
+            "invalidation_evidence",
+            "retained_artifact_ref"
+        ]
+    })
+}
+
+fn retained_table_slice_json(
+    table: &TableNodeFixture,
+    snapshot: &TreeCalcTableNodeSnapshot,
+    projection: &TreeCalcTableNodeProjection,
+    tax_report: &oxcalc_core::structured_table::TreeCalcTableFormulaRuntimeReport,
+    totals_amount: &oxcalc_core::structured_table::TreeCalcTableFormulaRuntimeCellResult,
+) -> Value {
+    let totals_results = [("col:amount", totals_amount)];
+    json!({
+        "table_slice_schema": "dna_treecalc.table_slice.v1",
+        "source_status": "direct",
+        "table_id": projection.table_id,
+        "table_node_id": snapshot.table_node_id.to_string(),
+        "table_name": snapshot.table_name,
+        "display_path": projection.display_path,
+        "canonical_locator": projection.canonical_path,
+        "table_range_ref": projection.table_descriptor.table_range_ref,
+        "header_region_ref": projection.table_descriptor.header_region_ref,
+        "data_body_range_ref": table_data_body_range_ref(snapshot),
+        "data_body_column_range_refs": projection
+            .table_descriptor
+            .columns
+            .iter()
+            .map(|column| column.column_range_ref.clone())
+            .collect::<Vec<_>>(),
+        "totals_region_ref": projection.table_descriptor.totals_region_ref,
+        "header_row_present": projection.table_descriptor.header_row_present,
+        "totals_row_present": projection.table_descriptor.totals_row_present,
+        "header_row": {
+            "present": table.header.present,
+            "cells": table.columns.iter().map(|column| {
+                json!({
+                    "column_id": column.column_id,
+                    "column_name": column.name,
+                    "value_state": "defined",
+                    "value_repr": column.name,
+                    "effective_display_text": column.name
+                })
+            }).collect::<Vec<_>>()
+        },
+        "versions": {
+            "table_namespace_version": snapshot.table_namespace_version,
+            "row_membership_version": snapshot.row_membership_version,
+            "row_order_version": snapshot.row_order_version,
+            "column_identity_version": snapshot.column_identity_version
+        },
+        "engine_identity_refs": {
+            "table_context_identity_present": !projection.table_context_identity.is_empty(),
+            "table_invalidation_identity_present": !projection.table_invalidation_identity.is_empty(),
+            "table_namespace_token": projection.table_namespace_token,
+            "row_membership_identity": projection.row_membership_identity,
+            "row_order_identity": projection.row_order_identity,
+            "column_identity": projection.column_identity,
+            "virtual_anchor_token": projection.virtual_anchor_token,
+            "body_metadata_token": projection.body_metadata_token,
+            "totals_metadata_token": projection.totals_metadata_token
+        },
+        "rows": table.rows.iter().map(|row| {
+            json!({
+                "row_id": row.row_id,
+                "ordinal": row.ordinal
+            })
+        }).collect::<Vec<_>>(),
+        "columns": table.columns.iter().map(|column| {
+            json!({
+                "column_id": column.column_id,
+                "column_name": column.name,
+                "ordinal": column.ordinal,
+                "body_kind": table_column_body_kind_id(column.body.kind),
+                "data_range_ref": projection
+                    .table_descriptor
+                    .columns
+                    .iter()
+                    .find(|descriptor| descriptor.column_id == column.column_id)
+                    .map(|descriptor| descriptor.column_range_ref.clone()),
+                "body_formula": column.body.formula.as_ref().map(table_formula_json),
+                "totals_formula": column.totals_formula.as_ref().map(table_formula_json)
+            })
+        }).collect::<Vec<_>>(),
+        "data_body": table.rows.iter().map(|row| {
+            json!({
+                "row_id": row.row_id,
+                "ordinal": row.ordinal,
+                "cells": table.columns.iter().filter_map(|column| {
+                    table_cell_value(table, tax_report, &row.row_id, &column.column_id).map(|value| {
+                        json!({
+                            "row_id": row.row_id,
+                            "column_id": column.column_id,
+                            "column_name": column.name,
+                            "value_repr": display_value(&value),
+                            "effective_display_text": display_value(&value),
+                            "formula_text": table_data_formula_text(column)
+                        })
+                    })
+                }).collect::<Vec<_>>()
+            })
+        }).collect::<Vec<_>>(),
+        "totals_row": {
+            "present": table.totals.present,
+            "cells": table.columns.iter().map(|column| {
+                let result = totals_results
+                    .iter()
+                    .find(|(column_id, _)| *column_id == column.column_id.as_str())
+                    .map(|(_, result)| *result);
+                json!({
+                    "column_id": column.column_id,
+                    "column_name": column.name,
+                    "value_state": if result.is_some() { "defined" } else { "blank" },
+                    "value_repr": result
+                        .map(|cell| display_value(&cell.value))
+                        .unwrap_or_default(),
+                    "effective_display_text": result
+                        .map(|cell| display_value(&cell.value))
+                        .unwrap_or_default(),
+                    "formula_text": column
+                        .totals_formula
+                        .as_ref()
+                        .map(|formula| formula.formula_text.as_str())
+                })
+            }).collect::<Vec<_>>()
+        }
+    })
+}
+
+fn retained_per_node_value_json(
+    theme: &CorpusTheme,
+    workspace: &WorkspaceModel,
+    table: &TableNodeFixture,
+    snapshot: &TreeCalcTableNodeSnapshot,
+    projection: &TreeCalcTableNodeProjection,
+    tax_report: &oxcalc_core::structured_table::TreeCalcTableFormulaRuntimeReport,
+    totals_amount: &oxcalc_core::structured_table::TreeCalcTableFormulaRuntimeCellResult,
+) -> Value {
+    let report_node = retained_workspace_report_node_json(
+        theme,
+        workspace,
+        table,
+        snapshot,
+        projection,
+        tax_report,
+        totals_amount,
+    );
+    let totals_node = retained_totals_node_json(workspace, table, projection, totals_amount);
+    json!({
+        "source_status": "direct",
+        "nodes": [
+            report_node,
+            totals_node
+        ],
+        "table_cells": table.rows.iter().flat_map(|row| {
+            table.columns.iter().filter_map(move |column| {
+                table_cell_value(table, tax_report, &row.row_id, &column.column_id).map(|value| {
+                    json!({
+                        "table_id": "tree-table:sales",
+                        "row_id": row.row_id,
+                        "column_id": column.column_id,
+                        "canonical_locator": format!("tree:tables:SalesTable[row={},column={}]", row.row_id, column.column_id),
+                        "comparison_value": comparison_value_json(&value)
+                    })
+                })
+            })
+        }).collect::<Vec<_>>()
+    })
+}
+
+fn retained_workspace_report_node_json(
+    theme: &CorpusTheme,
+    workspace: &WorkspaceModel,
+    table: &TableNodeFixture,
+    snapshot: &TreeCalcTableNodeSnapshot,
+    projection: &TreeCalcTableNodeProjection,
+    tax_report: &oxcalc_core::structured_table::TreeCalcTableFormulaRuntimeReport,
+    totals_amount: &oxcalc_core::structured_table::TreeCalcTableFormulaRuntimeCellResult,
+) -> Value {
+    let report_case = theme
+        .cases
+        .iter()
+        .find(|case| case.id == "tbl-column-ref")
+        .expect("retained report node is anchored by the tbl-column-ref corpus case");
+    let node = workspace.node(&report_case.caller).unwrap_or_else(|| {
+        panic!(
+            "workspace missing retained report node {}",
+            report_case.caller
+        )
+    });
+    let formula_text = node.content.text();
+    assert_eq!(
+        report_case.source_formula.as_deref(),
+        Some(formula_text),
+        "retained report node formula must be sourced from the workspace fixture and corpus case"
+    );
+    let formula_values = table_sparse_values(
+        table,
+        Some(tax_report),
+        [("col:amount", totals_amount.value.clone())],
+    );
+    let prebind = prebind_treecalc_table_structured_references(
+        formula_text,
+        std::slice::from_ref(projection),
+        None,
+        None,
+    )
+    .into_iter()
+    .next()
+    .expect("retained report node formula prebinds a structured table reference");
+    assert!(
+        prebind.diagnostics.is_empty(),
+        "retained report node prebind diagnostics: {:?}",
+        prebind.diagnostics
+    );
+    let reader = TreeCalcTableSparseReader::from_oxfml_bind_record(
+        snapshot,
+        projection,
+        &prebind.bind_record,
+        None,
+        formula_values,
+    )
+    .expect("retained report node gets a table sparse reader from the public bind record");
+    let value = evaluate_case_formula_value(
+        &report_case.id,
+        formula_text,
+        projection,
+        None,
+        reader.runtime_binding(),
+    );
+    if let Some(expected_value) = &report_case.expect.published_value {
+        assert_eq!(
+            display_value(&value),
+            *expected_value,
+            "retained report node value must match the active corpus expectation"
+        );
+    }
+    json!({
+        "node_id": report_case.caller.as_str(),
+        "canonical_locator": format!("tree:tables:{}", report_case.caller),
+        "source_formula": formula_text,
+        "corpus_case_id": report_case.id.as_str(),
+        "comparison_value": comparison_value_json(&value)
+    })
+}
+
+fn retained_totals_node_json(
+    workspace: &WorkspaceModel,
+    table: &TableNodeFixture,
+    projection: &TreeCalcTableNodeProjection,
+    totals_amount: &oxcalc_core::structured_table::TreeCalcTableFormulaRuntimeCellResult,
+) -> Value {
+    let totals_column = table
+        .columns
+        .iter()
+        .find(|column| column.totals_formula.is_some())
+        .expect("retained SalesTable fixture has a totals formula column");
+    let totals_formula = totals_column
+        .totals_formula
+        .as_ref()
+        .expect("totals formula checked above");
+    let node_id = format!("{}.Totals.{}", projection.display_path, totals_column.name);
+    let node = workspace
+        .node(&node_id)
+        .unwrap_or_else(|| panic!("workspace missing retained totals node {node_id}"));
+    let formula_text = node.content.text();
+    assert_eq!(
+        formula_text, totals_formula.formula_text,
+        "retained totals node formula must be sourced from the workspace fixture"
+    );
+    json!({
+        "node_id": node_id,
+        "canonical_locator": format!("tree:tables:{}.Totals.{}", projection.display_path, totals_column.name),
+        "source_formula": formula_text,
+        "formula_stable_id": totals_formula.formula_stable_id.as_str(),
+        "comparison_value": comparison_value_json(&totals_amount.value)
+    })
+}
+
+fn retained_effective_display_text_json(
+    tax_report: &oxcalc_core::structured_table::TreeCalcTableFormulaRuntimeReport,
+    totals_amount: &oxcalc_core::structured_table::TreeCalcTableFormulaRuntimeCellResult,
+) -> Value {
+    let mut entries = tax_report
+        .cell_results
+        .iter()
+        .filter_map(|cell| {
+            cell.row_id.as_ref().map(|row_id| {
+                json!({
+                    "locator": format!("SalesTable[row={},column=col:tax]", row_id.0),
+                    "effective_display_text": display_value(&cell.value),
+                    "trust_status": "model_display_string"
+                })
+            })
+        })
+        .collect::<Vec<_>>();
+    entries.push(json!({
+        "locator": "SalesTable.Totals.Amount",
+        "effective_display_text": display_value(&totals_amount.value),
+        "trust_status": "model_display_string"
+    }));
+    json!({
+        "source_status": "direct",
+        "render_context": {
+            "context_id": "treecalc-model-display-v1",
+            "context_kind": "treecalc_model_display",
+            "trust_class": "direct"
+        },
+        "entries": entries
+    })
+}
+
+fn retained_dependency_evidence_json(
+    theme: &CorpusTheme,
+    projection: &TreeCalcTableNodeProjection,
+) -> Value {
+    let dependencies = theme
+        .cases
+        .iter()
+        .filter(|case| case.expect.outcome == "resolved" && case.table == "SalesTable")
+        .map(|case| {
+            let formula_text = case
+                .source_formula
+                .as_deref()
+                .unwrap_or(case.reference.as_str());
+            let caller_region = case
+                .caller_row_offset
+                .map(|offset| table_data_caller_region(projection, offset));
+            let enclosing = caller_region.as_ref().map(|_| TableRef {
+                table_id: projection.table_id.clone(),
+            });
+            let prebind = prebind_treecalc_table_structured_references(
+                formula_text,
+                std::slice::from_ref(projection),
+                enclosing,
+                caller_region.clone(),
+            )
+            .into_iter()
+            .next()
+            .unwrap_or_else(|| panic!("case {} did not prebind", case.id));
+            json!({
+                "case_id": case.id,
+                "source_span_utf8": {
+                    "start": prebind.source_span_utf8.start,
+                    "len": prebind.source_span_utf8.len
+                },
+                "source_token_text": prebind.source_token_text,
+                "host_ref_handle": prebind.host_ref_handle,
+                "replay_identity_present": !prebind.replay_identity.is_empty(),
+                "resolved_table_id": prebind.resolved_table_id,
+                "selected_column_ids": prebind.bind_record.selected_column_ids,
+                "selected_sections": prebind
+                    .bind_record
+                    .selected_sections
+                    .iter()
+                    .copied()
+                    .map(structured_section_kind_id)
+                    .collect::<Vec<_>>(),
+                "caller_context_dependency": prebind.caller_context_dependency
+            })
+        })
+        .collect::<Vec<_>>();
+
+    json!({
+        "source_status": "direct",
+        "table_id": projection.table_id,
+        "table_context_identity_present": !projection.table_context_identity.is_empty(),
+        "row_membership_identity": projection.row_membership_identity,
+        "row_order_identity": projection.row_order_identity,
+        "column_identity": projection.column_identity,
+        "dependencies": dependencies
+    })
+}
+
+fn retained_invalidation_evidence_json(projection: &TreeCalcTableNodeProjection) -> Value {
+    let source_handles = vec!["bind:SalesTable.Columns.Tax".to_string()];
+    let impacts = table_update_scenario_kinds()
+        .iter()
+        .copied()
+        .map(|scenario| {
+            let after = if scenario == TreeCalcTableUpdateScenarioKind::TableDelete {
+                None
+            } else {
+                Some(projection)
+            };
+            let impact = classify_treecalc_table_update(
+                scenario,
+                Some(projection),
+                after,
+                [TreeNodeId(100)],
+                source_handles.clone(),
+            );
+            json!({
+                "scenario": table_update_scenario_kind_id(scenario),
+                "changed_dependency_kinds": impact.changed_dependency_kinds
+                    .iter()
+                    .copied()
+                    .map(dependency_kind_id)
+                    .collect::<Vec<_>>(),
+                "invalidation_reasons": impact.invalidation_reasons
+                    .iter()
+                    .copied()
+                    .map(invalidation_reason_kind_id)
+                    .collect::<Vec<_>>(),
+                "prepared_identity_inputs": impact.prepared_identity_inputs
+                    .iter()
+                    .copied()
+                    .map(prepared_identity_input_id)
+                    .collect::<Vec<_>>()
+            })
+        })
+        .collect::<Vec<_>>();
+    json!({
+        "source_status": "direct",
+        "classification_api": "classify_treecalc_table_update",
+        "table_id": projection.table_id,
+        "impacts": impacts
+    })
+}
+
+fn retained_artifact_refs_json() -> Value {
+    json!({
+        "source_status": "direct",
+        "host_id": "dna_treecalc",
+        "artifact_kind": "w056_table_structured_reference_replay",
+        "artifact_refs": [
+            {
+                "kind": "normalized_replay",
+                "path": "docs/test-runs/w056-table-structured-references-001/views/normalized-replay.json"
+            },
+            {
+                "kind": "replay_manifest",
+                "path": "docs/test-runs/w056-table-structured-references-001/oxreplay-manifest.json"
+            },
+            {
+                "kind": "source_corpus",
+                "path": "docs/test-corpus/tables/structured-references.json"
+            },
+            {
+                "kind": "source_workspace",
+                "path": "docs/test-corpus/workspaces/tables.json"
+            }
+        ],
+        "capture_mode": "model_projection",
+        "projection_status": "direct",
+        "capture_loss": "none"
+    })
+}
+
+fn table_update_scenario_kinds() -> [TreeCalcTableUpdateScenarioKind; 17] {
+    [
+        TreeCalcTableUpdateScenarioKind::BodyCellEdit,
+        TreeCalcTableUpdateScenarioKind::BodyFormulaEdit,
+        TreeCalcTableUpdateScenarioKind::RowInsert,
+        TreeCalcTableUpdateScenarioKind::RowDelete,
+        TreeCalcTableUpdateScenarioKind::RowReorder,
+        TreeCalcTableUpdateScenarioKind::ColumnInsert,
+        TreeCalcTableUpdateScenarioKind::ColumnDelete,
+        TreeCalcTableUpdateScenarioKind::ColumnReorder,
+        TreeCalcTableUpdateScenarioKind::ColumnRename,
+        TreeCalcTableUpdateScenarioKind::HeaderTextEdit,
+        TreeCalcTableUpdateScenarioKind::TotalsRowToggle,
+        TreeCalcTableUpdateScenarioKind::TotalsFormulaEdit,
+        TreeCalcTableUpdateScenarioKind::TableRename,
+        TreeCalcTableUpdateScenarioKind::TableMove,
+        TreeCalcTableUpdateScenarioKind::TableDelete,
+        TreeCalcTableUpdateScenarioKind::SaveReopen,
+        TreeCalcTableUpdateScenarioKind::StructuralRebind,
+    ]
+}
+
+fn table_data_body_range_ref(snapshot: &TreeCalcTableNodeSnapshot) -> Option<String> {
+    if snapshot.rows.is_empty() || snapshot.columns.is_empty() {
+        return None;
+    }
+    let start_row = snapshot
+        .virtual_anchor
+        .start_row
+        .checked_add(u32::from(snapshot.header_row_present))?;
+    let row_count = u32::try_from(snapshot.rows.len()).ok()?;
+    let end_row = start_row.checked_add(row_count.checked_sub(1)?)?;
+    let column_count = u32::try_from(snapshot.columns.len()).ok()?;
+    let end_col = snapshot
+        .virtual_anchor
+        .start_col
+        .checked_add(column_count.checked_sub(1)?)?;
+    Some(a1_range_ref_for_retained_artifact(
+        start_row,
+        snapshot.virtual_anchor.start_col,
+        end_row,
+        end_col,
+    ))
+}
+
+fn a1_range_ref_for_retained_artifact(
+    top_row: u32,
+    left_col: u32,
+    bottom_row: u32,
+    right_col: u32,
+) -> String {
+    format!(
+        "{}{}:{}{}",
+        a1_col_label_for_retained_artifact(left_col),
+        top_row,
+        a1_col_label_for_retained_artifact(right_col),
+        bottom_row
+    )
+}
+
+fn a1_col_label_for_retained_artifact(mut one_based_col: u32) -> String {
+    debug_assert!(one_based_col > 0);
+    let mut chars = Vec::new();
+    while one_based_col > 0 {
+        one_based_col -= 1;
+        let offset = u8::try_from(one_based_col % 26).expect("column modulo fits in u8");
+        chars.push(char::from(b'A' + offset));
+        one_based_col /= 26;
+    }
+    chars.iter().rev().collect()
+}
+
+fn table_cell_value(
+    table: &TableNodeFixture,
+    tax_report: &oxcalc_core::structured_table::TreeCalcTableFormulaRuntimeReport,
+    row_id: &str,
+    column_id: &str,
+) -> Option<EvalValue> {
+    if column_id == tax_report.target_column_id {
+        return tax_report
+            .cell_results
+            .iter()
+            .find(|cell| {
+                cell.row_id
+                    .as_ref()
+                    .is_some_and(|candidate| candidate.0 == row_id)
+            })
+            .map(|cell| cell.value.clone());
+    }
+    table
+        .columns
+        .iter()
+        .find(|column| column.column_id == column_id)
+        .and_then(|column| {
+            column
+                .body
+                .constants
+                .iter()
+                .find(|cell| cell.row_id == row_id)
+        })
+        .map(|cell| parse_fixture_value(&cell.value))
+}
+
+fn table_data_formula_text(column: &TableColumnFixture) -> Option<&str> {
+    column
+        .body
+        .formula
+        .as_ref()
+        .map(|formula| formula.formula_text.as_str())
+}
+
+fn table_formula_json(formula: &TableFormulaFixture) -> Value {
+    json!({
+        "formula_text": formula.formula_text,
+        "formula_stable_id": formula.formula_stable_id,
+        "bind_artifact_id": formula.bind_artifact_id,
+        "formula_text_version": formula.formula_text_version
+    })
+}
+
+fn comparison_value_json(value: &EvalValue) -> Value {
+    match value {
+        EvalValue::Number(number) => json!({
+            "wire_schema": "oxfunc_value_types.aligned_json.v1",
+            "boundary": "published_formula_result",
+            "value": {
+                "kind": "number",
+                "number": number
+            }
+        }),
+        EvalValue::Text(text) => {
+            let text = text.to_string_lossy();
+            json!({
+                "wire_schema": "oxfunc_value_types.aligned_json.v1",
+                "boundary": "published_formula_result",
+                "value": {
+                    "kind": "text",
+                    "utf16_code_units": text.encode_utf16().collect::<Vec<_>>()
+                }
+            })
+        }
+        other => json!({
+            "wire_schema": "oxfunc_value_types.aligned_json.v1",
+            "boundary": "published_formula_result",
+            "value": {
+                "kind": "debug",
+                "repr": format!("{other:?}")
+            }
+        }),
+    }
+}
+
+fn table_column_body_kind_id(kind: TableColumnBodyKind) -> &'static str {
+    match kind {
+        TableColumnBodyKind::ConstantCells => "constant_cells",
+        TableColumnBodyKind::Formula => "formula",
+    }
+}
+
+fn structured_section_kind_id(kind: oxfml_core::StructuredSectionKind) -> &'static str {
+    match kind {
+        oxfml_core::StructuredSectionKind::All => "all",
+        oxfml_core::StructuredSectionKind::Data => "data",
+        oxfml_core::StructuredSectionKind::Headers => "headers",
+        oxfml_core::StructuredSectionKind::Totals => "totals",
+        oxfml_core::StructuredSectionKind::ThisRow => "this_row",
+    }
+}
+
+fn dependency_kind_id(kind: DependencyDescriptorKind) -> &'static str {
+    match kind {
+        DependencyDescriptorKind::StaticDirect => "static_direct",
+        DependencyDescriptorKind::RelativeBound => "relative_bound",
+        DependencyDescriptorKind::TreeReferenceCollectionMembership => {
+            "tree_reference_collection_membership"
+        }
+        DependencyDescriptorKind::TreeReferenceCollectionMemberValue => {
+            "tree_reference_collection_member_value"
+        }
+        DependencyDescriptorKind::StructuredTableIdentity => "structured_table_identity",
+        DependencyDescriptorKind::StructuredTableRowMembership => "structured_table_row_membership",
+        DependencyDescriptorKind::StructuredTableRowOrder => "structured_table_row_order",
+        DependencyDescriptorKind::StructuredTableColumnIdentity => {
+            "structured_table_column_identity"
+        }
+        DependencyDescriptorKind::StructuredTableHeaderText => "structured_table_header_text",
+        DependencyDescriptorKind::StructuredTableHeaderRegion => "structured_table_header_region",
+        DependencyDescriptorKind::StructuredTableDataRegion => "structured_table_data_region",
+        DependencyDescriptorKind::StructuredTableTotalsRegion => "structured_table_totals_region",
+        DependencyDescriptorKind::StructuredTableCallerContext => "structured_table_caller_context",
+        DependencyDescriptorKind::StructuredTableEnclosingTable => {
+            "structured_table_enclosing_table"
+        }
+        DependencyDescriptorKind::DynamicPotential => "dynamic_potential",
+        DependencyDescriptorKind::HostSensitive => "host_sensitive",
+        DependencyDescriptorKind::CapabilitySensitive => "capability_sensitive",
+        DependencyDescriptorKind::ShapeTopology => "shape_topology",
+        DependencyDescriptorKind::Unresolved => "unresolved",
+    }
+}
+
+fn invalidation_reason_kind_id(kind: InvalidationReasonKind) -> &'static str {
+    match kind {
+        InvalidationReasonKind::StructuralRebindRequired => "structural_rebind_required",
+        InvalidationReasonKind::StructuralRecalcOnly => "structural_recalc_only",
+        InvalidationReasonKind::UpstreamPublication => "upstream_publication",
+        InvalidationReasonKind::ExternallyInvalidated => "externally_invalidated",
+        InvalidationReasonKind::TreeReferenceMembershipChanged => {
+            "tree_reference_membership_changed"
+        }
+        InvalidationReasonKind::TreeReferenceOrderChanged => "tree_reference_order_changed",
+        InvalidationReasonKind::StructuredTableContextChanged => "structured_table_context_changed",
+        InvalidationReasonKind::StructuredTableRowMembershipChanged => {
+            "structured_table_row_membership_changed"
+        }
+        InvalidationReasonKind::StructuredTableRowOrderChanged => {
+            "structured_table_row_order_changed"
+        }
+        InvalidationReasonKind::StructuredTableColumnChanged => "structured_table_column_changed",
+        InvalidationReasonKind::StructuredTableRegionChanged => "structured_table_region_changed",
+        InvalidationReasonKind::StructuredTableCallerContextChanged => {
+            "structured_table_caller_context_changed"
+        }
+        InvalidationReasonKind::DependencyAdded => "dependency_added",
+        InvalidationReasonKind::DependencyRemoved => "dependency_removed",
+        InvalidationReasonKind::DependencyReclassified => "dependency_reclassified",
+        InvalidationReasonKind::DynamicDependencyActivated => "dynamic_dependency_activated",
+        InvalidationReasonKind::DynamicDependencyReleased => "dynamic_dependency_released",
+        InvalidationReasonKind::DynamicDependencyReclassified => "dynamic_dependency_reclassified",
+    }
+}
+
+fn prepared_identity_input_id(
+    input: oxcalc_core::structured_table::TreeCalcTablePreparedIdentityInput,
+) -> &'static str {
+    match input {
+        oxcalc_core::structured_table::TreeCalcTablePreparedIdentityInput::HostNamespaceVersion => {
+            "host_namespace_version"
+        }
+        oxcalc_core::structured_table::TreeCalcTablePreparedIdentityInput::StructureContextVersion => {
+            "structure_context_version"
+        }
+        oxcalc_core::structured_table::TreeCalcTablePreparedIdentityInput::TableContextIdentity => {
+            "table_context_identity"
+        }
+        oxcalc_core::structured_table::TreeCalcTablePreparedIdentityInput::CallerContextIdentity => {
+            "caller_context_identity"
+        }
+        oxcalc_core::structured_table::TreeCalcTablePreparedIdentityInput::RegistrySnapshotIdentity => {
+            "registry_snapshot_identity"
+        }
+        oxcalc_core::structured_table::TreeCalcTablePreparedIdentityInput::ResolutionRuleVersion => {
+            "resolution_rule_version"
+        }
+    }
+}
+
+fn table_update_scenario_kind_id(kind: TreeCalcTableUpdateScenarioKind) -> &'static str {
+    match kind {
+        TreeCalcTableUpdateScenarioKind::BodyCellEdit => "body_cell_edit",
+        TreeCalcTableUpdateScenarioKind::BodyFormulaEdit => "body_formula_edit",
+        TreeCalcTableUpdateScenarioKind::RowInsert => "row_insert",
+        TreeCalcTableUpdateScenarioKind::RowDelete => "row_delete",
+        TreeCalcTableUpdateScenarioKind::RowReorder => "row_reorder",
+        TreeCalcTableUpdateScenarioKind::ColumnInsert => "column_insert",
+        TreeCalcTableUpdateScenarioKind::ColumnDelete => "column_delete",
+        TreeCalcTableUpdateScenarioKind::ColumnReorder => "column_reorder",
+        TreeCalcTableUpdateScenarioKind::ColumnRename => "column_rename",
+        TreeCalcTableUpdateScenarioKind::HeaderTextEdit => "header_text_edit",
+        TreeCalcTableUpdateScenarioKind::TotalsRowToggle => "totals_row_toggle",
+        TreeCalcTableUpdateScenarioKind::TotalsFormulaEdit => "totals_formula_edit",
+        TreeCalcTableUpdateScenarioKind::TableRename => "table_rename",
+        TreeCalcTableUpdateScenarioKind::TableMove => "table_move",
+        TreeCalcTableUpdateScenarioKind::TableDelete => "table_delete",
+        TreeCalcTableUpdateScenarioKind::SaveReopen => "save_reopen",
+        TreeCalcTableUpdateScenarioKind::StructuralRebind => "structural_rebind",
+    }
+}
+
+fn load_expected_json_or_panic_with_generated(path: &Path, generated: &Value) -> Value {
+    if path.exists() {
+        return load_json(path);
+    }
+    panic!(
+        "missing retained artifact {path:?}; generated:\n{}",
+        serde_json::to_string_pretty(generated).expect("generated artifact serializes")
+    );
+}
+
+fn load_json(path: &Path) -> Value {
+    let contents = fs::read_to_string(path)
+        .unwrap_or_else(|error| panic!("failed to read JSON {path:?}: {error}"));
+    serde_json::from_str(&contents)
+        .unwrap_or_else(|error| panic!("failed to parse JSON {path:?}: {error}"))
+}
+
+fn write_pretty_json(path: &Path, value: &Value) {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .unwrap_or_else(|error| panic!("failed to create {parent:?}: {error}"));
+    }
+    let contents = serde_json::to_string_pretty(value).expect("retained JSON artifact serializes");
+    fs::write(path, format!("{contents}\n"))
+        .unwrap_or_else(|error| panic!("failed to write JSON {path:?}: {error}"));
+}
+
 fn load_theme(path: PathBuf) -> CorpusTheme {
     let contents = fs::read_to_string(&path)
         .unwrap_or_else(|error| panic!("failed to read {path:?}: {error}"));
@@ -890,5 +1871,11 @@ fn load_workspace(workspace_id: &str) -> WorkspaceModel {
 fn repo_corpus_path(path: impl AsRef<Path>) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../docs/test-corpus")
+        .join(path)
+}
+
+fn repo_docs_path(path: impl AsRef<Path>) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../docs")
         .join(path)
 }
