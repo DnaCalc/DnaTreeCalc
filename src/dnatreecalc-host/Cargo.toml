@@ -13,3 +13,7 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 oxcalc_core.workspace = true
+
+[dev-dependencies]
+oxfml_core.workspace = true
+oxfunc_core.workspace = true

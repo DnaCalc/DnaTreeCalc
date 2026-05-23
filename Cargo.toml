@@ -14,6 +14,8 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "2.0"
 oxcalc_core = { package = "oxcalc-core", path = "../OxCalc/src/oxcalc-core" }
+oxfml_core = { path = "../OxFml/crates/oxfml_core" }
+oxfunc_core = { path = "../OxFunc/crates/oxfunc_core" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

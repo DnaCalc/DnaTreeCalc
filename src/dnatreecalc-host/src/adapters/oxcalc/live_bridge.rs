@@ -647,9 +647,9 @@ fn enclosing_table_projection<'a>(
     table_projections
         .iter()
         .filter_map(|projection| {
-            let table_path = paths_by_node_id
-                .iter()
-                .find_map(|(path, node_id)| (*node_id == projection.table_node_id).then(|| path))?;
+            let table_path = paths_by_node_id.iter().find_map(|(path, node_id)| {
+                (*node_id == projection.table_node_id).then_some(path)
+            })?;
             (caller_path == table_path || caller_path.starts_with(&format!("{table_path}.")))
                 .then(|| (table_path.clone(), projection))
         })

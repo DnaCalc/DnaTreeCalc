@@ -2,38 +2,65 @@
   "schema_version": "treecalc-corpus-v1",
   "theme": "tables/structured-references",
   "workset": "W004",
-  "status": "pending",
-  "description": "Full table structured-reference surface (CORE_MODEL_SPEC §3.3, §7c): column refs, implicit current-row refs, special items, composite refs, and table column formulas. TreeCalc owns the table-node host concept; OxFml/OxCalc own structured-ref parsing/lowering and dependency edges.",
+  "status": "active",
+  "description": "Active table structured-reference surface (CORE_MODEL_SPEC section 3.3 and 7c): column refs, current-row refs, special items, composite refs, table column formulas, totals formulas, and update impact evidence. The runner executes these through DnaTreeCalc's real OxCalc table projection path and public OxCalc W056 table runtime APIs; DnaTreeCalc does not parse formula text.",
   "cases": [
     {
       "id": "tbl-column-ref",
       "name": "Table[Column] resolves to the table column reference",
-      "spec": "§3.3, §7c",
+      "spec": "section 3.3, section 7c",
       "kind": "table",
       "workspace": "tables",
       "caller": "Sheet1.Report",
       "table": "SalesTable",
       "reference": "SalesTable[Amount]",
+      "source_formula": "=SUM(SalesTable[Amount])",
       "expect": {
         "outcome": "resolved",
         "target": "SalesTable.Columns.Amount",
         "target_kind": "column-reference",
+        "selected_columns": ["col:amount"],
+        "published_value": "60",
         "engine_ref": "structured-ref column lowered by OxFml/OxCalc"
+      }
+    },
+    {
+      "id": "tbl-path-current-row-ref",
+      "name": "Table[@Column] resolves in caller row context",
+      "spec": "section 3.3, section 7c",
+      "kind": "table",
+      "workspace": "tables",
+      "caller": "SalesTable.Columns.Tax",
+      "table": "SalesTable",
+      "reference": "SalesTable[@Amount]",
+      "source_formula": "=SalesTable[@Amount]",
+      "caller_row_offset": 1,
+      "expect": {
+        "outcome": "resolved",
+        "target": "SalesTable.Columns.Amount",
+        "target_kind": "current-row-column-reference",
+        "selected_columns": ["col:amount"],
+        "published_value": "20",
+        "engine_ref": "explicit table current-row structured-ref lowered by OxFml/OxCalc"
       }
     },
     {
       "id": "tbl-current-row-ref",
       "name": "[@Column] resolves in a column-formula row context",
-      "spec": "§3.3, §7c",
+      "spec": "section 3.3, section 7c",
       "kind": "table",
       "workspace": "tables",
       "caller": "SalesTable.Columns.Tax",
       "table": "SalesTable",
       "reference": "[@Amount]",
+      "source_formula": "=[@Amount]",
+      "caller_row_offset": 2,
       "expect": {
         "outcome": "resolved",
         "target": "SalesTable.Columns.Amount",
         "target_kind": "current-row-column-reference",
+        "selected_columns": ["col:amount"],
+        "published_value": "30",
         "engine_ref": "implicit current-row structured-ref lowered by OxFml/OxCalc"
       },
       "note": "The runner asserts row-context legality and per-row dependency shape through the table-node contract."
@@ -41,37 +68,77 @@
     {
       "id": "tbl-special-headers",
       "name": "Table[#Headers] selects the header region",
-      "spec": "§3.3, §7c",
+      "spec": "section 3.3, section 7c",
       "kind": "table",
       "workspace": "tables",
       "caller": "Sheet1.Report",
       "table": "SalesTable",
       "reference": "SalesTable[#Headers]",
+      "source_formula": "=COUNTA(SalesTable[#Headers])",
       "expect": {
         "outcome": "resolved",
         "target": "SalesTable.Headers",
-        "target_kind": "header-region"
+        "target_kind": "header-region",
+        "published_value": "3"
+      }
+    },
+    {
+      "id": "tbl-special-data-column",
+      "name": "Table[[#Data],[Column]] selects the data region for one column",
+      "spec": "section 3.3, section 7c",
+      "kind": "table",
+      "workspace": "tables",
+      "caller": "Sheet1.Report",
+      "table": "SalesTable",
+      "reference": "SalesTable[[#Data],[Amount]]",
+      "source_formula": "=SUM(SalesTable[[#Data],[Amount]])",
+      "expect": {
+        "outcome": "resolved",
+        "target": "SalesTable.Columns.Amount",
+        "target_kind": "data-column-reference",
+        "selected_columns": ["col:amount"],
+        "published_value": "60"
       }
     },
     {
       "id": "tbl-special-totals-column",
       "name": "Table[[#Totals],[Column]] selects a totals cell/region",
-      "spec": "§3.3, §7c",
+      "spec": "section 3.3, section 7c",
       "kind": "table",
       "workspace": "tables",
       "caller": "Sheet1.Report",
       "table": "SalesTable",
       "reference": "SalesTable[[#Totals],[Amount]]",
+      "source_formula": "=SUM(SalesTable[[#Totals],[Amount]])",
       "expect": {
         "outcome": "resolved",
         "target": "SalesTable.Totals.Amount",
-        "target_kind": "totals-column-reference"
+        "target_kind": "totals-column-reference",
+        "selected_columns": ["col:amount"],
+        "published_value": "60"
+      }
+    },
+    {
+      "id": "tbl-composite-data-columns",
+      "name": "composite data column range resolves as a structured table selection",
+      "spec": "section 3.3, section 7c",
+      "kind": "table",
+      "workspace": "tables",
+      "caller": "Sheet1.Report",
+      "table": "SalesTable",
+      "reference": "SalesTable[[#Data],[Amount]:[Tax]]",
+      "source_formula": "=SUM(SalesTable[[#Data],[Amount]:[Tax]])",
+      "expect": {
+        "outcome": "resolved",
+        "target_kind": "composite-data-column-reference",
+        "selected_columns": ["col:amount", "col:tax"],
+        "published_value": "66"
       }
     },
     {
       "id": "tbl-column-formula",
-      "name": "table column formula binds through structured refs",
-      "spec": "§7c",
+      "name": "table column formula binds and evaluates per row through structured refs",
+      "spec": "section 7c",
       "kind": "table",
       "workspace": "tables",
       "caller": "SalesTable.Columns.Tax",
@@ -81,19 +148,38 @@
         "outcome": "resolved",
         "target": "SalesTable.Columns.Amount",
         "target_kind": "column-formula-dependency",
+        "published_values": ["1", "2", "3"],
         "values_anchor": "excel-table"
       },
       "note": "TreeCalc asserts the structured-ref dependency and surfaced values; per-row evaluation semantics are Excel/OxFml/OxCalc anchored."
     },
     {
+      "id": "tbl-totals-formula",
+      "name": "table totals formula evaluates through sparse column reference",
+      "spec": "section 7c",
+      "kind": "table",
+      "workspace": "tables",
+      "caller": "SalesTable.Totals.Amount",
+      "table": "SalesTable",
+      "reference": "=SUM(SalesTable[Amount])",
+      "expect": {
+        "outcome": "resolved",
+        "target": "SalesTable.Columns.Amount",
+        "target_kind": "totals-formula-dependency",
+        "published_value": "60",
+        "values_anchor": "excel-table"
+      }
+    },
+    {
       "id": "tbl-unknown-column",
       "name": "unknown table column is a bind error",
-      "spec": "§3.3, §7c",
+      "spec": "section 3.3, section 7c",
       "kind": "table",
       "workspace": "tables",
       "caller": "Sheet1.Report",
       "table": "SalesTable",
       "reference": "SalesTable[Missing]",
+      "source_formula": "=SUM(SalesTable[Missing])",
       "expect": {
         "outcome": "error",
         "reason": "structured reference names no column in the resolved table"

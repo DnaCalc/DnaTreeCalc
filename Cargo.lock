@@ -32,6 +32,8 @@ name = "dnatreecalc-host"
 version = "0.1.0"
 dependencies = [
  "oxcalc-core",
+ "oxfml_core",
+ "oxfunc_core",
  "serde",
  "serde_json",
  "thiserror",
