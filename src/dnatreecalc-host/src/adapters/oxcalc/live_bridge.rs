@@ -20,13 +20,23 @@ use oxcalc_core::structural::{
     BindArtifactId, FormulaArtifactId, StructuralNode, StructuralNodeKind, StructuralSnapshot,
     StructuralSnapshotId, TreeNodeId,
 };
+use oxcalc_core::structured_table::{
+    TableCallerRegion, TableRef, TableRegionKind, TreeCalcTableColumnBodyMetadata,
+    TreeCalcTableColumnSnapshot, TreeCalcTableFormulaMetadata, TreeCalcTableNodeProjection,
+    TreeCalcTableNodeSnapshot, TreeCalcTableProjectionError, TreeCalcTableRowId,
+    TreeCalcTableVirtualAnchor, prebind_treecalc_table_structured_references,
+    project_treecalc_table_node_snapshot,
+};
 
 use super::bridge::{OxCalcTreeBridge, OxCalcTreeBridgeError};
 use super::types::{
     NodeCalcStateProjection, PreparedBinaryOp, PreparedFormula, PreparedFormulaCatalog,
     PreparedFormulaOperand, PreparedFormulaReferenceCarrier, TreeRecalcRequest, TreeRecalcResult,
 };
-use crate::model::{NodeContentKind, WorkspaceModel, WorkspaceNode};
+use crate::model::{
+    NodeContentKind, TableColumnBodyKind, TableColumnFixture, TableFormulaFixture,
+    TableNodeFixture, WorkspaceModel, WorkspaceNode,
+};
 
 #[derive(Debug, Default)]
 pub struct LiveOxCalcTreeBridge {
@@ -95,6 +105,7 @@ impl OxCalcTreeBridge for LiveOxCalcTreeBridge {
 
         let dependency_edges_by_owner =
             project_dependency_edges(&result.dependency_graph, &submission);
+        let table_context_identities = project_table_context_identities(&submission);
 
         Ok(TreeRecalcResult {
             run_state: result.run_state,
@@ -102,11 +113,25 @@ impl OxCalcTreeBridge for LiveOxCalcTreeBridge {
             invalidation_closure: result.invalidation_closure,
             evaluation_order,
             dependency_edges_by_owner,
+            table_context_identities,
             published_values,
             node_states,
             diagnostics: result.diagnostics,
         })
     }
+}
+
+fn project_table_context_identities(submission: &PreparedSubmission) -> BTreeMap<String, String> {
+    submission
+        .table_projections
+        .iter()
+        .filter_map(|projection| {
+            submission
+                .paths_by_node_id
+                .get(&projection.table_node_id)
+                .map(|path| (path.clone(), projection.table_context_identity.clone()))
+        })
+        .collect()
 }
 
 fn project_dependency_edges(
@@ -160,6 +185,7 @@ struct PreparedSubmission {
     structural_snapshot: StructuralSnapshot,
     formula_catalog: TreeFormulaCatalog,
     paths_by_node_id: BTreeMap<TreeNodeId, String>,
+    table_projections: Vec<TreeCalcTableNodeProjection>,
 }
 
 impl PreparedSubmission {
@@ -170,23 +196,27 @@ impl PreparedSubmission {
             .map(|(path, node_id)| (*node_id, path.clone()))
             .collect::<BTreeMap<_, _>>();
         let root_node_id = root_node_id(&request.workspace, &node_ids_by_path)?;
+        let table_projections = build_table_projections(&request.workspace, &node_ids_by_path)?;
         let structural_snapshot = build_structural_snapshot(
             &request.workspace,
             &request.formula_catalog,
             &node_ids_by_path,
             root_node_id,
+            &table_projections,
         )?;
         let formula_catalog = build_formula_catalog(
             &request.workspace,
             &request.formula_catalog,
             &node_ids_by_path,
             &structural_snapshot,
+            &table_projections,
         )?;
 
         Ok(Self {
             structural_snapshot,
             formula_catalog,
             paths_by_node_id,
+            table_projections,
         })
     }
 }
@@ -232,6 +262,7 @@ fn build_structural_snapshot(
     formula_catalog: &PreparedFormulaCatalog,
     node_ids_by_path: &BTreeMap<String, TreeNodeId>,
     root_node_id: TreeNodeId,
+    table_projections: &[TreeCalcTableNodeProjection],
 ) -> Result<StructuralSnapshot, OxCalcTreeBridgeError> {
     let mut nodes = Vec::new();
 
@@ -243,6 +274,7 @@ fn build_structural_snapshot(
             node,
             formula_catalog,
             node_ids_by_path,
+            table_projections,
         )?);
     }
 
@@ -254,6 +286,7 @@ fn build_structural_node(
     node: &WorkspaceNode,
     formula_catalog: &PreparedFormulaCatalog,
     node_ids_by_path: &BTreeMap<String, TreeNodeId>,
+    table_projections: &[TreeCalcTableNodeProjection],
 ) -> Result<StructuralNode, OxCalcTreeBridgeError> {
     let node_id = node_id_for(&node.path, node_ids_by_path)?;
     let parent_id = node
@@ -266,7 +299,7 @@ fn build_structural_node(
         .iter()
         .map(|child| node_id_for(child, node_ids_by_path))
         .collect::<Result<Vec<_>, _>>()?;
-    let has_oxcalc_formula = has_oxcalc_formula_binding(node, formula_catalog);
+    let has_oxcalc_formula = has_oxcalc_formula_binding(node, formula_catalog, table_projections);
 
     let kind = if parent_id.is_none() {
         StructuralNodeKind::Root
@@ -315,10 +348,19 @@ fn build_structural_node(
 fn has_oxcalc_formula_binding(
     node: &WorkspaceNode,
     formula_catalog: &PreparedFormulaCatalog,
+    table_projections: &[TreeCalcTableNodeProjection],
 ) -> bool {
     formula_catalog.contains_path(&node.path)
         || (node.content.kind() == NodeContentKind::Formula
             && treecalc_formula_text_needs_prebind(node.content.text()))
+        || (node.content.kind() == NodeContentKind::Formula
+            && !prebind_treecalc_table_structured_references(
+                node.content.text(),
+                table_projections,
+                None,
+                None,
+            )
+            .is_empty())
 }
 
 fn build_formula_catalog(
@@ -326,6 +368,7 @@ fn build_formula_catalog(
     formula_catalog: &PreparedFormulaCatalog,
     node_ids_by_path: &BTreeMap<String, TreeNodeId>,
     structural_snapshot: &StructuralSnapshot,
+    table_projections: &[TreeCalcTableNodeProjection],
 ) -> Result<TreeFormulaCatalog, OxCalcTreeBridgeError> {
     let mut bindings = Vec::new();
 
@@ -336,6 +379,15 @@ fn build_formula_catalog(
         let owner_node_id = node_id_for(path, node_ids_by_path)?;
         let expression = if let Some(formula) = formula_catalog.get(path) {
             prepared_formula_to_tree_formula(formula, owner_node_id, node_ids_by_path)?
+        } else if node.content.kind() == NodeContentKind::Formula
+            && let Some(expression) = prebind_table_formula_text(
+                path,
+                node.content.text(),
+                table_projections,
+                node_ids_by_path,
+            )?
+        {
+            expression
         } else if node.content.kind() == NodeContentKind::Formula
             && treecalc_formula_text_needs_prebind(node.content.text())
         {
@@ -380,6 +432,228 @@ fn build_formula_catalog(
     }
 
     Ok(TreeFormulaCatalog::new(bindings))
+}
+
+fn prebind_table_formula_text(
+    path: &str,
+    source_text: &str,
+    table_projections: &[TreeCalcTableNodeProjection],
+    node_ids_by_path: &BTreeMap<String, TreeNodeId>,
+) -> Result<Option<TreeFormula>, OxCalcTreeBridgeError> {
+    let (enclosing_table_ref, caller_table_region) =
+        table_caller_context(path, table_projections, node_ids_by_path)?;
+    let table_prebinds = prebind_treecalc_table_structured_references(
+        source_text,
+        table_projections,
+        enclosing_table_ref,
+        caller_table_region,
+    );
+    if table_prebinds.is_empty() {
+        return Ok(None);
+    }
+    let diagnostics = table_prebinds
+        .iter()
+        .flat_map(|prebind| prebind.diagnostics.iter())
+        .collect::<Vec<_>>();
+    if !diagnostics.is_empty() {
+        return Err(OxCalcTreeBridgeError::FormulaBindingUnavailable(format!(
+            "node {path} raw TreeCalc table structured reference text cannot be prebound by current OxCalc surface: {}",
+            diagnostics
+                .iter()
+                .map(|diagnostic| format!(
+                    "{:?}:{}:{}",
+                    diagnostic.source_span_utf8, diagnostic.diagnostic_code, diagnostic.message
+                ))
+                .collect::<Vec<_>>()
+                .join("; ")
+        )));
+    }
+    Ok(Some(TreeFormula::opaque_oxfml(
+        source_text.to_string(),
+        Vec::new(),
+    )))
+}
+
+fn build_table_projections(
+    workspace: &WorkspaceModel,
+    node_ids_by_path: &BTreeMap<String, TreeNodeId>,
+) -> Result<Vec<TreeCalcTableNodeProjection>, OxCalcTreeBridgeError> {
+    let mut projections = Vec::new();
+    let mut next_start_row = 3u32;
+    for path in &workspace.node_order {
+        let Some(table) = workspace.table_node(path) else {
+            continue;
+        };
+        let height = table_virtual_height(table)?;
+        let projection =
+            table_node_projection(workspace, path, table, node_ids_by_path, next_start_row)?;
+        next_start_row = next_start_row
+            .checked_add(height)
+            .and_then(|row| row.checked_add(10))
+            .ok_or_else(|| {
+                OxCalcTreeBridgeError::InvalidWorkspace(
+                    "table virtual-anchor row allocation overflowed".to_string(),
+                )
+            })?;
+        projections.push(projection);
+    }
+    Ok(projections)
+}
+
+fn table_node_projection(
+    workspace: &WorkspaceModel,
+    path: &str,
+    table: &TableNodeFixture,
+    node_ids_by_path: &BTreeMap<String, TreeNodeId>,
+    start_row: u32,
+) -> Result<TreeCalcTableNodeProjection, OxCalcTreeBridgeError> {
+    let snapshot = TreeCalcTableNodeSnapshot {
+        table_node_id: node_id_for(path, node_ids_by_path)?,
+        table_id: table.table_id.clone(),
+        table_name: treecalc_table_name(path),
+        display_path: table
+            .display_path
+            .clone()
+            .unwrap_or_else(|| path.to_string()),
+        canonical_path: table
+            .canonical_path
+            .clone()
+            .unwrap_or_else(|| path.to_string()),
+        virtual_anchor: treecalc_table_virtual_anchor(workspace, start_row),
+        rows: table
+            .rows
+            .iter()
+            .map(|row| TreeCalcTableRowId(row.row_id.clone()))
+            .collect(),
+        columns: table
+            .columns
+            .iter()
+            .map(table_column_snapshot)
+            .collect::<Result<Vec<_>, _>>()?,
+        header_row_present: table.header.present,
+        totals_row_present: table.totals.present,
+        table_namespace_version: table.table_namespace_version.clone(),
+        row_membership_version: table.row_membership_version.clone(),
+        row_order_version: table.row_order_version.clone(),
+        column_identity_version: table.column_identity_version.clone(),
+    };
+    project_treecalc_table_node_snapshot(&snapshot)
+        .map_err(|error| table_projection_error(path, error))
+}
+
+fn table_column_snapshot(
+    column: &TableColumnFixture,
+) -> Result<TreeCalcTableColumnSnapshot, OxCalcTreeBridgeError> {
+    Ok(TreeCalcTableColumnSnapshot {
+        column_id: column.column_id.clone(),
+        column_name: column.name.clone(),
+        ordinal: column.ordinal,
+        body_metadata: match column.body.kind {
+            TableColumnBodyKind::ConstantCells => TreeCalcTableColumnBodyMetadata::ConstantCells,
+            TableColumnBodyKind::Formula => TreeCalcTableColumnBodyMetadata::Formula(
+                table_formula_metadata(column.body.formula.as_ref().ok_or_else(|| {
+                    OxCalcTreeBridgeError::InvalidWorkspace(format!(
+                        "table column {} declares formula body without formula metadata",
+                        column.column_id
+                    ))
+                })?),
+            ),
+        },
+        totals_metadata: column.totals_formula.as_ref().map(table_formula_metadata),
+    })
+}
+
+fn table_formula_metadata(formula: &TableFormulaFixture) -> TreeCalcTableFormulaMetadata {
+    TreeCalcTableFormulaMetadata {
+        formula_artifact_id: formula.formula_stable_id.clone(),
+        bind_artifact_id: formula.bind_artifact_id.clone(),
+        formula_text_version: formula.formula_text_version.clone(),
+    }
+}
+
+fn treecalc_table_virtual_anchor(
+    workspace: &WorkspaceModel,
+    start_row: u32,
+) -> TreeCalcTableVirtualAnchor {
+    TreeCalcTableVirtualAnchor {
+        workbook_scope_ref: format!("treecalc-workbook:{}", workspace.workspace_id),
+        sheet_scope_ref: "treecalc-virtual-sheet:tables".to_string(),
+        start_row,
+        start_col: 2,
+    }
+}
+
+fn table_virtual_height(table: &TableNodeFixture) -> Result<u32, OxCalcTreeBridgeError> {
+    let rows = u32::try_from(table.rows.len()).map_err(|_| {
+        OxCalcTreeBridgeError::InvalidWorkspace("table row count exceeds u32".to_string())
+    })?;
+    rows.checked_add(u32::from(table.header.present))
+        .and_then(|height| height.checked_add(u32::from(table.totals.present)))
+        .ok_or_else(|| {
+            OxCalcTreeBridgeError::InvalidWorkspace(
+                "table virtual-height calculation overflowed".to_string(),
+            )
+        })
+}
+
+fn treecalc_table_name(path: &str) -> String {
+    path.rsplit('.').next().unwrap_or(path).to_string()
+}
+
+fn table_projection_error(
+    path: &str,
+    error: TreeCalcTableProjectionError,
+) -> OxCalcTreeBridgeError {
+    OxCalcTreeBridgeError::InvalidWorkspace(format!(
+        "table node {path} cannot project to OxCalc table catalog: {error:?}"
+    ))
+}
+
+fn table_caller_context(
+    caller_path: &str,
+    table_projections: &[TreeCalcTableNodeProjection],
+    paths_by_node_id: &BTreeMap<String, TreeNodeId>,
+) -> Result<(Option<TableRef>, Option<TableCallerRegion>), OxCalcTreeBridgeError> {
+    let Some((table_path, projection)) =
+        enclosing_table_projection(caller_path, table_projections, paths_by_node_id)
+    else {
+        return Ok((None, None));
+    };
+    let suffix = caller_path.strip_prefix(table_path.as_str()).unwrap_or("");
+    let region_kind = if suffix.starts_with(".Headers") {
+        TableRegionKind::Headers
+    } else if suffix.starts_with(".Totals") {
+        TableRegionKind::Totals
+    } else {
+        TableRegionKind::Data
+    };
+    Ok((
+        Some(TableRef {
+            table_id: projection.table_id.clone(),
+        }),
+        Some(TableCallerRegion {
+            table_id: projection.table_id.clone(),
+            region_kind,
+            data_row_offset: None,
+        }),
+    ))
+}
+
+fn enclosing_table_projection<'a>(
+    caller_path: &str,
+    table_projections: &'a [TreeCalcTableNodeProjection],
+    paths_by_node_id: &BTreeMap<String, TreeNodeId>,
+) -> Option<(String, &'a TreeCalcTableNodeProjection)> {
+    table_projections
+        .iter()
+        .filter_map(|projection| {
+            let table_path = paths_by_node_id
+                .iter()
+                .find_map(|(path, node_id)| (*node_id == projection.table_node_id).then(|| path))?;
+            (caller_path == table_path || caller_path.starts_with(&format!("{table_path}.")))
+                .then(|| (table_path.clone(), projection))
+        })
+        .max_by_key(|(path, _)| path.len())
 }
 
 fn resolve_qualified_children_base_queries(
@@ -799,6 +1073,7 @@ fn bind_artifact_id(path: &str) -> String {
 mod tests {
     use super::*;
     use oxcalc_core::consumer::OxCalcTreeRunState;
+    use oxcalc_core::structured_table::prebind_treecalc_table_structured_references;
 
     use crate::model::{WorkspaceFixture, WorkspaceNodeFixture};
 
@@ -1140,11 +1415,13 @@ mod tests {
         .unwrap();
         let node_ids_by_path = assign_node_ids(&workspace);
         let root_id = root_node_id(&workspace, &node_ids_by_path).unwrap();
+        let table_projections = build_table_projections(&workspace, &node_ids_by_path).unwrap();
         let structural_snapshot = build_structural_snapshot(
             &workspace,
             &PreparedFormulaCatalog::default(),
             &node_ids_by_path,
             root_id,
+            &table_projections,
         )
         .unwrap();
 
@@ -1250,11 +1527,13 @@ mod tests {
         .unwrap();
         let node_ids_by_path = assign_node_ids(&workspace);
         let root_id = root_node_id(&workspace, &node_ids_by_path).unwrap();
+        let table_projections = build_table_projections(&workspace, &node_ids_by_path).unwrap();
         let structural_snapshot = build_structural_snapshot(
             &workspace,
             &PreparedFormulaCatalog::default(),
             &node_ids_by_path,
             root_id,
+            &table_projections,
         )
         .unwrap();
         let query = treecalc_formula_text_ordered_selector_queries(
@@ -1279,6 +1558,190 @@ mod tests {
                 .to_string()
                 .contains("exceeded traversal policy treecalc-traversal-bound:v1")
         );
+    }
+
+    #[test]
+    fn live_bridge_projects_table_nodes_into_oxcalc_table_catalog() {
+        let workspace =
+            WorkspaceModel::try_from(WorkspaceFixture::from_repo_fixture("tables").unwrap())
+                .unwrap();
+        let node_ids_by_path = assign_node_ids(&workspace);
+        let table_projections = build_table_projections(&workspace, &node_ids_by_path).unwrap();
+
+        assert_eq!(table_projections.len(), 1);
+        let projection = &table_projections[0];
+        assert_eq!(projection.table_id, "tree-table:sales");
+        assert_eq!(projection.table_descriptor.table_name, "SalesTable");
+        assert_eq!(
+            projection
+                .context_packet
+                .enclosing_table_ref
+                .as_ref()
+                .unwrap()
+                .table_id,
+            "tree-table:sales"
+        );
+        assert!(projection.context_packet.caller_table_region.is_none());
+        assert!(
+            projection
+                .table_context_identity
+                .contains("treecalc.table_context.v1")
+        );
+        assert!(
+            projection
+                .body_metadata_identity
+                .contains("formula:SalesTable.Columns.Tax")
+        );
+
+        let prebound = prebind_treecalc_table_structured_references(
+            "=SUM(SalesTable[Amount])",
+            &table_projections,
+            None,
+            None,
+        );
+        assert_eq!(prebound.len(), 1);
+        assert_eq!(
+            prebound[0].bind_record.effective_table_id.as_deref(),
+            Some("tree-table:sales")
+        );
+        assert_eq!(
+            prebound[0].bind_record.selected_column_ids,
+            vec!["col:amount"]
+        );
+
+        let mut first_table = WorkspaceFixture::from_repo_fixture("tables")
+            .unwrap()
+            .nodes
+            .into_iter()
+            .find(|node| node.table.is_some())
+            .unwrap();
+        let mut second_table = first_table.clone();
+        first_table.node_id = "Root.First".to_string();
+        second_table.node_id = "Root.Second".to_string();
+        if let Some(table) = first_table.table.as_mut() {
+            table.display_path = None;
+            table.canonical_path = None;
+        }
+        if let Some(table) = second_table.table.as_mut() {
+            table.table_id = "tree-table:second".to_string();
+            table.display_path = None;
+            table.canonical_path = None;
+        }
+        let multi_table_workspace = WorkspaceModel::try_from(WorkspaceFixture {
+            schema_version: "treecalc-workspace-v1".to_string(),
+            workspace_id: "multi-table-anchor".to_string(),
+            description: None,
+            profile: None,
+            nodes: vec![
+                WorkspaceNodeFixture {
+                    node_id: "Root".to_string(),
+                    formula: String::new(),
+                    is_meta: false,
+                    table: None,
+                },
+                first_table,
+                second_table,
+            ],
+        })
+        .unwrap();
+        let multi_node_ids = assign_node_ids(&multi_table_workspace);
+        let multi_projections = build_table_projections(&multi_table_workspace, &multi_node_ids)
+            .expect("multi-table anchors allocate without collision");
+        assert_eq!(multi_projections.len(), 2);
+        assert!(
+            multi_projections[1].virtual_anchor_identity
+                != multi_projections[0].virtual_anchor_identity
+        );
+        assert_eq!(
+            multi_projections[0].table_descriptor.table_range_ref,
+            "B3:D7"
+        );
+        assert_eq!(
+            multi_projections[1].table_descriptor.table_range_ref,
+            "B18:D22"
+        );
+
+        let mut runtime_table_node = WorkspaceFixture::from_repo_fixture("tables")
+            .unwrap()
+            .nodes
+            .into_iter()
+            .find(|node| node.table.is_some())
+            .unwrap();
+        runtime_table_node.node_id = "Root".to_string();
+        let runtime_workspace = WorkspaceModel::try_from(WorkspaceFixture {
+            schema_version: "treecalc-workspace-v1".to_string(),
+            workspace_id: "table-runtime-projection".to_string(),
+            description: None,
+            profile: None,
+            nodes: vec![runtime_table_node],
+        })
+        .unwrap();
+        let runtime_result = LiveOxCalcTreeBridge::default()
+            .execute_recalc(TreeRecalcRequest {
+                workspace: runtime_workspace,
+                formula_catalog: PreparedFormulaCatalog::default(),
+                candidate_result_id: "cand:table-runtime-projection".to_string(),
+                publication_id: "pub:table-runtime-projection".to_string(),
+                compatibility_basis: "snapshot:table-runtime-projection".to_string(),
+                artifact_token_basis: "snapshot:table-runtime-projection".to_string(),
+                capability_profile_id: "treecalc-v1".to_string(),
+                cycle_config: Default::default(),
+            })
+            .unwrap();
+        assert!(
+            runtime_result.table_context_identities["Root"].contains("treecalc.table_context.v1")
+        );
+
+        let mut formula_table_node = WorkspaceFixture::from_repo_fixture("tables")
+            .unwrap()
+            .nodes
+            .into_iter()
+            .find(|node| node.table.is_some())
+            .unwrap();
+        formula_table_node.node_id = "Root".to_string();
+        let formula_workspace = WorkspaceModel::try_from(WorkspaceFixture {
+            schema_version: "treecalc-workspace-v1".to_string(),
+            workspace_id: "table-formula-prebind".to_string(),
+            description: None,
+            profile: None,
+            nodes: vec![
+                formula_table_node,
+                WorkspaceNodeFixture {
+                    node_id: "Root.Columns".to_string(),
+                    formula: String::new(),
+                    is_meta: false,
+                    table: None,
+                },
+                WorkspaceNodeFixture {
+                    node_id: "Root.Columns.Tax".to_string(),
+                    formula: "=[@Amount] * 0.1".to_string(),
+                    is_meta: false,
+                    table: None,
+                },
+            ],
+        })
+        .unwrap();
+        let formula_submission = PreparedSubmission::try_from_request(&TreeRecalcRequest {
+            workspace: formula_workspace,
+            formula_catalog: PreparedFormulaCatalog::default(),
+            candidate_result_id: "cand:table-formula-prebind".to_string(),
+            publication_id: "pub:table-formula-prebind".to_string(),
+            compatibility_basis: "snapshot:table-formula-prebind".to_string(),
+            artifact_token_basis: "snapshot:table-formula-prebind".to_string(),
+            capability_profile_id: "treecalc-v1".to_string(),
+            cycle_config: Default::default(),
+        })
+        .expect("table column formula participates in the bridge prebind path");
+        let tax_node_id = formula_submission
+            .paths_by_node_id
+            .iter()
+            .find_map(|(node_id, path)| (path == "Root.Columns.Tax").then_some(*node_id))
+            .unwrap();
+        let tax_binding = formula_submission
+            .formula_catalog
+            .try_get_binding(tax_node_id)
+            .expect("table column formula binding exists");
+        assert_eq!(tax_binding.expression.source_text(), "=[@Amount] * 0.1");
     }
 
     #[test]

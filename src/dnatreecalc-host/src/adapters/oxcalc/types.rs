@@ -60,6 +60,7 @@ pub struct TreeRecalcResult {
     pub invalidation_closure: InvalidationClosure,
     pub evaluation_order: Vec<String>,
     pub dependency_edges_by_owner: BTreeMap<String, Vec<String>>,
+    pub table_context_identities: BTreeMap<String, String>,
     pub published_values: BTreeMap<String, String>,
     pub node_states: BTreeMap<String, NodeCalcStateProjection>,
     pub diagnostics: Vec<String>,
