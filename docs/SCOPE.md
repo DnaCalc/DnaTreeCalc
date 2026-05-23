@@ -5,7 +5,7 @@ One canonical place that draws the v1 boundary, so scope questions don't get re-
 ## In scope (and being specified)
 
 - The tree / reference model, walk-up scope, set-producing operators, capability profiles — the novel surface ([`model/CORE_MODEL_SPEC.md`](model/CORE_MODEL_SPEC.md)).
-- The skin architecture and the minimum-lovable skin set (`triple-editor` + `outline-table` + `cell-view`).
+- The skin architecture and the v1 skin set (`triple-editor` + `outline-table` + `cell-view`).
 - Templates; per-node formatting + conditional formatting; meta-nodes.
 - Excel **import** and **export + replay verification** against Excel as canonical truth.
 - **Dependency-graph view and navigation** (local map + on-demand subtree graph).

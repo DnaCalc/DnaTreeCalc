@@ -1,21 +1,13 @@
 [package]
-name = "dnatreecalc-host"
+name = "dnatreecalc-skins"
 version = "0.1.0"
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
-[lints]
-workspace = true
-
 [dependencies]
-serde.workspace = true
-serde_json.workspace = true
-thiserror.workspace = true
-oxcalc_core.workspace = true
 dnatreecalc-skin-framework = { path = "../dnatreecalc-skin-framework" }
-dnatreecalc-shell = { path = "../dnatreecalc-shell" }
-dnatreecalc-skins = { path = "../dnatreecalc-skins" }
+serde = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 leptos = { version = "0.8.17", default-features = false, features = ["ssr"] }
@@ -23,6 +15,5 @@ leptos = { version = "0.8.17", default-features = false, features = ["ssr"] }
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 leptos = { version = "0.8.17", default-features = false, features = ["csr"] }
 
-[dev-dependencies]
-oxfml_core.workspace = true
-oxfunc_core.workspace = true
+[lints]
+workspace = true

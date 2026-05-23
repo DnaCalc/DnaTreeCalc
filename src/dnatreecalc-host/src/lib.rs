@@ -2,11 +2,16 @@
 
 //! DNA TreeCalc host crate.
 //!
-//! W002 starts with the non-UI host model and OxCalc bridge boundary. UI
-//! shell, skins, and persistence land in later worksets.
+//! Owns the workspace product model, the OxCalc bridge, and the host-side
+//! wiring that turns those into the typed surfaces the skin framework and
+//! shell consume (`app` module): workspace projection, host dispatcher,
+//! and the default skin registry. The shell + framework + skin crates
+//! consume from here without ever touching the bridge directly.
 
 pub mod adapters;
+pub mod app;
 pub mod model;
+pub mod test_support;
 
 #[cfg(test)]
 mod tests {

@@ -2,6 +2,10 @@
 resolver = "2"
 members = [
     "src/dnatreecalc-host",
+    "src/dnatreecalc-skin-framework",
+    "src/dnatreecalc-shell",
+    "src/dnatreecalc-skins",
+    "src/dnatreecalc-web",
 ]
 
 [workspace.package]
