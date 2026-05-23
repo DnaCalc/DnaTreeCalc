@@ -2,13 +2,14 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct WorkspaceFixture {
     pub schema_version: String,
     pub workspace_id: String,
     pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub profile: Option<CapabilityProfileId>,
     pub nodes: Vec<WorkspaceNodeFixture>,
 }
@@ -37,7 +38,7 @@ fn repo_fixture_path(workspace_id: &str) -> PathBuf {
         .join(format!("{workspace_id}.json"))
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum CapabilityProfileId {
     TreecalcV1,
@@ -54,13 +55,106 @@ impl CapabilityProfileId {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct WorkspaceNodeFixture {
     pub node_id: String,
     #[serde(default)]
     pub formula: String,
     #[serde(default)]
     pub is_meta: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub table: Option<TableNodeFixture>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct TableNodeFixture {
+    pub table_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub canonical_path: Option<String>,
+    pub table_namespace_version: String,
+    pub row_membership_version: String,
+    pub row_order_version: String,
+    pub column_identity_version: String,
+    pub identity_policy: TableIdentityPolicyFixture,
+    pub header: TableSectionFixture,
+    pub totals: TableSectionFixture,
+    pub rows: Vec<TableRowFixture>,
+    pub columns: Vec<TableColumnFixture>,
+}
+
+impl TableNodeFixture {
+    #[must_use]
+    pub fn with_default_paths(mut self, node_path: &str) -> Self {
+        if self.display_path.is_none() {
+            self.display_path = Some(node_path.to_string());
+        }
+        if self.canonical_path.is_none() {
+            self.canonical_path = Some(node_path.to_string());
+        }
+        self
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct TableIdentityPolicyFixture {
+    pub rename_preserves_table_id: bool,
+    pub move_preserves_table_id: bool,
+    pub delete_releases_table_id: bool,
+    pub note: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct TableSectionFixture {
+    pub present: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct TableRowFixture {
+    pub row_id: String,
+    pub ordinal: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct TableColumnFixture {
+    pub column_id: String,
+    pub name: String,
+    pub ordinal: u32,
+    pub body: TableColumnBodyFixture,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub totals_formula: Option<TableFormulaFixture>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct TableColumnBodyFixture {
+    pub kind: TableColumnBodyKind,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub constants: Vec<TableCellFixture>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub formula: Option<TableFormulaFixture>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum TableColumnBodyKind {
+    ConstantCells,
+    Formula,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct TableCellFixture {
+    pub row_id: String,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct TableFormulaFixture {
+    pub formula_text: String,
+    pub formula_stable_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bind_artifact_id: Option<String>,
+    pub formula_text_version: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -70,11 +164,16 @@ pub struct WorkspaceModel {
     pub node_order: Vec<String>,
     pub root_paths: Vec<String>,
     pub nodes: BTreeMap<String, WorkspaceNode>,
+    pub table_nodes: BTreeMap<String, TableNodeFixture>,
 }
 
 impl WorkspaceModel {
     pub fn node(&self, path: &str) -> Option<&WorkspaceNode> {
         self.nodes.get(path)
+    }
+
+    pub fn table_node(&self, path: &str) -> Option<&TableNodeFixture> {
+        self.table_nodes.get(path)
     }
 }
 
@@ -113,6 +212,11 @@ impl TryFrom<WorkspaceFixture> for WorkspaceModel {
                 root_paths.push(raw.node_id.clone());
             }
 
+            let table = raw
+                .table
+                .clone()
+                .map(|table| table.with_default_paths(&raw.node_id));
+
             nodes.insert(
                 raw.node_id.clone(),
                 WorkspaceNode {
@@ -122,6 +226,7 @@ impl TryFrom<WorkspaceFixture> for WorkspaceModel {
                     child_paths: Vec::new(),
                     content: NodeContent::from(raw.formula.as_str()),
                     is_meta: raw.is_meta,
+                    table,
                 },
             );
         }
@@ -139,6 +244,11 @@ impl TryFrom<WorkspaceFixture> for WorkspaceModel {
             }
         }
 
+        let table_nodes = nodes
+            .iter()
+            .filter_map(|(path, node)| node.table.clone().map(|table| (path.clone(), table)))
+            .collect();
+
         Ok(Self {
             workspace_id: fixture.workspace_id,
             profile: fixture.profile.unwrap_or(CapabilityProfileId::TreecalcV1),
@@ -149,6 +259,7 @@ impl TryFrom<WorkspaceFixture> for WorkspaceModel {
                 .collect(),
             root_paths,
             nodes,
+            table_nodes,
         })
     }
 }
@@ -169,6 +280,7 @@ pub struct WorkspaceNode {
     pub child_paths: Vec<String>,
     pub content: NodeContent,
     pub is_meta: bool,
+    pub table: Option<TableNodeFixture>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

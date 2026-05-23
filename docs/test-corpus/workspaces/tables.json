@@ -4,7 +4,78 @@
   "description": "Fixture for table-node structured references (CORE_MODEL_SPEC §7c). SalesTable is a table node with columns and row/total host surfaces; these nodes are placeholders for corpus target validation until OxFml/OxCalc table lowering is executable.",
   "profile": "treecalc-v1",
   "nodes": [
-    { "node_id": "SalesTable", "formula": "", "table": true },
+    {
+      "node_id": "SalesTable",
+      "formula": "",
+      "table": {
+        "table_id": "tree-table:sales",
+        "table_namespace_version": "table-namespace:sales:v1",
+        "row_membership_version": "table-rows:sales:membership:v1",
+        "row_order_version": "table-rows:sales:order:v1",
+        "column_identity_version": "table-columns:sales:v1",
+        "identity_policy": {
+          "rename_preserves_table_id": true,
+          "move_preserves_table_id": true,
+          "delete_releases_table_id": true,
+          "note": "The table id is stable across rename and move so structured-reference handles can rebind; delete releases the id and invalidates dependents."
+        },
+        "header": { "present": true },
+        "totals": { "present": true },
+        "rows": [
+          { "row_id": "row:west", "ordinal": 1 },
+          { "row_id": "row:east", "ordinal": 2 },
+          { "row_id": "row:north", "ordinal": 3 }
+        ],
+        "columns": [
+          {
+            "column_id": "col:region",
+            "name": "Region",
+            "ordinal": 1,
+            "body": {
+              "kind": "constant-cells",
+              "constants": [
+                { "row_id": "row:west", "value": "West" },
+                { "row_id": "row:east", "value": "East" },
+                { "row_id": "row:north", "value": "North" }
+              ]
+            }
+          },
+          {
+            "column_id": "col:amount",
+            "name": "Amount",
+            "ordinal": 2,
+            "body": {
+              "kind": "constant-cells",
+              "constants": [
+                { "row_id": "row:west", "value": "10" },
+                { "row_id": "row:east", "value": "20" },
+                { "row_id": "row:north", "value": "30" }
+              ]
+            },
+            "totals_formula": {
+              "formula_text": "=SUM(SalesTable[Amount])",
+              "formula_stable_id": "formula:SalesTable.Totals.Amount",
+              "bind_artifact_id": "bind:SalesTable.Totals.Amount",
+              "formula_text_version": "v1"
+            }
+          },
+          {
+            "column_id": "col:tax",
+            "name": "Tax",
+            "ordinal": 3,
+            "body": {
+              "kind": "formula",
+              "formula": {
+                "formula_text": "=[@Amount] * 0.1",
+                "formula_stable_id": "formula:SalesTable.Columns.Tax",
+                "bind_artifact_id": "bind:SalesTable.Columns.Tax",
+                "formula_text_version": "v1"
+              }
+            }
+          }
+        ]
+      }
+    },
     { "node_id": "SalesTable.Columns", "formula": "" },
     { "node_id": "SalesTable.Columns.Region", "formula": "" },
     { "node_id": "SalesTable.Columns.Amount", "formula": "" },

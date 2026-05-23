@@ -30,8 +30,130 @@
             "type": "boolean",
             "default": false,
             "description": "When true, this node and its descendant subtree are invisible to formula resolution and not bound/evaluated (CORE_MODEL_SPEC §2, §6 item 9)."
+          },
+          "table": {
+            "$ref": "#/$defs/tableNode",
+            "description": "Optional table-node payload. A table is a TreeCalc node concept, not an EvalValue; this payload is the persistent producer shape for OxCalc's W056 table-node projection."
           }
         }
+      }
+    }
+  },
+  "$defs": {
+    "tableNode": {
+      "type": "object",
+      "required": [
+        "table_id",
+        "table_namespace_version",
+        "row_membership_version",
+        "row_order_version",
+        "column_identity_version",
+        "identity_policy",
+        "header",
+        "totals",
+        "rows",
+        "columns"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "table_id": { "type": "string" },
+        "display_path": { "type": "string" },
+        "canonical_path": { "type": "string" },
+        "table_namespace_version": { "type": "string" },
+        "row_membership_version": { "type": "string" },
+        "row_order_version": { "type": "string" },
+        "column_identity_version": { "type": "string" },
+        "identity_policy": { "$ref": "#/$defs/tableIdentityPolicy" },
+        "header": { "$ref": "#/$defs/tableSection" },
+        "totals": { "$ref": "#/$defs/tableSection" },
+        "rows": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/tableRow" }
+        },
+        "columns": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/tableColumn" }
+        }
+      }
+    },
+    "tableIdentityPolicy": {
+      "type": "object",
+      "required": [
+        "rename_preserves_table_id",
+        "move_preserves_table_id",
+        "delete_releases_table_id",
+        "note"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "rename_preserves_table_id": { "type": "boolean" },
+        "move_preserves_table_id": { "type": "boolean" },
+        "delete_releases_table_id": { "type": "boolean" },
+        "note": { "type": "string" }
+      }
+    },
+    "tableSection": {
+      "type": "object",
+      "required": ["present"],
+      "additionalProperties": false,
+      "properties": {
+        "present": { "type": "boolean" }
+      }
+    },
+    "tableRow": {
+      "type": "object",
+      "required": ["row_id", "ordinal"],
+      "additionalProperties": false,
+      "properties": {
+        "row_id": { "type": "string" },
+        "ordinal": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "tableColumn": {
+      "type": "object",
+      "required": ["column_id", "name", "ordinal", "body"],
+      "additionalProperties": false,
+      "properties": {
+        "column_id": { "type": "string" },
+        "name": { "type": "string" },
+        "ordinal": { "type": "integer", "minimum": 1 },
+        "body": { "$ref": "#/$defs/tableColumnBody" },
+        "totals_formula": { "$ref": "#/$defs/tableFormula" }
+      }
+    },
+    "tableColumnBody": {
+      "type": "object",
+      "required": ["kind"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "enum": ["constant-cells", "formula"] },
+        "constants": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/tableCell" }
+        },
+        "formula": { "$ref": "#/$defs/tableFormula" }
+      }
+    },
+    "tableCell": {
+      "type": "object",
+      "required": ["row_id", "value"],
+      "additionalProperties": false,
+      "properties": {
+        "row_id": { "type": "string" },
+        "value": { "type": "string" }
+      }
+    },
+    "tableFormula": {
+      "type": "object",
+      "required": ["formula_text", "formula_stable_id", "formula_text_version"],
+      "additionalProperties": false,
+      "properties": {
+        "formula_text": { "type": "string" },
+        "formula_stable_id": { "type": "string" },
+        "bind_artifact_id": { "type": "string" },
+        "formula_text_version": { "type": "string" }
       }
     }
   }
