@@ -1,0 +1,70 @@
+{
+  "schema_version": "treecalc-corpus-v1",
+  "theme": "references/literals-active",
+  "workset": "W004",
+  "status": "active",
+  "description": "Focused W004 active slice for explicit reference-literal arrays through OxCalc's ReferenceLiteralArrayV1 carrier path. DnaTreeCalc supplies resolved element paths from the fixture; it does not parse formula text or inspect OxFml/OxFunc semantics.",
+  "cases": [
+    {
+      "id": "lit-ref-array-two-members-active",
+      "name": "reference literal preserves source order through the live bridge",
+      "spec": "§4, §6",
+      "kind": "membership",
+      "workspace": "reference-literals-active",
+      "caller": "Root.Literals.SumAB",
+      "reference": "{A,B}",
+      "source_formula": "=SUM({A,B})",
+      "elements": [
+        { "kind": "reference", "path": "Root.Literals.A" },
+        { "kind": "reference", "path": "Root.Literals.B" }
+      ],
+      "expect": {
+        "outcome": "resolved",
+        "ordered": true,
+        "members": ["Root.Literals.A", "Root.Literals.B"],
+        "published_value": "5",
+        "engine_ref": "TreeCalcReferenceCollection::ReferenceLiteralArrayV1"
+      }
+    },
+    {
+      "id": "lit-ref-array-duplicates-preserved-active",
+      "name": "explicit reference literals preserve duplicates through the live bridge",
+      "spec": "§3.5b, §6",
+      "kind": "membership",
+      "workspace": "reference-literals-active",
+      "caller": "Root.Literals.SumDuplicate",
+      "reference": "{A,A}",
+      "source_formula": "=SUM({A,A})",
+      "elements": [
+        { "kind": "reference", "path": "Root.Literals.A" },
+        { "kind": "reference", "path": "Root.Literals.A" }
+      ],
+      "expect": {
+        "outcome": "resolved",
+        "ordered": true,
+        "members": ["Root.Literals.A", "Root.Literals.A"],
+        "published_value": "4",
+        "engine_ref": "TreeCalcReferenceCollection::ReferenceLiteralArrayV1"
+      }
+    },
+    {
+      "id": "lit-mixed-ref-scalar-reject-active",
+      "name": "mixed reference/scalar array literal is rejected by the carrier boundary",
+      "spec": "§4, §6",
+      "kind": "syntax",
+      "workspace": "reference-literals-active",
+      "caller": "Root.Literals.MixedReject",
+      "reference": "{A,1}",
+      "source_formula": "=SUM({A,1})",
+      "profile": "treecalc-v1",
+      "elements": [
+        { "kind": "reference", "path": "Root.Literals.A" },
+        { "kind": "scalar", "source_text": "1" }
+      ],
+      "expect": {
+        "parse": "reject",
+        "reason": "mixed scalar/reference array literal"
+      }
+    }
+  ]
+}

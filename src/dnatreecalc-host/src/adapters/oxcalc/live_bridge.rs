@@ -10,7 +10,8 @@ use oxcalc_core::formula::{
     TreeCalcOrderedSelectorFamily, TreeCalcOrderedSelectorQuery, TreeCalcOrderedSelectorResolution,
     TreeCalcOrderedSelectorResolutionLayer, TreeCalcOrderedSelectorTraversalPolicy,
     TreeCalcQualifiedBaseResolutionLayer, TreeCalcQualifiedChildrenBaseQuery,
-    TreeCalcQualifiedChildrenBaseResolution, TreeCalcReferenceCollection, TreeFormula,
+    TreeCalcQualifiedChildrenBaseResolution, TreeCalcReferenceCollection,
+    TreeCalcReferenceLiteralArrayCollection, TreeCalcReferenceLiteralArrayElement, TreeFormula,
     TreeFormulaBinding, TreeFormulaCatalog, TreeFormulaReferenceCarrier, TreeReference,
     prebind_treecalc_formula_text_with_context, treecalc_formula_text_needs_prebind,
     treecalc_formula_text_ordered_selector_queries,
@@ -31,7 +32,8 @@ use oxcalc_core::structured_table::{
 use super::bridge::{OxCalcTreeBridge, OxCalcTreeBridgeError};
 use super::types::{
     NodeCalcStateProjection, PreparedBinaryOp, PreparedFormula, PreparedFormulaCatalog,
-    PreparedFormulaOperand, PreparedFormulaReferenceCarrier, TreeRecalcRequest, TreeRecalcResult,
+    PreparedFormulaOperand, PreparedFormulaReferenceCarrier, PreparedReferenceLiteralArrayElement,
+    TreeRecalcRequest, TreeRecalcResult,
 };
 use crate::model::{
     NodeContentKind, TableColumnBodyKind, TableColumnFixture, TableFormulaFixture,
@@ -964,7 +966,11 @@ fn prepared_formula_to_tree_formula(
             let carriers = reference_carriers
                 .iter()
                 .map(|carrier| {
-                    prepared_reference_carrier_to_tree_carrier(carrier, node_ids_by_path)
+                    prepared_reference_carrier_to_tree_carrier(
+                        carrier,
+                        owner_node_id,
+                        node_ids_by_path,
+                    )
                 })
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(TreeFormula::opaque_oxfml(source_text.clone(), carriers))
@@ -999,6 +1005,7 @@ fn prepared_formula_to_fixture_ast(
 
 fn prepared_reference_carrier_to_tree_carrier(
     carrier: &PreparedFormulaReferenceCarrier,
+    owner_node_id: TreeNodeId,
     node_ids_by_path: &BTreeMap<String, TreeNodeId>,
 ) -> Result<TreeFormulaReferenceCarrier, OxCalcTreeBridgeError> {
     match carrier {
@@ -1028,6 +1035,54 @@ fn prepared_reference_carrier_to_tree_carrier(
                 TreeReference::ReferenceCollection(TreeCalcReferenceCollection::ChildrenV1(
                     collection,
                 )),
+            ))
+        }
+        PreparedFormulaReferenceCarrier::ReferenceLiteralArrayV1 {
+            source_token,
+            source_token_text,
+            source_span_utf8,
+            elements,
+        } => {
+            let elements = elements
+                .iter()
+                .map(|element| match element {
+                    PreparedReferenceLiteralArrayElement::ReferencePath { path } => {
+                        Ok(TreeCalcReferenceLiteralArrayElement::ReferenceNode(
+                            node_id_for(path, node_ids_by_path)?,
+                        ))
+                    }
+                    PreparedReferenceLiteralArrayElement::ScalarValue { source_text } => {
+                        Ok(TreeCalcReferenceLiteralArrayElement::ScalarValue {
+                            source_text: source_text.clone(),
+                        })
+                    }
+                })
+                .collect::<Result<Vec<_>, OxCalcTreeBridgeError>>()?;
+            let carrier_id = format!("dnatreecalc-reference-literal-array:v1:{source_token}");
+            let host_ref_handle =
+                format!("treecalc-hostref:v1:reference_literal_array:{source_token}");
+            let mut collection =
+                TreeCalcReferenceLiteralArrayCollection::reference_only_with_handle(
+                    carrier_id,
+                    host_ref_handle,
+                    owner_node_id,
+                    source_token_text.clone(),
+                    elements,
+                )
+                .map_err(|error| {
+                    OxCalcTreeBridgeError::FormulaBindingUnavailable(format!(
+                        "reference literal array carrier {source_token} is not admissible: {error}"
+                    ))
+                })?;
+            if let Some((start_byte, end_byte)) = source_span_utf8 {
+                collection = collection.with_source_span_utf8(*start_byte, *end_byte);
+            }
+
+            Ok(TreeFormulaReferenceCarrier::named(
+                source_token.clone(),
+                TreeReference::ReferenceCollection(
+                    TreeCalcReferenceCollection::ReferenceLiteralArrayV1(collection),
+                ),
             ))
         }
     }

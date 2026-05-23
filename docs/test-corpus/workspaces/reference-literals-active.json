@@ -1,0 +1,15 @@
+{
+  "schema_version": "treecalc-workspace-v1",
+  "workspace_id": "reference-literals-active",
+  "description": "Focused W004 active fixture for explicit reference-literal arrays through OxCalc ReferenceLiteralArrayV1 carriers.",
+  "profile": "treecalc-v1",
+  "nodes": [
+    { "node_id": "Root", "formula": "" },
+    { "node_id": "Root.Literals", "formula": "" },
+    { "node_id": "Root.Literals.A", "formula": "2" },
+    { "node_id": "Root.Literals.B", "formula": "3" },
+    { "node_id": "Root.Literals.SumAB", "formula": "=SUM({A,B})" },
+    { "node_id": "Root.Literals.SumDuplicate", "formula": "=SUM({A,A})" },
+    { "node_id": "Root.Literals.MixedReject", "formula": "=SUM({A,1})" }
+  ]
+}

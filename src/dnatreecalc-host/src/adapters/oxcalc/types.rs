@@ -132,6 +132,18 @@ pub enum PreparedFormulaReferenceCarrier {
         source_token_text: String,
         source_span_utf8: Option<(usize, usize)>,
     },
+    ReferenceLiteralArrayV1 {
+        source_token: String,
+        source_token_text: String,
+        source_span_utf8: Option<(usize, usize)>,
+        elements: Vec<PreparedReferenceLiteralArrayElement>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PreparedReferenceLiteralArrayElement {
+    ReferencePath { path: String },
+    ScalarValue { source_text: String },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
