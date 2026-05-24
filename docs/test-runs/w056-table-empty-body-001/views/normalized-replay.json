@@ -1,0 +1,1125 @@
+{
+  "comparison_views": [
+    {
+      "value": {
+        "source_status": "direct",
+        "table_slice_schema": "dna_treecalc.empty_body_table_slice.v1",
+        "tables": [
+          {
+            "canonical_locator": "EmptyHeadersOnly",
+            "column_count": 1,
+            "columns": [
+              {
+                "body_kind": "constant_cells",
+                "column_id": "col:amount",
+                "column_name": "Amount",
+                "data_constants": [],
+                "ordinal": 1,
+                "totals_formula": null
+              }
+            ],
+            "data_body_range_ref": null,
+            "display_path": "EmptyHeadersOnly",
+            "engine_identity_refs": {
+              "column_identity": {
+                "digest": "fnv1a64:c94785669432d9a8",
+                "prefix": "treecalc.table_columns.identity_token.v1;table=29:tree-table:empty-headers-only;version=35:table",
+                "present": true
+              },
+              "row_membership_identity": {
+                "digest": "fnv1a64:69108beddd4a8ac0",
+                "prefix": "treecalc.table_rows.membership_token.v1;table=29:tree-table:empty-headers-only;version=43:table-",
+                "present": true
+              },
+              "row_order_identity": {
+                "digest": "fnv1a64:172713ae36e8899a",
+                "prefix": "treecalc.table_rows.order_token.v1;table=29:tree-table:empty-headers-only;version=38:table-rows:",
+                "present": true
+              },
+              "table_context_identity": {
+                "digest": "fnv1a64:00cc853ee8f637e5",
+                "prefix": "treecalc.table_context.v1;table_id=29:tree-table:empty-headers-only;namespace_token=58:treecalc.",
+                "present": true
+              },
+              "table_invalidation_identity": {
+                "digest": "fnv1a64:8aad1c349b58359c",
+                "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=29:tree-table:empty-headers-only;",
+                "present": true
+              },
+              "table_namespace_token": {
+                "digest": "fnv1a64:b8c59d14aed1aba0",
+                "prefix": "treecalc.table_namespace.token.v1;fnv1a64=dc94f6d41b5f5dba",
+                "present": true
+              },
+              "virtual_anchor_token": {
+                "digest": "fnv1a64:a0588fbf441188f2",
+                "prefix": "treecalc.table_anchor.token.v1;fnv1a64=b17f2c9cf3b8fa50",
+                "present": true
+              }
+            },
+            "header_region_ref": "B3:B3",
+            "header_row_present": true,
+            "row_count": 0,
+            "rows": [],
+            "table_id": "tree-table:empty-headers-only",
+            "table_name": "EmptyHeadersOnly",
+            "table_node_id": "EmptyHeadersOnly",
+            "table_range_ref": "B3:B3",
+            "totals_region_ref": null,
+            "totals_row_present": false,
+            "versions": {
+              "column_identity_version": "table-columns:empty-headers-only:v1",
+              "row_membership_version": "table-rows:empty-headers-only:membership:v1",
+              "row_order_version": "table-rows:empty-headers-only:order:v1",
+              "table_namespace_version": "table-namespace:empty-headers-only:v1"
+            }
+          },
+          {
+            "canonical_locator": "EmptyHeadersTotals",
+            "column_count": 1,
+            "columns": [
+              {
+                "body_kind": "constant_cells",
+                "column_id": "col:amount",
+                "column_name": "Amount",
+                "data_constants": [],
+                "ordinal": 1,
+                "totals_formula": {
+                  "bind_artifact_id": "bind:EmptyHeadersTotals.Totals.Amount",
+                  "formula_stable_id": "formula:EmptyHeadersTotals.Totals.Amount",
+                  "formula_text": "=SUM(EmptyHeadersTotals[Amount])",
+                  "formula_text_version": "v1"
+                }
+              }
+            ],
+            "data_body_range_ref": null,
+            "display_path": "EmptyHeadersTotals",
+            "engine_identity_refs": {
+              "column_identity": {
+                "digest": "fnv1a64:451ea160e137591b",
+                "prefix": "treecalc.table_columns.identity_token.v1;table=31:tree-table:empty-headers-totals;version=37:tab",
+                "present": true
+              },
+              "row_membership_identity": {
+                "digest": "fnv1a64:ffe2315097d8338b",
+                "prefix": "treecalc.table_rows.membership_token.v1;table=31:tree-table:empty-headers-totals;version=45:tabl",
+                "present": true
+              },
+              "row_order_identity": {
+                "digest": "fnv1a64:9f86506adde8a6e8",
+                "prefix": "treecalc.table_rows.order_token.v1;table=31:tree-table:empty-headers-totals;version=40:table-row",
+                "present": true
+              },
+              "table_context_identity": {
+                "digest": "fnv1a64:98c67d279375fb55",
+                "prefix": "treecalc.table_context.v1;table_id=31:tree-table:empty-headers-totals;namespace_token=58:treecal",
+                "present": true
+              },
+              "table_invalidation_identity": {
+                "digest": "fnv1a64:7fa87451f97fab9d",
+                "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=31:tree-table:empty-headers-total",
+                "present": true
+              },
+              "table_namespace_token": {
+                "digest": "fnv1a64:2e3d73f25fbaefd7",
+                "prefix": "treecalc.table_namespace.token.v1;fnv1a64=c0253bce8e5786e0",
+                "present": true
+              },
+              "virtual_anchor_token": {
+                "digest": "fnv1a64:a0588fbf441188f2",
+                "prefix": "treecalc.table_anchor.token.v1;fnv1a64=b17f2c9cf3b8fa50",
+                "present": true
+              }
+            },
+            "header_region_ref": "B3:B3",
+            "header_row_present": true,
+            "row_count": 0,
+            "rows": [],
+            "table_id": "tree-table:empty-headers-totals",
+            "table_name": "EmptyHeadersTotals",
+            "table_node_id": "EmptyHeadersTotals",
+            "table_range_ref": "B3:B4",
+            "totals_region_ref": "B4:B4",
+            "totals_row_present": true,
+            "versions": {
+              "column_identity_version": "table-columns:empty-headers-totals:v1",
+              "row_membership_version": "table-rows:empty-headers-totals:membership:v1",
+              "row_order_version": "table-rows:empty-headers-totals:order:v1",
+              "table_namespace_version": "table-namespace:empty-headers-totals:v1"
+            }
+          },
+          {
+            "canonical_locator": "HeadersOnlyAfterFirstRowInsert",
+            "column_count": 1,
+            "columns": [
+              {
+                "body_kind": "constant_cells",
+                "column_id": "col:amount",
+                "column_name": "Amount",
+                "data_constants": [
+                  {
+                    "row_id": "row:first",
+                    "value_repr": "1"
+                  }
+                ],
+                "ordinal": 1,
+                "totals_formula": null
+              }
+            ],
+            "data_body_range_ref": "B4:B4",
+            "display_path": "HeadersOnlyAfterFirstRowInsert",
+            "engine_identity_refs": {
+              "column_identity": {
+                "digest": "fnv1a64:4b1ba230104111f4",
+                "prefix": "treecalc.table_columns.identity_token.v1;table=27:tree-table:first-row-insert;version=33:table-c",
+                "present": true
+              },
+              "row_membership_identity": {
+                "digest": "fnv1a64:9d0a89eabce3abef",
+                "prefix": "treecalc.table_rows.membership_token.v1;table=27:tree-table:first-row-insert;version=41:table-ro",
+                "present": true
+              },
+              "row_order_identity": {
+                "digest": "fnv1a64:1d4ac361cd2e8795",
+                "prefix": "treecalc.table_rows.order_token.v1;table=27:tree-table:first-row-insert;version=36:table-rows:fi",
+                "present": true
+              },
+              "table_context_identity": {
+                "digest": "fnv1a64:f444777b55180d14",
+                "prefix": "treecalc.table_context.v1;table_id=27:tree-table:first-row-insert;namespace_token=58:treecalc.ta",
+                "present": true
+              },
+              "table_invalidation_identity": {
+                "digest": "fnv1a64:f1f4bf7d010a4452",
+                "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=27:tree-table:first-row-insert;na",
+                "present": true
+              },
+              "table_namespace_token": {
+                "digest": "fnv1a64:7e2ff4a1381cef76",
+                "prefix": "treecalc.table_namespace.token.v1;fnv1a64=c8940edb511537e6",
+                "present": true
+              },
+              "virtual_anchor_token": {
+                "digest": "fnv1a64:a0588fbf441188f2",
+                "prefix": "treecalc.table_anchor.token.v1;fnv1a64=b17f2c9cf3b8fa50",
+                "present": true
+              }
+            },
+            "header_region_ref": "B3:B3",
+            "header_row_present": true,
+            "row_count": 1,
+            "rows": [
+              {
+                "ordinal": 1,
+                "row_id": "row:first"
+              }
+            ],
+            "table_id": "tree-table:first-row-insert",
+            "table_name": "HeadersOnlyAfterFirstRowInsert",
+            "table_node_id": "HeadersOnlyAfterFirstRowInsert",
+            "table_range_ref": "B3:B4",
+            "totals_region_ref": null,
+            "totals_row_present": false,
+            "versions": {
+              "column_identity_version": "table-columns:first-row-insert:v1",
+              "row_membership_version": "table-rows:first-row-insert:membership:v1",
+              "row_order_version": "table-rows:first-row-insert:order:v1",
+              "table_namespace_version": "table-namespace:first-row-insert:v1"
+            }
+          },
+          {
+            "canonical_locator": "HeadersTotalsBeforeLastRowDelete",
+            "column_count": 1,
+            "columns": [
+              {
+                "body_kind": "constant_cells",
+                "column_id": "col:amount",
+                "column_name": "Amount",
+                "data_constants": [
+                  {
+                    "row_id": "row:last",
+                    "value_repr": "2"
+                  }
+                ],
+                "ordinal": 1,
+                "totals_formula": {
+                  "bind_artifact_id": "bind:HeadersTotalsBeforeLastRowDelete.Totals.Amount",
+                  "formula_stable_id": "formula:HeadersTotalsBeforeLastRowDelete.Totals.Amount",
+                  "formula_text": "=SUM(HeadersTotalsBeforeLastRowDelete[Amount])",
+                  "formula_text_version": "v1"
+                }
+              }
+            ],
+            "data_body_range_ref": "B4:B4",
+            "display_path": "HeadersTotalsBeforeLastRowDelete",
+            "engine_identity_refs": {
+              "column_identity": {
+                "digest": "fnv1a64:0832b553e6edfb22",
+                "prefix": "treecalc.table_columns.identity_token.v1;table=26:tree-table:last-row-delete;version=32:table-co",
+                "present": true
+              },
+              "row_membership_identity": {
+                "digest": "fnv1a64:fb3366898ac0aa97",
+                "prefix": "treecalc.table_rows.membership_token.v1;table=26:tree-table:last-row-delete;version=40:table-row",
+                "present": true
+              },
+              "row_order_identity": {
+                "digest": "fnv1a64:003ad94f7e2d9873",
+                "prefix": "treecalc.table_rows.order_token.v1;table=26:tree-table:last-row-delete;version=35:table-rows:las",
+                "present": true
+              },
+              "table_context_identity": {
+                "digest": "fnv1a64:d7d7b696a1263603",
+                "prefix": "treecalc.table_context.v1;table_id=26:tree-table:last-row-delete;namespace_token=58:treecalc.tab",
+                "present": true
+              },
+              "table_invalidation_identity": {
+                "digest": "fnv1a64:6a6581a3e3b8c7ec",
+                "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=26:tree-table:last-row-delete;nam",
+                "present": true
+              },
+              "table_namespace_token": {
+                "digest": "fnv1a64:9cc7a5b176132ff7",
+                "prefix": "treecalc.table_namespace.token.v1;fnv1a64=49bf5b0e9ed10609",
+                "present": true
+              },
+              "virtual_anchor_token": {
+                "digest": "fnv1a64:a0588fbf441188f2",
+                "prefix": "treecalc.table_anchor.token.v1;fnv1a64=b17f2c9cf3b8fa50",
+                "present": true
+              }
+            },
+            "header_region_ref": "B3:B3",
+            "header_row_present": true,
+            "row_count": 1,
+            "rows": [
+              {
+                "ordinal": 1,
+                "row_id": "row:last"
+              }
+            ],
+            "table_id": "tree-table:last-row-delete",
+            "table_name": "HeadersTotalsBeforeLastRowDelete",
+            "table_node_id": "HeadersTotalsBeforeLastRowDelete",
+            "table_range_ref": "B3:B5",
+            "totals_region_ref": "B5:B5",
+            "totals_row_present": true,
+            "versions": {
+              "column_identity_version": "table-columns:last-row-delete:v1",
+              "row_membership_version": "table-rows:last-row-delete:membership:v1",
+              "row_order_version": "table-rows:last-row-delete:order:v1",
+              "table_namespace_version": "table-namespace:last-row-delete:v1"
+            }
+          }
+        ]
+      },
+      "view_family": "table_slice"
+    },
+    {
+      "value": {
+        "entries": [
+          {
+            "case_id": "tbl-empty-headers-only-data",
+            "diagnostic": null,
+            "outcome_kind": "resolved",
+            "published_value": "0",
+            "reference": "EmptyHeadersOnly[#Data]",
+            "table_node": "EmptyHeadersOnly"
+          },
+          {
+            "case_id": "tbl-empty-headers-only-column",
+            "diagnostic": null,
+            "outcome_kind": "resolved",
+            "published_value": "0",
+            "reference": "EmptyHeadersOnly[Amount]",
+            "table_node": "EmptyHeadersOnly"
+          },
+          {
+            "case_id": "tbl-empty-headers-only-all",
+            "diagnostic": null,
+            "outcome_kind": "resolved",
+            "published_value": "1",
+            "reference": "EmptyHeadersOnly[#All]",
+            "table_node": "EmptyHeadersOnly"
+          },
+          {
+            "case_id": "tbl-empty-headers-only-headers",
+            "diagnostic": null,
+            "outcome_kind": "resolved",
+            "published_value": "1",
+            "reference": "EmptyHeadersOnly[#Headers]",
+            "table_node": "EmptyHeadersOnly"
+          },
+          {
+            "case_id": "tbl-empty-headers-totals-totals",
+            "diagnostic": null,
+            "outcome_kind": "resolved",
+            "published_value": "1",
+            "reference": "EmptyHeadersTotals[#Totals]",
+            "table_node": "EmptyHeadersTotals"
+          },
+          {
+            "case_id": "tbl-empty-current-row-diagnostic",
+            "diagnostic": {
+              "diagnostic_code": "caller_row_out_of_range",
+              "row_count": 0,
+              "row_offset": 0
+            },
+            "outcome_kind": "typed_reader_diagnostic",
+            "published_value": null,
+            "reference": "[@Amount]",
+            "table_node": "EmptyHeadersOnly"
+          },
+          {
+            "case_id": "tbl-first-row-insert-endpoint",
+            "diagnostic": null,
+            "outcome_kind": "resolved",
+            "published_value": "1",
+            "reference": "HeadersOnlyAfterFirstRowInsert[Amount]",
+            "table_node": "HeadersOnlyAfterFirstRowInsert"
+          },
+          {
+            "case_id": "tbl-last-row-delete-endpoint",
+            "diagnostic": null,
+            "outcome_kind": "resolved",
+            "published_value": "0",
+            "reference": "HeadersTotalsBeforeLastRowDelete[[#Totals],[Amount]]",
+            "table_node": "HeadersTotalsBeforeLastRowDelete"
+          }
+        ],
+        "source_status": "direct"
+      },
+      "view_family": "per_node_value"
+    },
+    {
+      "value": {
+        "entries": [
+          {
+            "effective_display_text": "Amount",
+            "locator": "EmptyHeadersOnly.Headers.Amount",
+            "trust_status": "model_display_string"
+          },
+          {
+            "effective_display_text": "Amount",
+            "locator": "EmptyHeadersTotals.Headers.Amount",
+            "trust_status": "model_display_string"
+          },
+          {
+            "effective_display_text": "Amount",
+            "locator": "HeadersOnlyAfterFirstRowInsert.Headers.Amount",
+            "trust_status": "model_display_string"
+          },
+          {
+            "effective_display_text": "Amount",
+            "locator": "HeadersTotalsBeforeLastRowDelete.Headers.Amount",
+            "trust_status": "model_display_string"
+          }
+        ],
+        "render_context": {
+          "context_id": "treecalc-model-display-v1",
+          "context_kind": "treecalc_model_display",
+          "trust_class": "direct"
+        },
+        "source_status": "direct"
+      },
+      "view_family": "effective_display_text"
+    },
+    {
+      "value": {
+        "bridge": "LiveOxCalcTreeBridge",
+        "case_outcomes": [
+          {
+            "case_id": "tbl-empty-headers-only-data",
+            "declared_extent": {
+              "column_count": 1,
+              "row_count": 0
+            },
+            "defined_cardinality": 0,
+            "outcome_kind": "resolved",
+            "published_value": "0",
+            "reader_identity": {
+              "reader_id": {
+                "digest": "fnv1a64:827ef2910f0999a9",
+                "prefix": "treecalc-table-reader:v1:treecalc.structured_table_ref.handle.v1;start=1:8;len=2:23",
+                "present": true
+              },
+              "snapshot_identity": {
+                "digest": "fnv1a64:77c26a3221252af9",
+                "prefix": "treecalc.table_sparse_snapshot.v1;context=1703:treecalc.table_context.v1;table_id=29:tree-table:",
+                "present": true
+              },
+              "source_identity": {
+                "digest": "fnv1a64:57202a8da722dc7c",
+                "prefix": "treecalc.table_sparse_selection.v1;table_id=29:tree-table:empty-headers-only;source=23:EmptyHead",
+                "present": true
+              }
+            },
+            "reference": "EmptyHeadersOnly[#Data]",
+            "selected_column_ids": [],
+            "selected_sections": [
+              "data"
+            ],
+            "table_id": "tree-table:empty-headers-only",
+            "table_node": "EmptyHeadersOnly",
+            "target_kind": "composite-data-column-reference"
+          },
+          {
+            "case_id": "tbl-empty-headers-only-column",
+            "declared_extent": {
+              "column_count": 1,
+              "row_count": 0
+            },
+            "defined_cardinality": 0,
+            "outcome_kind": "resolved",
+            "published_value": "0",
+            "reader_identity": {
+              "reader_id": {
+                "digest": "fnv1a64:a3e31134eb1fb625",
+                "prefix": "treecalc-table-reader:v1:treecalc.structured_table_ref.handle.v1;start=1:5;len=2:24",
+                "present": true
+              },
+              "snapshot_identity": {
+                "digest": "fnv1a64:77c26a3221252af9",
+                "prefix": "treecalc.table_sparse_snapshot.v1;context=1703:treecalc.table_context.v1;table_id=29:tree-table:",
+                "present": true
+              },
+              "source_identity": {
+                "digest": "fnv1a64:a9e8c3d33098a5fc",
+                "prefix": "treecalc.table_sparse_selection.v1;table_id=29:tree-table:empty-headers-only;source=24:EmptyHead",
+                "present": true
+              }
+            },
+            "reference": "EmptyHeadersOnly[Amount]",
+            "selected_column_ids": [
+              "col:amount"
+            ],
+            "selected_sections": [
+              "data"
+            ],
+            "table_id": "tree-table:empty-headers-only",
+            "table_node": "EmptyHeadersOnly",
+            "target_kind": "data-column-reference"
+          },
+          {
+            "case_id": "tbl-empty-headers-only-all",
+            "declared_extent": {
+              "column_count": 1,
+              "row_count": 1
+            },
+            "defined_cardinality": 1,
+            "outcome_kind": "resolved",
+            "published_value": "1",
+            "reader_identity": {
+              "reader_id": {
+                "digest": "fnv1a64:827ef1910f0997f6",
+                "prefix": "treecalc-table-reader:v1:treecalc.structured_table_ref.handle.v1;start=1:8;len=2:22",
+                "present": true
+              },
+              "snapshot_identity": {
+                "digest": "fnv1a64:77c26a3221252af9",
+                "prefix": "treecalc.table_sparse_snapshot.v1;context=1703:treecalc.table_context.v1;table_id=29:tree-table:",
+                "present": true
+              },
+              "source_identity": {
+                "digest": "fnv1a64:1918d74af808a22b",
+                "prefix": "treecalc.table_sparse_selection.v1;table_id=29:tree-table:empty-headers-only;source=22:EmptyHead",
+                "present": true
+              }
+            },
+            "reference": "EmptyHeadersOnly[#All]",
+            "selected_column_ids": [],
+            "selected_sections": [
+              "all"
+            ],
+            "table_id": "tree-table:empty-headers-only",
+            "table_node": "EmptyHeadersOnly",
+            "target_kind": "all-region"
+          },
+          {
+            "case_id": "tbl-empty-headers-only-headers",
+            "declared_extent": {
+              "column_count": 1,
+              "row_count": 1
+            },
+            "defined_cardinality": 1,
+            "outcome_kind": "resolved",
+            "published_value": "1",
+            "reader_identity": {
+              "reader_id": {
+                "digest": "fnv1a64:827ef5910f099ec2",
+                "prefix": "treecalc-table-reader:v1:treecalc.structured_table_ref.handle.v1;start=1:8;len=2:26",
+                "present": true
+              },
+              "snapshot_identity": {
+                "digest": "fnv1a64:77c26a3221252af9",
+                "prefix": "treecalc.table_sparse_snapshot.v1;context=1703:treecalc.table_context.v1;table_id=29:tree-table:",
+                "present": true
+              },
+              "source_identity": {
+                "digest": "fnv1a64:37828a8af96d3374",
+                "prefix": "treecalc.table_sparse_selection.v1;table_id=29:tree-table:empty-headers-only;source=26:EmptyHead",
+                "present": true
+              }
+            },
+            "reference": "EmptyHeadersOnly[#Headers]",
+            "selected_column_ids": [],
+            "selected_sections": [
+              "headers"
+            ],
+            "table_id": "tree-table:empty-headers-only",
+            "table_node": "EmptyHeadersOnly",
+            "target_kind": "header-region"
+          },
+          {
+            "case_id": "tbl-empty-headers-totals-totals",
+            "declared_extent": {
+              "column_count": 1,
+              "row_count": 1
+            },
+            "defined_cardinality": 1,
+            "outcome_kind": "resolved",
+            "published_value": "1",
+            "reader_identity": {
+              "reader_id": {
+                "digest": "fnv1a64:827ef6910f09a075",
+                "prefix": "treecalc-table-reader:v1:treecalc.structured_table_ref.handle.v1;start=1:8;len=2:27",
+                "present": true
+              },
+              "snapshot_identity": {
+                "digest": "fnv1a64:49d0adb45cc02b42",
+                "prefix": "treecalc.table_sparse_snapshot.v1;context=1731:treecalc.table_context.v1;table_id=31:tree-table:",
+                "present": true
+              },
+              "source_identity": {
+                "digest": "fnv1a64:d0819213d41d665d",
+                "prefix": "treecalc.table_sparse_selection.v1;table_id=31:tree-table:empty-headers-totals;source=27:EmptyHe",
+                "present": true
+              }
+            },
+            "reference": "EmptyHeadersTotals[#Totals]",
+            "selected_column_ids": [],
+            "selected_sections": [
+              "totals"
+            ],
+            "table_id": "tree-table:empty-headers-totals",
+            "table_node": "EmptyHeadersTotals",
+            "target_kind": "totals-region"
+          },
+          {
+            "case_id": "tbl-empty-current-row-diagnostic",
+            "diagnostic": {
+              "diagnostic_code": "caller_row_out_of_range",
+              "row_count": 0,
+              "row_offset": 0
+            },
+            "expected_reason": "CallerRowOutOfRange",
+            "outcome_kind": "typed_reader_diagnostic",
+            "reference": "[@Amount]",
+            "table_id": "tree-table:empty-headers-only",
+            "table_node": "EmptyHeadersOnly"
+          },
+          {
+            "case_id": "tbl-first-row-insert-endpoint",
+            "declared_extent": {
+              "column_count": 1,
+              "row_count": 1
+            },
+            "defined_cardinality": 1,
+            "outcome_kind": "resolved",
+            "published_value": "1",
+            "reader_identity": {
+              "reader_id": {
+                "digest": "fnv1a64:a3e00f34eb1d7ce8",
+                "prefix": "treecalc-table-reader:v1:treecalc.structured_table_ref.handle.v1;start=1:5;len=2:38",
+                "present": true
+              },
+              "snapshot_identity": {
+                "digest": "fnv1a64:0aa15277ab922e20",
+                "prefix": "treecalc.table_sparse_snapshot.v1;context=1696:treecalc.table_context.v1;table_id=27:tree-table:",
+                "present": true
+              },
+              "source_identity": {
+                "digest": "fnv1a64:74004ce53e58e465",
+                "prefix": "treecalc.table_sparse_selection.v1;table_id=27:tree-table:first-row-insert;source=38:HeadersOnly",
+                "present": true
+              }
+            },
+            "reference": "HeadersOnlyAfterFirstRowInsert[Amount]",
+            "selected_column_ids": [
+              "col:amount"
+            ],
+            "selected_sections": [
+              "data"
+            ],
+            "table_id": "tree-table:first-row-insert",
+            "table_node": "HeadersOnlyAfterFirstRowInsert",
+            "target_kind": "data-column-reference"
+          },
+          {
+            "case_id": "tbl-last-row-delete-endpoint",
+            "declared_extent": {
+              "column_count": 1,
+              "row_count": 1
+            },
+            "defined_cardinality": 1,
+            "outcome_kind": "resolved",
+            "published_value": "0",
+            "reader_identity": {
+              "reader_id": {
+                "digest": "fnv1a64:a3f40934eb2e1bc0",
+                "prefix": "treecalc-table-reader:v1:treecalc.structured_table_ref.handle.v1;start=1:5;len=2:52",
+                "present": true
+              },
+              "snapshot_identity": {
+                "digest": "fnv1a64:2714d5b2bee77b6d",
+                "prefix": "treecalc.table_sparse_snapshot.v1;context=1685:treecalc.table_context.v1;table_id=26:tree-table:",
+                "present": true
+              },
+              "source_identity": {
+                "digest": "fnv1a64:533c84567789cbfe",
+                "prefix": "treecalc.table_sparse_selection.v1;table_id=26:tree-table:last-row-delete;source=52:HeadersTotal",
+                "present": true
+              }
+            },
+            "reference": "HeadersTotalsBeforeLastRowDelete[[#Totals],[Amount]]",
+            "selected_column_ids": [
+              "col:amount"
+            ],
+            "selected_sections": [
+              "totals"
+            ],
+            "table_id": "tree-table:last-row-delete",
+            "table_node": "HeadersTotalsBeforeLastRowDelete",
+            "target_kind": "totals-column-reference"
+          }
+        ],
+        "class_id": "treecalc_empty_body_tables_ready",
+        "engine_surface": "OxCalc W056 structured-table public APIs",
+        "lane_reason_code": "dnatreecalc_w056_empty_body_table_retained",
+        "outcome_kind": "accepted_execution",
+        "outcome_schema": "dna_treecalc.execution_outcome.v1",
+        "outcome_stage": "live_oxcalc_empty_body_table_projection",
+        "replay_view_ready": true,
+        "resolved_case_count": 7,
+        "scenario_id": "w056_treecalc_empty_body_tables_001",
+        "typed_diagnostic_case_count": 1
+      },
+      "view_family": "execution_outcome"
+    },
+    {
+      "value": {
+        "dependencies": [
+          {
+            "caller_context_dependency": false,
+            "case_id": "tbl-empty-headers-only-data",
+            "diagnostics": [],
+            "host_ref_handle": "treecalc.structured_table_ref.handle.v1;start=1:8;len=2:23",
+            "replay_identity": {
+              "digest": "fnv1a64:c86bfaa68be1ebc4",
+              "prefix": "treecalc.structured_table_ref.replay.v1;handle=58:treecalc.structured_table_ref.handle.v1;start=",
+              "present": true
+            },
+            "resolved_table_id": "tree-table:empty-headers-only",
+            "selected_column_ids": [],
+            "selected_sections": [
+              "data"
+            ],
+            "source_span_utf8": {
+              "len": 23,
+              "start": 8
+            },
+            "source_token_text": "EmptyHeadersOnly[#Data]"
+          },
+          {
+            "caller_context_dependency": false,
+            "case_id": "tbl-empty-headers-only-column",
+            "diagnostics": [],
+            "host_ref_handle": "treecalc.structured_table_ref.handle.v1;start=1:5;len=2:24",
+            "replay_identity": {
+              "digest": "fnv1a64:69bc443b4b487fb7",
+              "prefix": "treecalc.structured_table_ref.replay.v1;handle=58:treecalc.structured_table_ref.handle.v1;start=",
+              "present": true
+            },
+            "resolved_table_id": "tree-table:empty-headers-only",
+            "selected_column_ids": [
+              "col:amount"
+            ],
+            "selected_sections": [
+              "data"
+            ],
+            "source_span_utf8": {
+              "len": 24,
+              "start": 5
+            },
+            "source_token_text": "EmptyHeadersOnly[Amount]"
+          },
+          {
+            "caller_context_dependency": false,
+            "case_id": "tbl-empty-headers-only-all",
+            "diagnostics": [],
+            "host_ref_handle": "treecalc.structured_table_ref.handle.v1;start=1:8;len=2:22",
+            "replay_identity": {
+              "digest": "fnv1a64:fdc38de43e7e84ea",
+              "prefix": "treecalc.structured_table_ref.replay.v1;handle=58:treecalc.structured_table_ref.handle.v1;start=",
+              "present": true
+            },
+            "resolved_table_id": "tree-table:empty-headers-only",
+            "selected_column_ids": [],
+            "selected_sections": [
+              "all"
+            ],
+            "source_span_utf8": {
+              "len": 22,
+              "start": 8
+            },
+            "source_token_text": "EmptyHeadersOnly[#All]"
+          },
+          {
+            "caller_context_dependency": false,
+            "case_id": "tbl-empty-headers-only-headers",
+            "diagnostics": [],
+            "host_ref_handle": "treecalc.structured_table_ref.handle.v1;start=1:8;len=2:26",
+            "replay_identity": {
+              "digest": "fnv1a64:8f16344d96430e6a",
+              "prefix": "treecalc.structured_table_ref.replay.v1;handle=58:treecalc.structured_table_ref.handle.v1;start=",
+              "present": true
+            },
+            "resolved_table_id": "tree-table:empty-headers-only",
+            "selected_column_ids": [],
+            "selected_sections": [
+              "headers"
+            ],
+            "source_span_utf8": {
+              "len": 26,
+              "start": 8
+            },
+            "source_token_text": "EmptyHeadersOnly[#Headers]"
+          },
+          {
+            "caller_context_dependency": false,
+            "case_id": "tbl-empty-headers-totals-totals",
+            "diagnostics": [],
+            "host_ref_handle": "treecalc.structured_table_ref.handle.v1;start=1:8;len=2:27",
+            "replay_identity": {
+              "digest": "fnv1a64:9b01cf79d0b6f58d",
+              "prefix": "treecalc.structured_table_ref.replay.v1;handle=58:treecalc.structured_table_ref.handle.v1;start=",
+              "present": true
+            },
+            "resolved_table_id": "tree-table:empty-headers-totals",
+            "selected_column_ids": [],
+            "selected_sections": [
+              "totals"
+            ],
+            "source_span_utf8": {
+              "len": 27,
+              "start": 8
+            },
+            "source_token_text": "EmptyHeadersTotals[#Totals]"
+          },
+          {
+            "caller_context_dependency": true,
+            "case_id": "tbl-empty-current-row-diagnostic",
+            "diagnostics": [],
+            "host_ref_handle": "treecalc.structured_table_ref.handle.v1;start=1:1;len=1:9",
+            "replay_identity": {
+              "digest": "fnv1a64:6f914bc9d8390b30",
+              "prefix": "treecalc.structured_table_ref.replay.v1;handle=57:treecalc.structured_table_ref.handle.v1;start=",
+              "present": true
+            },
+            "resolved_table_id": "tree-table:empty-headers-only",
+            "selected_column_ids": [
+              "col:amount"
+            ],
+            "selected_sections": [
+              "this_row"
+            ],
+            "source_span_utf8": {
+              "len": 9,
+              "start": 1
+            },
+            "source_token_text": "[@Amount]"
+          },
+          {
+            "caller_context_dependency": false,
+            "case_id": "tbl-first-row-insert-endpoint",
+            "diagnostics": [],
+            "host_ref_handle": "treecalc.structured_table_ref.handle.v1;start=1:5;len=2:38",
+            "replay_identity": {
+              "digest": "fnv1a64:2ee4c43810f05c23",
+              "prefix": "treecalc.structured_table_ref.replay.v1;handle=58:treecalc.structured_table_ref.handle.v1;start=",
+              "present": true
+            },
+            "resolved_table_id": "tree-table:first-row-insert",
+            "selected_column_ids": [
+              "col:amount"
+            ],
+            "selected_sections": [
+              "data"
+            ],
+            "source_span_utf8": {
+              "len": 38,
+              "start": 5
+            },
+            "source_token_text": "HeadersOnlyAfterFirstRowInsert[Amount]"
+          },
+          {
+            "caller_context_dependency": false,
+            "case_id": "tbl-last-row-delete-endpoint",
+            "diagnostics": [],
+            "host_ref_handle": "treecalc.structured_table_ref.handle.v1;start=1:5;len=2:52",
+            "replay_identity": {
+              "digest": "fnv1a64:7a4a579c13b8e5ad",
+              "prefix": "treecalc.structured_table_ref.replay.v1;handle=58:treecalc.structured_table_ref.handle.v1;start=",
+              "present": true
+            },
+            "resolved_table_id": "tree-table:last-row-delete",
+            "selected_column_ids": [
+              "col:amount"
+            ],
+            "selected_sections": [
+              "totals"
+            ],
+            "source_span_utf8": {
+              "len": 52,
+              "start": 5
+            },
+            "source_token_text": "HeadersTotalsBeforeLastRowDelete[[#Totals],[Amount]]"
+          }
+        ],
+        "source_status": "direct"
+      },
+      "view_family": "dependency_evidence"
+    },
+    {
+      "value": {
+        "classification_api": "classify_treecalc_table_update",
+        "source_status": "direct",
+        "transitions": [
+          {
+            "after": {
+              "row_count": 1,
+              "table_context_identity": {
+                "digest": "fnv1a64:6a9b3314a8b56997",
+                "prefix": "treecalc.table_context.v1;table_id=29:tree-table:empty-headers-only;namespace_token=58:treecalc.",
+                "present": true
+              },
+              "table_id": "tree-table:empty-headers-only"
+            },
+            "before": {
+              "row_count": 0,
+              "table_context_identity": {
+                "digest": "fnv1a64:00cc853ee8f637e5",
+                "prefix": "treecalc.table_context.v1;table_id=29:tree-table:empty-headers-only;namespace_token=58:treecalc.",
+                "present": true
+              },
+              "table_id": "tree-table:empty-headers-only"
+            },
+            "changed_dependency_kinds": [
+              "structured_table_identity",
+              "structured_table_row_membership",
+              "structured_table_row_order",
+              "structured_table_header_region",
+              "structured_table_data_region",
+              "structured_table_totals_region",
+              "structured_table_caller_context"
+            ],
+            "invalidation_reasons": [
+              "structured_table_context_changed",
+              "structured_table_row_membership_changed",
+              "structured_table_row_order_changed",
+              "structured_table_region_changed",
+              "structured_table_caller_context_changed"
+            ],
+            "invalidation_seeds": [
+              {
+                "node_id": "node:100",
+                "reason": "structured_table_context_changed"
+              },
+              {
+                "node_id": "node:100",
+                "reason": "structured_table_row_membership_changed"
+              },
+              {
+                "node_id": "node:100",
+                "reason": "structured_table_row_order_changed"
+              },
+              {
+                "node_id": "node:100",
+                "reason": "structured_table_region_changed"
+              },
+              {
+                "node_id": "node:100",
+                "reason": "structured_table_caller_context_changed"
+              }
+            ],
+            "prepared_identity_inputs": [
+              "table_context_identity",
+              "caller_context_identity"
+            ],
+            "scenario": "row_insert",
+            "transition_id": "first_row_insert"
+          },
+          {
+            "after": {
+              "row_count": 0,
+              "table_context_identity": {
+                "digest": "fnv1a64:98c67d279375fb55",
+                "prefix": "treecalc.table_context.v1;table_id=31:tree-table:empty-headers-totals;namespace_token=58:treecal",
+                "present": true
+              },
+              "table_id": "tree-table:empty-headers-totals"
+            },
+            "before": {
+              "row_count": 1,
+              "table_context_identity": {
+                "digest": "fnv1a64:0933191d265c7075",
+                "prefix": "treecalc.table_context.v1;table_id=31:tree-table:empty-headers-totals;namespace_token=58:treecal",
+                "present": true
+              },
+              "table_id": "tree-table:empty-headers-totals"
+            },
+            "changed_dependency_kinds": [
+              "structured_table_identity",
+              "structured_table_row_membership",
+              "structured_table_row_order",
+              "structured_table_header_region",
+              "structured_table_data_region",
+              "structured_table_totals_region",
+              "structured_table_caller_context"
+            ],
+            "invalidation_reasons": [
+              "structured_table_context_changed",
+              "structured_table_row_membership_changed",
+              "structured_table_row_order_changed",
+              "structured_table_region_changed",
+              "structured_table_caller_context_changed"
+            ],
+            "invalidation_seeds": [
+              {
+                "node_id": "node:100",
+                "reason": "structured_table_context_changed"
+              },
+              {
+                "node_id": "node:100",
+                "reason": "structured_table_row_membership_changed"
+              },
+              {
+                "node_id": "node:100",
+                "reason": "structured_table_row_order_changed"
+              },
+              {
+                "node_id": "node:100",
+                "reason": "structured_table_region_changed"
+              },
+              {
+                "node_id": "node:100",
+                "reason": "structured_table_caller_context_changed"
+              }
+            ],
+            "prepared_identity_inputs": [
+              "table_context_identity",
+              "caller_context_identity"
+            ],
+            "scenario": "row_delete",
+            "transition_id": "last_row_delete"
+          }
+        ]
+      },
+      "view_family": "invalidation_evidence"
+    },
+    {
+      "value": {
+        "artifact_kind": "w056_empty_body_table_replay",
+        "artifact_refs": [
+          {
+            "kind": "normalized_replay",
+            "path": "docs/test-runs/w056-table-empty-body-001/views/normalized-replay.json"
+          },
+          {
+            "kind": "replay_manifest",
+            "path": "docs/test-runs/w056-table-empty-body-001/oxreplay-manifest.json"
+          },
+          {
+            "kind": "source_corpus",
+            "path": "docs/test-corpus/tables/empty-body.json"
+          },
+          {
+            "kind": "source_workspace",
+            "path": "docs/test-corpus/workspaces/empty-body-tables.json"
+          }
+        ],
+        "capture_loss": "none",
+        "capture_mode": "model_projection",
+        "host_id": "dna_treecalc",
+        "projection_status": "direct",
+        "source_status": "direct"
+      },
+      "view_family": "retained_artifact_ref"
+    }
+  ],
+  "events": [
+    {
+      "event_id": "treecalc_empty_body_table_slices",
+      "normalized_family": "treecalc.surface.table_slice.empty_body",
+      "source_label": "table_slice:empty-body-tables"
+    },
+    {
+      "event_id": "treecalc_empty_body_table_dependencies",
+      "normalized_family": "treecalc.surface.dependency_evidence.empty_body",
+      "source_label": "dependency_evidence:empty-body-tables"
+    },
+    {
+      "event_id": "treecalc_empty_body_table_invalidations",
+      "normalized_family": "treecalc.surface.invalidation_evidence.empty_body",
+      "source_label": "invalidation_evidence:empty-body-tables"
+    }
+  ],
+  "lane_id": "dna_treecalc",
+  "registry_refs": [
+    {
+      "family": "dnatreecalc.test_corpus",
+      "version": "tables/empty-body@treecalc-corpus-v1:cases=8"
+    },
+    {
+      "family": "dnatreecalc.workspace_fixture",
+      "version": "empty-body-tables@treecalc-workspace-v1"
+    }
+  ],
+  "scenario_id": "w056_treecalc_empty_body_tables_001",
+  "source_metadata": {
+    "adapter_id": "dnatreecalc.oxcalc_empty_body_table_projection.v1",
+    "bridge_influenced": true,
+    "capture_loss": "none",
+    "capture_loss_summary": [],
+    "capture_mode": "model_projection",
+    "comparison_view_families": [
+      "table_slice",
+      "per_node_value",
+      "effective_display_text",
+      "execution_outcome",
+      "dependency_evidence",
+      "invalidation_evidence",
+      "retained_artifact_ref"
+    ],
+    "interpretation_limits": [
+      {
+        "detail": "This artifact is DnaTreeCalc/OxCalc retained producer evidence; Excel black-box observation is supplied by OxXlPlay.",
+        "kind": "model_projection_not_excel_observation"
+      },
+      {
+        "detail": "Structured-reference parse, bind, sparse-reader, and update impact facts come from OxCalc/OxFml public table APIs, not DnaTreeCalc formula parsing.",
+        "kind": "no_private_formula_semantics"
+      }
+    ],
+    "projection_status": "direct",
+    "shared_scenario_alias": "w056_empty_body_tables_001",
+    "source_host": "dna_treecalc",
+    "source_refs": [
+      "docs/test-corpus/tables/empty-body.json",
+      "docs/test-corpus/workspaces/empty-body-tables.json"
+    ],
+    "source_schema_id": "dna_treecalc.w056_empty_body_table_replay.v1",
+    "uncertainty_summary": [],
+    "workspace_id": "empty-body-tables"
+  }
+}

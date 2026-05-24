@@ -713,6 +713,39 @@ fn active_empty_body_table_corpus_executes_through_oxcalc_table_path() {
     }
 }
 
+#[test]
+fn retained_empty_body_table_replay_artifact_matches_live_oxcalc_projection() {
+    let theme = load_theme(repo_corpus_path("tables/empty-body.json"));
+    let workspace = load_workspace("empty-body-tables");
+    let artifact = retained_empty_body_table_replay_artifact(&theme, &workspace);
+    let artifact_path =
+        repo_docs_path("test-runs/w056-table-empty-body-001/views/normalized-replay.json");
+    let manifest_path =
+        repo_docs_path("test-runs/w056-table-empty-body-001/oxreplay-manifest.json");
+    let manifest = retained_empty_body_table_replay_manifest();
+    if std::env::var_os("DNATREECALC_UPDATE_RETAINED_EMPTY_BODY_TABLE_REPLAY").is_some() {
+        write_pretty_json(&artifact_path, &artifact);
+        write_pretty_json(&manifest_path, &manifest);
+    }
+
+    let expected_artifact = load_expected_json_or_panic_with_generated(&artifact_path, &artifact);
+    assert_eq!(
+        expected_artifact, artifact,
+        "retained W056 empty-body table artifact must stay generated from the live OxCalc table projection"
+    );
+    let expected_manifest = load_expected_json_or_panic_with_generated(&manifest_path, &manifest);
+    assert_eq!(
+        expected_manifest, manifest,
+        "retained W056 empty-body table manifest must stay aligned with the generated replay view"
+    );
+    assert!(
+        manifest["views"].as_array().is_some_and(|views| views
+            .iter()
+            .any(|view| view["path"] == json!("views/normalized-replay.json"))),
+        "manifest must point OxReplay at the normalized-replay view"
+    );
+}
+
 fn is_simple_current_row_reference_formula(
     formula_text: &str,
     prebind: &oxcalc_core::structured_table::TreeCalcTableStructuredReferencePrebind,
@@ -2019,6 +2052,165 @@ fn retained_table_lifecycle_replay_manifest() -> Value {
     })
 }
 
+fn retained_empty_body_table_replay_artifact(
+    theme: &CorpusTheme,
+    workspace: &WorkspaceModel,
+) -> Value {
+    let case_evidence = theme
+        .cases
+        .iter()
+        .map(|case| retained_empty_body_case_evidence_json(case, workspace))
+        .collect::<Vec<_>>();
+
+    json!({
+        "scenario_id": "w056_treecalc_empty_body_tables_001",
+        "lane_id": "dna_treecalc",
+        "events": [
+            {
+                "event_id": "treecalc_empty_body_table_slices",
+                "source_label": "table_slice:empty-body-tables",
+                "normalized_family": "treecalc.surface.table_slice.empty_body"
+            },
+            {
+                "event_id": "treecalc_empty_body_table_dependencies",
+                "source_label": "dependency_evidence:empty-body-tables",
+                "normalized_family": "treecalc.surface.dependency_evidence.empty_body"
+            },
+            {
+                "event_id": "treecalc_empty_body_table_invalidations",
+                "source_label": "invalidation_evidence:empty-body-tables",
+                "normalized_family": "treecalc.surface.invalidation_evidence.empty_body"
+            }
+        ],
+        "registry_refs": [
+            {
+                "family": "dnatreecalc.test_corpus",
+                "version": format!("{}@{}:cases={}", theme.theme, theme.schema_version, theme.cases.len())
+            },
+            {
+                "family": "dnatreecalc.workspace_fixture",
+                "version": format!("{}@treecalc-workspace-v1", workspace.workspace_id)
+            }
+        ],
+        "comparison_views": [
+            {
+                "view_family": "table_slice",
+                "value": retained_empty_body_table_slice_json(workspace)
+            },
+            {
+                "view_family": "per_node_value",
+                "value": retained_empty_body_per_node_value_json(&case_evidence)
+            },
+            {
+                "view_family": "effective_display_text",
+                "value": retained_empty_body_display_json(workspace)
+            },
+            {
+                "view_family": "execution_outcome",
+                "value": {
+                    "outcome_schema": "dna_treecalc.execution_outcome.v1",
+                    "scenario_id": "w056_treecalc_empty_body_tables_001",
+                    "outcome_kind": "accepted_execution",
+                    "outcome_stage": "live_oxcalc_empty_body_table_projection",
+                    "class_id": "treecalc_empty_body_tables_ready",
+                    "lane_reason_code": "dnatreecalc_w056_empty_body_table_retained",
+                    "bridge": "LiveOxCalcTreeBridge",
+                    "engine_surface": "OxCalc W056 structured-table public APIs",
+                    "resolved_case_count": case_evidence
+                        .iter()
+                        .filter(|case| case["outcome_kind"] == json!("resolved"))
+                        .count(),
+                    "typed_diagnostic_case_count": case_evidence
+                        .iter()
+                        .filter(|case| case["outcome_kind"] == json!("typed_reader_diagnostic"))
+                        .count(),
+                    "case_outcomes": case_evidence,
+                    "replay_view_ready": true
+                }
+            },
+            {
+                "view_family": "dependency_evidence",
+                "value": retained_empty_body_dependency_evidence_json(theme, workspace)
+            },
+            {
+                "view_family": "invalidation_evidence",
+                "value": retained_empty_body_invalidation_evidence_json(workspace)
+            },
+            {
+                "view_family": "retained_artifact_ref",
+                "value": retained_empty_body_artifact_refs_json()
+            }
+        ],
+        "source_metadata": {
+            "source_host": "dna_treecalc",
+            "source_schema_id": "dna_treecalc.w056_empty_body_table_replay.v1",
+            "projection_status": "direct",
+            "capture_mode": "model_projection",
+            "capture_loss": "none",
+            "capture_loss_summary": [],
+            "uncertainty_summary": [],
+            "bridge_influenced": true,
+            "adapter_id": "dnatreecalc.oxcalc_empty_body_table_projection.v1",
+            "workspace_id": workspace.workspace_id,
+            "source_refs": [
+                "docs/test-corpus/tables/empty-body.json",
+                "docs/test-corpus/workspaces/empty-body-tables.json"
+            ],
+            "shared_scenario_alias": "w056_empty_body_tables_001",
+            "interpretation_limits": [
+                {
+                    "kind": "model_projection_not_excel_observation",
+                    "detail": "This artifact is DnaTreeCalc/OxCalc retained producer evidence; Excel black-box observation is supplied by OxXlPlay."
+                },
+                {
+                    "kind": "no_private_formula_semantics",
+                    "detail": "Structured-reference parse, bind, sparse-reader, and update impact facts come from OxCalc/OxFml public table APIs, not DnaTreeCalc formula parsing."
+                }
+            ],
+            "comparison_view_families": [
+                "table_slice",
+                "per_node_value",
+                "effective_display_text",
+                "execution_outcome",
+                "dependency_evidence",
+                "invalidation_evidence",
+                "retained_artifact_ref"
+            ]
+        }
+    })
+}
+
+fn retained_empty_body_table_replay_manifest() -> Value {
+    json!({
+        "bundle_id": "dnatreecalc-w056-table-empty-body-001",
+        "scenario_id": "w056_treecalc_empty_body_tables_001",
+        "bundle_schema": "replay.bundle.v1",
+        "source_schema": "dna_treecalc.replay_bundle_seed.v1",
+        "lane_id": "dna_treecalc",
+        "adapter_id": "dnatreecalc.oxcalc_empty_body_table_projection.v1",
+        "capture_mode": "model_projection",
+        "projection_status": "lossless",
+        "capture_loss": "none",
+        "registry_refs": [],
+        "sidecars": [],
+        "views": [
+            {
+                "artifact_family": "normalized_replay",
+                "path": "views/normalized-replay.json"
+            }
+        ],
+        "declared_comparison_views": [
+            "table_slice",
+            "per_node_value",
+            "effective_display_text",
+            "execution_outcome",
+            "dependency_evidence",
+            "invalidation_evidence",
+            "retained_artifact_ref"
+        ]
+    })
+}
+
 fn retained_table_slice_json(
     table: &TableNodeFixture,
     snapshot: &TreeCalcTableNodeSnapshot,
@@ -2717,6 +2909,475 @@ fn retained_table_lifecycle_artifact_refs_json() -> Value {
             {
                 "kind": "source_workspace",
                 "path": "docs/test-corpus/workspaces/tables.json"
+            }
+        ],
+        "capture_mode": "model_projection",
+        "projection_status": "direct",
+        "capture_loss": "none"
+    })
+}
+
+fn retained_empty_body_case_evidence_json(case: &TableCase, workspace: &WorkspaceModel) -> Value {
+    let table = workspace
+        .table_node(&case.table)
+        .unwrap_or_else(|| panic!("workspace missing table {}", case.table));
+    let snapshot = table_snapshot(&case.table, table);
+    let projection = project_treecalc_table_node_snapshot(&snapshot)
+        .unwrap_or_else(|error| panic!("{} table failed projection: {error:?}", case.id));
+    let formula_text = case
+        .source_formula
+        .as_deref()
+        .unwrap_or(case.reference.as_str());
+    let caller_region = case
+        .caller_row_offset
+        .map(|offset| table_data_caller_region(&projection, offset));
+    let enclosing = caller_region.as_ref().map(|_| TableRef {
+        table_id: projection.table_id.clone(),
+    });
+    let prebound = prebind_treecalc_table_structured_references(
+        formula_text,
+        std::slice::from_ref(&projection),
+        enclosing,
+        caller_region.clone(),
+    );
+    let prebind = prebound
+        .first()
+        .unwrap_or_else(|| panic!("case {} produced no table prebind", case.id));
+    let bind_record = &prebind.bind_record;
+    let formula_values = empty_body_formula_values(table, &projection);
+    let reader = TreeCalcTableSparseReader::from_oxfml_bind_record(
+        &snapshot,
+        &projection,
+        bind_record,
+        caller_region.as_ref(),
+        formula_values,
+    );
+
+    match reader {
+        Ok(reader) => {
+            let observed = case.expect.published_value.as_ref().map(|_| {
+                evaluate_case_formula(
+                    &case.id,
+                    formula_text,
+                    &projection,
+                    caller_region,
+                    reader.runtime_binding(),
+                )
+            });
+            if let (Some(expected), Some(observed)) = (&case.expect.published_value, &observed) {
+                assert_eq!(observed, expected, "{} retained published value", case.id);
+            }
+            json!({
+                "case_id": case.id,
+                "table_id": projection.table_id,
+                "table_node": case.table,
+                "reference": case.reference,
+                "outcome_kind": "resolved",
+                "target_kind": case.expect.target_kind,
+                "published_value": observed,
+                "declared_extent": {
+                    "row_count": reader.declared_extent().row_count,
+                    "column_count": reader.declared_extent().column_count
+                },
+                "defined_cardinality": reader.defined_cardinality(),
+                "reader_identity": {
+                    "reader_id": retained_identity_json(&reader.reader_identity().reader_id),
+                    "source_identity": retained_identity_json(&reader.reader_identity().source_identity),
+                    "snapshot_identity": retained_identity_json(&reader.reader_identity().snapshot_identity)
+                },
+                "selected_sections": bind_record
+                    .selected_sections
+                    .iter()
+                    .copied()
+                    .map(structured_section_kind_id)
+                    .collect::<Vec<_>>(),
+                "selected_column_ids": bind_record.selected_column_ids
+            })
+        }
+        Err(error) => {
+            assert_eq!(
+                case.expect.outcome, "error",
+                "{} unexpected reader diagnostic {error:?}",
+                case.id
+            );
+            json!({
+                "case_id": case.id,
+                "table_id": projection.table_id,
+                "table_node": case.table,
+                "reference": case.reference,
+                "outcome_kind": "typed_reader_diagnostic",
+                "diagnostic": empty_body_reader_error_json(&error),
+                "expected_reason": case.expect.reason
+            })
+        }
+    }
+}
+
+fn retained_empty_body_table_slice_json(workspace: &WorkspaceModel) -> Value {
+    json!({
+        "table_slice_schema": "dna_treecalc.empty_body_table_slice.v1",
+        "source_status": "direct",
+        "tables": empty_body_table_ids()
+            .iter()
+            .map(|table_id| retained_empty_body_single_table_slice_json(workspace, table_id))
+            .collect::<Vec<_>>()
+    })
+}
+
+fn retained_empty_body_single_table_slice_json(
+    workspace: &WorkspaceModel,
+    table_node_id: &str,
+) -> Value {
+    let table = workspace
+        .table_node(table_node_id)
+        .unwrap_or_else(|| panic!("workspace missing table {table_node_id}"));
+    let snapshot = table_snapshot(table_node_id, table);
+    let projection = project_treecalc_table_node_snapshot(&snapshot)
+        .unwrap_or_else(|error| panic!("{table_node_id} table failed projection: {error:?}"));
+
+    json!({
+        "table_node_id": table_node_id,
+        "table_id": projection.table_id,
+        "table_name": projection.table_descriptor.table_name,
+        "display_path": projection.display_path,
+        "canonical_locator": projection.canonical_path,
+        "table_range_ref": projection.table_descriptor.table_range_ref,
+        "header_region_ref": projection.table_descriptor.header_region_ref,
+        "data_body_range_ref": table_data_body_range_ref(&snapshot),
+        "totals_region_ref": projection.table_descriptor.totals_region_ref,
+        "header_row_present": projection.table_descriptor.header_row_present,
+        "totals_row_present": projection.table_descriptor.totals_row_present,
+        "row_count": snapshot.rows.len(),
+        "column_count": snapshot.columns.len(),
+        "versions": {
+            "table_namespace_version": snapshot.table_namespace_version,
+            "row_membership_version": snapshot.row_membership_version,
+            "row_order_version": snapshot.row_order_version,
+            "column_identity_version": snapshot.column_identity_version
+        },
+        "engine_identity_refs": {
+            "table_context_identity": retained_identity_json(&projection.table_context_identity),
+            "table_invalidation_identity": retained_identity_json(&projection.table_invalidation_identity),
+            "table_namespace_token": retained_identity_json(&projection.table_namespace_token),
+            "row_membership_identity": retained_identity_json(&projection.row_membership_identity),
+            "row_order_identity": retained_identity_json(&projection.row_order_identity),
+            "column_identity": retained_identity_json(&projection.column_identity),
+            "virtual_anchor_token": retained_identity_json(&projection.virtual_anchor_token)
+        },
+        "rows": table.rows.iter().map(|row| {
+            json!({
+                "row_id": row.row_id,
+                "ordinal": row.ordinal
+            })
+        }).collect::<Vec<_>>(),
+        "columns": table.columns.iter().map(|column| {
+            json!({
+                "column_id": column.column_id,
+                "column_name": column.name,
+                "ordinal": column.ordinal,
+                "body_kind": table_column_body_kind_id(column.body.kind),
+                "data_constants": column.body.constants.iter().map(|cell| {
+                    json!({
+                        "row_id": cell.row_id,
+                        "value_repr": cell.value
+                    })
+                }).collect::<Vec<_>>(),
+                "totals_formula": column.totals_formula.as_ref().map(table_formula_json)
+            })
+        }).collect::<Vec<_>>()
+    })
+}
+
+fn retained_empty_body_per_node_value_json(case_evidence: &[Value]) -> Value {
+    json!({
+        "source_status": "direct",
+        "entries": case_evidence
+            .iter()
+            .map(|case| {
+                json!({
+                    "case_id": case["case_id"].clone(),
+                    "table_node": case["table_node"].clone(),
+                    "reference": case["reference"].clone(),
+                    "outcome_kind": case["outcome_kind"].clone(),
+                    "published_value": case["published_value"].clone(),
+                    "diagnostic": case["diagnostic"].clone()
+                })
+            })
+            .collect::<Vec<_>>()
+    })
+}
+
+fn retained_empty_body_display_json(workspace: &WorkspaceModel) -> Value {
+    let entries = empty_body_table_ids()
+        .iter()
+        .flat_map(|table_id| {
+            let table = workspace
+                .table_node(table_id)
+                .unwrap_or_else(|| panic!("workspace missing table {table_id}"));
+            table.columns.iter().map(move |column| {
+                json!({
+                    "locator": format!("{table_id}.Headers.{}", column.name),
+                    "effective_display_text": column.name,
+                    "trust_status": "model_display_string"
+                })
+            })
+        })
+        .collect::<Vec<_>>();
+    json!({
+        "source_status": "direct",
+        "render_context": {
+            "context_id": "treecalc-model-display-v1",
+            "context_kind": "treecalc_model_display",
+            "trust_class": "direct"
+        },
+        "entries": entries
+    })
+}
+
+fn retained_empty_body_dependency_evidence_json(
+    theme: &CorpusTheme,
+    workspace: &WorkspaceModel,
+) -> Value {
+    let dependencies = theme
+        .cases
+        .iter()
+        .map(|case| {
+            let table = workspace
+                .table_node(&case.table)
+                .unwrap_or_else(|| panic!("workspace missing table {}", case.table));
+            let snapshot = table_snapshot(&case.table, table);
+            let projection =
+                project_treecalc_table_node_snapshot(&snapshot).unwrap_or_else(|error| {
+                    panic!(
+                        "{} table failed projection for retained dependency: {error:?}",
+                        case.id
+                    )
+                });
+            let formula_text = case
+                .source_formula
+                .as_deref()
+                .unwrap_or(case.reference.as_str());
+            let caller_region = case
+                .caller_row_offset
+                .map(|offset| table_data_caller_region(&projection, offset));
+            let enclosing = caller_region.as_ref().map(|_| TableRef {
+                table_id: projection.table_id.clone(),
+            });
+            let prebind = prebind_treecalc_table_structured_references(
+                formula_text,
+                std::slice::from_ref(&projection),
+                enclosing,
+                caller_region.clone(),
+            )
+            .into_iter()
+            .next()
+            .unwrap_or_else(|| panic!("case {} did not prebind", case.id));
+            json!({
+                "case_id": case.id,
+                "source_span_utf8": {
+                    "start": prebind.source_span_utf8.start,
+                    "len": prebind.source_span_utf8.len
+                },
+                "source_token_text": prebind.source_token_text,
+                "host_ref_handle": prebind.host_ref_handle,
+                "replay_identity": retained_identity_json(&prebind.replay_identity),
+                "resolved_table_id": prebind.resolved_table_id,
+                "selected_column_ids": prebind.bind_record.selected_column_ids,
+                "selected_sections": prebind
+                    .bind_record
+                    .selected_sections
+                    .iter()
+                    .copied()
+                    .map(structured_section_kind_id)
+                    .collect::<Vec<_>>(),
+                "caller_context_dependency": prebind.caller_context_dependency,
+                "diagnostics": prebind
+                    .diagnostics
+                    .iter()
+                    .map(|diagnostic| {
+                        json!({
+                            "diagnostic_code": diagnostic.diagnostic_code,
+                            "message": diagnostic.message
+                        })
+                    })
+                    .collect::<Vec<_>>()
+            })
+        })
+        .collect::<Vec<_>>();
+
+    json!({
+        "source_status": "direct",
+        "dependencies": dependencies
+    })
+}
+
+fn retained_empty_body_invalidation_evidence_json(workspace: &WorkspaceModel) -> Value {
+    let transitions = [
+        empty_body_row_insert_transition(workspace),
+        empty_body_last_row_delete_transition(workspace),
+    ];
+    json!({
+        "source_status": "direct",
+        "classification_api": "classify_treecalc_table_update",
+        "transitions": transitions
+    })
+}
+
+fn empty_body_row_insert_transition(workspace: &WorkspaceModel) -> Value {
+    let table = workspace
+        .table_node("EmptyHeadersOnly")
+        .expect("empty headers table exists");
+    let before_snapshot = table_snapshot("EmptyHeadersOnly", table);
+    let mut after_snapshot = before_snapshot.clone();
+    after_snapshot
+        .rows
+        .push(TreeCalcTableRowId("row:first".to_string()));
+    after_snapshot.row_membership_version =
+        "table-rows:empty-headers-only:membership:v2".to_string();
+    after_snapshot.row_order_version = "table-rows:empty-headers-only:order:v2".to_string();
+    empty_body_transition_impact_json(
+        "first_row_insert",
+        TreeCalcTableUpdateScenarioKind::RowInsert,
+        &before_snapshot,
+        &after_snapshot,
+    )
+}
+
+fn empty_body_last_row_delete_transition(workspace: &WorkspaceModel) -> Value {
+    let table = workspace
+        .table_node("EmptyHeadersTotals")
+        .expect("empty headers+totals table exists");
+    let after_snapshot = table_snapshot("EmptyHeadersTotals", table);
+    let mut before_snapshot = after_snapshot.clone();
+    before_snapshot
+        .rows
+        .push(TreeCalcTableRowId("row:last".to_string()));
+    before_snapshot.row_membership_version =
+        "table-rows:empty-headers-totals:membership:v0".to_string();
+    before_snapshot.row_order_version = "table-rows:empty-headers-totals:order:v0".to_string();
+    empty_body_transition_impact_json(
+        "last_row_delete",
+        TreeCalcTableUpdateScenarioKind::RowDelete,
+        &before_snapshot,
+        &after_snapshot,
+    )
+}
+
+fn empty_body_transition_impact_json(
+    transition_id: &str,
+    scenario: TreeCalcTableUpdateScenarioKind,
+    before_snapshot: &TreeCalcTableNodeSnapshot,
+    after_snapshot: &TreeCalcTableNodeSnapshot,
+) -> Value {
+    let before_projection = project_treecalc_table_node_snapshot(before_snapshot)
+        .unwrap_or_else(|error| panic!("{transition_id} before projection failed: {error:?}"));
+    let after_projection = project_treecalc_table_node_snapshot(after_snapshot)
+        .unwrap_or_else(|error| panic!("{transition_id} after projection failed: {error:?}"));
+    let impact = classify_treecalc_table_update(
+        scenario,
+        Some(&before_projection),
+        Some(&after_projection),
+        [TreeNodeId(100)],
+        [format!("bind:{transition_id}")],
+    );
+    json!({
+        "transition_id": transition_id,
+        "scenario": table_update_scenario_kind_id(scenario),
+        "before": {
+            "table_id": before_projection.table_id,
+            "row_count": before_snapshot.rows.len(),
+            "table_context_identity": retained_identity_json(&before_projection.table_context_identity)
+        },
+        "after": {
+            "table_id": after_projection.table_id,
+            "row_count": after_snapshot.rows.len(),
+            "table_context_identity": retained_identity_json(&after_projection.table_context_identity)
+        },
+        "changed_dependency_kinds": impact.changed_dependency_kinds
+            .iter()
+            .copied()
+            .map(dependency_kind_id)
+            .collect::<Vec<_>>(),
+        "invalidation_reasons": impact.invalidation_reasons
+            .iter()
+            .copied()
+            .map(invalidation_reason_kind_id)
+            .collect::<Vec<_>>(),
+        "prepared_identity_inputs": impact.prepared_identity_inputs
+            .iter()
+            .copied()
+            .map(prepared_identity_input_id)
+            .collect::<Vec<_>>(),
+        "invalidation_seeds": impact.invalidation_seeds
+            .iter()
+            .map(|seed| {
+                json!({
+                    "node_id": seed.node_id.to_string(),
+                    "reason": invalidation_reason_kind_id(seed.reason)
+                })
+            })
+            .collect::<Vec<_>>()
+    })
+}
+
+fn empty_body_formula_values(
+    table: &TableNodeFixture,
+    projection: &TreeCalcTableNodeProjection,
+) -> Vec<TreeCalcTableSparseValue> {
+    if projection.table_descriptor.totals_row_present {
+        table_sparse_values(table, None, [("col:amount", EvalValue::Number(0.0))])
+    } else {
+        table_sparse_values(table, None, std::iter::empty::<(&str, EvalValue)>())
+    }
+}
+
+fn empty_body_reader_error_json(error: &TreeCalcTableSparseReaderError) -> Value {
+    match error {
+        TreeCalcTableSparseReaderError::CallerRowOutOfRange {
+            row_offset,
+            row_count,
+        } => json!({
+            "diagnostic_code": "caller_row_out_of_range",
+            "row_offset": row_offset,
+            "row_count": row_count
+        }),
+        other => json!({
+            "diagnostic_code": "unexpected_reader_error",
+            "debug": format!("{other:?}")
+        }),
+    }
+}
+
+fn empty_body_table_ids() -> [&'static str; 4] {
+    [
+        "EmptyHeadersOnly",
+        "EmptyHeadersTotals",
+        "HeadersOnlyAfterFirstRowInsert",
+        "HeadersTotalsBeforeLastRowDelete",
+    ]
+}
+
+fn retained_empty_body_artifact_refs_json() -> Value {
+    json!({
+        "source_status": "direct",
+        "host_id": "dna_treecalc",
+        "artifact_kind": "w056_empty_body_table_replay",
+        "artifact_refs": [
+            {
+                "kind": "normalized_replay",
+                "path": "docs/test-runs/w056-table-empty-body-001/views/normalized-replay.json"
+            },
+            {
+                "kind": "replay_manifest",
+                "path": "docs/test-runs/w056-table-empty-body-001/oxreplay-manifest.json"
+            },
+            {
+                "kind": "source_corpus",
+                "path": "docs/test-corpus/tables/empty-body.json"
+            },
+            {
+                "kind": "source_workspace",
+                "path": "docs/test-corpus/workspaces/empty-body-tables.json"
             }
         ],
         "capture_mode": "model_projection",
