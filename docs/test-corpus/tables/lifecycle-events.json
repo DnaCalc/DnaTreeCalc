@@ -1,0 +1,503 @@
+{
+  "schema_version": "treecalc-corpus-v1",
+  "theme": "tables/lifecycle-events",
+  "workset": "W004",
+  "status": "active",
+  "description": "Active W056 table lifecycle event corpus. DnaTreeCalc owns these product table event shapes and before/after fixture states while OxCalc owns the lifecycle callback contract, dependency classification, invalidation reasons, and prepared-identity impact.",
+  "cases": [
+    {
+      "id": "tbl-life-table-create",
+      "name": "Table create enters the OxCalc lifecycle callback contract",
+      "spec": "section 7c",
+      "kind": "table",
+      "workspace": "tables",
+      "table": "SalesTable",
+      "reference": "lifecycle:table_create",
+      "expect": { "outcome": "resolved" },
+      "lifecycle": {
+        "event_kind": "table_create",
+        "before_state": "none",
+        "after_state": "baseline",
+        "changed_rows": ["row:west", "row:east", "row:north"],
+        "changed_columns": ["col:region", "col:amount", "col:tax"],
+        "expect_row_handles_preserved": false,
+        "expect_column_handles_preserved": false
+      }
+    },
+    {
+      "id": "tbl-life-body-cell-edit",
+      "name": "Body cell edit enters the OxCalc lifecycle callback contract",
+      "spec": "section 7c",
+      "kind": "table",
+      "workspace": "tables",
+      "table": "SalesTable",
+      "reference": "lifecycle:body_cell_edit",
+      "expect": { "outcome": "resolved" },
+      "lifecycle": {
+        "event_kind": "body_cell_edit",
+        "before_state": "baseline",
+        "after_state": "body_cell_edit",
+        "changed_rows": ["row:west"],
+        "changed_columns": ["col:amount"],
+        "expect_row_handles_preserved": true,
+        "expect_column_handles_preserved": true
+      }
+    },
+    {
+      "id": "tbl-life-body-formula-edit",
+      "name": "Body formula edit enters the OxCalc lifecycle callback contract",
+      "spec": "section 7c",
+      "kind": "table",
+      "workspace": "tables",
+      "table": "SalesTable",
+      "reference": "lifecycle:body_formula_edit",
+      "expect": { "outcome": "resolved" },
+      "lifecycle": {
+        "event_kind": "body_formula_edit",
+        "before_state": "baseline",
+        "after_state": "body_formula_edit",
+        "changed_rows": ["row:west", "row:east", "row:north"],
+        "changed_columns": ["col:tax"],
+        "expect_row_handles_preserved": true,
+        "expect_column_handles_preserved": true
+      }
+    },
+    {
+      "id": "tbl-life-row-insert",
+      "name": "Row insert enters the OxCalc lifecycle callback contract",
+      "spec": "section 7c",
+      "kind": "table",
+      "workspace": "tables",
+      "table": "SalesTable",
+      "reference": "lifecycle:row_insert",
+      "expect": { "outcome": "resolved" },
+      "lifecycle": {
+        "event_kind": "row_insert",
+        "before_state": "baseline",
+        "after_state": "row_insert",
+        "changed_rows": ["row:south"],
+        "changed_columns": [],
+        "expect_row_handles_preserved": false,
+        "expect_column_handles_preserved": true
+      }
+    },
+    {
+      "id": "tbl-life-row-delete",
+      "name": "Row delete enters the OxCalc lifecycle callback contract",
+      "spec": "section 7c",
+      "kind": "table",
+      "workspace": "tables",
+      "table": "SalesTable",
+      "reference": "lifecycle:row_delete",
+      "expect": { "outcome": "resolved" },
+      "lifecycle": {
+        "event_kind": "row_delete",
+        "before_state": "baseline",
+        "after_state": "row_delete",
+        "changed_rows": ["row:north"],
+        "changed_columns": [],
+        "expect_row_handles_preserved": false,
+        "expect_column_handles_preserved": true
+      }
+    },
+    {
+      "id": "tbl-life-row-reorder",
+      "name": "Row reorder enters the OxCalc lifecycle callback contract",
+      "spec": "section 7c",
+      "kind": "table",
+      "workspace": "tables",
+      "table": "SalesTable",
+      "reference": "lifecycle:row_reorder",
+      "expect": { "outcome": "resolved" },
+      "lifecycle": {
+        "event_kind": "row_reorder",
+        "before_state": "baseline",
+        "after_state": "row_reorder",
+        "changed_rows": ["row:west", "row:east", "row:north"],
+        "changed_columns": [],
+        "expect_row_handles_preserved": false,
+        "expect_column_handles_preserved": true
+      }
+    },
+    {
+      "id": "tbl-life-column-insert",
+      "name": "Column insert enters the OxCalc lifecycle callback contract",
+      "spec": "section 7c",
+      "kind": "table",
+      "workspace": "tables",
+      "table": "SalesTable",
+      "reference": "lifecycle:column_insert",
+      "expect": { "outcome": "resolved" },
+      "lifecycle": {
+        "event_kind": "column_insert",
+        "before_state": "baseline",
+        "after_state": "column_insert",
+        "changed_rows": [],
+        "changed_columns": ["col:discount"],
+        "expect_row_handles_preserved": true,
+        "expect_column_handles_preserved": false
+      }
+    },
+    {
+      "id": "tbl-life-column-delete",
+      "name": "Column delete enters the OxCalc lifecycle callback contract",
+      "spec": "section 7c",
+      "kind": "table",
+      "workspace": "tables",
+      "table": "SalesTable",
+      "reference": "lifecycle:column_delete",
+      "expect": { "outcome": "resolved" },
+      "lifecycle": {
+        "event_kind": "column_delete",
+        "before_state": "baseline",
+        "after_state": "column_delete",
+        "changed_rows": [],
+        "changed_columns": ["col:tax"],
+        "expect_row_handles_preserved": true,
+        "expect_column_handles_preserved": false
+      }
+    },
+    {
+      "id": "tbl-life-column-reorder",
+      "name": "Column reorder enters the OxCalc lifecycle callback contract",
+      "spec": "section 7c",
+      "kind": "table",
+      "workspace": "tables",
+      "table": "SalesTable",
+      "reference": "lifecycle:column_reorder",
+      "expect": { "outcome": "resolved" },
+      "lifecycle": {
+        "event_kind": "column_reorder",
+        "before_state": "baseline",
+        "after_state": "column_reorder",
+        "changed_rows": [],
+        "changed_columns": ["col:region", "col:amount", "col:tax"],
+        "expect_row_handles_preserved": true,
+        "expect_column_handles_preserved": false
+      }
+    },
+    {
+      "id": "tbl-life-column-rename",
+      "name": "Column rename enters the OxCalc lifecycle callback contract",
+      "spec": "section 7c",
+      "kind": "table",
+      "workspace": "tables",
+      "table": "SalesTable",
+      "reference": "lifecycle:column_rename",
+      "expect": { "outcome": "resolved" },
+      "lifecycle": {
+        "event_kind": "column_rename",
+        "before_state": "baseline",
+        "after_state": "column_rename",
+        "changed_rows": [],
+        "changed_columns": ["col:amount"],
+        "expect_row_handles_preserved": true,
+        "expect_column_handles_preserved": true
+      }
+    },
+    {
+      "id": "tbl-life-header-text-edit",
+      "name": "Header text edit enters the OxCalc lifecycle callback contract",
+      "spec": "section 7c",
+      "kind": "table",
+      "workspace": "tables",
+      "table": "SalesTable",
+      "reference": "lifecycle:header_text_edit",
+      "expect": { "outcome": "resolved" },
+      "lifecycle": {
+        "event_kind": "header_text_edit",
+        "before_state": "baseline",
+        "after_state": "header_text_edit",
+        "changed_rows": [],
+        "changed_columns": ["col:amount"],
+        "expect_row_handles_preserved": true,
+        "expect_column_handles_preserved": true
+      }
+    },
+    {
+      "id": "tbl-life-totals-row-toggle",
+      "name": "Totals row toggle enters the OxCalc lifecycle callback contract",
+      "spec": "section 7c",
+      "kind": "table",
+      "workspace": "tables",
+      "table": "SalesTable",
+      "reference": "lifecycle:totals_row_toggle",
+      "expect": { "outcome": "resolved" },
+      "lifecycle": {
+        "event_kind": "totals_row_toggle",
+        "before_state": "baseline",
+        "after_state": "totals_row_toggle",
+        "changed_rows": [],
+        "changed_columns": ["col:region", "col:amount", "col:tax"],
+        "expect_row_handles_preserved": true,
+        "expect_column_handles_preserved": true
+      }
+    },
+    {
+      "id": "tbl-life-totals-formula-edit",
+      "name": "Totals formula edit enters the OxCalc lifecycle callback contract",
+      "spec": "section 7c",
+      "kind": "table",
+      "workspace": "tables",
+      "table": "SalesTable",
+      "reference": "lifecycle:totals_formula_edit",
+      "expect": { "outcome": "resolved" },
+      "lifecycle": {
+        "event_kind": "totals_formula_edit",
+        "before_state": "baseline",
+        "after_state": "totals_formula_edit",
+        "changed_rows": [],
+        "changed_columns": ["col:amount"],
+        "expect_row_handles_preserved": true,
+        "expect_column_handles_preserved": true
+      }
+    },
+    {
+      "id": "tbl-life-table-rename",
+      "name": "Table rename enters the OxCalc lifecycle callback contract",
+      "spec": "section 7c",
+      "kind": "table",
+      "workspace": "tables",
+      "table": "SalesTable",
+      "reference": "lifecycle:table_rename",
+      "expect": { "outcome": "resolved" },
+      "lifecycle": {
+        "event_kind": "table_rename",
+        "before_state": "baseline",
+        "after_state": "table_rename",
+        "changed_rows": [],
+        "changed_columns": [],
+        "expect_row_handles_preserved": true,
+        "expect_column_handles_preserved": true
+      }
+    },
+    {
+      "id": "tbl-life-table-move",
+      "name": "Table move enters the OxCalc lifecycle callback contract",
+      "spec": "section 7c",
+      "kind": "table",
+      "workspace": "tables",
+      "table": "SalesTable",
+      "reference": "lifecycle:table_move",
+      "expect": { "outcome": "resolved" },
+      "lifecycle": {
+        "event_kind": "table_move",
+        "before_state": "baseline",
+        "after_state": "table_move",
+        "changed_rows": [],
+        "changed_columns": [],
+        "expect_row_handles_preserved": true,
+        "expect_column_handles_preserved": true
+      }
+    },
+    {
+      "id": "tbl-life-table-delete",
+      "name": "Table delete enters the OxCalc lifecycle callback contract",
+      "spec": "section 7c",
+      "kind": "table",
+      "workspace": "tables",
+      "table": "SalesTable",
+      "reference": "lifecycle:table_delete",
+      "expect": { "outcome": "resolved" },
+      "lifecycle": {
+        "event_kind": "table_delete",
+        "before_state": "baseline",
+        "after_state": "none",
+        "changed_rows": ["row:west", "row:east", "row:north"],
+        "changed_columns": ["col:region", "col:amount", "col:tax"],
+        "expect_row_handles_preserved": false,
+        "expect_column_handles_preserved": false
+      }
+    },
+    {
+      "id": "tbl-life-table-resize",
+      "name": "Table resize enters the OxCalc lifecycle callback contract",
+      "spec": "section 7c",
+      "kind": "table",
+      "workspace": "tables",
+      "table": "SalesTable",
+      "reference": "lifecycle:table_resize",
+      "expect": { "outcome": "resolved" },
+      "lifecycle": {
+        "event_kind": "table_resize",
+        "before_state": "baseline",
+        "after_state": "table_resize",
+        "changed_rows": ["row:south"],
+        "changed_columns": ["col:discount"],
+        "expect_row_handles_preserved": false,
+        "expect_column_handles_preserved": false
+      }
+    },
+    {
+      "id": "tbl-life-node-rename",
+      "name": "Node rename enters the OxCalc lifecycle callback contract",
+      "spec": "section 7c",
+      "kind": "table",
+      "workspace": "tables",
+      "table": "SalesTable",
+      "reference": "lifecycle:node_rename",
+      "expect": { "outcome": "resolved" },
+      "lifecycle": {
+        "event_kind": "node_rename",
+        "before_state": "baseline",
+        "after_state": "node_rename",
+        "changed_rows": [],
+        "changed_columns": [],
+        "expect_row_handles_preserved": true,
+        "expect_column_handles_preserved": true
+      }
+    },
+    {
+      "id": "tbl-life-node-move",
+      "name": "Node move enters the OxCalc lifecycle callback contract",
+      "spec": "section 7c",
+      "kind": "table",
+      "workspace": "tables",
+      "table": "SalesTable",
+      "reference": "lifecycle:node_move",
+      "expect": { "outcome": "resolved" },
+      "lifecycle": {
+        "event_kind": "node_move",
+        "before_state": "baseline",
+        "after_state": "node_move",
+        "changed_rows": [],
+        "changed_columns": [],
+        "expect_row_handles_preserved": true,
+        "expect_column_handles_preserved": true
+      }
+    },
+    {
+      "id": "tbl-life-node-delete",
+      "name": "Node delete enters the OxCalc lifecycle callback contract",
+      "spec": "section 7c",
+      "kind": "table",
+      "workspace": "tables",
+      "table": "SalesTable",
+      "reference": "lifecycle:node_delete",
+      "expect": { "outcome": "resolved" },
+      "lifecycle": {
+        "event_kind": "node_delete",
+        "before_state": "baseline",
+        "after_state": "none",
+        "changed_rows": ["row:west", "row:east", "row:north"],
+        "changed_columns": ["col:region", "col:amount", "col:tax"],
+        "expect_row_handles_preserved": false,
+        "expect_column_handles_preserved": false
+      }
+    },
+    {
+      "id": "tbl-life-save-reopen",
+      "name": "Save and reopen preserves table handles without spurious invalidation",
+      "spec": "section 7c",
+      "kind": "table",
+      "workspace": "tables",
+      "table": "SalesTable",
+      "reference": "lifecycle:save_reopen",
+      "expect": { "outcome": "resolved" },
+      "lifecycle": {
+        "event_kind": "save_reopen",
+        "before_state": "baseline",
+        "after_state": "save_reopen",
+        "changed_rows": [],
+        "changed_columns": [],
+        "expect_row_handles_preserved": true,
+        "expect_column_handles_preserved": true
+      }
+    },
+    {
+      "id": "tbl-life-workspace-open",
+      "name": "Workspace open enters the OxCalc lifecycle callback contract",
+      "spec": "section 7c",
+      "kind": "table",
+      "workspace": "tables",
+      "table": "SalesTable",
+      "reference": "lifecycle:workspace_open",
+      "expect": { "outcome": "resolved" },
+      "lifecycle": {
+        "event_kind": "workspace_open",
+        "before_state": "none",
+        "after_state": "baseline",
+        "changed_rows": [],
+        "changed_columns": [],
+        "expect_row_handles_preserved": false,
+        "expect_column_handles_preserved": false
+      }
+    },
+    {
+      "id": "tbl-life-workspace-close",
+      "name": "Workspace close enters the OxCalc lifecycle callback contract",
+      "spec": "section 7c",
+      "kind": "table",
+      "workspace": "tables",
+      "table": "SalesTable",
+      "reference": "lifecycle:workspace_close",
+      "expect": { "outcome": "resolved" },
+      "lifecycle": {
+        "event_kind": "workspace_close",
+        "before_state": "baseline",
+        "after_state": "none",
+        "changed_rows": ["row:west", "row:east", "row:north"],
+        "changed_columns": ["col:region", "col:amount", "col:tax"],
+        "expect_row_handles_preserved": false,
+        "expect_column_handles_preserved": false
+      }
+    },
+    {
+      "id": "tbl-life-workspace-alias-mutation",
+      "name": "Workspace alias mutation enters the OxCalc lifecycle callback contract",
+      "spec": "section 7c",
+      "kind": "table",
+      "workspace": "tables",
+      "table": "SalesTable",
+      "reference": "lifecycle:workspace_alias_mutation",
+      "expect": { "outcome": "resolved" },
+      "lifecycle": {
+        "event_kind": "workspace_alias_mutation",
+        "before_state": "baseline",
+        "after_state": "workspace_alias_mutation",
+        "changed_rows": [],
+        "changed_columns": [],
+        "expect_row_handles_preserved": true,
+        "expect_column_handles_preserved": true
+      }
+    },
+    {
+      "id": "tbl-life-function-registry-snapshot-mutation",
+      "name": "Function registry snapshot mutation enters prepared identity invalidation",
+      "spec": "section 7c",
+      "kind": "table",
+      "workspace": "tables",
+      "table": "SalesTable",
+      "reference": "lifecycle:function_registry_snapshot_mutation",
+      "expect": { "outcome": "resolved" },
+      "lifecycle": {
+        "event_kind": "function_registry_snapshot_mutation",
+        "before_state": "baseline",
+        "after_state": "function_registry_snapshot_mutation",
+        "changed_rows": [],
+        "changed_columns": [],
+        "expect_row_handles_preserved": true,
+        "expect_column_handles_preserved": true
+      }
+    },
+    {
+      "id": "tbl-life-structural-rebind",
+      "name": "Structural rebind enters the OxCalc lifecycle callback contract",
+      "spec": "section 7c",
+      "kind": "table",
+      "workspace": "tables",
+      "table": "SalesTable",
+      "reference": "lifecycle:structural_rebind",
+      "expect": { "outcome": "resolved" },
+      "lifecycle": {
+        "event_kind": "structural_rebind",
+        "before_state": "baseline",
+        "after_state": "structural_rebind",
+        "changed_rows": [],
+        "changed_columns": ["col:region", "col:amount", "col:tax"],
+        "expect_row_handles_preserved": true,
+        "expect_column_handles_preserved": true
+      }
+    }
+  ]
+}

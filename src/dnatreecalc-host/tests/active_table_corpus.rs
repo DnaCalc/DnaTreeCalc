@@ -65,6 +65,36 @@ struct TableCase {
 }
 
 #[derive(Debug, Deserialize)]
+struct TableLifecycleTheme {
+    schema_version: String,
+    theme: String,
+    status: CorpusStatus,
+    cases: Vec<TableLifecycleCorpusCase>,
+}
+
+#[derive(Debug, Deserialize)]
+struct TableLifecycleCorpusCase {
+    id: String,
+    name: String,
+    kind: String,
+    workspace: String,
+    table: String,
+    reference: String,
+    lifecycle: TableLifecycleCorpusSpec,
+}
+
+#[derive(Debug, Deserialize)]
+struct TableLifecycleCorpusSpec {
+    event_kind: String,
+    before_state: String,
+    after_state: String,
+    changed_rows: Vec<String>,
+    changed_columns: Vec<String>,
+    expect_row_handles_preserved: bool,
+    expect_column_handles_preserved: bool,
+}
+
+#[derive(Debug, Deserialize)]
 struct TableExpectation {
     outcome: String,
     target: Option<String>,
@@ -307,7 +337,57 @@ fn retained_table_replay_artifact_matches_live_oxcalc_projection() {
 }
 
 #[test]
+fn retained_table_lifecycle_artifact_matches_live_oxcalc_callbacks() {
+    let lifecycle_theme = load_lifecycle_theme(repo_corpus_path("tables/lifecycle-events.json"));
+    assert_eq!(lifecycle_theme.schema_version, "treecalc-corpus-v1");
+    assert_eq!(lifecycle_theme.theme, "tables/lifecycle-events");
+    assert_eq!(lifecycle_theme.status, CorpusStatus::Active);
+
+    let workspace = load_workspace("tables");
+    let (sales_table, baseline_snapshot, baseline_projection) =
+        table_evidence(&workspace, "SalesTable");
+
+    let artifact = retained_table_lifecycle_replay_artifact(
+        &lifecycle_theme,
+        &workspace,
+        sales_table,
+        &baseline_snapshot,
+        &baseline_projection,
+    );
+    let artifact_path =
+        repo_docs_path("test-runs/w056-table-lifecycle-001/views/normalized-replay.json");
+    let manifest_path = repo_docs_path("test-runs/w056-table-lifecycle-001/oxreplay-manifest.json");
+    let manifest = retained_table_lifecycle_replay_manifest();
+    if std::env::var_os("DNATREECALC_UPDATE_RETAINED_TABLE_LIFECYCLE").is_some() {
+        write_pretty_json(&artifact_path, &artifact);
+        write_pretty_json(&manifest_path, &manifest);
+    }
+    let expected_artifact = load_expected_json_or_panic_with_generated(&artifact_path, &artifact);
+    assert_eq!(
+        expected_artifact, artifact,
+        "retained W056 table lifecycle artifact must stay generated from OxCalc callback packets"
+    );
+
+    let expected_manifest = load_expected_json_or_panic_with_generated(&manifest_path, &manifest);
+    assert_eq!(
+        expected_manifest, manifest,
+        "retained W056 table lifecycle manifest must stay aligned with the generated replay view"
+    );
+    assert!(
+        manifest["views"].as_array().is_some_and(|views| views
+            .iter()
+            .any(|view| view["path"] == json!("views/normalized-replay.json"))),
+        "manifest must point OxReplay at the normalized-replay view"
+    );
+}
+
+#[test]
 fn table_lifecycle_product_events_enter_oxcalc_callback_contract() {
+    let lifecycle_theme = load_lifecycle_theme(repo_corpus_path("tables/lifecycle-events.json"));
+    assert_eq!(lifecycle_theme.schema_version, "treecalc-corpus-v1");
+    assert_eq!(lifecycle_theme.theme, "tables/lifecycle-events");
+    assert_eq!(lifecycle_theme.status, CorpusStatus::Active);
+
     let workspace = load_workspace("tables");
     let (sales_table, baseline_snapshot, baseline_projection) =
         table_evidence(&workspace, "SalesTable");
@@ -316,7 +396,7 @@ fn table_lifecycle_product_events_enter_oxcalc_callback_contract() {
     let owner = TreeNodeId(100);
     let source_handles = ["bind:SalesTable.Columns.Tax"];
 
-    let lifecycle_cases = table_lifecycle_cases(&baseline_snapshot);
+    let lifecycle_cases = table_lifecycle_cases(&lifecycle_theme, &baseline_snapshot);
     assert_eq!(
         lifecycle_cases
             .iter()
@@ -339,38 +419,24 @@ fn table_lifecycle_product_events_enter_oxcalc_callback_contract() {
             "table_rename",
             "table_move",
             "table_delete",
+            "table_resize",
+            "node_rename",
+            "node_move",
+            "node_delete",
             "save_reopen",
+            "workspace_open",
+            "workspace_close",
+            "workspace_alias_mutation",
+            "function_registry_snapshot_mutation",
             "structural_rebind",
         ],
         "DnaTreeCalc product event corpus must cover the W056 lifecycle surface"
     );
 
     for case in lifecycle_cases {
-        let before = case
-            .before
-            .as_ref()
-            .map(snapshot_projection_and_state)
-            .transpose()
-            .unwrap_or_else(|error| panic!("{} before projection failed: {error:?}", case.name));
-        let after = case
-            .after
-            .as_ref()
-            .map(snapshot_projection_and_state)
-            .transpose()
-            .unwrap_or_else(|error| panic!("{} after projection failed: {error:?}", case.name));
-        let mut packet = TreeCalcTableLifecycleCallbackPacket::new(case.event_kind)
-            .with_owner_nodes([owner])
-            .with_source_reference_handles(source_handles);
-        if let Some((_, state)) = before.as_ref() {
-            packet = packet.with_before(state.clone());
-        }
-        if let Some((_, state)) = after.as_ref() {
-            packet = packet.with_after(state.clone());
-        }
-        packet = packet
-            .with_changed_rows(case.changed_rows.clone())
-            .with_changed_columns(case.changed_columns.clone());
-
+        let (before, after, packet) =
+            table_lifecycle_packet_for_case(&case, owner, source_handles.iter().copied())
+                .unwrap_or_else(|error| panic!("{} packet failed: {error:?}", case.name));
         let report = classify_treecalc_table_lifecycle_callback(&packet);
         assert!(
             report.diagnostics.is_empty(),
@@ -929,7 +995,8 @@ fn table_snapshot(table_path: &str, table: &TableNodeFixture) -> TreeCalcTableNo
 }
 
 struct TableLifecycleCase {
-    name: &'static str,
+    id: String,
+    name: String,
     event_kind: TreeCalcTableLifecycleEventKind,
     before: Option<TreeCalcTableNodeSnapshot>,
     after: Option<TreeCalcTableNodeSnapshot>,
@@ -939,271 +1006,234 @@ struct TableLifecycleCase {
     expect_column_handles_preserved: bool,
 }
 
-fn table_lifecycle_cases(baseline: &TreeCalcTableNodeSnapshot) -> Vec<TableLifecycleCase> {
-    let changed_rows = baseline.rows.clone();
-    let changed_columns = baseline
-        .columns
+fn table_lifecycle_cases(
+    theme: &TableLifecycleTheme,
+    baseline: &TreeCalcTableNodeSnapshot,
+) -> Vec<TableLifecycleCase> {
+    theme
+        .cases
         .iter()
-        .map(|column| column.column_id.clone())
-        .collect::<Vec<_>>();
-    let mut cases = vec![
-        TableLifecycleCase {
-            name: "create",
-            event_kind: TreeCalcTableLifecycleEventKind::TableCreate,
-            before: None,
-            after: Some(baseline.clone()),
-            changed_rows: changed_rows.clone(),
-            changed_columns: changed_columns.clone(),
-            expect_row_handles_preserved: false,
-            expect_column_handles_preserved: false,
-        },
-        TableLifecycleCase {
-            name: "body cell edit",
-            event_kind: TreeCalcTableLifecycleEventKind::BodyCellEdit,
-            before: Some(baseline.clone()),
-            after: Some(baseline.clone()),
-            changed_rows: vec![TreeCalcTableRowId("row:west".to_string())],
-            changed_columns: vec!["col:amount".to_string()],
-            expect_row_handles_preserved: true,
-            expect_column_handles_preserved: true,
-        },
-    ];
+        .map(|case| {
+            assert_eq!(case.kind, "table", "case {} kind", case.id);
+            assert_eq!(case.workspace, "tables", "case {} workspace", case.id);
+            assert_eq!(case.table, "SalesTable", "case {} table", case.id);
+            assert!(
+                !case.reference.is_empty(),
+                "case {} must retain a reference label for corpus validation",
+                case.id
+            );
+            TableLifecycleCase {
+                id: case.id.clone(),
+                name: case.name.clone(),
+                event_kind: table_lifecycle_event_kind(&case.lifecycle.event_kind),
+                before: table_lifecycle_snapshot_state(
+                    &case.id,
+                    &case.lifecycle.before_state,
+                    baseline,
+                ),
+                after: table_lifecycle_snapshot_state(
+                    &case.id,
+                    &case.lifecycle.after_state,
+                    baseline,
+                ),
+                changed_rows: case
+                    .lifecycle
+                    .changed_rows
+                    .iter()
+                    .cloned()
+                    .map(TreeCalcTableRowId)
+                    .collect(),
+                changed_columns: case.lifecycle.changed_columns.clone(),
+                expect_row_handles_preserved: case.lifecycle.expect_row_handles_preserved,
+                expect_column_handles_preserved: case.lifecycle.expect_column_handles_preserved,
+            }
+        })
+        .collect()
+}
 
-    let mut body_formula = baseline.clone();
-    body_formula.columns[2].body_metadata =
-        TreeCalcTableColumnBodyMetadata::Formula(TreeCalcTableFormulaMetadata {
-            formula_artifact_id: "formula:SalesTable.Columns.Tax".to_string(),
-            bind_artifact_id: Some("bind:SalesTable.Columns.Tax:v2".to_string()),
-            formula_text_version: "v2".to_string(),
-        });
-    cases.push(TableLifecycleCase {
-        name: "body formula edit",
-        event_kind: TreeCalcTableLifecycleEventKind::BodyFormulaEdit,
-        before: Some(baseline.clone()),
-        after: Some(body_formula),
-        changed_rows: changed_rows.clone(),
-        changed_columns: vec!["col:tax".to_string()],
-        expect_row_handles_preserved: true,
-        expect_column_handles_preserved: true,
-    });
+fn table_lifecycle_event_kind(event_kind: &str) -> TreeCalcTableLifecycleEventKind {
+    match event_kind {
+        "table_create" => TreeCalcTableLifecycleEventKind::TableCreate,
+        "body_cell_edit" => TreeCalcTableLifecycleEventKind::BodyCellEdit,
+        "body_formula_edit" => TreeCalcTableLifecycleEventKind::BodyFormulaEdit,
+        "row_insert" => TreeCalcTableLifecycleEventKind::RowInsert,
+        "row_delete" => TreeCalcTableLifecycleEventKind::RowDelete,
+        "row_reorder" => TreeCalcTableLifecycleEventKind::RowReorder,
+        "column_insert" => TreeCalcTableLifecycleEventKind::ColumnInsert,
+        "column_delete" => TreeCalcTableLifecycleEventKind::ColumnDelete,
+        "column_reorder" => TreeCalcTableLifecycleEventKind::ColumnReorder,
+        "column_rename" => TreeCalcTableLifecycleEventKind::ColumnRename,
+        "header_text_edit" => TreeCalcTableLifecycleEventKind::HeaderTextEdit,
+        "totals_row_toggle" => TreeCalcTableLifecycleEventKind::TotalsRowToggle,
+        "totals_formula_edit" => TreeCalcTableLifecycleEventKind::TotalsFormulaEdit,
+        "table_rename" => TreeCalcTableLifecycleEventKind::TableRename,
+        "table_move" => TreeCalcTableLifecycleEventKind::TableMove,
+        "table_delete" => TreeCalcTableLifecycleEventKind::TableDelete,
+        "table_resize" => TreeCalcTableLifecycleEventKind::TableResize,
+        "node_rename" => TreeCalcTableLifecycleEventKind::NodeRename,
+        "node_move" => TreeCalcTableLifecycleEventKind::NodeMove,
+        "node_delete" => TreeCalcTableLifecycleEventKind::NodeDelete,
+        "save_reopen" => TreeCalcTableLifecycleEventKind::SaveReopen,
+        "workspace_open" => TreeCalcTableLifecycleEventKind::WorkspaceOpen,
+        "workspace_close" => TreeCalcTableLifecycleEventKind::WorkspaceClose,
+        "workspace_alias_mutation" => TreeCalcTableLifecycleEventKind::WorkspaceAliasMutation,
+        "function_registry_snapshot_mutation" => {
+            TreeCalcTableLifecycleEventKind::FunctionRegistrySnapshotMutation
+        }
+        "structural_rebind" => TreeCalcTableLifecycleEventKind::StructuralRebind,
+        other => panic!("unsupported table lifecycle event kind {other}"),
+    }
+}
 
-    let mut row_insert = baseline.clone();
-    row_insert
-        .rows
-        .push(TreeCalcTableRowId("row:south".to_string()));
-    row_insert.row_membership_version = "table-rows:sales:membership:v2".to_string();
-    row_insert.row_order_version = "table-rows:sales:order:v2".to_string();
-    cases.push(TableLifecycleCase {
-        name: "row insert",
-        event_kind: TreeCalcTableLifecycleEventKind::RowInsert,
-        before: Some(baseline.clone()),
-        after: Some(row_insert),
-        changed_rows: vec![TreeCalcTableRowId("row:south".to_string())],
-        changed_columns: Vec::new(),
-        expect_row_handles_preserved: false,
-        expect_column_handles_preserved: true,
-    });
-
-    let mut row_delete = baseline.clone();
-    row_delete.rows.pop();
-    row_delete.row_membership_version = "table-rows:sales:membership:v3".to_string();
-    row_delete.row_order_version = "table-rows:sales:order:v3".to_string();
-    cases.push(TableLifecycleCase {
-        name: "row delete",
-        event_kind: TreeCalcTableLifecycleEventKind::RowDelete,
-        before: Some(baseline.clone()),
-        after: Some(row_delete),
-        changed_rows: vec![TreeCalcTableRowId("row:north".to_string())],
-        changed_columns: Vec::new(),
-        expect_row_handles_preserved: false,
-        expect_column_handles_preserved: true,
-    });
-
-    let mut row_reorder = baseline.clone();
-    row_reorder.rows.reverse();
-    row_reorder.row_order_version = "table-rows:sales:order:v4".to_string();
-    cases.push(TableLifecycleCase {
-        name: "row reorder",
-        event_kind: TreeCalcTableLifecycleEventKind::RowReorder,
-        before: Some(baseline.clone()),
-        after: Some(row_reorder),
-        changed_rows: changed_rows.clone(),
-        changed_columns: Vec::new(),
-        expect_row_handles_preserved: false,
-        expect_column_handles_preserved: true,
-    });
-
-    let mut column_insert = baseline.clone();
-    column_insert.columns.push(TreeCalcTableColumnSnapshot {
-        column_id: "col:discount".to_string(),
-        column_name: "Discount".to_string(),
-        ordinal: 4,
-        body_metadata: TreeCalcTableColumnBodyMetadata::ConstantCells,
-        totals_metadata: None,
-    });
-    column_insert.column_identity_version = "table-columns:sales:v2".to_string();
-    cases.push(TableLifecycleCase {
-        name: "column insert",
-        event_kind: TreeCalcTableLifecycleEventKind::ColumnInsert,
-        before: Some(baseline.clone()),
-        after: Some(column_insert),
-        changed_rows: Vec::new(),
-        changed_columns: vec!["col:discount".to_string()],
-        expect_row_handles_preserved: true,
-        expect_column_handles_preserved: false,
-    });
-
-    let mut column_delete = baseline.clone();
-    column_delete
-        .columns
-        .retain(|column| column.column_id != "col:tax");
-    column_delete.column_identity_version = "table-columns:sales:v3".to_string();
-    cases.push(TableLifecycleCase {
-        name: "column delete",
-        event_kind: TreeCalcTableLifecycleEventKind::ColumnDelete,
-        before: Some(baseline.clone()),
-        after: Some(column_delete),
-        changed_rows: Vec::new(),
-        changed_columns: vec!["col:tax".to_string()],
-        expect_row_handles_preserved: true,
-        expect_column_handles_preserved: false,
-    });
-
-    let mut column_reorder = baseline.clone();
-    column_reorder.columns[0].ordinal = 3;
-    column_reorder.columns[1].ordinal = 1;
-    column_reorder.columns[2].ordinal = 2;
-    column_reorder.column_identity_version = "table-columns:sales:v4".to_string();
-    cases.push(TableLifecycleCase {
-        name: "column reorder",
-        event_kind: TreeCalcTableLifecycleEventKind::ColumnReorder,
-        before: Some(baseline.clone()),
-        after: Some(column_reorder),
-        changed_rows: Vec::new(),
-        changed_columns: changed_columns.clone(),
-        expect_row_handles_preserved: true,
-        expect_column_handles_preserved: false,
-    });
-
-    let mut column_rename = baseline.clone();
-    column_rename.columns[1].column_name = "GrossAmount".to_string();
-    column_rename.column_identity_version = "table-columns:sales:v5".to_string();
-    cases.push(TableLifecycleCase {
-        name: "column rename",
-        event_kind: TreeCalcTableLifecycleEventKind::ColumnRename,
-        before: Some(baseline.clone()),
-        after: Some(column_rename.clone()),
-        changed_rows: Vec::new(),
-        changed_columns: vec!["col:amount".to_string()],
-        expect_row_handles_preserved: true,
-        expect_column_handles_preserved: true,
-    });
-    cases.push(TableLifecycleCase {
-        name: "header text edit",
-        event_kind: TreeCalcTableLifecycleEventKind::HeaderTextEdit,
-        before: Some(baseline.clone()),
-        after: Some(column_rename),
-        changed_rows: Vec::new(),
-        changed_columns: vec!["col:amount".to_string()],
-        expect_row_handles_preserved: true,
-        expect_column_handles_preserved: true,
-    });
-
-    let mut totals_toggle = baseline.clone();
-    totals_toggle.totals_row_present = false;
-    cases.push(TableLifecycleCase {
-        name: "totals row toggle",
-        event_kind: TreeCalcTableLifecycleEventKind::TotalsRowToggle,
-        before: Some(baseline.clone()),
-        after: Some(totals_toggle),
-        changed_rows: Vec::new(),
-        changed_columns: changed_columns.clone(),
-        expect_row_handles_preserved: true,
-        expect_column_handles_preserved: true,
-    });
-
-    let mut totals_formula = baseline.clone();
-    totals_formula.columns[1].totals_metadata = Some(TreeCalcTableFormulaMetadata {
-        formula_artifact_id: "formula:SalesTable.Totals.Amount".to_string(),
-        bind_artifact_id: Some("bind:SalesTable.Totals.Amount:v2".to_string()),
-        formula_text_version: "v2".to_string(),
-    });
-    cases.push(TableLifecycleCase {
-        name: "totals formula edit",
-        event_kind: TreeCalcTableLifecycleEventKind::TotalsFormulaEdit,
-        before: Some(baseline.clone()),
-        after: Some(totals_formula),
-        changed_rows: Vec::new(),
-        changed_columns: vec!["col:amount".to_string()],
-        expect_row_handles_preserved: true,
-        expect_column_handles_preserved: true,
-    });
-
-    let mut table_rename = baseline.clone();
-    table_rename.table_name = "SalesRenamed".to_string();
-    table_rename.display_path = "SalesRenamed".to_string();
-    table_rename.canonical_path = "SalesRenamed".to_string();
-    table_rename.table_namespace_version = "table-namespace:sales:v2".to_string();
-    cases.push(TableLifecycleCase {
-        name: "table rename",
-        event_kind: TreeCalcTableLifecycleEventKind::TableRename,
-        before: Some(baseline.clone()),
-        after: Some(table_rename),
-        changed_rows: Vec::new(),
-        changed_columns: Vec::new(),
-        expect_row_handles_preserved: true,
-        expect_column_handles_preserved: true,
-    });
-
-    let mut table_move = baseline.clone();
-    table_move.virtual_anchor.start_col = 5;
-    cases.push(TableLifecycleCase {
-        name: "table move",
-        event_kind: TreeCalcTableLifecycleEventKind::TableMove,
-        before: Some(baseline.clone()),
-        after: Some(table_move),
-        changed_rows: Vec::new(),
-        changed_columns: Vec::new(),
-        expect_row_handles_preserved: true,
-        expect_column_handles_preserved: true,
-    });
-
-    cases.push(TableLifecycleCase {
-        name: "table delete",
-        event_kind: TreeCalcTableLifecycleEventKind::TableDelete,
-        before: Some(baseline.clone()),
-        after: None,
-        changed_rows,
-        changed_columns: changed_columns.clone(),
-        expect_row_handles_preserved: false,
-        expect_column_handles_preserved: false,
-    });
-    cases.push(TableLifecycleCase {
-        name: "save reopen",
-        event_kind: TreeCalcTableLifecycleEventKind::SaveReopen,
-        before: Some(baseline.clone()),
-        after: Some(baseline.clone()),
-        changed_rows: Vec::new(),
-        changed_columns: Vec::new(),
-        expect_row_handles_preserved: true,
-        expect_column_handles_preserved: true,
-    });
-
-    let mut structural_rebind = baseline.clone();
-    structural_rebind.canonical_path = "Archive.SalesTable".to_string();
-    structural_rebind.table_namespace_version = "table-namespace:sales:v3".to_string();
-    cases.push(TableLifecycleCase {
-        name: "structural rebind",
-        event_kind: TreeCalcTableLifecycleEventKind::StructuralRebind,
-        before: Some(baseline.clone()),
-        after: Some(structural_rebind),
-        changed_rows: Vec::new(),
-        changed_columns,
-        expect_row_handles_preserved: true,
-        expect_column_handles_preserved: true,
-    });
-
-    cases
+fn table_lifecycle_snapshot_state(
+    case_id: &str,
+    state_id: &str,
+    baseline: &TreeCalcTableNodeSnapshot,
+) -> Option<TreeCalcTableNodeSnapshot> {
+    match state_id {
+        "none" => None,
+        "baseline" | "body_cell_edit" | "save_reopen" | "function_registry_snapshot_mutation" => {
+            Some(baseline.clone())
+        }
+        "body_formula_edit" => {
+            let mut snapshot = baseline.clone();
+            snapshot.columns[2].body_metadata =
+                TreeCalcTableColumnBodyMetadata::Formula(TreeCalcTableFormulaMetadata {
+                    formula_artifact_id: "formula:SalesTable.Columns.Tax".to_string(),
+                    bind_artifact_id: Some("bind:SalesTable.Columns.Tax:v2".to_string()),
+                    formula_text_version: "v2".to_string(),
+                });
+            Some(snapshot)
+        }
+        "row_insert" => {
+            let mut snapshot = baseline.clone();
+            snapshot
+                .rows
+                .push(TreeCalcTableRowId("row:south".to_string()));
+            snapshot.row_membership_version = "table-rows:sales:membership:v2".to_string();
+            snapshot.row_order_version = "table-rows:sales:order:v2".to_string();
+            Some(snapshot)
+        }
+        "row_delete" => {
+            let mut snapshot = baseline.clone();
+            snapshot.rows.pop();
+            snapshot.row_membership_version = "table-rows:sales:membership:v3".to_string();
+            snapshot.row_order_version = "table-rows:sales:order:v3".to_string();
+            Some(snapshot)
+        }
+        "row_reorder" => {
+            let mut snapshot = baseline.clone();
+            snapshot.rows.reverse();
+            snapshot.row_order_version = "table-rows:sales:order:v4".to_string();
+            Some(snapshot)
+        }
+        "column_insert" => {
+            let mut snapshot = baseline.clone();
+            snapshot.columns.push(TreeCalcTableColumnSnapshot {
+                column_id: "col:discount".to_string(),
+                column_name: "Discount".to_string(),
+                ordinal: 4,
+                body_metadata: TreeCalcTableColumnBodyMetadata::ConstantCells,
+                totals_metadata: None,
+            });
+            snapshot.column_identity_version = "table-columns:sales:v2".to_string();
+            Some(snapshot)
+        }
+        "column_delete" => {
+            let mut snapshot = baseline.clone();
+            snapshot
+                .columns
+                .retain(|column| column.column_id != "col:tax");
+            snapshot.column_identity_version = "table-columns:sales:v3".to_string();
+            Some(snapshot)
+        }
+        "column_reorder" => {
+            let mut snapshot = baseline.clone();
+            snapshot.columns[0].ordinal = 3;
+            snapshot.columns[1].ordinal = 1;
+            snapshot.columns[2].ordinal = 2;
+            snapshot.column_identity_version = "table-columns:sales:v4".to_string();
+            Some(snapshot)
+        }
+        "column_rename" | "header_text_edit" => {
+            let mut snapshot = baseline.clone();
+            snapshot.columns[1].column_name = "GrossAmount".to_string();
+            snapshot.column_identity_version = "table-columns:sales:v5".to_string();
+            Some(snapshot)
+        }
+        "totals_row_toggle" => {
+            let mut snapshot = baseline.clone();
+            snapshot.totals_row_present = false;
+            Some(snapshot)
+        }
+        "totals_formula_edit" => {
+            let mut snapshot = baseline.clone();
+            snapshot.columns[1].totals_metadata = Some(TreeCalcTableFormulaMetadata {
+                formula_artifact_id: "formula:SalesTable.Totals.Amount".to_string(),
+                bind_artifact_id: Some("bind:SalesTable.Totals.Amount:v2".to_string()),
+                formula_text_version: "v2".to_string(),
+            });
+            Some(snapshot)
+        }
+        "table_rename" => {
+            let mut snapshot = baseline.clone();
+            snapshot.table_name = "SalesRenamed".to_string();
+            snapshot.display_path = "SalesRenamed".to_string();
+            snapshot.canonical_path = "SalesRenamed".to_string();
+            snapshot.table_namespace_version = "table-namespace:sales:v2".to_string();
+            Some(snapshot)
+        }
+        "table_move" => {
+            let mut snapshot = baseline.clone();
+            snapshot.virtual_anchor.start_col = 5;
+            Some(snapshot)
+        }
+        "table_resize" => {
+            let mut snapshot = baseline.clone();
+            snapshot
+                .rows
+                .push(TreeCalcTableRowId("row:south".to_string()));
+            snapshot.columns.push(TreeCalcTableColumnSnapshot {
+                column_id: "col:discount".to_string(),
+                column_name: "Discount".to_string(),
+                ordinal: 4,
+                body_metadata: TreeCalcTableColumnBodyMetadata::ConstantCells,
+                totals_metadata: None,
+            });
+            snapshot.row_membership_version = "table-rows:sales:membership:v4".to_string();
+            snapshot.row_order_version = "table-rows:sales:order:v5".to_string();
+            snapshot.column_identity_version = "table-columns:sales:v6".to_string();
+            Some(snapshot)
+        }
+        "node_rename" => {
+            let mut snapshot = baseline.clone();
+            snapshot.display_path = "Reports.SalesRenamed".to_string();
+            snapshot.canonical_path = "Reports.SalesRenamed".to_string();
+            snapshot.table_namespace_version = "table-namespace:sales:node-rename:v1".to_string();
+            Some(snapshot)
+        }
+        "node_move" => {
+            let mut snapshot = baseline.clone();
+            snapshot.display_path = "Archive.SalesTable".to_string();
+            snapshot.canonical_path = "Archive.SalesTable".to_string();
+            snapshot.virtual_anchor.start_row = 12;
+            snapshot.virtual_anchor.start_col = 4;
+            Some(snapshot)
+        }
+        "workspace_alias_mutation" => {
+            let mut snapshot = baseline.clone();
+            snapshot.canonical_path = "Aliases.SalesTable".to_string();
+            snapshot.table_namespace_version = "table-namespace:sales:alias:v1".to_string();
+            Some(snapshot)
+        }
+        "structural_rebind" => {
+            let mut snapshot = baseline.clone();
+            snapshot.canonical_path = "Archive.SalesTable".to_string();
+            snapshot.table_namespace_version = "table-namespace:sales:v3".to_string();
+            Some(snapshot)
+        }
+        other => panic!("case {case_id} uses unsupported lifecycle fixture state {other}"),
+    }
 }
 
 fn snapshot_projection_and_state(
@@ -1218,6 +1248,56 @@ fn snapshot_projection_and_state(
     let projection = project_treecalc_table_node_snapshot(snapshot)?;
     let state = lifecycle_state_from_snapshot_projection(snapshot, &projection);
     Ok((projection, state))
+}
+
+fn table_lifecycle_packet_for_case(
+    case: &TableLifecycleCase,
+    owner: TreeNodeId,
+    source_handles: impl IntoIterator<Item = &'static str>,
+) -> Result<
+    (
+        Option<(
+            TreeCalcTableNodeProjection,
+            TreeCalcTableLifecycleVersionState,
+        )>,
+        Option<(
+            TreeCalcTableNodeProjection,
+            TreeCalcTableLifecycleVersionState,
+        )>,
+        TreeCalcTableLifecycleCallbackPacket,
+    ),
+    TreeCalcTableProjectionError,
+> {
+    let before = case
+        .before
+        .as_ref()
+        .map(snapshot_projection_and_state)
+        .transpose()?;
+    let after = case
+        .after
+        .as_ref()
+        .map(snapshot_projection_and_state)
+        .transpose()?;
+    let mut packet = TreeCalcTableLifecycleCallbackPacket::new(case.event_kind)
+        .with_owner_nodes([owner])
+        .with_source_reference_handles(source_handles)
+        .with_changed_rows(case.changed_rows.clone())
+        .with_changed_columns(case.changed_columns.clone());
+    if let Some((_, state)) = before.as_ref() {
+        packet = packet.with_before(state.clone());
+    }
+    if let Some((_, state)) = after.as_ref() {
+        packet = packet.with_after(state.clone());
+    }
+    if matches!(
+        case.event_kind,
+        TreeCalcTableLifecycleEventKind::FunctionRegistrySnapshotMutation
+    ) {
+        packet.context_versions.registry_snapshot_identity =
+            "oxfunc-registry:w093-udf-snapshot:v2".to_string();
+    }
+
+    Ok((before, after, packet))
 }
 
 fn lifecycle_state_from_snapshot_projection(
@@ -1722,6 +1802,164 @@ fn retained_table_replay_artifact(
     })
 }
 
+fn retained_table_lifecycle_replay_artifact(
+    lifecycle_theme: &TableLifecycleTheme,
+    workspace: &WorkspaceModel,
+    table: &TableNodeFixture,
+    baseline_snapshot: &TreeCalcTableNodeSnapshot,
+    baseline_projection: &TreeCalcTableNodeProjection,
+) -> Value {
+    let owner = TreeNodeId(100);
+    let source_handles = ["bind:SalesTable.Columns.Tax"];
+    let reports = table_lifecycle_cases(lifecycle_theme, baseline_snapshot)
+        .iter()
+        .map(|case| {
+            let (_, _, packet) =
+                table_lifecycle_packet_for_case(case, owner, source_handles.iter().copied())
+                    .unwrap_or_else(|error| {
+                        panic!("{} lifecycle packet failed: {error:?}", case.name)
+                    });
+            let report = classify_treecalc_table_lifecycle_callback(&packet);
+            assert!(
+                report.diagnostics.is_empty(),
+                "{} lifecycle retained report diagnostics: {:?}",
+                case.name,
+                report.diagnostics
+            );
+            table_lifecycle_report_json(case, &report)
+        })
+        .collect::<Vec<_>>();
+    let stale_identity =
+        retained_table_lifecycle_stale_identity_json(baseline_snapshot, baseline_projection, owner);
+    let roundtrip = retained_table_lifecycle_roundtrip_json(table);
+
+    json!({
+        "scenario_id": "w056_treecalc_table_lifecycle_001",
+        "lane_id": "dna_treecalc",
+        "events": [
+            {
+                "event_id": "treecalc_table_lifecycle_callbacks_sales",
+                "source_label": "table_lifecycle:SalesTable:callback",
+                "normalized_family": "treecalc.surface.table_lifecycle.callback:SalesTable"
+            },
+            {
+                "event_id": "treecalc_table_lifecycle_invalidations_sales",
+                "source_label": "invalidation_evidence:SalesTable:lifecycle",
+                "normalized_family": "treecalc.surface.invalidation_evidence.lifecycle:SalesTable"
+            },
+            {
+                "event_id": "treecalc_table_lifecycle_persistence_sales",
+                "source_label": "persistence_handles:SalesTable:lifecycle",
+                "normalized_family": "treecalc.surface.persistence_handles.lifecycle:SalesTable"
+            }
+        ],
+        "registry_refs": [
+            {
+                "family": "dnatreecalc.workspace_fixture",
+                "version": format!("{}@treecalc-workspace-v1", workspace.workspace_id)
+            },
+            {
+                "family": "dnatreecalc.test_corpus",
+                "version": format!("{}@{}:cases={}", lifecycle_theme.theme, lifecycle_theme.schema_version, lifecycle_theme.cases.len())
+            },
+            {
+                "family": "oxcalc.table_lifecycle_callback_contract",
+                "version": "treecalc.table_lifecycle.callback.v1"
+            }
+        ],
+        "comparison_views": [
+            {
+                "view_family": "execution_outcome",
+                "value": {
+                    "outcome_schema": "dna_treecalc.execution_outcome.v1",
+                    "scenario_id": "w056_treecalc_table_lifecycle_001",
+                    "outcome_kind": "accepted_execution",
+                    "outcome_stage": "live_oxcalc_table_lifecycle_callbacks",
+                    "class_id": "treecalc_table_lifecycle_callbacks_ready",
+                    "lane_reason_code": "dnatreecalc_w056_table_lifecycle_retained",
+                    "bridge": "LiveOxCalcTreeBridge",
+                    "engine_surface": "OxCalc W056 table lifecycle callback public API",
+                    "accepted_event_count": reports.len(),
+                    "accepted_event_kinds": reports
+                        .iter()
+                        .map(|report| report["event_kind"].clone())
+                        .collect::<Vec<_>>(),
+                    "typed_rejection_evidence": stale_identity,
+                    "persistence_roundtrip": roundtrip,
+                    "replay_view_ready": true
+                }
+            },
+            {
+                "view_family": "dependency_evidence",
+                "value": {
+                    "source_status": "direct",
+                    "classification_api": "classify_treecalc_table_lifecycle_callback",
+                    "table_id": baseline_projection.table_id,
+                    "table_context_identity_present": !baseline_projection.table_context_identity.is_empty(),
+                    "event_reports": reports.clone()
+                }
+            },
+            {
+                "view_family": "invalidation_evidence",
+                "value": {
+                    "source_status": "direct",
+                    "classification_api": "classify_treecalc_table_lifecycle_callback",
+                    "table_id": baseline_projection.table_id,
+                    "event_invalidations": reports
+                        .iter()
+                        .map(|report| {
+                            json!({
+                                "event_kind": report["event_kind"].clone(),
+                                "changed_dependency_kinds": report["changed_dependency_kinds"].clone(),
+                                "invalidation_reasons": report["invalidation_reasons"].clone(),
+                                "prepared_identity_inputs": report["prepared_identity_inputs"].clone(),
+                                "invalidation_seeds": report["invalidation_seeds"].clone()
+                            })
+                        })
+                        .collect::<Vec<_>>()
+                }
+            },
+            {
+                "view_family": "retained_artifact_ref",
+                "value": retained_table_lifecycle_artifact_refs_json()
+            }
+        ],
+        "source_metadata": {
+            "source_host": "dna_treecalc",
+            "source_schema_id": "dna_treecalc.w056_table_lifecycle_replay.v1",
+            "projection_status": "direct",
+            "capture_mode": "model_projection",
+            "capture_loss": "none",
+            "capture_loss_summary": [],
+            "uncertainty_summary": [],
+            "bridge_influenced": true,
+            "adapter_id": "dnatreecalc.oxcalc_table_lifecycle_callback.v1",
+            "workspace_id": workspace.workspace_id,
+            "source_refs": [
+                "docs/test-corpus/tables/lifecycle-events.json",
+                "docs/test-corpus/workspaces/tables.json"
+            ],
+            "shared_scenario_alias": "w056_table_lifecycle_001",
+            "interpretation_limits": [
+                {
+                    "kind": "model_projection_not_excel_observation",
+                    "detail": "This artifact is DnaTreeCalc/OxCalc retained producer evidence; Excel black-box observation is supplied by OxXlPlay."
+                },
+                {
+                    "kind": "no_private_dependency_semantics",
+                    "detail": "Dependency and invalidation classifications are emitted by OxCalc lifecycle callback packets, not DnaTreeCalc-local mirrors."
+                }
+            ],
+            "comparison_view_families": [
+                "execution_outcome",
+                "dependency_evidence",
+                "invalidation_evidence",
+                "retained_artifact_ref"
+            ]
+        }
+    })
+}
+
 fn retained_table_replay_manifest() -> Value {
     json!({
         "bundle_id": "dnatreecalc-w056-table-structured-references-001",
@@ -1745,6 +1983,34 @@ fn retained_table_replay_manifest() -> Value {
             "table_slice",
             "per_node_value",
             "effective_display_text",
+            "execution_outcome",
+            "dependency_evidence",
+            "invalidation_evidence",
+            "retained_artifact_ref"
+        ]
+    })
+}
+
+fn retained_table_lifecycle_replay_manifest() -> Value {
+    json!({
+        "bundle_id": "dnatreecalc-w056-table-lifecycle-001",
+        "scenario_id": "w056_treecalc_table_lifecycle_001",
+        "bundle_schema": "replay.bundle.v1",
+        "source_schema": "dna_treecalc.replay_bundle_seed.v1",
+        "lane_id": "dna_treecalc",
+        "adapter_id": "dnatreecalc.oxcalc_table_lifecycle_callback.v1",
+        "capture_mode": "model_projection",
+        "projection_status": "lossless",
+        "capture_loss": "none",
+        "registry_refs": [],
+        "sidecars": [],
+        "views": [
+            {
+                "artifact_family": "normalized_replay",
+                "path": "views/normalized-replay.json"
+            }
+        ],
+        "declared_comparison_views": [
             "execution_outcome",
             "dependency_evidence",
             "invalidation_evidence",
@@ -2197,6 +2463,285 @@ fn retained_artifact_refs_json() -> Value {
     })
 }
 
+fn table_lifecycle_report_json(
+    case: &TableLifecycleCase,
+    report: &oxcalc_core::structured_table::TreeCalcTableLifecycleContractReport,
+) -> Value {
+    json!({
+        "case_id": case.id,
+        "case_name": case.name,
+        "event_kind": report.event_kind.stable_id(),
+        "callback_identity": retained_identity_json(&report.callback_identity),
+        "before_state": table_lifecycle_state_json(report.before_state.as_ref()),
+        "after_state": table_lifecycle_state_json(report.after_state.as_ref()),
+        "context_versions": table_lifecycle_context_versions_json(&report.context_versions),
+        "changed_dependency_kinds": report.changed_dependency_kinds
+            .iter()
+            .copied()
+            .map(dependency_kind_id)
+            .collect::<Vec<_>>(),
+        "invalidation_reasons": report.invalidation_reasons
+            .iter()
+            .copied()
+            .map(invalidation_reason_kind_id)
+            .collect::<Vec<_>>(),
+        "prepared_identity_inputs": report.prepared_identity_inputs
+            .iter()
+            .copied()
+            .map(prepared_identity_input_id)
+            .collect::<Vec<_>>(),
+        "invalidation_seeds": report.invalidation_seeds
+            .iter()
+            .map(|seed| {
+                json!({
+                    "node_id": seed.node_id.to_string(),
+                    "reason": invalidation_reason_kind_id(seed.reason)
+                })
+            })
+            .collect::<Vec<_>>(),
+        "source_reference_handles": report.source_reference_handles,
+        "changed_row_ids": report.changed_row_ids
+            .iter()
+            .map(|row| row.0.clone())
+            .collect::<Vec<_>>(),
+        "changed_column_ids": report.changed_column_ids,
+        "diagnostics": report.diagnostics
+            .iter()
+            .map(table_lifecycle_diagnostic_json)
+            .collect::<Vec<_>>(),
+        "handle_preservation": table_lifecycle_handle_preservation_json(case, report)
+    })
+}
+
+fn table_lifecycle_state_json(state: Option<&TreeCalcTableLifecycleVersionState>) -> Value {
+    let Some(state) = state else {
+        return Value::Null;
+    };
+    json!({
+        "table_node_id": state.table_node_id.to_string(),
+        "table_id": state.table_id,
+        "table_name": state.table_name,
+        "display_path": state.display_path,
+        "canonical_path": state.canonical_path,
+        "workbook_scope_ref": state.workbook_scope_ref,
+        "sheet_scope_ref": state.sheet_scope_ref,
+        "table_range_ref": state.table_range_ref,
+        "header_region_ref": state.header_region_ref,
+        "totals_region_ref": state.totals_region_ref,
+        "column_range_refs": state.column_range_refs,
+        "virtual_anchor_identity": retained_identity_json(&state.virtual_anchor_identity),
+        "virtual_anchor_token": retained_identity_json(&state.virtual_anchor_token),
+        "table_context_identity": retained_identity_json(&state.table_context_identity),
+        "table_invalidation_identity": retained_identity_json(&state.table_invalidation_identity),
+        "table_namespace_identity": retained_identity_json(&state.table_namespace_identity),
+        "table_namespace_version": state.table_namespace_version,
+        "workspace_availability_version": retained_identity_json(&state.workspace_availability_version),
+        "workspace_alias_version": retained_identity_json(&state.workspace_alias_version),
+        "row_membership_identity": retained_identity_json(&state.row_membership_identity),
+        "row_membership_version": state.row_membership_version,
+        "row_order_identity": retained_identity_json(&state.row_order_identity),
+        "row_order_version": state.row_order_version,
+        "column_identity": retained_identity_json(&state.column_identity),
+        "column_identity_version": state.column_identity_version,
+        "row_ids": state.row_ids.iter().map(|row| row.0.clone()).collect::<Vec<_>>(),
+        "column_ids": state.column_ids
+    })
+}
+
+fn table_lifecycle_context_versions_json(
+    versions: &oxcalc_core::structured_table::TreeCalcTableLifecycleContextVersions,
+) -> Value {
+    json!({
+        "host_namespace_version": versions.host_namespace_version,
+        "structure_context_version": versions.structure_context_version,
+        "registry_snapshot_identity": versions.registry_snapshot_identity,
+        "resolution_rule_version": versions.resolution_rule_version,
+        "workspace_availability_version": versions.workspace_availability_version,
+        "workspace_alias_version": versions.workspace_alias_version
+    })
+}
+
+fn table_lifecycle_handle_preservation_json(
+    case: &TableLifecycleCase,
+    report: &oxcalc_core::structured_table::TreeCalcTableLifecycleContractReport,
+) -> Value {
+    let observed = report
+        .before_state
+        .as_ref()
+        .zip(report.after_state.as_ref());
+    json!({
+        "expected_row_handles_preserved": case.expect_row_handles_preserved,
+        "expected_column_handles_preserved": case.expect_column_handles_preserved,
+        "stable_node_handle": observed
+            .map(|(before, after)| before.table_node_id == after.table_node_id),
+        "stable_table_handle": observed
+            .map(|(before, after)| before.table_id == after.table_id),
+        "row_handles_preserved": observed
+            .map(|(before, after)| before.row_ids == after.row_ids),
+        "column_handles_preserved": observed
+            .map(|(before, after)| before.column_ids == after.column_ids)
+    })
+}
+
+fn table_lifecycle_diagnostic_json(diagnostic: &TreeCalcTableLifecycleContractDiagnostic) -> Value {
+    match diagnostic {
+        TreeCalcTableLifecycleContractDiagnostic::MissingBeforeState { event_kind } => json!({
+            "diagnostic_code": "missing_before_state",
+            "event_kind": event_kind.stable_id()
+        }),
+        TreeCalcTableLifecycleContractDiagnostic::MissingAfterState { event_kind } => json!({
+            "diagnostic_code": "missing_after_state",
+            "event_kind": event_kind.stable_id()
+        }),
+        TreeCalcTableLifecycleContractDiagnostic::UnexpectedBeforeState { event_kind } => json!({
+            "diagnostic_code": "unexpected_before_state",
+            "event_kind": event_kind.stable_id()
+        }),
+        TreeCalcTableLifecycleContractDiagnostic::UnexpectedAfterState { event_kind } => json!({
+            "diagnostic_code": "unexpected_after_state",
+            "event_kind": event_kind.stable_id()
+        }),
+        TreeCalcTableLifecycleContractDiagnostic::TableNodeChangedAcrossLifecycle {
+            before,
+            after,
+        } => json!({
+            "diagnostic_code": "table_node_changed_across_lifecycle",
+            "before": before.to_string(),
+            "after": after.to_string()
+        }),
+        TreeCalcTableLifecycleContractDiagnostic::TableIdChangedAcrossLifecycle {
+            before,
+            after,
+        } => json!({
+            "diagnostic_code": "table_id_changed_across_lifecycle",
+            "before": before,
+            "after": after
+        }),
+        TreeCalcTableLifecycleContractDiagnostic::MissingOwnerNode { event_kind } => json!({
+            "diagnostic_code": "missing_owner_node",
+            "event_kind": event_kind.stable_id()
+        }),
+    }
+}
+
+fn retained_table_lifecycle_stale_identity_json(
+    baseline_snapshot: &TreeCalcTableNodeSnapshot,
+    baseline_projection: &TreeCalcTableNodeProjection,
+    owner: TreeNodeId,
+) -> Value {
+    let baseline_state =
+        lifecycle_state_from_snapshot_projection(baseline_snapshot, baseline_projection);
+    let mut wrong_id_snapshot = baseline_snapshot.clone();
+    wrong_id_snapshot.table_id = "tree-table:sales-recreated".to_string();
+    let (_, wrong_id_state) =
+        snapshot_projection_and_state(&wrong_id_snapshot).expect("wrong-id snapshot projects");
+    let report = classify_treecalc_table_lifecycle_callback(
+        &TreeCalcTableLifecycleCallbackPacket::new(TreeCalcTableLifecycleEventKind::TableRename)
+            .with_before(baseline_state)
+            .with_after(wrong_id_state)
+            .with_owner_nodes([owner]),
+    );
+
+    json!({
+        "source_status": "direct",
+        "outcome_kind": "typed_rejection",
+        "event_kind": report.event_kind.stable_id(),
+        "callback_identity": retained_identity_json(&report.callback_identity),
+        "diagnostics": report.diagnostics
+            .iter()
+            .map(table_lifecycle_diagnostic_json)
+            .collect::<Vec<_>>()
+    })
+}
+
+fn retained_table_lifecycle_roundtrip_json(table: &TableNodeFixture) -> Value {
+    let round_tripped = serde_json::to_string(&WorkspaceFixture {
+        schema_version: "treecalc-workspace-v1".to_string(),
+        workspace_id: "table-lifecycle-roundtrip".to_string(),
+        description: None,
+        profile: None,
+        nodes: vec![WorkspaceNodeFixture {
+            node_id: "SalesTable".to_string(),
+            formula: String::new(),
+            is_meta: false,
+            table: Some(table.clone()),
+        }],
+    })
+    .and_then(|json| serde_json::from_str::<WorkspaceFixture>(&json))
+    .expect("table fixture save/reopen roundtrip serializes");
+    let reopened_table = round_tripped.nodes[0].table.as_ref().unwrap();
+
+    json!({
+        "source_status": "direct",
+        "persistence_surface": "WorkspaceFixture JSON save/reopen",
+        "stable_table_id": reopened_table.table_id == table.table_id,
+        "before_table_id": table.table_id,
+        "after_table_id": reopened_table.table_id,
+        "stable_row_ids": reopened_table
+            .rows
+            .iter()
+            .map(|row| &row.row_id)
+            .eq(table.rows.iter().map(|row| &row.row_id)),
+        "row_ids": reopened_table
+            .rows
+            .iter()
+            .map(|row| row.row_id.clone())
+            .collect::<Vec<_>>(),
+        "stable_column_ids": reopened_table
+            .columns
+            .iter()
+            .map(|column| &column.column_id)
+            .eq(table.columns.iter().map(|column| &column.column_id)),
+        "column_ids": reopened_table
+            .columns
+            .iter()
+            .map(|column| column.column_id.clone())
+            .collect::<Vec<_>>()
+    })
+}
+
+fn retained_table_lifecycle_artifact_refs_json() -> Value {
+    json!({
+        "source_status": "direct",
+        "host_id": "dna_treecalc",
+        "artifact_kind": "w056_table_lifecycle_replay",
+        "artifact_refs": [
+            {
+                "kind": "normalized_replay",
+                "path": "docs/test-runs/w056-table-lifecycle-001/views/normalized-replay.json"
+            },
+            {
+                "kind": "replay_manifest",
+                "path": "docs/test-runs/w056-table-lifecycle-001/oxreplay-manifest.json"
+            },
+            {
+                "kind": "source_workspace",
+                "path": "docs/test-corpus/workspaces/tables.json"
+            }
+        ],
+        "capture_mode": "model_projection",
+        "projection_status": "direct",
+        "capture_loss": "none"
+    })
+}
+
+fn retained_identity_json(value: &str) -> Value {
+    json!({
+        "present": !value.is_empty(),
+        "digest": retained_identity_digest(value),
+        "prefix": value.chars().take(96).collect::<String>()
+    })
+}
+
+fn retained_identity_digest(value: &str) -> String {
+    let mut hash = 0xcbf29ce484222325u64;
+    for byte in value.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    format!("fnv1a64:{hash:016x}")
+}
+
 fn table_update_scenario_kinds() -> [TreeCalcTableUpdateScenarioKind; 17] {
     [
         TreeCalcTableUpdateScenarioKind::BodyCellEdit,
@@ -2521,6 +3066,13 @@ fn load_theme(path: PathBuf) -> CorpusTheme {
         .unwrap_or_else(|error| panic!("failed to read {path:?}: {error}"));
     serde_json::from_str(&contents)
         .unwrap_or_else(|error| panic!("failed to parse {path:?}: {error}"))
+}
+
+fn load_lifecycle_theme(path: PathBuf) -> TableLifecycleTheme {
+    let contents = fs::read_to_string(&path)
+        .unwrap_or_else(|error| panic!("failed to read lifecycle corpus {path:?}: {error}"));
+    serde_json::from_str(&contents)
+        .unwrap_or_else(|error| panic!("failed to parse lifecycle corpus {path:?}: {error}"))
 }
 
 fn load_workspace(workspace_id: &str) -> WorkspaceModel {
