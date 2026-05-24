@@ -2445,6 +2445,9 @@ fn prepared_identity_input_id(
         oxcalc_core::structured_table::TreeCalcTablePreparedIdentityInput::CallerContextIdentity => {
             "caller_context_identity"
         }
+        oxcalc_core::structured_table::TreeCalcTablePreparedIdentityInput::DynamicSelectorIdentity => {
+            "dynamic_selector_identity"
+        }
         oxcalc_core::structured_table::TreeCalcTablePreparedIdentityInput::RegistrySnapshotIdentity => {
             "registry_snapshot_identity"
         }
@@ -2471,7 +2474,17 @@ fn table_update_scenario_kind_id(kind: TreeCalcTableUpdateScenarioKind) -> &'sta
         TreeCalcTableUpdateScenarioKind::TableRename => "table_rename",
         TreeCalcTableUpdateScenarioKind::TableMove => "table_move",
         TreeCalcTableUpdateScenarioKind::TableDelete => "table_delete",
+        TreeCalcTableUpdateScenarioKind::TableResize => "table_resize",
+        TreeCalcTableUpdateScenarioKind::NodeRename => "node_rename",
+        TreeCalcTableUpdateScenarioKind::NodeMove => "node_move",
+        TreeCalcTableUpdateScenarioKind::NodeDelete => "node_delete",
         TreeCalcTableUpdateScenarioKind::SaveReopen => "save_reopen",
+        TreeCalcTableUpdateScenarioKind::WorkspaceOpen => "workspace_open",
+        TreeCalcTableUpdateScenarioKind::WorkspaceClose => "workspace_close",
+        TreeCalcTableUpdateScenarioKind::WorkspaceAliasMutation => "workspace_alias_mutation",
+        TreeCalcTableUpdateScenarioKind::FunctionRegistrySnapshotMutation => {
+            "function_registry_snapshot_mutation"
+        }
         TreeCalcTableUpdateScenarioKind::StructuralRebind => "structural_rebind",
     }
 }
