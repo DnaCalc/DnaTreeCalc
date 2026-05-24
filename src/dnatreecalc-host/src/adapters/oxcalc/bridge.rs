@@ -1,4 +1,7 @@
 use super::types::{TreeRecalcRequest, TreeRecalcResult};
+use oxcalc_core::structured_table::{
+    TreeCalcDynamicTableRebindReport, TreeCalcDynamicTableRebindRequest,
+};
 
 #[derive(Debug, thiserror::Error)]
 pub enum OxCalcTreeBridgeError {
@@ -15,4 +18,9 @@ pub trait OxCalcTreeBridge {
         &self,
         request: TreeRecalcRequest,
     ) -> Result<TreeRecalcResult, OxCalcTreeBridgeError>;
+
+    fn classify_dynamic_table_rebind(
+        &self,
+        request: TreeCalcDynamicTableRebindRequest,
+    ) -> Result<TreeCalcDynamicTableRebindReport, OxCalcTreeBridgeError>;
 }

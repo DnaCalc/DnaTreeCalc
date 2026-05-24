@@ -9,6 +9,9 @@ use std::sync::Mutex;
 use crate::adapters::oxcalc::{
     OxCalcTreeBridge, OxCalcTreeBridgeError, TreeRecalcRequest, TreeRecalcResult,
 };
+use oxcalc_core::structured_table::{
+    TreeCalcDynamicTableRebindReport, TreeCalcDynamicTableRebindRequest,
+};
 
 /// A test-only bridge that records every `execute_recalc` call.
 ///
@@ -52,6 +55,16 @@ impl OxCalcTreeBridge for RecordingBridge {
             .push(request);
         Err(OxCalcTreeBridgeError::Upstream(
             "RecordingBridge is for invariant assertions only; it does not produce results."
+                .to_string(),
+        ))
+    }
+
+    fn classify_dynamic_table_rebind(
+        &self,
+        _request: TreeCalcDynamicTableRebindRequest,
+    ) -> Result<TreeCalcDynamicTableRebindReport, OxCalcTreeBridgeError> {
+        Err(OxCalcTreeBridgeError::Upstream(
+            "RecordingBridge is for invariant assertions only; it does not produce dynamic table rebind reports."
                 .to_string(),
         ))
     }

@@ -1,0 +1,296 @@
+{
+  "schema_version": "treecalc-corpus-v1",
+  "theme": "tables/dynamic-cross-workspace",
+  "workset": "W004",
+  "status": "active",
+  "description": "Active W056 dynamic and cross-workspace node-table reference corpus. Cases execute through OxCalc public dynamic table rebind packets; OxFml structured bind packets are consumed only when already available, and runtime TreeCalc structured-reference parsing remains a typed exclusion.",
+  "cases": [
+    {
+      "id": "tbl-dyn-table-selector",
+      "name": "Dynamic table selector rebinds a table reference",
+      "spec": "section 7c",
+      "kind": "table",
+      "workspace": "tables",
+      "table": "SalesTable",
+      "reference": "SalesTable[#Data]",
+      "expect": { "outcome": "resolved", "target_kind": "dynamic-table", "reason": "rebind_required" },
+      "dynamic": {
+        "selector_handle": "selector:SalesTable",
+        "selector_identity": "dynamic-selector:SalesTable[#Data]:v1",
+        "source": {
+          "mode": "oxcalc_structured_bind",
+          "reference_handle": "treecalc.structured_table_ref.handle.v1;start=1:0;len=2:17"
+        },
+        "target_kind": "table",
+        "cause": "selector_text_changed",
+        "before_resolved_table": "local:SalesTable",
+        "after_resolved_table": "local:SalesTable",
+        "caller_context_id": null,
+        "oxfml_structured_bind_packet_available": true,
+        "treecalc_v1": "admit",
+        "strict_excel": "reject"
+      }
+    },
+    {
+      "id": "tbl-dyn-column-selector",
+      "name": "Dynamic column selector rebinds a table column reference",
+      "spec": "section 7c",
+      "kind": "table",
+      "workspace": "tables",
+      "table": "SalesTable",
+      "reference": "SalesTable[Amount]",
+      "expect": { "outcome": "resolved", "target_kind": "dynamic-column", "reason": "rebind_required" },
+      "dynamic": {
+        "selector_handle": "selector:SalesTable.Amount",
+        "selector_identity": "dynamic-selector:SalesTable[Amount]:v1",
+        "source": {
+          "mode": "oxcalc_structured_bind",
+          "reference_handle": "treecalc.structured_table_ref.handle.v1;start=1:0;len=2:18"
+        },
+        "target_kind": "column",
+        "cause": "selector_text_changed",
+        "before_resolved_table": "local:SalesTable",
+        "after_resolved_table": "local:SalesTable.column_rename",
+        "caller_context_id": null,
+        "oxfml_structured_bind_packet_available": true,
+        "treecalc_v1": "admit",
+        "strict_excel": "reject"
+      }
+    },
+    {
+      "id": "tbl-dyn-section-selector",
+      "name": "Dynamic section selector rebinds headers/data/totals sections",
+      "spec": "section 7c",
+      "kind": "table",
+      "workspace": "tables",
+      "table": "SalesTable",
+      "reference": "SalesTable[#Totals]",
+      "expect": { "outcome": "resolved", "target_kind": "dynamic-section", "reason": "rebind_required" },
+      "dynamic": {
+        "selector_handle": "selector:SalesTable.Section",
+        "selector_identity": "dynamic-selector:SalesTable[#Totals]:v1",
+        "source": {
+          "mode": "oxcalc_structured_bind",
+          "reference_handle": "treecalc.structured_table_ref.handle.v1;start=1:0;len=2:19"
+        },
+        "target_kind": "section",
+        "cause": "dynamic_function_result_changed",
+        "before_resolved_table": "local:SalesTable",
+        "after_resolved_table": "local:SalesTable",
+        "caller_context_id": null,
+        "oxfml_structured_bind_packet_available": true,
+        "treecalc_v1": "admit",
+        "strict_excel": "reject"
+      }
+    },
+    {
+      "id": "tbl-dyn-current-row-selector",
+      "name": "Dynamic current-row selector carries caller context",
+      "spec": "section 7c",
+      "kind": "table",
+      "workspace": "tables",
+      "table": "SalesTable",
+      "reference": "SalesTable[@Amount]",
+      "caller_row_offset": 1,
+      "expect": { "outcome": "resolved", "target_kind": "dynamic-current-row", "reason": "rebind_required" },
+      "dynamic": {
+        "selector_handle": "selector:SalesTable.CurrentRow",
+        "selector_identity": "dynamic-selector:SalesTable[@Amount]:v1",
+        "source": {
+          "mode": "oxcalc_structured_bind",
+          "reference_handle": "treecalc.structured_table_ref.handle.v1;start=1:0;len=2:19"
+        },
+        "target_kind": "current_row",
+        "cause": "dynamic_function_result_changed",
+        "before_resolved_table": "local:SalesTable",
+        "after_resolved_table": "local:SalesTable",
+        "caller_context_id": "treecalc.table_caller:SalesTable:row:east",
+        "oxfml_structured_bind_packet_available": true,
+        "treecalc_v1": "admit",
+        "strict_excel": "reject"
+      }
+    },
+    {
+      "id": "tbl-dyn-indirect-runtime-typed-exclusion",
+      "name": "INDIRECT-style runtime structured-reference parsing is a typed exclusion",
+      "spec": "section 7c",
+      "kind": "table",
+      "workspace": "tables",
+      "table": "SalesTable",
+      "reference": "INDIRECT(\"SalesTable[Amount]\")",
+      "expect": { "outcome": "error", "target_kind": "typed-exclusion", "reason": "unsupported_runtime_structured_reference_parsing" },
+      "dynamic": {
+        "selector_handle": "selector:INDIRECT.SalesTable.Amount",
+        "selector_identity": "dynamic-selector:INDIRECT(\"SalesTable[Amount]\"):v1",
+        "source": {
+          "mode": "no_structured_bind_packet",
+          "reference_handle": null
+        },
+        "target_kind": "section",
+        "cause": "unsupported_runtime_structured_reference_parsing",
+        "before_resolved_table": "local:SalesTable",
+        "after_resolved_table": "local:SalesTable",
+        "caller_context_id": null,
+        "oxfml_structured_bind_packet_available": false,
+        "treecalc_v1": "typed_exclusion",
+        "strict_excel": "reject"
+      }
+    },
+    {
+      "id": "tbl-dyn-target-not-table",
+      "name": "Dynamic selector resolving to a non-table target is a typed exclusion",
+      "spec": "section 7c",
+      "kind": "table",
+      "workspace": "tables",
+      "table": "SalesTable",
+      "reference": "selector:Sheet1.Report",
+      "expect": { "outcome": "error", "target_kind": "typed-exclusion", "reason": "dynamic_target_not_table" },
+      "dynamic": {
+        "selector_handle": "selector:NotATable",
+        "selector_identity": "dynamic-selector:Sheet1.Report:v1",
+        "source": {
+          "mode": "provided_oxfml_packet",
+          "reference_handle": "oxfml.host_ref.handle.v1;case=tbl-dyn-target-not-table"
+        },
+        "target_kind": "table",
+        "cause": "dynamic_target_not_table",
+        "before_resolved_table": "local:SalesTable",
+        "after_resolved_table": null,
+        "caller_context_id": null,
+        "oxfml_structured_bind_packet_available": true,
+        "treecalc_v1": "typed_exclusion",
+        "strict_excel": "reject"
+      }
+    },
+    {
+      "id": "tbl-dyn-deleted-table-target",
+      "name": "Deleted table target reports deleted-target dynamic status",
+      "spec": "section 7c",
+      "kind": "table",
+      "workspace": "tables",
+      "table": "SalesTable",
+      "reference": "SalesTable[#Data]",
+      "expect": { "outcome": "error", "target_kind": "deleted-target", "reason": "deleted_target" },
+      "dynamic": {
+        "selector_handle": "selector:DeletedSalesTable",
+        "selector_identity": "dynamic-selector:SalesTable[#Data]:deleted",
+        "source": {
+          "mode": "oxcalc_structured_bind",
+          "reference_handle": "treecalc.structured_table_ref.handle.v1;start=1:0;len=2:17"
+        },
+        "target_kind": "table",
+        "cause": "table_lifecycle:table_delete",
+        "before_resolved_table": "local:SalesTable",
+        "after_resolved_table": null,
+        "caller_context_id": null,
+        "oxfml_structured_bind_packet_available": true,
+        "treecalc_v1": "typed_exclusion",
+        "strict_excel": "reject"
+      }
+    },
+    {
+      "id": "tbl-dyn-cross-workspace-table",
+      "name": "Cross-workspace dynamic table target carries workspace availability",
+      "spec": "section 7c",
+      "kind": "table",
+      "workspace": "tables",
+      "table": "SalesTable",
+      "reference": "[table-projections]RemoteSalesTable[Amount]",
+      "expect": { "outcome": "resolved", "target_kind": "cross-workspace-table", "reason": "rebind_required" },
+      "dynamic": {
+        "selector_handle": "selector:RemoteSalesTable",
+        "selector_identity": "dynamic-selector:[table-projections]RemoteSalesTable[Amount]:v1",
+        "source": {
+          "mode": "provided_oxfml_packet",
+          "reference_handle": "oxfml.structured_table_ref.handle.v1;workspace=table-projections;table=RemoteSalesTable;column=Amount"
+        },
+        "target_kind": "cross_workspace_table",
+        "cause": "selector_text_changed",
+        "before_resolved_table": "remote:RemoteSalesTable",
+        "after_resolved_table": "remote:RemoteSalesTable",
+        "caller_context_id": null,
+        "oxfml_structured_bind_packet_available": true,
+        "treecalc_v1": "admit",
+        "strict_excel": "reject"
+      }
+    },
+    {
+      "id": "tbl-dyn-cross-workspace-unavailable",
+      "name": "Closed workspace target reports unavailable dynamic status",
+      "spec": "section 7c",
+      "kind": "table",
+      "workspace": "tables",
+      "table": "SalesTable",
+      "reference": "[table-projections]RemoteSalesTable[#Data]",
+      "expect": { "outcome": "error", "target_kind": "unavailable-target", "reason": "unavailable_target" },
+      "dynamic": {
+        "selector_handle": "selector:ClosedRemoteSalesTable",
+        "selector_identity": "dynamic-selector:[table-projections]RemoteSalesTable[#Data]:closed",
+        "source": {
+          "mode": "provided_oxfml_packet",
+          "reference_handle": "oxfml.structured_table_ref.handle.v1;workspace=table-projections;table=RemoteSalesTable;section=Data"
+        },
+        "target_kind": "cross_workspace_table",
+        "cause": "table_lifecycle:workspace_close",
+        "before_resolved_table": "remote:RemoteSalesTable",
+        "after_resolved_table": null,
+        "caller_context_id": null,
+        "oxfml_structured_bind_packet_available": true,
+        "treecalc_v1": "typed_exclusion",
+        "strict_excel": "reject"
+      }
+    },
+    {
+      "id": "tbl-dyn-workspace-alias-mutation",
+      "name": "Workspace alias mutation reclassifies cross-workspace table target",
+      "spec": "section 7c",
+      "kind": "table",
+      "workspace": "tables",
+      "table": "SalesTable",
+      "reference": "[table-projections]RemoteSalesTable[#Data]",
+      "expect": { "outcome": "resolved", "target_kind": "cross-workspace-alias-mutation", "reason": "rebind_required" },
+      "dynamic": {
+        "selector_handle": "selector:RemoteSalesTableAlias",
+        "selector_identity": "dynamic-selector:[table-projections]RemoteSalesTable[#Data]:alias-v2",
+        "source": {
+          "mode": "provided_oxfml_packet",
+          "reference_handle": "oxfml.structured_table_ref.handle.v1;workspace=table-projections;table=RemoteSalesTable;section=Data;alias=v2"
+        },
+        "target_kind": "cross_workspace_table",
+        "cause": "table_lifecycle:workspace_alias_mutation",
+        "before_resolved_table": "remote:RemoteSalesTable",
+        "after_resolved_table": "remote:RemoteSalesTable",
+        "caller_context_id": null,
+        "oxfml_structured_bind_packet_available": true,
+        "treecalc_v1": "admit",
+        "strict_excel": "reject"
+      }
+    },
+    {
+      "id": "tbl-dyn-strict-excel-rejection",
+      "name": "TreeCalc dynamic table selector is admitted only by the treecalc-v1 profile",
+      "spec": "section 7c",
+      "kind": "table",
+      "workspace": "tables",
+      "table": "SalesTable",
+      "reference": "TREECALC.TABLE(\"SalesTable[#Data]\")",
+      "expect": { "outcome": "resolved", "target_kind": "profile-gating", "reason": "rebind_required" },
+      "dynamic": {
+        "selector_handle": "selector:TreeCalcOnlyTable",
+        "selector_identity": "dynamic-selector:TREECALC.TABLE(SalesTable[#Data]):v1",
+        "source": {
+          "mode": "provided_oxfml_packet",
+          "reference_handle": "oxfml.dynamic_table_selector.handle.v1;case=tbl-dyn-strict-excel-rejection"
+        },
+        "target_kind": "table",
+        "cause": "selector_text_changed",
+        "before_resolved_table": "local:SalesTable",
+        "after_resolved_table": "local:SalesTable",
+        "caller_context_id": null,
+        "oxfml_structured_bind_packet_available": true,
+        "treecalc_v1": "admit",
+        "strict_excel": "reject"
+      }
+    }
+  ]
+}

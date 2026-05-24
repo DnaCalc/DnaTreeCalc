@@ -1,0 +1,53 @@
+{
+  "schema_version": "treecalc-workspace-v1",
+  "workspace_id": "table-projections",
+  "description": "Second workspace for W056 cross-workspace table reference evidence. The table shape mirrors a minimal projected table target so OxCalc can classify workspace availability and alias mutation without DnaTreeCalc parsing remote formula strings.",
+  "profile": "treecalc-v1",
+  "nodes": [
+    {
+      "node_id": "RemoteSalesTable",
+      "formula": "",
+      "table": {
+        "table_id": "tree-table:remote-sales",
+        "table_namespace_version": "table-namespace:remote-sales:v1",
+        "row_membership_version": "table-rows:remote-sales:membership:v1",
+        "row_order_version": "table-rows:remote-sales:order:v1",
+        "column_identity_version": "table-columns:remote-sales:v1",
+        "identity_policy": {
+          "rename_preserves_table_id": true,
+          "move_preserves_table_id": true,
+          "delete_releases_table_id": true,
+          "note": "Remote workspace table target used by W056 dynamic/cross-workspace retained evidence."
+        },
+        "header": { "present": true },
+        "totals": { "present": true },
+        "rows": [
+          { "row_id": "row:remote", "ordinal": 1 }
+        ],
+        "columns": [
+          {
+            "column_id": "col:amount",
+            "name": "Amount",
+            "ordinal": 1,
+            "body": {
+              "kind": "constant-cells",
+              "constants": [
+                { "row_id": "row:remote", "value": "100" }
+              ]
+            },
+            "totals_formula": {
+              "formula_text": "=SUM(RemoteSalesTable[Amount])",
+              "formula_stable_id": "formula:RemoteSalesTable.Totals.Amount",
+              "bind_artifact_id": "bind:RemoteSalesTable.Totals.Amount",
+              "formula_text_version": "v1"
+            }
+          }
+        ]
+      }
+    },
+    { "node_id": "RemoteSalesTable.Columns", "formula": "" },
+    { "node_id": "RemoteSalesTable.Columns.Amount", "formula": "" },
+    { "node_id": "RemoteSalesTable.Totals", "formula": "" },
+    { "node_id": "RemoteSalesTable.Totals.Amount", "formula": "=SUM(RemoteSalesTable[Amount])" }
+  ]
+}

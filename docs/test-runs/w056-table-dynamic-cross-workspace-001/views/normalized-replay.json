@@ -1,0 +1,1072 @@
+{
+  "comparison_views": [
+    {
+      "value": {
+        "case_count": 11,
+        "case_statuses": [
+          {
+            "case_id": "tbl-dyn-table-selector",
+            "status": "rebind_required",
+            "strict_excel": "reject",
+            "treecalc_v1": "admit"
+          },
+          {
+            "case_id": "tbl-dyn-column-selector",
+            "status": "rebind_required",
+            "strict_excel": "reject",
+            "treecalc_v1": "admit"
+          },
+          {
+            "case_id": "tbl-dyn-section-selector",
+            "status": "rebind_required",
+            "strict_excel": "reject",
+            "treecalc_v1": "admit"
+          },
+          {
+            "case_id": "tbl-dyn-current-row-selector",
+            "status": "rebind_required",
+            "strict_excel": "reject",
+            "treecalc_v1": "admit"
+          },
+          {
+            "case_id": "tbl-dyn-indirect-runtime-typed-exclusion",
+            "status": "typed_exclusion",
+            "strict_excel": "reject",
+            "treecalc_v1": "typed_exclusion"
+          },
+          {
+            "case_id": "tbl-dyn-target-not-table",
+            "status": "typed_exclusion",
+            "strict_excel": "reject",
+            "treecalc_v1": "typed_exclusion"
+          },
+          {
+            "case_id": "tbl-dyn-deleted-table-target",
+            "status": "deleted_target",
+            "strict_excel": "reject",
+            "treecalc_v1": "typed_exclusion"
+          },
+          {
+            "case_id": "tbl-dyn-cross-workspace-table",
+            "status": "rebind_required",
+            "strict_excel": "reject",
+            "treecalc_v1": "admit"
+          },
+          {
+            "case_id": "tbl-dyn-cross-workspace-unavailable",
+            "status": "unavailable_target",
+            "strict_excel": "reject",
+            "treecalc_v1": "typed_exclusion"
+          },
+          {
+            "case_id": "tbl-dyn-workspace-alias-mutation",
+            "status": "rebind_required",
+            "strict_excel": "reject",
+            "treecalc_v1": "admit"
+          },
+          {
+            "case_id": "tbl-dyn-strict-excel-rejection",
+            "status": "rebind_required",
+            "strict_excel": "reject",
+            "treecalc_v1": "admit"
+          }
+        ],
+        "class_id": "treecalc_dynamic_cross_workspace_table_packets_ready",
+        "engine_surface": "LiveOxCalcTreeBridge dynamic table rebind route backed by the OxCalc W056 public packet API",
+        "lane_reason_code": "dnatreecalc_w056_dynamic_table_retained",
+        "outcome_kind": "accepted_execution",
+        "outcome_schema": "dna_treecalc.execution_outcome.v1",
+        "outcome_stage": "oxcalc_dynamic_table_rebind_packets",
+        "replay_view_ready": true,
+        "scenario_id": "w056_treecalc_dynamic_cross_workspace_tables_001"
+      },
+      "view_family": "execution_outcome"
+    },
+    {
+      "value": {
+        "case_reports": [
+          {
+            "bridge_route": "LiveOxCalcTreeBridge::classify_dynamic_table_rebind",
+            "case_id": "tbl-dyn-table-selector",
+            "case_name": "Dynamic table selector rebinds a table reference",
+            "cause": "selector_text_changed",
+            "changed_dependency_kinds": [
+              "structured_table_identity",
+              "structured_table_row_membership",
+              "structured_table_row_order",
+              "structured_table_column_identity",
+              "structured_table_data_region",
+              "dynamic_potential"
+            ],
+            "dependency_fact_kinds": [
+              "table_identity",
+              "row_membership",
+              "row_order",
+              "column_identity",
+              "data_region"
+            ],
+            "diagnostics": [],
+            "dynamic_rebind_identity": {
+              "digest": "fnv1a64:c0dbf78a77e26b9d",
+              "prefix": "treecalc.dynamic_table_rebind.v1;selector_handle=19:selector:SalesTable;selector_identity=37:dyn",
+              "present": true
+            },
+            "invalidation_reasons": [
+              "dynamic_dependency_activated",
+              "dynamic_dependency_released",
+              "dynamic_dependency_reclassified"
+            ],
+            "oxfml_generic_bind_packet_available": true,
+            "oxfunc_opaque_reference_admitted": true,
+            "prepared_identity_inputs": [
+              "host_namespace_version",
+              "structure_context_version",
+              "table_context_identity",
+              "dynamic_selector_identity",
+              "resolution_rule_version"
+            ],
+            "reference": "SalesTable[#Data]",
+            "selector_handle": "selector:SalesTable",
+            "selector_identity": "dynamic-selector:SalesTable[#Data]:v1",
+            "source_reference_expected_handle": "treecalc.structured_table_ref.handle.v1;start=1:0;len=2:17",
+            "source_reference_handle": "treecalc.structured_table_ref.handle.v1;start=1:0;len=2:17",
+            "source_reference_mode": "oxcalc_structured_bind",
+            "status": "rebind_required",
+            "strict_excel": "reject",
+            "target_kind": "table",
+            "treecalc_v1": "admit"
+          },
+          {
+            "bridge_route": "LiveOxCalcTreeBridge::classify_dynamic_table_rebind",
+            "case_id": "tbl-dyn-column-selector",
+            "case_name": "Dynamic column selector rebinds a table column reference",
+            "cause": "selector_text_changed",
+            "changed_dependency_kinds": [
+              "structured_table_identity",
+              "structured_table_row_membership",
+              "structured_table_row_order",
+              "structured_table_column_identity",
+              "structured_table_data_region",
+              "dynamic_potential"
+            ],
+            "dependency_fact_kinds": [
+              "table_identity",
+              "row_membership",
+              "row_order",
+              "column_identity",
+              "data_region"
+            ],
+            "diagnostics": [],
+            "dynamic_rebind_identity": {
+              "digest": "fnv1a64:ff85a5ae2bba768d",
+              "prefix": "treecalc.dynamic_table_rebind.v1;selector_handle=26:selector:SalesTable.Amount;selector_identity",
+              "present": true
+            },
+            "invalidation_reasons": [
+              "dynamic_dependency_activated",
+              "dynamic_dependency_released",
+              "dynamic_dependency_reclassified"
+            ],
+            "oxfml_generic_bind_packet_available": true,
+            "oxfunc_opaque_reference_admitted": true,
+            "prepared_identity_inputs": [
+              "host_namespace_version",
+              "structure_context_version",
+              "table_context_identity",
+              "dynamic_selector_identity",
+              "resolution_rule_version"
+            ],
+            "reference": "SalesTable[Amount]",
+            "selector_handle": "selector:SalesTable.Amount",
+            "selector_identity": "dynamic-selector:SalesTable[Amount]:v1",
+            "source_reference_expected_handle": "treecalc.structured_table_ref.handle.v1;start=1:0;len=2:18",
+            "source_reference_handle": "treecalc.structured_table_ref.handle.v1;start=1:0;len=2:18",
+            "source_reference_mode": "oxcalc_structured_bind",
+            "status": "rebind_required",
+            "strict_excel": "reject",
+            "target_kind": "column",
+            "treecalc_v1": "admit"
+          },
+          {
+            "bridge_route": "LiveOxCalcTreeBridge::classify_dynamic_table_rebind",
+            "case_id": "tbl-dyn-section-selector",
+            "case_name": "Dynamic section selector rebinds headers/data/totals sections",
+            "cause": "dynamic_function_result_changed",
+            "changed_dependency_kinds": [
+              "structured_table_identity",
+              "structured_table_header_region",
+              "structured_table_data_region",
+              "structured_table_totals_region",
+              "dynamic_potential"
+            ],
+            "dependency_fact_kinds": [
+              "table_identity",
+              "header_region",
+              "data_region",
+              "totals_region"
+            ],
+            "diagnostics": [],
+            "dynamic_rebind_identity": {
+              "digest": "fnv1a64:9f29067af56125d1",
+              "prefix": "treecalc.dynamic_table_rebind.v1;selector_handle=27:selector:SalesTable.Section;selector_identit",
+              "present": true
+            },
+            "invalidation_reasons": [
+              "dynamic_dependency_activated",
+              "dynamic_dependency_released",
+              "dynamic_dependency_reclassified"
+            ],
+            "oxfml_generic_bind_packet_available": true,
+            "oxfunc_opaque_reference_admitted": true,
+            "prepared_identity_inputs": [
+              "host_namespace_version",
+              "structure_context_version",
+              "table_context_identity",
+              "dynamic_selector_identity",
+              "resolution_rule_version"
+            ],
+            "reference": "SalesTable[#Totals]",
+            "selector_handle": "selector:SalesTable.Section",
+            "selector_identity": "dynamic-selector:SalesTable[#Totals]:v1",
+            "source_reference_expected_handle": "treecalc.structured_table_ref.handle.v1;start=1:0;len=2:19",
+            "source_reference_handle": "treecalc.structured_table_ref.handle.v1;start=1:0;len=2:19",
+            "source_reference_mode": "oxcalc_structured_bind",
+            "status": "rebind_required",
+            "strict_excel": "reject",
+            "target_kind": "section",
+            "treecalc_v1": "admit"
+          },
+          {
+            "bridge_route": "LiveOxCalcTreeBridge::classify_dynamic_table_rebind",
+            "case_id": "tbl-dyn-current-row-selector",
+            "case_name": "Dynamic current-row selector carries caller context",
+            "cause": "dynamic_function_result_changed",
+            "changed_dependency_kinds": [
+              "structured_table_identity",
+              "structured_table_row_order",
+              "structured_table_data_region",
+              "structured_table_caller_context",
+              "dynamic_potential"
+            ],
+            "dependency_fact_kinds": [
+              "table_identity",
+              "row_order",
+              "data_region",
+              "caller_row_context"
+            ],
+            "diagnostics": [],
+            "dynamic_rebind_identity": {
+              "digest": "fnv1a64:4e4caaacf2da4b58",
+              "prefix": "treecalc.dynamic_table_rebind.v1;selector_handle=30:selector:SalesTable.CurrentRow;selector_iden",
+              "present": true
+            },
+            "invalidation_reasons": [
+              "dynamic_dependency_activated",
+              "dynamic_dependency_released",
+              "dynamic_dependency_reclassified"
+            ],
+            "oxfml_generic_bind_packet_available": true,
+            "oxfunc_opaque_reference_admitted": true,
+            "prepared_identity_inputs": [
+              "host_namespace_version",
+              "structure_context_version",
+              "table_context_identity",
+              "caller_context_identity",
+              "dynamic_selector_identity",
+              "resolution_rule_version"
+            ],
+            "reference": "SalesTable[@Amount]",
+            "selector_handle": "selector:SalesTable.CurrentRow",
+            "selector_identity": "dynamic-selector:SalesTable[@Amount]:v1",
+            "source_reference_expected_handle": "treecalc.structured_table_ref.handle.v1;start=1:0;len=2:19",
+            "source_reference_handle": "treecalc.structured_table_ref.handle.v1;start=1:0;len=2:19",
+            "source_reference_mode": "oxcalc_structured_bind",
+            "status": "rebind_required",
+            "strict_excel": "reject",
+            "target_kind": "current_row",
+            "treecalc_v1": "admit"
+          },
+          {
+            "bridge_route": "LiveOxCalcTreeBridge::classify_dynamic_table_rebind",
+            "case_id": "tbl-dyn-indirect-runtime-typed-exclusion",
+            "case_name": "INDIRECT-style runtime structured-reference parsing is a typed exclusion",
+            "cause": "unsupported_runtime_structured_reference_parsing",
+            "changed_dependency_kinds": [
+              "structured_table_identity",
+              "structured_table_header_region",
+              "structured_table_data_region",
+              "structured_table_totals_region",
+              "dynamic_potential",
+              "unresolved"
+            ],
+            "dependency_fact_kinds": [],
+            "diagnostics": [
+              {
+                "detail": "dynamic selector would require runtime parsing of TreeCalc structured-reference syntax; OxFml must supply a generic bind packet or OxCalc must return a typed exclusion",
+                "diagnostic_code": "unsupported_runtime_structured_reference_parsing"
+              }
+            ],
+            "dynamic_rebind_identity": {
+              "digest": "fnv1a64:fae12cd100bdd45e",
+              "prefix": "treecalc.dynamic_table_rebind.v1;selector_handle=35:selector:INDIRECT.SalesTable.Amount;selector",
+              "present": true
+            },
+            "invalidation_reasons": [
+              "structural_rebind_required",
+              "dynamic_dependency_activated",
+              "dynamic_dependency_released",
+              "dynamic_dependency_reclassified"
+            ],
+            "oxfml_generic_bind_packet_available": false,
+            "oxfunc_opaque_reference_admitted": false,
+            "prepared_identity_inputs": [
+              "host_namespace_version",
+              "structure_context_version",
+              "table_context_identity",
+              "dynamic_selector_identity",
+              "resolution_rule_version"
+            ],
+            "reference": "INDIRECT(\"SalesTable[Amount]\")",
+            "selector_handle": "selector:INDIRECT.SalesTable.Amount",
+            "selector_identity": "dynamic-selector:INDIRECT(\"SalesTable[Amount]\"):v1",
+            "source_reference_expected_handle": null,
+            "source_reference_handle": null,
+            "source_reference_mode": "no_structured_bind_packet",
+            "status": "typed_exclusion",
+            "strict_excel": "reject",
+            "target_kind": "section",
+            "treecalc_v1": "typed_exclusion"
+          },
+          {
+            "bridge_route": "LiveOxCalcTreeBridge::classify_dynamic_table_rebind",
+            "case_id": "tbl-dyn-target-not-table",
+            "case_name": "Dynamic selector resolving to a non-table target is a typed exclusion",
+            "cause": "dynamic_target_not_table",
+            "changed_dependency_kinds": [
+              "structured_table_identity",
+              "structured_table_row_membership",
+              "structured_table_row_order",
+              "structured_table_column_identity",
+              "structured_table_data_region",
+              "dynamic_potential",
+              "unresolved"
+            ],
+            "dependency_fact_kinds": [],
+            "diagnostics": [
+              {
+                "detail": "dynamic selector resolved to a non-table target; table ReferenceLike lowering is not admitted for this target",
+                "diagnostic_code": "dynamic_target_not_table"
+              }
+            ],
+            "dynamic_rebind_identity": {
+              "digest": "fnv1a64:92c43dcf195ccaae",
+              "prefix": "treecalc.dynamic_table_rebind.v1;selector_handle=18:selector:NotATable;selector_identity=33:dyna",
+              "present": true
+            },
+            "invalidation_reasons": [
+              "dependency_reclassified",
+              "dynamic_dependency_activated",
+              "dynamic_dependency_released",
+              "dynamic_dependency_reclassified"
+            ],
+            "oxfml_generic_bind_packet_available": true,
+            "oxfunc_opaque_reference_admitted": false,
+            "prepared_identity_inputs": [
+              "host_namespace_version",
+              "structure_context_version",
+              "table_context_identity",
+              "dynamic_selector_identity",
+              "resolution_rule_version"
+            ],
+            "reference": "selector:Sheet1.Report",
+            "selector_handle": "selector:NotATable",
+            "selector_identity": "dynamic-selector:Sheet1.Report:v1",
+            "source_reference_expected_handle": "oxfml.host_ref.handle.v1;case=tbl-dyn-target-not-table",
+            "source_reference_handle": "oxfml.host_ref.handle.v1;case=tbl-dyn-target-not-table",
+            "source_reference_mode": "provided_oxfml_packet",
+            "status": "typed_exclusion",
+            "strict_excel": "reject",
+            "target_kind": "table",
+            "treecalc_v1": "typed_exclusion"
+          },
+          {
+            "bridge_route": "LiveOxCalcTreeBridge::classify_dynamic_table_rebind",
+            "case_id": "tbl-dyn-deleted-table-target",
+            "case_name": "Deleted table target reports deleted-target dynamic status",
+            "cause": "table_delete",
+            "changed_dependency_kinds": [
+              "structured_table_identity",
+              "structured_table_row_membership",
+              "structured_table_row_order",
+              "structured_table_column_identity",
+              "structured_table_header_text",
+              "structured_table_header_region",
+              "structured_table_data_region",
+              "structured_table_totals_region",
+              "structured_table_caller_context",
+              "structured_table_enclosing_table",
+              "dynamic_potential"
+            ],
+            "dependency_fact_kinds": [
+              "table_identity",
+              "row_membership",
+              "row_order",
+              "column_identity",
+              "data_region"
+            ],
+            "diagnostics": [],
+            "dynamic_rebind_identity": {
+              "digest": "fnv1a64:94fd12d0e2586734",
+              "prefix": "treecalc.dynamic_table_rebind.v1;selector_handle=26:selector:DeletedSalesTable;selector_identity",
+              "present": true
+            },
+            "invalidation_reasons": [
+              "structural_rebind_required",
+              "dependency_removed",
+              "dynamic_dependency_activated",
+              "dynamic_dependency_released",
+              "dynamic_dependency_reclassified"
+            ],
+            "oxfml_generic_bind_packet_available": true,
+            "oxfunc_opaque_reference_admitted": true,
+            "prepared_identity_inputs": [
+              "host_namespace_version",
+              "structure_context_version",
+              "table_context_identity",
+              "dynamic_selector_identity",
+              "resolution_rule_version"
+            ],
+            "reference": "SalesTable[#Data]",
+            "selector_handle": "selector:DeletedSalesTable",
+            "selector_identity": "dynamic-selector:SalesTable[#Data]:deleted",
+            "source_reference_expected_handle": "treecalc.structured_table_ref.handle.v1;start=1:0;len=2:17",
+            "source_reference_handle": "treecalc.structured_table_ref.handle.v1;start=1:0;len=2:17",
+            "source_reference_mode": "oxcalc_structured_bind",
+            "status": "deleted_target",
+            "strict_excel": "reject",
+            "target_kind": "table",
+            "treecalc_v1": "typed_exclusion"
+          },
+          {
+            "bridge_route": "LiveOxCalcTreeBridge::classify_dynamic_table_rebind",
+            "case_id": "tbl-dyn-cross-workspace-table",
+            "case_name": "Cross-workspace dynamic table target carries workspace availability",
+            "cause": "selector_text_changed",
+            "changed_dependency_kinds": [
+              "structured_table_identity",
+              "structured_table_row_membership",
+              "structured_table_row_order",
+              "structured_table_column_identity",
+              "structured_table_data_region",
+              "dynamic_potential",
+              "host_sensitive"
+            ],
+            "dependency_fact_kinds": [
+              "table_identity",
+              "row_membership",
+              "row_order",
+              "column_identity",
+              "data_region",
+              "virtual_anchor_range",
+              "workspace_availability"
+            ],
+            "diagnostics": [],
+            "dynamic_rebind_identity": {
+              "digest": "fnv1a64:40da0675e5a95d4b",
+              "prefix": "treecalc.dynamic_table_rebind.v1;selector_handle=25:selector:RemoteSalesTable;selector_identity=",
+              "present": true
+            },
+            "invalidation_reasons": [
+              "structural_rebind_required",
+              "dynamic_dependency_activated",
+              "dynamic_dependency_released",
+              "dynamic_dependency_reclassified"
+            ],
+            "oxfml_generic_bind_packet_available": true,
+            "oxfunc_opaque_reference_admitted": true,
+            "prepared_identity_inputs": [
+              "host_namespace_version",
+              "structure_context_version",
+              "table_context_identity",
+              "dynamic_selector_identity",
+              "resolution_rule_version"
+            ],
+            "reference": "[table-projections]RemoteSalesTable[Amount]",
+            "selector_handle": "selector:RemoteSalesTable",
+            "selector_identity": "dynamic-selector:[table-projections]RemoteSalesTable[Amount]:v1",
+            "source_reference_expected_handle": "oxfml.structured_table_ref.handle.v1;workspace=table-projections;table=RemoteSalesTable;column=Amount",
+            "source_reference_handle": "oxfml.structured_table_ref.handle.v1;workspace=table-projections;table=RemoteSalesTable;column=Amount",
+            "source_reference_mode": "provided_oxfml_packet",
+            "status": "rebind_required",
+            "strict_excel": "reject",
+            "target_kind": "cross_workspace_table",
+            "treecalc_v1": "admit"
+          },
+          {
+            "bridge_route": "LiveOxCalcTreeBridge::classify_dynamic_table_rebind",
+            "case_id": "tbl-dyn-cross-workspace-unavailable",
+            "case_name": "Closed workspace target reports unavailable dynamic status",
+            "cause": "workspace_close",
+            "changed_dependency_kinds": [
+              "structured_table_identity",
+              "structured_table_row_membership",
+              "structured_table_row_order",
+              "structured_table_column_identity",
+              "structured_table_header_text",
+              "structured_table_header_region",
+              "structured_table_data_region",
+              "structured_table_totals_region",
+              "structured_table_caller_context",
+              "structured_table_enclosing_table",
+              "dynamic_potential",
+              "host_sensitive"
+            ],
+            "dependency_fact_kinds": [
+              "table_identity",
+              "row_membership",
+              "row_order",
+              "column_identity",
+              "data_region",
+              "virtual_anchor_range",
+              "workspace_availability"
+            ],
+            "diagnostics": [],
+            "dynamic_rebind_identity": {
+              "digest": "fnv1a64:8b12fa7ff055f2b2",
+              "prefix": "treecalc.dynamic_table_rebind.v1;selector_handle=31:selector:ClosedRemoteSalesTable;selector_ide",
+              "present": true
+            },
+            "invalidation_reasons": [
+              "structural_rebind_required",
+              "dependency_removed",
+              "dynamic_dependency_activated",
+              "dynamic_dependency_released",
+              "dynamic_dependency_reclassified"
+            ],
+            "oxfml_generic_bind_packet_available": true,
+            "oxfunc_opaque_reference_admitted": true,
+            "prepared_identity_inputs": [
+              "host_namespace_version",
+              "structure_context_version",
+              "table_context_identity",
+              "dynamic_selector_identity",
+              "resolution_rule_version"
+            ],
+            "reference": "[table-projections]RemoteSalesTable[#Data]",
+            "selector_handle": "selector:ClosedRemoteSalesTable",
+            "selector_identity": "dynamic-selector:[table-projections]RemoteSalesTable[#Data]:closed",
+            "source_reference_expected_handle": "oxfml.structured_table_ref.handle.v1;workspace=table-projections;table=RemoteSalesTable;section=Data",
+            "source_reference_handle": "oxfml.structured_table_ref.handle.v1;workspace=table-projections;table=RemoteSalesTable;section=Data",
+            "source_reference_mode": "provided_oxfml_packet",
+            "status": "unavailable_target",
+            "strict_excel": "reject",
+            "target_kind": "cross_workspace_table",
+            "treecalc_v1": "typed_exclusion"
+          },
+          {
+            "bridge_route": "LiveOxCalcTreeBridge::classify_dynamic_table_rebind",
+            "case_id": "tbl-dyn-workspace-alias-mutation",
+            "case_name": "Workspace alias mutation reclassifies cross-workspace table target",
+            "cause": "workspace_alias_mutation",
+            "changed_dependency_kinds": [
+              "structured_table_identity",
+              "structured_table_row_membership",
+              "structured_table_row_order",
+              "structured_table_column_identity",
+              "structured_table_data_region",
+              "structured_table_enclosing_table",
+              "dynamic_potential",
+              "host_sensitive"
+            ],
+            "dependency_fact_kinds": [
+              "table_identity",
+              "row_membership",
+              "row_order",
+              "column_identity",
+              "data_region",
+              "virtual_anchor_range",
+              "workspace_availability"
+            ],
+            "diagnostics": [],
+            "dynamic_rebind_identity": {
+              "digest": "fnv1a64:6d1874a215d34eda",
+              "prefix": "treecalc.dynamic_table_rebind.v1;selector_handle=30:selector:RemoteSalesTableAlias;selector_iden",
+              "present": true
+            },
+            "invalidation_reasons": [
+              "structural_rebind_required",
+              "structured_table_context_changed",
+              "dynamic_dependency_activated",
+              "dynamic_dependency_released",
+              "dynamic_dependency_reclassified"
+            ],
+            "oxfml_generic_bind_packet_available": true,
+            "oxfunc_opaque_reference_admitted": true,
+            "prepared_identity_inputs": [
+              "host_namespace_version",
+              "structure_context_version",
+              "table_context_identity",
+              "dynamic_selector_identity",
+              "resolution_rule_version"
+            ],
+            "reference": "[table-projections]RemoteSalesTable[#Data]",
+            "selector_handle": "selector:RemoteSalesTableAlias",
+            "selector_identity": "dynamic-selector:[table-projections]RemoteSalesTable[#Data]:alias-v2",
+            "source_reference_expected_handle": "oxfml.structured_table_ref.handle.v1;workspace=table-projections;table=RemoteSalesTable;section=Data;alias=v2",
+            "source_reference_handle": "oxfml.structured_table_ref.handle.v1;workspace=table-projections;table=RemoteSalesTable;section=Data;alias=v2",
+            "source_reference_mode": "provided_oxfml_packet",
+            "status": "rebind_required",
+            "strict_excel": "reject",
+            "target_kind": "cross_workspace_table",
+            "treecalc_v1": "admit"
+          },
+          {
+            "bridge_route": "LiveOxCalcTreeBridge::classify_dynamic_table_rebind",
+            "case_id": "tbl-dyn-strict-excel-rejection",
+            "case_name": "TreeCalc dynamic table selector is admitted only by the treecalc-v1 profile",
+            "cause": "selector_text_changed",
+            "changed_dependency_kinds": [
+              "structured_table_identity",
+              "structured_table_row_membership",
+              "structured_table_row_order",
+              "structured_table_column_identity",
+              "structured_table_data_region",
+              "dynamic_potential"
+            ],
+            "dependency_fact_kinds": [
+              "table_identity",
+              "row_membership",
+              "row_order",
+              "column_identity",
+              "data_region"
+            ],
+            "diagnostics": [],
+            "dynamic_rebind_identity": {
+              "digest": "fnv1a64:772bf384e797b43f",
+              "prefix": "treecalc.dynamic_table_rebind.v1;selector_handle=26:selector:TreeCalcOnlyTable;selector_identity",
+              "present": true
+            },
+            "invalidation_reasons": [
+              "dynamic_dependency_activated",
+              "dynamic_dependency_released",
+              "dynamic_dependency_reclassified"
+            ],
+            "oxfml_generic_bind_packet_available": true,
+            "oxfunc_opaque_reference_admitted": true,
+            "prepared_identity_inputs": [
+              "host_namespace_version",
+              "structure_context_version",
+              "table_context_identity",
+              "dynamic_selector_identity",
+              "resolution_rule_version"
+            ],
+            "reference": "TREECALC.TABLE(\"SalesTable[#Data]\")",
+            "selector_handle": "selector:TreeCalcOnlyTable",
+            "selector_identity": "dynamic-selector:TREECALC.TABLE(SalesTable[#Data]):v1",
+            "source_reference_expected_handle": "oxfml.dynamic_table_selector.handle.v1;case=tbl-dyn-strict-excel-rejection",
+            "source_reference_handle": "oxfml.dynamic_table_selector.handle.v1;case=tbl-dyn-strict-excel-rejection",
+            "source_reference_mode": "provided_oxfml_packet",
+            "status": "rebind_required",
+            "strict_excel": "reject",
+            "target_kind": "table",
+            "treecalc_v1": "admit"
+          }
+        ],
+        "classification_api": "LiveOxCalcTreeBridge::classify_dynamic_table_rebind",
+        "source_status": "live_bridge_route"
+      },
+      "view_family": "dependency_evidence"
+    },
+    {
+      "value": {
+        "case_invalidations": [
+          {
+            "case_id": "tbl-dyn-table-selector",
+            "changed_dependency_kinds": [
+              "structured_table_identity",
+              "structured_table_row_membership",
+              "structured_table_row_order",
+              "structured_table_column_identity",
+              "structured_table_data_region",
+              "dynamic_potential"
+            ],
+            "invalidation_reasons": [
+              "dynamic_dependency_activated",
+              "dynamic_dependency_released",
+              "dynamic_dependency_reclassified"
+            ],
+            "prepared_identity_inputs": [
+              "host_namespace_version",
+              "structure_context_version",
+              "table_context_identity",
+              "dynamic_selector_identity",
+              "resolution_rule_version"
+            ],
+            "status": "rebind_required"
+          },
+          {
+            "case_id": "tbl-dyn-column-selector",
+            "changed_dependency_kinds": [
+              "structured_table_identity",
+              "structured_table_row_membership",
+              "structured_table_row_order",
+              "structured_table_column_identity",
+              "structured_table_data_region",
+              "dynamic_potential"
+            ],
+            "invalidation_reasons": [
+              "dynamic_dependency_activated",
+              "dynamic_dependency_released",
+              "dynamic_dependency_reclassified"
+            ],
+            "prepared_identity_inputs": [
+              "host_namespace_version",
+              "structure_context_version",
+              "table_context_identity",
+              "dynamic_selector_identity",
+              "resolution_rule_version"
+            ],
+            "status": "rebind_required"
+          },
+          {
+            "case_id": "tbl-dyn-section-selector",
+            "changed_dependency_kinds": [
+              "structured_table_identity",
+              "structured_table_header_region",
+              "structured_table_data_region",
+              "structured_table_totals_region",
+              "dynamic_potential"
+            ],
+            "invalidation_reasons": [
+              "dynamic_dependency_activated",
+              "dynamic_dependency_released",
+              "dynamic_dependency_reclassified"
+            ],
+            "prepared_identity_inputs": [
+              "host_namespace_version",
+              "structure_context_version",
+              "table_context_identity",
+              "dynamic_selector_identity",
+              "resolution_rule_version"
+            ],
+            "status": "rebind_required"
+          },
+          {
+            "case_id": "tbl-dyn-current-row-selector",
+            "changed_dependency_kinds": [
+              "structured_table_identity",
+              "structured_table_row_order",
+              "structured_table_data_region",
+              "structured_table_caller_context",
+              "dynamic_potential"
+            ],
+            "invalidation_reasons": [
+              "dynamic_dependency_activated",
+              "dynamic_dependency_released",
+              "dynamic_dependency_reclassified"
+            ],
+            "prepared_identity_inputs": [
+              "host_namespace_version",
+              "structure_context_version",
+              "table_context_identity",
+              "caller_context_identity",
+              "dynamic_selector_identity",
+              "resolution_rule_version"
+            ],
+            "status": "rebind_required"
+          },
+          {
+            "case_id": "tbl-dyn-indirect-runtime-typed-exclusion",
+            "changed_dependency_kinds": [
+              "structured_table_identity",
+              "structured_table_header_region",
+              "structured_table_data_region",
+              "structured_table_totals_region",
+              "dynamic_potential",
+              "unresolved"
+            ],
+            "invalidation_reasons": [
+              "structural_rebind_required",
+              "dynamic_dependency_activated",
+              "dynamic_dependency_released",
+              "dynamic_dependency_reclassified"
+            ],
+            "prepared_identity_inputs": [
+              "host_namespace_version",
+              "structure_context_version",
+              "table_context_identity",
+              "dynamic_selector_identity",
+              "resolution_rule_version"
+            ],
+            "status": "typed_exclusion"
+          },
+          {
+            "case_id": "tbl-dyn-target-not-table",
+            "changed_dependency_kinds": [
+              "structured_table_identity",
+              "structured_table_row_membership",
+              "structured_table_row_order",
+              "structured_table_column_identity",
+              "structured_table_data_region",
+              "dynamic_potential",
+              "unresolved"
+            ],
+            "invalidation_reasons": [
+              "dependency_reclassified",
+              "dynamic_dependency_activated",
+              "dynamic_dependency_released",
+              "dynamic_dependency_reclassified"
+            ],
+            "prepared_identity_inputs": [
+              "host_namespace_version",
+              "structure_context_version",
+              "table_context_identity",
+              "dynamic_selector_identity",
+              "resolution_rule_version"
+            ],
+            "status": "typed_exclusion"
+          },
+          {
+            "case_id": "tbl-dyn-deleted-table-target",
+            "changed_dependency_kinds": [
+              "structured_table_identity",
+              "structured_table_row_membership",
+              "structured_table_row_order",
+              "structured_table_column_identity",
+              "structured_table_header_text",
+              "structured_table_header_region",
+              "structured_table_data_region",
+              "structured_table_totals_region",
+              "structured_table_caller_context",
+              "structured_table_enclosing_table",
+              "dynamic_potential"
+            ],
+            "invalidation_reasons": [
+              "structural_rebind_required",
+              "dependency_removed",
+              "dynamic_dependency_activated",
+              "dynamic_dependency_released",
+              "dynamic_dependency_reclassified"
+            ],
+            "prepared_identity_inputs": [
+              "host_namespace_version",
+              "structure_context_version",
+              "table_context_identity",
+              "dynamic_selector_identity",
+              "resolution_rule_version"
+            ],
+            "status": "deleted_target"
+          },
+          {
+            "case_id": "tbl-dyn-cross-workspace-table",
+            "changed_dependency_kinds": [
+              "structured_table_identity",
+              "structured_table_row_membership",
+              "structured_table_row_order",
+              "structured_table_column_identity",
+              "structured_table_data_region",
+              "dynamic_potential",
+              "host_sensitive"
+            ],
+            "invalidation_reasons": [
+              "structural_rebind_required",
+              "dynamic_dependency_activated",
+              "dynamic_dependency_released",
+              "dynamic_dependency_reclassified"
+            ],
+            "prepared_identity_inputs": [
+              "host_namespace_version",
+              "structure_context_version",
+              "table_context_identity",
+              "dynamic_selector_identity",
+              "resolution_rule_version"
+            ],
+            "status": "rebind_required"
+          },
+          {
+            "case_id": "tbl-dyn-cross-workspace-unavailable",
+            "changed_dependency_kinds": [
+              "structured_table_identity",
+              "structured_table_row_membership",
+              "structured_table_row_order",
+              "structured_table_column_identity",
+              "structured_table_header_text",
+              "structured_table_header_region",
+              "structured_table_data_region",
+              "structured_table_totals_region",
+              "structured_table_caller_context",
+              "structured_table_enclosing_table",
+              "dynamic_potential",
+              "host_sensitive"
+            ],
+            "invalidation_reasons": [
+              "structural_rebind_required",
+              "dependency_removed",
+              "dynamic_dependency_activated",
+              "dynamic_dependency_released",
+              "dynamic_dependency_reclassified"
+            ],
+            "prepared_identity_inputs": [
+              "host_namespace_version",
+              "structure_context_version",
+              "table_context_identity",
+              "dynamic_selector_identity",
+              "resolution_rule_version"
+            ],
+            "status": "unavailable_target"
+          },
+          {
+            "case_id": "tbl-dyn-workspace-alias-mutation",
+            "changed_dependency_kinds": [
+              "structured_table_identity",
+              "structured_table_row_membership",
+              "structured_table_row_order",
+              "structured_table_column_identity",
+              "structured_table_data_region",
+              "structured_table_enclosing_table",
+              "dynamic_potential",
+              "host_sensitive"
+            ],
+            "invalidation_reasons": [
+              "structural_rebind_required",
+              "structured_table_context_changed",
+              "dynamic_dependency_activated",
+              "dynamic_dependency_released",
+              "dynamic_dependency_reclassified"
+            ],
+            "prepared_identity_inputs": [
+              "host_namespace_version",
+              "structure_context_version",
+              "table_context_identity",
+              "dynamic_selector_identity",
+              "resolution_rule_version"
+            ],
+            "status": "rebind_required"
+          },
+          {
+            "case_id": "tbl-dyn-strict-excel-rejection",
+            "changed_dependency_kinds": [
+              "structured_table_identity",
+              "structured_table_row_membership",
+              "structured_table_row_order",
+              "structured_table_column_identity",
+              "structured_table_data_region",
+              "dynamic_potential"
+            ],
+            "invalidation_reasons": [
+              "dynamic_dependency_activated",
+              "dynamic_dependency_released",
+              "dynamic_dependency_reclassified"
+            ],
+            "prepared_identity_inputs": [
+              "host_namespace_version",
+              "structure_context_version",
+              "table_context_identity",
+              "dynamic_selector_identity",
+              "resolution_rule_version"
+            ],
+            "status": "rebind_required"
+          }
+        ],
+        "classification_api": "LiveOxCalcTreeBridge::classify_dynamic_table_rebind",
+        "source_status": "live_bridge_route"
+      },
+      "view_family": "invalidation_evidence"
+    },
+    {
+      "value": {
+        "artifact_kind": "w056_dynamic_cross_workspace_table_replay",
+        "artifact_refs": [
+          {
+            "kind": "normalized_replay",
+            "path": "docs/test-runs/w056-table-dynamic-cross-workspace-001/views/normalized-replay.json"
+          },
+          {
+            "kind": "replay_manifest",
+            "path": "docs/test-runs/w056-table-dynamic-cross-workspace-001/oxreplay-manifest.json"
+          },
+          {
+            "kind": "source_corpus",
+            "path": "docs/test-corpus/tables/dynamic-cross-workspace.json"
+          },
+          {
+            "kind": "source_workspace",
+            "path": "docs/test-corpus/workspaces/tables.json"
+          },
+          {
+            "kind": "source_workspace",
+            "path": "docs/test-corpus/workspaces/table-projections.json"
+          }
+        ],
+        "capture_loss": "none",
+        "capture_mode": "model_projection",
+        "host_id": "dna_treecalc",
+        "projection_status": "direct",
+        "source_status": "direct"
+      },
+      "view_family": "retained_artifact_ref"
+    }
+  ],
+  "events": [
+    {
+      "event_id": "treecalc_dynamic_table_rebind_packets",
+      "normalized_family": "treecalc.surface.dynamic_table_rebind",
+      "source_label": "dynamic_table_rebind:tables"
+    },
+    {
+      "event_id": "treecalc_cross_workspace_table_availability",
+      "normalized_family": "treecalc.surface.cross_workspace_table_availability",
+      "source_label": "cross_workspace_table_availability:table-projections"
+    }
+  ],
+  "lane_id": "dna_treecalc",
+  "registry_refs": [
+    {
+      "family": "dnatreecalc.test_corpus",
+      "version": "tables/dynamic-cross-workspace@treecalc-corpus-v1:cases=11"
+    },
+    {
+      "family": "dnatreecalc.workspace_fixture",
+      "version": "tables@treecalc-workspace-v1"
+    },
+    {
+      "family": "dnatreecalc.workspace_fixture",
+      "version": "table-projections@treecalc-workspace-v1"
+    }
+  ],
+  "scenario_id": "w056_treecalc_dynamic_cross_workspace_tables_001",
+  "source_metadata": {
+    "adapter_id": "dnatreecalc.oxcalc_dynamic_table_rebind.v1",
+    "bridge_influenced": true,
+    "capture_loss": "none",
+    "capture_loss_summary": [],
+    "capture_mode": "model_projection",
+    "comparison_view_families": [
+      "execution_outcome",
+      "dependency_evidence",
+      "invalidation_evidence",
+      "retained_artifact_ref"
+    ],
+    "interpretation_limits": [
+      {
+        "detail": "Runtime parsing of TreeCalc structured-reference text through INDIRECT remains a typed exclusion until OxFml supplies a generic structured bind packet.",
+        "kind": "typed_exclusions_are_explicit"
+      },
+      {
+        "detail": "Dynamic table status, dependency facts, invalidation reasons, and prepared identity inputs come from OxCalc public dynamic table packets.",
+        "kind": "no_private_selector_semantics"
+      }
+    ],
+    "projection_status": "direct",
+    "shared_scenario_alias": "w056_table_dynamic_cross_workspace_001",
+    "source_host": "dna_treecalc",
+    "source_refs": [
+      "docs/test-corpus/tables/dynamic-cross-workspace.json",
+      "docs/test-corpus/workspaces/tables.json",
+      "docs/test-corpus/workspaces/table-projections.json"
+    ],
+    "source_schema_id": "dna_treecalc.w056_dynamic_cross_workspace_table_replay.v1",
+    "uncertainty_summary": [],
+    "workspace_id": "tables"
+  }
+}

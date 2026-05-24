@@ -13,15 +13,18 @@ use oxcalc_core::dependency::{DependencyDescriptorKind, InvalidationReasonKind};
 use oxcalc_core::sparse_reader::{SparseCellCoord, SparseCellRead, SparseRangeReader};
 use oxcalc_core::structural::TreeNodeId;
 use oxcalc_core::structured_table::{
-    StructuredTableContextPacket, StructuredTableDependencyFactStatus,
-    StructuredTableDependencyLoweringRequest, TableCallerRegion, TableRef, TableRegionKind,
+    StructuredTableContextPacket, StructuredTableDependencyFactKind,
+    StructuredTableDependencyFactStatus, StructuredTableDependencyLoweringRequest,
+    TableCallerRegion, TableRef, TableRegionKind, TreeCalcDynamicTableRebindCause,
+    TreeCalcDynamicTableRebindDiagnosticKind, TreeCalcDynamicTableRebindRequest,
+    TreeCalcDynamicTableRebindStatus, TreeCalcDynamicTableReferenceTargetKind,
     TreeCalcTableColumnBodyMetadata, TreeCalcTableColumnFormulaRuntimeRequest,
     TreeCalcTableColumnSnapshot, TreeCalcTableFormulaMetadata, TreeCalcTableFormulaRuntimeContext,
-    TreeCalcTableLifecycleCallbackPacket, TreeCalcTableLifecycleContractDiagnostic,
-    TreeCalcTableLifecycleEventKind, TreeCalcTableLifecycleVersionState,
-    TreeCalcTableNodeProjection, TreeCalcTableNodeSnapshot, TreeCalcTableProjectionError,
-    TreeCalcTableRowId, TreeCalcTableSparseReader, TreeCalcTableSparseReaderError,
-    TreeCalcTableSparseValue, TreeCalcTableUpdateScenarioKind,
+    TreeCalcTableLifecycleCallbackPacket, TreeCalcTableLifecycleContextVersions,
+    TreeCalcTableLifecycleContractDiagnostic, TreeCalcTableLifecycleEventKind,
+    TreeCalcTableLifecycleVersionState, TreeCalcTableNodeProjection, TreeCalcTableNodeSnapshot,
+    TreeCalcTableProjectionError, TreeCalcTableRowId, TreeCalcTableSparseReader,
+    TreeCalcTableSparseReaderError, TreeCalcTableSparseValue, TreeCalcTableUpdateScenarioKind,
     classify_treecalc_table_lifecycle_callback, classify_treecalc_table_update,
     evaluate_treecalc_table_column_formula_rows, evaluate_treecalc_table_totals_formula,
     lower_structured_table_dependencies, prebind_treecalc_table_structured_references,
@@ -92,6 +95,48 @@ struct TableLifecycleCorpusSpec {
     changed_columns: Vec<String>,
     expect_row_handles_preserved: bool,
     expect_column_handles_preserved: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct DynamicTableTheme {
+    schema_version: String,
+    theme: String,
+    status: CorpusStatus,
+    cases: Vec<DynamicTableCase>,
+}
+
+#[derive(Debug, Deserialize)]
+struct DynamicTableCase {
+    id: String,
+    name: String,
+    kind: String,
+    workspace: String,
+    table: String,
+    reference: String,
+    caller_row_offset: Option<u32>,
+    expect: TableExpectation,
+    dynamic: DynamicTableSpec,
+}
+
+#[derive(Debug, Deserialize)]
+struct DynamicTableSpec {
+    selector_handle: String,
+    selector_identity: String,
+    source: DynamicTableSourcePacket,
+    target_kind: String,
+    cause: String,
+    before_resolved_table: Option<String>,
+    after_resolved_table: Option<String>,
+    caller_context_id: Option<String>,
+    oxfml_structured_bind_packet_available: bool,
+    treecalc_v1: String,
+    strict_excel: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct DynamicTableSourcePacket {
+    mode: String,
+    reference_handle: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -743,6 +788,114 @@ fn retained_empty_body_table_replay_artifact_matches_live_oxcalc_projection() {
             .iter()
             .any(|view| view["path"] == json!("views/normalized-replay.json"))),
         "manifest must point OxReplay at the normalized-replay view"
+    );
+}
+
+#[test]
+fn active_dynamic_cross_workspace_table_corpus_executes_through_oxcalc_dynamic_packets() {
+    let theme = load_dynamic_table_theme(repo_corpus_path("tables/dynamic-cross-workspace.json"));
+    assert_eq!(theme.schema_version, "treecalc-corpus-v1");
+    assert_eq!(theme.theme, "tables/dynamic-cross-workspace");
+    assert_eq!(theme.status, CorpusStatus::Active);
+
+    let local_workspace = load_workspace("tables");
+    let remote_workspace = load_workspace("table-projections");
+    let bridge = LiveOxCalcTreeBridge::default();
+    for case in &theme.cases {
+        let report = dynamic_table_rebind_report_for_case(
+            &bridge,
+            case,
+            &local_workspace,
+            &remote_workspace,
+        );
+        assert_dynamic_table_expected_status(case, &report);
+        assert_eq!(
+            case.dynamic.strict_excel, "reject",
+            "{} strict-excel profile",
+            case.id
+        );
+        match case.dynamic.treecalc_v1.as_str() {
+            "admit" => {
+                assert_ne!(
+                    report.status,
+                    TreeCalcDynamicTableRebindStatus::TypedExclusion,
+                    "{} treecalc-v1 admission",
+                    case.id
+                );
+                assert!(
+                    report.oxfunc_opaque_reference_admitted,
+                    "{} admitted dynamic table reference must stay opaque for OxFunc",
+                    case.id
+                );
+            }
+            "typed_exclusion" => {
+                assert!(
+                    matches!(
+                        report.status,
+                        TreeCalcDynamicTableRebindStatus::TypedExclusion
+                            | TreeCalcDynamicTableRebindStatus::DeletedTarget
+                            | TreeCalcDynamicTableRebindStatus::UnavailableTarget
+                    ),
+                    "{} typed exclusion/status",
+                    case.id
+                );
+            }
+            other => panic!("{} unsupported treecalc-v1 verdict {other}", case.id),
+        }
+        if matches!(
+            report.target_kind,
+            TreeCalcDynamicTableReferenceTargetKind::CrossWorkspaceTable
+        ) {
+            assert!(
+                report
+                    .dependency_fact_kinds
+                    .contains(&StructuredTableDependencyFactKind::WorkspaceAvailability),
+                "{} cross-workspace dependency",
+                case.id
+            );
+            assert!(
+                report
+                    .prepared_identity_inputs
+                    .contains(&oxcalc_core::structured_table::TreeCalcTablePreparedIdentityInput::HostNamespaceVersion),
+                "{} cross-workspace prepared identity",
+                case.id
+            );
+        }
+    }
+}
+
+#[test]
+fn retained_dynamic_cross_workspace_table_replay_artifact_matches_oxcalc_packets() {
+    let theme = load_dynamic_table_theme(repo_corpus_path("tables/dynamic-cross-workspace.json"));
+    let local_workspace = load_workspace("tables");
+    let remote_workspace = load_workspace("table-projections");
+    let bridge = LiveOxCalcTreeBridge::default();
+    let artifact = retained_dynamic_cross_workspace_table_replay_artifact(
+        &theme,
+        &bridge,
+        &local_workspace,
+        &remote_workspace,
+    );
+    let artifact_path = repo_docs_path(
+        "test-runs/w056-table-dynamic-cross-workspace-001/views/normalized-replay.json",
+    );
+    let manifest_path =
+        repo_docs_path("test-runs/w056-table-dynamic-cross-workspace-001/oxreplay-manifest.json");
+    let manifest = retained_dynamic_cross_workspace_table_replay_manifest();
+    if std::env::var_os("DNATREECALC_UPDATE_RETAINED_DYNAMIC_TABLE_REPLAY").is_some() {
+        write_pretty_json(&artifact_path, &artifact);
+        write_pretty_json(&manifest_path, &manifest);
+    }
+
+    let expected_artifact = load_expected_json_or_panic_with_generated(&artifact_path, &artifact);
+    assert_eq!(
+        expected_artifact, artifact,
+        "retained W056 dynamic/cross-workspace table artifact must stay generated from OxCalc dynamic table packets"
+    );
+    let expected_manifest = load_expected_json_or_panic_with_generated(&manifest_path, &manifest);
+    assert_eq!(
+        expected_manifest, manifest,
+        "retained W056 dynamic/cross-workspace manifest must stay aligned with the generated replay view"
     );
 }
 
@@ -3386,6 +3539,608 @@ fn retained_empty_body_artifact_refs_json() -> Value {
     })
 }
 
+fn retained_dynamic_cross_workspace_table_replay_artifact(
+    theme: &DynamicTableTheme,
+    bridge: &impl OxCalcTreeBridge,
+    local_workspace: &WorkspaceModel,
+    remote_workspace: &WorkspaceModel,
+) -> Value {
+    let case_reports = theme
+        .cases
+        .iter()
+        .map(|case| {
+            dynamic_table_rebind_report_json(
+                case,
+                &dynamic_table_rebind_report_for_case(
+                    bridge,
+                    case,
+                    local_workspace,
+                    remote_workspace,
+                ),
+            )
+        })
+        .collect::<Vec<_>>();
+
+    json!({
+        "scenario_id": "w056_treecalc_dynamic_cross_workspace_tables_001",
+        "lane_id": "dna_treecalc",
+        "events": [
+            {
+                "event_id": "treecalc_dynamic_table_rebind_packets",
+                "source_label": "dynamic_table_rebind:tables",
+                "normalized_family": "treecalc.surface.dynamic_table_rebind"
+            },
+            {
+                "event_id": "treecalc_cross_workspace_table_availability",
+                "source_label": "cross_workspace_table_availability:table-projections",
+                "normalized_family": "treecalc.surface.cross_workspace_table_availability"
+            }
+        ],
+        "registry_refs": [
+            {
+                "family": "dnatreecalc.test_corpus",
+                "version": format!("{}@{}:cases={}", theme.theme, theme.schema_version, theme.cases.len())
+            },
+            {
+                "family": "dnatreecalc.workspace_fixture",
+                "version": format!("{}@treecalc-workspace-v1", local_workspace.workspace_id)
+            },
+            {
+                "family": "dnatreecalc.workspace_fixture",
+                "version": format!("{}@treecalc-workspace-v1", remote_workspace.workspace_id)
+            }
+        ],
+        "comparison_views": [
+            {
+                "view_family": "execution_outcome",
+                "value": {
+                    "outcome_schema": "dna_treecalc.execution_outcome.v1",
+                    "scenario_id": "w056_treecalc_dynamic_cross_workspace_tables_001",
+                    "outcome_kind": "accepted_execution",
+                    "outcome_stage": "oxcalc_dynamic_table_rebind_packets",
+                    "class_id": "treecalc_dynamic_cross_workspace_table_packets_ready",
+                    "lane_reason_code": "dnatreecalc_w056_dynamic_table_retained",
+                    "engine_surface": "LiveOxCalcTreeBridge dynamic table rebind route backed by the OxCalc W056 public packet API",
+                    "case_count": case_reports.len(),
+                    "case_statuses": case_reports
+                        .iter()
+                        .map(|case| {
+                            json!({
+                                "case_id": case["case_id"].clone(),
+                                "status": case["status"].clone(),
+                                "treecalc_v1": case["treecalc_v1"].clone(),
+                                "strict_excel": case["strict_excel"].clone()
+                            })
+                        })
+                        .collect::<Vec<_>>(),
+                    "replay_view_ready": true
+                }
+            },
+            {
+                "view_family": "dependency_evidence",
+                "value": {
+                    "source_status": "live_bridge_route",
+                    "classification_api": "LiveOxCalcTreeBridge::classify_dynamic_table_rebind",
+                    "case_reports": case_reports.clone()
+                }
+            },
+            {
+                "view_family": "invalidation_evidence",
+                "value": {
+                    "source_status": "live_bridge_route",
+                    "classification_api": "LiveOxCalcTreeBridge::classify_dynamic_table_rebind",
+                    "case_invalidations": case_reports
+                        .iter()
+                        .map(|case| {
+                            json!({
+                                "case_id": case["case_id"].clone(),
+                                "status": case["status"].clone(),
+                                "changed_dependency_kinds": case["changed_dependency_kinds"].clone(),
+                                "invalidation_reasons": case["invalidation_reasons"].clone(),
+                                "prepared_identity_inputs": case["prepared_identity_inputs"].clone()
+                            })
+                        })
+                        .collect::<Vec<_>>()
+                }
+            },
+            {
+                "view_family": "retained_artifact_ref",
+                "value": retained_dynamic_table_artifact_refs_json()
+            }
+        ],
+        "source_metadata": {
+            "source_host": "dna_treecalc",
+            "source_schema_id": "dna_treecalc.w056_dynamic_cross_workspace_table_replay.v1",
+            "projection_status": "direct",
+            "capture_mode": "model_projection",
+            "capture_loss": "none",
+            "capture_loss_summary": [],
+            "uncertainty_summary": [],
+            "bridge_influenced": true,
+            "adapter_id": "dnatreecalc.oxcalc_dynamic_table_rebind.v1",
+            "workspace_id": local_workspace.workspace_id,
+            "source_refs": [
+                "docs/test-corpus/tables/dynamic-cross-workspace.json",
+                "docs/test-corpus/workspaces/tables.json",
+                "docs/test-corpus/workspaces/table-projections.json"
+            ],
+            "shared_scenario_alias": "w056_table_dynamic_cross_workspace_001",
+            "interpretation_limits": [
+                {
+                    "kind": "typed_exclusions_are_explicit",
+                    "detail": "Runtime parsing of TreeCalc structured-reference text through INDIRECT remains a typed exclusion until OxFml supplies a generic structured bind packet."
+                },
+                {
+                    "kind": "no_private_selector_semantics",
+                    "detail": "Dynamic table status, dependency facts, invalidation reasons, and prepared identity inputs come from OxCalc public dynamic table packets."
+                }
+            ],
+            "comparison_view_families": [
+                "execution_outcome",
+                "dependency_evidence",
+                "invalidation_evidence",
+                "retained_artifact_ref"
+            ]
+        }
+    })
+}
+
+fn retained_dynamic_cross_workspace_table_replay_manifest() -> Value {
+    json!({
+        "bundle_id": "dnatreecalc-w056-table-dynamic-cross-workspace-001",
+        "scenario_id": "w056_treecalc_dynamic_cross_workspace_tables_001",
+        "bundle_schema": "replay.bundle.v1",
+        "source_schema": "dna_treecalc.replay_bundle_seed.v1",
+        "lane_id": "dna_treecalc",
+        "adapter_id": "dnatreecalc.oxcalc_dynamic_table_rebind.v1",
+        "capture_mode": "model_projection",
+        "projection_status": "lossless",
+        "capture_loss": "none",
+        "registry_refs": [],
+        "sidecars": [],
+        "views": [
+            {
+                "artifact_family": "normalized_replay",
+                "path": "views/normalized-replay.json"
+            }
+        ],
+        "declared_comparison_views": [
+            "execution_outcome",
+            "dependency_evidence",
+            "invalidation_evidence",
+            "retained_artifact_ref"
+        ]
+    })
+}
+
+fn dynamic_table_rebind_report_for_case(
+    bridge: &impl OxCalcTreeBridge,
+    case: &DynamicTableCase,
+    local_workspace: &WorkspaceModel,
+    remote_workspace: &WorkspaceModel,
+) -> oxcalc_core::structured_table::TreeCalcDynamicTableRebindReport {
+    assert_eq!(case.kind, "table", "case {} kind", case.id);
+    assert_eq!(case.workspace, "tables", "case {} workspace", case.id);
+    assert_eq!(case.table, "SalesTable", "case {} table", case.id);
+    let source_reference_handle = dynamic_table_source_reference_handle(case, local_workspace);
+    let request = TreeCalcDynamicTableRebindRequest {
+        selector_handle: case.dynamic.selector_handle.clone(),
+        selector_identity: case.dynamic.selector_identity.clone(),
+        source_reference_handle,
+        target_kind: dynamic_table_target_kind(&case.dynamic.target_kind),
+        cause: dynamic_table_rebind_cause(&case.dynamic.cause),
+        before_resolved_table_identity: case.dynamic.before_resolved_table.as_deref().map(
+            |target| {
+                dynamic_table_resolved_identity(bridge, target, local_workspace, remote_workspace)
+            },
+        ),
+        after_resolved_table_identity: case.dynamic.after_resolved_table.as_deref().map(|target| {
+            dynamic_table_resolved_identity(bridge, target, local_workspace, remote_workspace)
+        }),
+        caller_context_id: case.dynamic.caller_context_id.clone(),
+        context_versions: dynamic_table_context_versions(case),
+        oxfml_structured_bind_packet_available: case.dynamic.oxfml_structured_bind_packet_available,
+    };
+    bridge
+        .classify_dynamic_table_rebind(request)
+        .unwrap_or_else(|error| panic!("{} dynamic table bridge route failed: {error}", case.id))
+}
+
+fn assert_dynamic_table_expected_status(
+    case: &DynamicTableCase,
+    report: &oxcalc_core::structured_table::TreeCalcDynamicTableRebindReport,
+) {
+    let expected = case.expect.reason.as_deref().unwrap_or("");
+    match expected {
+        "unsupported_runtime_structured_reference_parsing" => {
+            assert_eq!(
+                report.status,
+                TreeCalcDynamicTableRebindStatus::TypedExclusion,
+                "{} status",
+                case.id
+            );
+            assert!(
+                report.diagnostics.iter().any(|diagnostic| diagnostic.kind
+                    == TreeCalcDynamicTableRebindDiagnosticKind::UnsupportedRuntimeStructuredReferenceParsing),
+                "{} diagnostic",
+                case.id
+            );
+        }
+        "dynamic_target_not_table" => {
+            assert_eq!(
+                report.status,
+                TreeCalcDynamicTableRebindStatus::TypedExclusion,
+                "{} status",
+                case.id
+            );
+            assert!(
+                report.diagnostics.iter().any(|diagnostic| diagnostic.kind
+                    == TreeCalcDynamicTableRebindDiagnosticKind::DynamicTargetNotTable),
+                "{} diagnostic",
+                case.id
+            );
+        }
+        other => assert_eq!(
+            dynamic_rebind_status_id(report.status),
+            other,
+            "{} status",
+            case.id
+        ),
+    }
+}
+
+fn dynamic_table_source_reference_handle(
+    case: &DynamicTableCase,
+    workspace: &WorkspaceModel,
+) -> Option<String> {
+    match case.dynamic.source.mode.as_str() {
+        "oxcalc_structured_bind" => {
+            assert!(
+                case.dynamic.oxfml_structured_bind_packet_available,
+                "{} OxCalc structured bind source mode requires a generic bind packet",
+                case.id
+            );
+            let observed = dynamic_table_oxcalc_structured_bind_handle(case, workspace);
+            if let Some(expected) = &case.dynamic.source.reference_handle {
+                assert_eq!(
+                    observed.as_deref(),
+                    Some(expected.as_str()),
+                    "{} structured bind source handle",
+                    case.id
+                );
+            }
+            observed
+        }
+        "provided_oxfml_packet" => {
+            assert!(
+                case.dynamic.oxfml_structured_bind_packet_available,
+                "{} provided OxFml packet mode requires packet availability",
+                case.id
+            );
+            Some(
+                case.dynamic
+                    .source
+                    .reference_handle
+                    .clone()
+                    .unwrap_or_else(|| panic!("{} missing provided source handle", case.id)),
+            )
+        }
+        "no_structured_bind_packet" => {
+            assert!(
+                !case.dynamic.oxfml_structured_bind_packet_available,
+                "{} no-packet source mode must not declare packet availability",
+                case.id
+            );
+            assert!(
+                case.dynamic.source.reference_handle.is_none(),
+                "{} no-packet source mode must not declare a source handle",
+                case.id
+            );
+            None
+        }
+        other => panic!("{} unsupported dynamic source mode {other}", case.id),
+    }
+}
+
+fn dynamic_table_oxcalc_structured_bind_handle(
+    case: &DynamicTableCase,
+    workspace: &WorkspaceModel,
+) -> Option<String> {
+    let table = workspace
+        .table_node(&case.table)
+        .unwrap_or_else(|| panic!("workspace missing table {}", case.table));
+    let snapshot = table_snapshot(&case.table, table);
+    let projection = project_treecalc_table_node_snapshot(&snapshot)
+        .unwrap_or_else(|error| panic!("{} table projection failed: {error:?}", case.id));
+    let caller_region = case
+        .caller_row_offset
+        .map(|offset| table_data_caller_region(&projection, offset));
+    let enclosing = caller_region.as_ref().map(|_| TableRef {
+        table_id: projection.table_id.clone(),
+    });
+    prebind_treecalc_table_structured_references(
+        &case.reference,
+        std::slice::from_ref(&projection),
+        enclosing,
+        caller_region,
+    )
+    .into_iter()
+    .next()
+    .map(|prebind| prebind.host_ref_handle)
+}
+
+fn dynamic_table_context_versions(
+    case: &DynamicTableCase,
+) -> TreeCalcTableLifecycleContextVersions {
+    let mut versions = TreeCalcTableLifecycleContextVersions::default();
+    if matches!(
+        dynamic_table_target_kind(&case.dynamic.target_kind),
+        TreeCalcDynamicTableReferenceTargetKind::CrossWorkspaceTable
+    ) {
+        versions.workspace_availability_version =
+            Some("treecalc-cross-workspace-availability:v1:table-projections:loaded".to_string());
+        versions.workspace_alias_version =
+            Some("treecalc-cross-workspace-alias:v1:table-projections".to_string());
+    }
+    if case.dynamic.cause == "table_lifecycle:workspace_alias_mutation" {
+        versions.workspace_alias_version =
+            Some("treecalc-cross-workspace-alias:v2:table-projections".to_string());
+    }
+    if case.dynamic.cause == "table_lifecycle:workspace_close" {
+        versions.workspace_availability_version =
+            Some("treecalc-cross-workspace-availability:v2:table-projections:closed".to_string());
+    }
+    versions
+}
+
+fn dynamic_table_resolved_identity(
+    bridge: &impl OxCalcTreeBridge,
+    target: &str,
+    local_workspace: &WorkspaceModel,
+    remote_workspace: &WorkspaceModel,
+) -> String {
+    let (workspace, table_id, mutation) = match target.split_once(':') {
+        Some(("local", rest)) => {
+            let (table_id, mutation) = rest
+                .split_once('.')
+                .map_or((rest, None), |(id, m)| (id, Some(m)));
+            (local_workspace.clone(), table_id, mutation)
+        }
+        Some(("remote", rest)) => {
+            let (table_id, mutation) = rest
+                .split_once('.')
+                .map_or((rest, None), |(id, m)| (id, Some(m)));
+            (remote_workspace.clone(), table_id, mutation)
+        }
+        _ => panic!("unsupported dynamic table target {target}"),
+    };
+    let mut workspace = workspace;
+    match mutation {
+        Some("column_rename") => {
+            rename_dynamic_workspace_amount_column(&mut workspace, table_id);
+        }
+        Some(other) => panic!("unsupported dynamic table target mutation {other}"),
+        None => {}
+    }
+    table_context_identity_via_bridge(bridge, workspace, table_id, target)
+}
+
+fn rename_dynamic_workspace_amount_column(workspace: &mut WorkspaceModel, table_id: &str) {
+    let table = workspace
+        .table_nodes
+        .get_mut(table_id)
+        .unwrap_or_else(|| panic!("workspace missing dynamic table target {table_id}"));
+    table.columns[1].name = "GrossAmount".to_string();
+    table.column_identity_version = "table-columns:sales:v5".to_string();
+
+    let node_table = workspace
+        .nodes
+        .get_mut(table_id)
+        .and_then(|node| node.table.as_mut())
+        .unwrap_or_else(|| panic!("workspace node missing dynamic table target {table_id}"));
+    node_table.columns[1].name = "GrossAmount".to_string();
+    node_table.column_identity_version = "table-columns:sales:v5".to_string();
+}
+
+fn table_context_identity_via_bridge(
+    bridge: &impl OxCalcTreeBridge,
+    workspace: WorkspaceModel,
+    table_id: &str,
+    target: &str,
+) -> String {
+    let table = workspace
+        .table_node(table_id)
+        .unwrap_or_else(|| panic!("workspace missing dynamic table target {table_id}"))
+        .clone();
+    let workspace_id = format!("dynamic-table-target-{}", workspace.workspace_id);
+    let bridge_workspace = WorkspaceModel::try_from(WorkspaceFixture {
+        schema_version: "treecalc-workspace-v1".to_string(),
+        workspace_id: workspace_id.clone(),
+        description: None,
+        profile: None,
+        nodes: vec![WorkspaceNodeFixture {
+            node_id: table_id.to_string(),
+            formula: String::new(),
+            is_meta: false,
+            table: Some(table),
+        }],
+    })
+    .unwrap_or_else(|error| panic!("{target} bridge table context fixture failed: {error}"));
+    let result = bridge
+        .execute_recalc(TreeRecalcRequest {
+            workspace: bridge_workspace,
+            formula_catalog: PreparedFormulaCatalog::default(),
+            candidate_result_id: format!("cand:dynamic-table-target:{target}"),
+            publication_id: format!("pub:dynamic-table-target:{target}"),
+            compatibility_basis: format!("snapshot:dynamic-table-target:{workspace_id}"),
+            artifact_token_basis: format!("snapshot:dynamic-table-target:{workspace_id}"),
+            capability_profile_id: "treecalc-v1".to_string(),
+            cycle_config: Default::default(),
+        })
+        .unwrap_or_else(|error| panic!("{target} bridge table context projection failed: {error}"));
+    result
+        .table_context_identities
+        .get(table_id)
+        .unwrap_or_else(|| panic!("{target} missing bridge table context identity for {table_id}"))
+        .clone()
+}
+
+fn dynamic_table_rebind_report_json(
+    case: &DynamicTableCase,
+    report: &oxcalc_core::structured_table::TreeCalcDynamicTableRebindReport,
+) -> Value {
+    json!({
+        "case_id": case.id,
+        "case_name": case.name,
+        "reference": case.reference,
+        "treecalc_v1": case.dynamic.treecalc_v1,
+        "strict_excel": case.dynamic.strict_excel,
+        "selector_handle": report.selector_handle,
+        "selector_identity": report.selector_identity,
+        "bridge_route": "LiveOxCalcTreeBridge::classify_dynamic_table_rebind",
+        "source_reference_mode": case.dynamic.source.mode,
+        "source_reference_expected_handle": case.dynamic.source.reference_handle,
+        "source_reference_handle": report.source_reference_handle,
+        "target_kind": report.target_kind.stable_id(),
+        "cause": report.cause.stable_id(),
+        "status": dynamic_rebind_status_id(report.status),
+        "dynamic_rebind_identity": retained_identity_json(&report.dynamic_rebind_identity),
+        "dependency_fact_kinds": report.dependency_fact_kinds
+            .iter()
+            .copied()
+            .map(structured_table_dependency_fact_kind_id)
+            .collect::<Vec<_>>(),
+        "changed_dependency_kinds": report.changed_dependency_kinds
+            .iter()
+            .copied()
+            .map(dependency_kind_id)
+            .collect::<Vec<_>>(),
+        "invalidation_reasons": report.invalidation_reasons
+            .iter()
+            .copied()
+            .map(invalidation_reason_kind_id)
+            .collect::<Vec<_>>(),
+        "prepared_identity_inputs": report.prepared_identity_inputs
+            .iter()
+            .copied()
+            .map(prepared_identity_input_id)
+            .collect::<Vec<_>>(),
+        "diagnostics": report.diagnostics
+            .iter()
+            .map(dynamic_table_diagnostic_json)
+            .collect::<Vec<_>>(),
+        "oxfml_generic_bind_packet_available": report.oxfml_generic_bind_packet_available,
+        "oxfunc_opaque_reference_admitted": report.oxfunc_opaque_reference_admitted
+    })
+}
+
+fn dynamic_table_target_kind(target_kind: &str) -> TreeCalcDynamicTableReferenceTargetKind {
+    match target_kind {
+        "table" => TreeCalcDynamicTableReferenceTargetKind::Table,
+        "column" => TreeCalcDynamicTableReferenceTargetKind::Column,
+        "section" => TreeCalcDynamicTableReferenceTargetKind::Section,
+        "current_row" => TreeCalcDynamicTableReferenceTargetKind::CurrentRow,
+        "cross_workspace_table" => TreeCalcDynamicTableReferenceTargetKind::CrossWorkspaceTable,
+        other => panic!("unsupported dynamic table target kind {other}"),
+    }
+}
+
+fn dynamic_table_rebind_cause(cause: &str) -> TreeCalcDynamicTableRebindCause {
+    match cause {
+        "selector_text_changed" => TreeCalcDynamicTableRebindCause::SelectorTextChanged,
+        "dynamic_function_result_changed" => {
+            TreeCalcDynamicTableRebindCause::DynamicFunctionResultChanged
+        }
+        "volatile_reevaluation" => TreeCalcDynamicTableRebindCause::VolatileReevaluation,
+        "unsupported_runtime_structured_reference_parsing" => {
+            TreeCalcDynamicTableRebindCause::UnsupportedRuntimeStructuredReferenceParsing
+        }
+        "dynamic_target_not_table" => TreeCalcDynamicTableRebindCause::DynamicTargetNotTable,
+        lifecycle if lifecycle.starts_with("table_lifecycle:") => {
+            TreeCalcDynamicTableRebindCause::TableLifecycle(table_update_scenario_kind(
+                lifecycle.trim_start_matches("table_lifecycle:"),
+            ))
+        }
+        other => panic!("unsupported dynamic table rebind cause {other}"),
+    }
+}
+
+fn table_update_scenario_kind(scenario: &str) -> TreeCalcTableUpdateScenarioKind {
+    match scenario {
+        "table_delete" => TreeCalcTableUpdateScenarioKind::TableDelete,
+        "workspace_close" => TreeCalcTableUpdateScenarioKind::WorkspaceClose,
+        "workspace_alias_mutation" => TreeCalcTableUpdateScenarioKind::WorkspaceAliasMutation,
+        "save_reopen" => TreeCalcTableUpdateScenarioKind::SaveReopen,
+        other => panic!("unsupported dynamic table lifecycle scenario {other}"),
+    }
+}
+
+fn dynamic_rebind_status_id(status: TreeCalcDynamicTableRebindStatus) -> &'static str {
+    match status {
+        TreeCalcDynamicTableRebindStatus::ReferencePreserving => "reference_preserving",
+        TreeCalcDynamicTableRebindStatus::RebindRequired => "rebind_required",
+        TreeCalcDynamicTableRebindStatus::DeletedTarget => "deleted_target",
+        TreeCalcDynamicTableRebindStatus::UnavailableTarget => "unavailable_target",
+        TreeCalcDynamicTableRebindStatus::TypedExclusion => "typed_exclusion",
+    }
+}
+
+fn dynamic_table_diagnostic_json(
+    diagnostic: &oxcalc_core::structured_table::TreeCalcDynamicTableRebindDiagnostic,
+) -> Value {
+    json!({
+        "diagnostic_code": dynamic_table_diagnostic_kind_id(diagnostic.kind),
+        "detail": diagnostic.detail
+    })
+}
+
+fn dynamic_table_diagnostic_kind_id(
+    kind: TreeCalcDynamicTableRebindDiagnosticKind,
+) -> &'static str {
+    match kind {
+        TreeCalcDynamicTableRebindDiagnosticKind::MissingCallerContext => "missing_caller_context",
+        TreeCalcDynamicTableRebindDiagnosticKind::UnsupportedRuntimeStructuredReferenceParsing => {
+            "unsupported_runtime_structured_reference_parsing"
+        }
+        TreeCalcDynamicTableRebindDiagnosticKind::DynamicTargetNotTable => {
+            "dynamic_target_not_table"
+        }
+    }
+}
+
+fn retained_dynamic_table_artifact_refs_json() -> Value {
+    json!({
+        "source_status": "direct",
+        "host_id": "dna_treecalc",
+        "artifact_kind": "w056_dynamic_cross_workspace_table_replay",
+        "artifact_refs": [
+            {
+                "kind": "normalized_replay",
+                "path": "docs/test-runs/w056-table-dynamic-cross-workspace-001/views/normalized-replay.json"
+            },
+            {
+                "kind": "replay_manifest",
+                "path": "docs/test-runs/w056-table-dynamic-cross-workspace-001/oxreplay-manifest.json"
+            },
+            {
+                "kind": "source_corpus",
+                "path": "docs/test-corpus/tables/dynamic-cross-workspace.json"
+            },
+            {
+                "kind": "source_workspace",
+                "path": "docs/test-corpus/workspaces/tables.json"
+            },
+            {
+                "kind": "source_workspace",
+                "path": "docs/test-corpus/workspaces/table-projections.json"
+            }
+        ],
+        "capture_mode": "model_projection",
+        "projection_status": "direct",
+        "capture_loss": "none"
+    })
+}
+
 fn retained_identity_json(value: &str) -> Value {
     json!({
         "present": !value.is_empty(),
@@ -3572,6 +4327,32 @@ fn structured_section_kind_id(kind: oxfml_core::StructuredSectionKind) -> &'stat
     }
 }
 
+fn structured_table_dependency_fact_kind_id(
+    kind: StructuredTableDependencyFactKind,
+) -> &'static str {
+    match kind {
+        StructuredTableDependencyFactKind::TableIdentity => "table_identity",
+        StructuredTableDependencyFactKind::RowMembership => "row_membership",
+        StructuredTableDependencyFactKind::RowOrder => "row_order",
+        StructuredTableDependencyFactKind::RowValue => "row_value",
+        StructuredTableDependencyFactKind::ColumnIdentity => "column_identity",
+        StructuredTableDependencyFactKind::ColumnOrder => "column_order",
+        StructuredTableDependencyFactKind::HeaderText => "header_text",
+        StructuredTableDependencyFactKind::HeaderRegion => "header_region",
+        StructuredTableDependencyFactKind::DataRegion => "data_region",
+        StructuredTableDependencyFactKind::TotalsRegion => "totals_region",
+        StructuredTableDependencyFactKind::TotalsValue => "totals_value",
+        StructuredTableDependencyFactKind::TotalsFormula => "totals_formula",
+        StructuredTableDependencyFactKind::CallerRowContext => "caller_row_context",
+        StructuredTableDependencyFactKind::OmittedTableNameEnclosingTable => {
+            "omitted_table_name_enclosing_table"
+        }
+        StructuredTableDependencyFactKind::VirtualAnchorRange => "virtual_anchor_range",
+        StructuredTableDependencyFactKind::WorkspaceAvailability => "workspace_availability",
+        StructuredTableDependencyFactKind::FunctionRegistrySnapshot => "function_registry_snapshot",
+    }
+}
+
 fn dependency_kind_id(kind: DependencyDescriptorKind) -> &'static str {
     match kind {
         DependencyDescriptorKind::StaticDirect => "static_direct",
@@ -3734,6 +4515,13 @@ fn load_lifecycle_theme(path: PathBuf) -> TableLifecycleTheme {
         .unwrap_or_else(|error| panic!("failed to read lifecycle corpus {path:?}: {error}"));
     serde_json::from_str(&contents)
         .unwrap_or_else(|error| panic!("failed to parse lifecycle corpus {path:?}: {error}"))
+}
+
+fn load_dynamic_table_theme(path: PathBuf) -> DynamicTableTheme {
+    let contents = fs::read_to_string(&path)
+        .unwrap_or_else(|error| panic!("failed to read dynamic table corpus {path:?}: {error}"));
+    serde_json::from_str(&contents)
+        .unwrap_or_else(|error| panic!("failed to parse dynamic table corpus {path:?}: {error}"))
 }
 
 fn load_workspace(workspace_id: &str) -> WorkspaceModel {

@@ -22,11 +22,12 @@ use oxcalc_core::structural::{
     StructuralSnapshotId, TreeNodeId,
 };
 use oxcalc_core::structured_table::{
-    TableCallerRegion, TableRef, TableRegionKind, TreeCalcTableColumnBodyMetadata,
+    TableCallerRegion, TableRef, TableRegionKind, TreeCalcDynamicTableRebindReport,
+    TreeCalcDynamicTableRebindRequest, TreeCalcTableColumnBodyMetadata,
     TreeCalcTableColumnSnapshot, TreeCalcTableFormulaMetadata, TreeCalcTableNodeProjection,
     TreeCalcTableNodeSnapshot, TreeCalcTableProjectionError, TreeCalcTableRowId,
-    TreeCalcTableVirtualAnchor, prebind_treecalc_table_structured_references,
-    project_treecalc_table_node_snapshot,
+    TreeCalcTableVirtualAnchor, classify_treecalc_dynamic_table_rebind,
+    prebind_treecalc_table_structured_references, project_treecalc_table_node_snapshot,
 };
 
 use super::bridge::{OxCalcTreeBridge, OxCalcTreeBridgeError};
@@ -120,6 +121,13 @@ impl OxCalcTreeBridge for LiveOxCalcTreeBridge {
             node_states,
             diagnostics: result.diagnostics,
         })
+    }
+
+    fn classify_dynamic_table_rebind(
+        &self,
+        request: TreeCalcDynamicTableRebindRequest,
+    ) -> Result<TreeCalcDynamicTableRebindReport, OxCalcTreeBridgeError> {
+        Ok(classify_treecalc_dynamic_table_rebind(&request))
     }
 }
 
