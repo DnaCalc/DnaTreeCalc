@@ -2,7 +2,7 @@ use dnatreecalc_skin_framework::WorkspaceState;
 
 use crate::model::{WorkspaceFixture, WorkspaceModel};
 
-use super::projection::workspace_state_from_model;
+use super::session::TreeWorkspaceSession;
 
 /// JSON for the canonical `accounts` corpus workspace, embedded at compile
 /// time so the WASM build does not need filesystem access. Native code
@@ -25,7 +25,14 @@ pub fn preview_accounts_workspace_state() -> WorkspaceState {
         .expect("embedded accounts.json must parse as a WorkspaceFixture");
     let model =
         WorkspaceModel::try_from(fixture).expect("accounts fixture must form a valid model");
-    workspace_state_from_model(&model)
+    let mut session = TreeWorkspaceSession::from_model(&model)
+        .expect("accounts fixture must build OxCalc context");
+    session
+        .recalculate()
+        .expect("accounts fixture must recalculate through OxCalc");
+    session
+        .workspace_state()
+        .expect("accounts fixture must project from OxCalc")
 }
 
 #[cfg(test)]

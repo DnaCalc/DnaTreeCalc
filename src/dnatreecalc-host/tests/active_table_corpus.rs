@@ -2,13 +2,12 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use dnatreecalc_host::adapters::oxcalc::{
-    LiveOxCalcTreeBridge, OxCalcTreeBridge, PreparedFormulaCatalog, TreeRecalcRequest,
-};
+use dnatreecalc_host::app::TreeWorkspaceSession;
 use dnatreecalc_host::model::{
     TableColumnBodyKind, TableColumnFixture, TableFormulaFixture, TableNodeFixture,
     WorkspaceFixture, WorkspaceModel, WorkspaceNodeFixture,
 };
+use dnatreecalc_skin_framework::NodeId;
 use oxcalc_core::dependency::{DependencyDescriptorKind, InvalidationReasonKind};
 use oxcalc_core::sparse_reader::{SparseCellCoord, SparseCellRead, SparseRangeReader};
 use oxcalc_core::structural::TreeNodeId;
@@ -160,7 +159,7 @@ fn active_table_structured_reference_corpus_executes_through_oxcalc_table_path()
 
     let workspace = load_workspace("tables");
     let (sales_table, sales_snapshot, sales_projection) = table_evidence(&workspace, "SalesTable");
-    assert_live_bridge_projects_same_table_context("SalesTable", sales_table);
+    assert_direct_context_projects_same_table_context("SalesTable", sales_table);
 
     let tax_report = evaluate_tax_column(&sales_snapshot, &sales_projection, sales_table);
     assert_eq!(
@@ -336,7 +335,7 @@ fn active_table_structured_reference_corpus_executes_through_oxcalc_table_path()
 }
 
 #[test]
-fn retained_table_replay_artifact_matches_live_oxcalc_projection() {
+fn retained_table_replay_artifact_matches_direct_oxcalc_context_projection() {
     let theme = load_theme(repo_corpus_path("tables/structured-references.json"));
     let workspace = load_workspace("tables");
     let (sales_table, sales_snapshot, sales_projection) = table_evidence(&workspace, "SalesTable");
@@ -382,7 +381,7 @@ fn retained_table_replay_artifact_matches_live_oxcalc_projection() {
 }
 
 #[test]
-fn retained_table_lifecycle_artifact_matches_live_oxcalc_callbacks() {
+fn retained_table_lifecycle_artifact_matches_direct_oxcalc_context_callbacks() {
     let lifecycle_theme = load_lifecycle_theme(repo_corpus_path("tables/lifecycle-events.json"));
     assert_eq!(lifecycle_theme.schema_version, "treecalc-corpus-v1");
     assert_eq!(lifecycle_theme.theme, "tables/lifecycle-events");
@@ -646,7 +645,7 @@ fn active_empty_body_table_corpus_executes_through_oxcalc_table_path() {
         let snapshot = table_snapshot(&case.table, table);
         let projection = project_treecalc_table_node_snapshot(&snapshot)
             .unwrap_or_else(|error| panic!("{} table failed projection: {error:?}", case.id));
-        assert_live_bridge_projects_same_table_context(&case.table, table);
+        assert_direct_context_projects_same_table_context(&case.table, table);
         let caller_region = case
             .caller_row_offset
             .map(|offset| table_data_caller_region(&projection, offset));
@@ -759,7 +758,7 @@ fn active_empty_body_table_corpus_executes_through_oxcalc_table_path() {
 }
 
 #[test]
-fn retained_empty_body_table_replay_artifact_matches_live_oxcalc_projection() {
+fn retained_empty_body_table_replay_artifact_matches_direct_oxcalc_context_projection() {
     let theme = load_theme(repo_corpus_path("tables/empty-body.json"));
     let workspace = load_workspace("empty-body-tables");
     let artifact = retained_empty_body_table_replay_artifact(&theme, &workspace);
@@ -800,10 +799,14 @@ fn active_dynamic_cross_workspace_table_corpus_executes_through_oxcalc_dynamic_p
 
     let local_workspace = load_workspace("tables");
     let remote_workspace = load_workspace("table-projections");
-    let bridge = LiveOxCalcTreeBridge::default();
+    let local_session =
+        TreeWorkspaceSession::from_model(&local_workspace).expect("local table context builds");
+    let remote_session =
+        TreeWorkspaceSession::from_model(&remote_workspace).expect("remote table context builds");
     for case in &theme.cases {
         let report = dynamic_table_rebind_report_for_case(
-            &bridge,
+            &local_session,
+            &remote_session,
             case,
             &local_workspace,
             &remote_workspace,
@@ -869,10 +872,14 @@ fn retained_dynamic_cross_workspace_table_replay_artifact_matches_oxcalc_packets
     let theme = load_dynamic_table_theme(repo_corpus_path("tables/dynamic-cross-workspace.json"));
     let local_workspace = load_workspace("tables");
     let remote_workspace = load_workspace("table-projections");
-    let bridge = LiveOxCalcTreeBridge::default();
+    let local_session =
+        TreeWorkspaceSession::from_model(&local_workspace).expect("local table context builds");
+    let remote_session =
+        TreeWorkspaceSession::from_model(&remote_workspace).expect("remote table context builds");
     let artifact = retained_dynamic_cross_workspace_table_replay_artifact(
         &theme,
-        &bridge,
+        &local_session,
+        &remote_session,
         &local_workspace,
         &remote_workspace,
     );
@@ -1091,10 +1098,10 @@ fn assert_target_kind_matches_bind_record(
     }
 }
 
-fn assert_live_bridge_projects_same_table_context(table_path: &str, table: &TableNodeFixture) {
-    let bridge_workspace = WorkspaceModel::try_from(WorkspaceFixture {
+fn assert_direct_context_projects_same_table_context(table_path: &str, table: &TableNodeFixture) {
+    let context_workspace = WorkspaceModel::try_from(WorkspaceFixture {
         schema_version: "treecalc-workspace-v1".to_string(),
-        workspace_id: "active-table-corpus-bridge".to_string(),
+        workspace_id: "active-table-corpus-context".to_string(),
         description: None,
         profile: None,
         nodes: vec![WorkspaceNodeFixture {
@@ -1104,24 +1111,18 @@ fn assert_live_bridge_projects_same_table_context(table_path: &str, table: &Tabl
             table: Some(table.clone()),
         }],
     })
-    .expect("single-table bridge workspace is valid");
+    .expect("single-table direct-context workspace is valid");
 
-    let result = LiveOxCalcTreeBridge::default()
-        .execute_recalc(TreeRecalcRequest {
-            workspace: bridge_workspace,
-            formula_catalog: PreparedFormulaCatalog::default(),
-            candidate_result_id: "cand:active-table-corpus-bridge".to_string(),
-            publication_id: "pub:active-table-corpus-bridge".to_string(),
-            compatibility_basis: "snapshot:active-table-corpus-bridge".to_string(),
-            artifact_token_basis: "snapshot:active-table-corpus-bridge".to_string(),
-            capability_profile_id: "treecalc-v1".to_string(),
-            cycle_config: Default::default(),
-        })
-        .expect("LiveOxCalcTreeBridge must accept DnaTreeCalc table projection");
+    let session = TreeWorkspaceSession::from_model(&context_workspace)
+        .expect("direct OxCalc context must accept DnaTreeCalc table projection");
+    let table_context_identity = session
+        .table_context_identity(&NodeId::new(table_path))
+        .expect("direct OxCalc context table view must be available")
+        .expect("table context identity must be projected");
 
     assert!(
-        result.table_context_identities[table_path].contains("treecalc.table_context.v1"),
-        "bridge must retain the table context identity from the real OxCalc table projection"
+        table_context_identity.contains("treecalc.table_context.v1"),
+        "direct OxCalc context must retain the table context identity from the real OxCalc table projection"
     );
 }
 
@@ -1922,10 +1923,10 @@ fn retained_table_replay_artifact(
                     "outcome_schema": "dna_treecalc.execution_outcome.v1",
                     "scenario_id": "w056_treecalc_table_structured_references_001",
                     "outcome_kind": "accepted_execution",
-                    "outcome_stage": "live_oxcalc_table_projection",
+                    "outcome_stage": "oxcalc_tree_context_table_projection",
                     "class_id": "treecalc_table_structured_reference_projection_ready",
                     "lane_reason_code": "dnatreecalc_w056_table_projection_retained",
-                    "bridge": "LiveOxCalcTreeBridge",
+                    "engine_context": "OxCalcTreeContext",
                     "engine_surface": "OxCalc W056 structured-table public APIs",
                     "replay_view_ready": true
                 }
@@ -1951,7 +1952,7 @@ fn retained_table_replay_artifact(
             "capture_loss": "none",
             "capture_loss_summary": [],
             "uncertainty_summary": [],
-            "bridge_influenced": true,
+            "direct_context": true,
             "adapter_id": "dnatreecalc.oxcalc_table_projection.v1",
             "workspace_id": workspace.workspace_id,
             "source_refs": [
@@ -2065,10 +2066,10 @@ fn retained_table_lifecycle_replay_artifact(
                     "outcome_schema": "dna_treecalc.execution_outcome.v1",
                     "scenario_id": "w056_treecalc_table_lifecycle_001",
                     "outcome_kind": "accepted_execution",
-                    "outcome_stage": "live_oxcalc_table_lifecycle_callbacks",
+                    "outcome_stage": "oxcalc_table_lifecycle_callbacks",
                     "class_id": "treecalc_table_lifecycle_callbacks_ready",
                     "lane_reason_code": "dnatreecalc_w056_table_lifecycle_retained",
-                    "bridge": "LiveOxCalcTreeBridge",
+                    "engine_context": "OxCalcTreeContext",
                     "engine_surface": "OxCalc W056 table lifecycle callback public API",
                     "accepted_event_count": reports.len(),
                     "accepted_event_kinds": reports
@@ -2123,7 +2124,7 @@ fn retained_table_lifecycle_replay_artifact(
             "capture_loss": "none",
             "capture_loss_summary": [],
             "uncertainty_summary": [],
-            "bridge_influenced": true,
+            "direct_context": true,
             "adapter_id": "dnatreecalc.oxcalc_table_lifecycle_callback.v1",
             "workspace_id": workspace.workspace_id,
             "source_refs": [
@@ -2269,10 +2270,10 @@ fn retained_empty_body_table_replay_artifact(
                     "outcome_schema": "dna_treecalc.execution_outcome.v1",
                     "scenario_id": "w056_treecalc_empty_body_tables_001",
                     "outcome_kind": "accepted_execution",
-                    "outcome_stage": "live_oxcalc_empty_body_table_projection",
+                    "outcome_stage": "oxcalc_tree_context_empty_body_table_projection",
                     "class_id": "treecalc_empty_body_tables_ready",
                     "lane_reason_code": "dnatreecalc_w056_empty_body_table_retained",
-                    "bridge": "LiveOxCalcTreeBridge",
+                    "engine_context": "OxCalcTreeContext",
                     "engine_surface": "OxCalc W056 structured-table public APIs",
                     "resolved_case_count": case_evidence
                         .iter()
@@ -2307,7 +2308,7 @@ fn retained_empty_body_table_replay_artifact(
             "capture_loss": "none",
             "capture_loss_summary": [],
             "uncertainty_summary": [],
-            "bridge_influenced": true,
+            "direct_context": true,
             "adapter_id": "dnatreecalc.oxcalc_empty_body_table_projection.v1",
             "workspace_id": workspace.workspace_id,
             "source_refs": [
@@ -3546,7 +3547,8 @@ fn retained_empty_body_artifact_refs_json() -> Value {
 
 fn retained_dynamic_cross_workspace_table_replay_artifact(
     theme: &DynamicTableTheme,
-    bridge: &impl OxCalcTreeBridge,
+    local_session: &TreeWorkspaceSession,
+    remote_session: &TreeWorkspaceSession,
     local_workspace: &WorkspaceModel,
     remote_workspace: &WorkspaceModel,
 ) -> Value {
@@ -3557,7 +3559,8 @@ fn retained_dynamic_cross_workspace_table_replay_artifact(
             dynamic_table_rebind_report_json(
                 case,
                 &dynamic_table_rebind_report_for_case(
-                    bridge,
+                    local_session,
+                    remote_session,
                     case,
                     local_workspace,
                     remote_workspace,
@@ -3605,7 +3608,7 @@ fn retained_dynamic_cross_workspace_table_replay_artifact(
                     "outcome_stage": "oxcalc_dynamic_table_rebind_packets",
                     "class_id": "treecalc_dynamic_cross_workspace_table_packets_ready",
                     "lane_reason_code": "dnatreecalc_w056_dynamic_table_retained",
-                    "engine_surface": "LiveOxCalcTreeBridge dynamic table rebind route backed by the OxCalc W056 public packet API",
+                    "engine_surface": "OxCalcTreeContext dynamic table rebind route backed by the OxCalc W056 public packet API",
                     "case_count": case_reports.len(),
                     "case_statuses": case_reports
                         .iter()
@@ -3624,16 +3627,16 @@ fn retained_dynamic_cross_workspace_table_replay_artifact(
             {
                 "view_family": "dependency_evidence",
                 "value": {
-                    "source_status": "live_bridge_route",
-                    "classification_api": "LiveOxCalcTreeBridge::classify_dynamic_table_rebind",
+                    "source_status": "direct_context_route",
+                    "classification_api": "TreeWorkspaceSession::classify_dynamic_table_rebind",
                     "case_reports": case_reports.clone()
                 }
             },
             {
                 "view_family": "invalidation_evidence",
                 "value": {
-                    "source_status": "live_bridge_route",
-                    "classification_api": "LiveOxCalcTreeBridge::classify_dynamic_table_rebind",
+                    "source_status": "direct_context_route",
+                    "classification_api": "TreeWorkspaceSession::classify_dynamic_table_rebind",
                     "case_invalidations": case_reports
                         .iter()
                         .map(|case| {
@@ -3661,7 +3664,7 @@ fn retained_dynamic_cross_workspace_table_replay_artifact(
             "capture_loss": "none",
             "capture_loss_summary": [],
             "uncertainty_summary": [],
-            "bridge_influenced": true,
+            "direct_context": true,
             "adapter_id": "dnatreecalc.oxcalc_dynamic_table_rebind.v1",
             "workspace_id": local_workspace.workspace_id,
             "source_refs": [
@@ -3719,7 +3722,8 @@ fn retained_dynamic_cross_workspace_table_replay_manifest() -> Value {
 }
 
 fn dynamic_table_rebind_report_for_case(
-    bridge: &impl OxCalcTreeBridge,
+    local_session: &TreeWorkspaceSession,
+    remote_session: &TreeWorkspaceSession,
     case: &DynamicTableCase,
     local_workspace: &WorkspaceModel,
     remote_workspace: &WorkspaceModel,
@@ -3736,19 +3740,36 @@ fn dynamic_table_rebind_report_for_case(
         cause: dynamic_table_rebind_cause(&case.dynamic.cause),
         before_resolved_table_identity: case.dynamic.before_resolved_table.as_deref().map(
             |target| {
-                dynamic_table_resolved_identity(bridge, target, local_workspace, remote_workspace)
+                dynamic_table_resolved_identity(
+                    local_session,
+                    remote_session,
+                    target,
+                    local_workspace,
+                    remote_workspace,
+                )
             },
         ),
         after_resolved_table_identity: case.dynamic.after_resolved_table.as_deref().map(|target| {
-            dynamic_table_resolved_identity(bridge, target, local_workspace, remote_workspace)
+            dynamic_table_resolved_identity(
+                local_session,
+                remote_session,
+                target,
+                local_workspace,
+                remote_workspace,
+            )
         }),
         caller_context_id: case.dynamic.caller_context_id.clone(),
         context_versions: dynamic_table_context_versions(case),
         oxfml_structured_bind_packet_available: case.dynamic.oxfml_structured_bind_packet_available,
     };
-    bridge
+    local_session
         .classify_dynamic_table_rebind(request)
-        .unwrap_or_else(|error| panic!("{} dynamic table bridge route failed: {error}", case.id))
+        .unwrap_or_else(|error| {
+            panic!(
+                "{} dynamic table direct-context route failed: {error}",
+                case.id
+            )
+        })
 }
 
 fn assert_dynamic_table_expected_status(
@@ -3899,23 +3920,24 @@ fn dynamic_table_context_versions(
 }
 
 fn dynamic_table_resolved_identity(
-    bridge: &impl OxCalcTreeBridge,
+    local_session: &TreeWorkspaceSession,
+    remote_session: &TreeWorkspaceSession,
     target: &str,
     local_workspace: &WorkspaceModel,
     remote_workspace: &WorkspaceModel,
 ) -> String {
-    let (workspace, table_id, mutation) = match target.split_once(':') {
+    let (session, workspace, table_id, mutation) = match target.split_once(':') {
         Some(("local", rest)) => {
             let (table_id, mutation) = rest
                 .split_once('.')
                 .map_or((rest, None), |(id, m)| (id, Some(m)));
-            (local_workspace.clone(), table_id, mutation)
+            (local_session, local_workspace.clone(), table_id, mutation)
         }
         Some(("remote", rest)) => {
             let (table_id, mutation) = rest
                 .split_once('.')
                 .map_or((rest, None), |(id, m)| (id, Some(m)));
-            (remote_workspace.clone(), table_id, mutation)
+            (remote_session, remote_workspace.clone(), table_id, mutation)
         }
         _ => panic!("unsupported dynamic table target {target}"),
     };
@@ -3927,7 +3949,10 @@ fn dynamic_table_resolved_identity(
         Some(other) => panic!("unsupported dynamic table target mutation {other}"),
         None => {}
     }
-    table_context_identity_via_bridge(bridge, workspace, table_id, target)
+    if mutation.is_none() {
+        return table_context_identity_via_session(session, table_id, target);
+    }
+    table_context_identity_via_workspace(workspace, table_id, target)
 }
 
 fn rename_dynamic_workspace_amount_column(workspace: &mut WorkspaceModel, table_id: &str) {
@@ -3947,8 +3972,22 @@ fn rename_dynamic_workspace_amount_column(workspace: &mut WorkspaceModel, table_
     node_table.column_identity_version = "table-columns:sales:v5".to_string();
 }
 
-fn table_context_identity_via_bridge(
-    bridge: &impl OxCalcTreeBridge,
+fn table_context_identity_via_session(
+    session: &TreeWorkspaceSession,
+    table_id: &str,
+    target: &str,
+) -> String {
+    session
+        .table_context_identity(&NodeId::new(table_id))
+        .unwrap_or_else(|error| {
+            panic!("{target} direct context table context projection failed: {error}")
+        })
+        .unwrap_or_else(|| {
+            panic!("{target} missing direct context table context identity for {table_id}")
+        })
+}
+
+fn table_context_identity_via_workspace(
     workspace: WorkspaceModel,
     table_id: &str,
     target: &str,
@@ -3958,7 +3997,7 @@ fn table_context_identity_via_bridge(
         .unwrap_or_else(|| panic!("workspace missing dynamic table target {table_id}"))
         .clone();
     let workspace_id = format!("dynamic-table-target-{}", workspace.workspace_id);
-    let bridge_workspace = WorkspaceModel::try_from(WorkspaceFixture {
+    let context_workspace = WorkspaceModel::try_from(WorkspaceFixture {
         schema_version: "treecalc-workspace-v1".to_string(),
         workspace_id: workspace_id.clone(),
         description: None,
@@ -3970,24 +4009,11 @@ fn table_context_identity_via_bridge(
             table: Some(table),
         }],
     })
-    .unwrap_or_else(|error| panic!("{target} bridge table context fixture failed: {error}"));
-    let result = bridge
-        .execute_recalc(TreeRecalcRequest {
-            workspace: bridge_workspace,
-            formula_catalog: PreparedFormulaCatalog::default(),
-            candidate_result_id: format!("cand:dynamic-table-target:{target}"),
-            publication_id: format!("pub:dynamic-table-target:{target}"),
-            compatibility_basis: format!("snapshot:dynamic-table-target:{workspace_id}"),
-            artifact_token_basis: format!("snapshot:dynamic-table-target:{workspace_id}"),
-            capability_profile_id: "treecalc-v1".to_string(),
-            cycle_config: Default::default(),
-        })
-        .unwrap_or_else(|error| panic!("{target} bridge table context projection failed: {error}"));
-    result
-        .table_context_identities
-        .get(table_id)
-        .unwrap_or_else(|| panic!("{target} missing bridge table context identity for {table_id}"))
-        .clone()
+    .unwrap_or_else(|error| panic!("{target} direct table context fixture failed: {error}"));
+    let session = TreeWorkspaceSession::from_model(&context_workspace).unwrap_or_else(|error| {
+        panic!("{target} direct context table context projection failed: {error}")
+    });
+    table_context_identity_via_session(&session, table_id, target)
 }
 
 fn dynamic_table_rebind_report_json(
@@ -4002,7 +4028,7 @@ fn dynamic_table_rebind_report_json(
         "strict_excel": case.dynamic.strict_excel,
         "selector_handle": report.selector_handle,
         "selector_identity": report.selector_identity,
-        "bridge_route": "LiveOxCalcTreeBridge::classify_dynamic_table_rebind",
+        "context_route": "TreeWorkspaceSession::classify_dynamic_table_rebind",
         "source_reference_mode": case.dynamic.source.mode,
         "source_reference_expected_handle": case.dynamic.source.reference_handle,
         "source_reference_handle": report.source_reference_handle,

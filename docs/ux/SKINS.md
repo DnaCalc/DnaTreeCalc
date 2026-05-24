@@ -586,24 +586,22 @@ BROWSER          CANVAS SKIN        cx.state         STATE STORE    META TREE
    |<--DOM patch----|                   |                  |              |
 ```
 
-Note: no engine call. State change is a pure host-level mutation to the meta-tree. The bridge isn't involved.
+Note: no engine call. State change is a pure host-level mutation to the meta-tree. OxCalc is not involved.
 
 ### Trace C: User edits a formula in the formula bar
 
 ```
-BROWSER  FORMULA BAR  CELL-VIEW SKIN    DISPATCHER         HOST          BRIDGE       OXCALC
+BROWSER  FORMULA BAR  CELL-VIEW SKIN    DISPATCHER         HOST          OXCALC CONTEXT
    |        |              |                  |              |              |             |
    |--type->|              |                  |              |              |             |
    |        |--on_change-->|                  |              |              |             |
    |        |   (txt, pos) |                  |              |              |             |
    |        |              |--dispatch.send(EditFormula{...})|              |             |
    |        |              |                  |--Intent ---->|              |             |
-   |        |              |                  |              |--bridge.evaluate_formula--->
-   |        |              |                  |              |              |--bind------>|
-   |        |              |                  |              |              |             |--bind_formula
-   |        |              |                  |              |              |             |  evaluate
-   |        |              |                  |              |              |<--EditorDoc-|
-   |        |              |                  |              |<--EditorDoc--|             |
+   |        |              |                  |              |--set formula + recalculate---->
+   |        |              |                  |              |              |--bind_formula
+   |        |              |                  |              |              |  evaluate
+   |        |              |                  |              |<--workspace/node views----------|
    |        |              |                  |              |--apply to workspace state  |
    |        |              |                  |              |   (formula, value, diags)  |
    |        |              |                  |              |              |             |
@@ -614,12 +612,12 @@ BROWSER  FORMULA BAR  CELL-VIEW SKIN    DISPATCHER         HOST          BRIDGE 
    |<--DOM--|   tokens     |    cell value re-renders with new value)       |             |
 ```
 
-The skin doesn't know about the bridge or the engine. It dispatches an `EditFormula` intent; the workspace state subsequently updates. Re-render follows the signal.
+The skin doesn't know about the OxCalc context or the engine. It dispatches an `EditFormula` intent; the workspace state subsequently updates. Re-render follows the signal.
 
 ### Trace D: Template edit triggers sync to instances
 
 ```
-USER  TEMPLATE-EDITOR SKIN     DISPATCHER     HOST  TEMPLATE-SYNC SERVICE  BRIDGE     OXCALC
+USER  TEMPLATE-EDITOR SKIN     DISPATCHER     HOST  TEMPLATE-SYNC SERVICE  OXCALC CONTEXT
   |          |                       |          |              |              |          |
   |--save--->|                       |          |              |              |          |
   |          |--dispatch.send(EditTemplateStructure{...})       |              |          |
@@ -632,7 +630,7 @@ USER  TEMPLATE-EDITOR SKIN     DISPATCHER     HOST  TEMPLATE-SYNC SERVICE  BRIDG
   |          |                       |          |  template-sync-service       |          |
   |          |                       |          |              |--dispatcher.send_batch(N intents)
   |          |                       |          |              |              |          |
-  |          |                       |          |<-------------|--each goes through bridge|
+  |          |                       |          |<-------------|--each goes through OxCalc context|
   |          |                       |          |              |              |--rebind->|
   |          |                       |          |              |              |  recalc
   |          |                       |          |              |              |<-result--|
@@ -643,15 +641,15 @@ USER  TEMPLATE-EDITOR SKIN     DISPATCHER     HOST  TEMPLATE-SYNC SERVICE  BRIDG
   |          |--rerender (instance badges update)              |              |          |
 ```
 
-Multi-step orchestration. The template-editor skin sends one logical intent; the host's template-sync service uses the stored template mapping/tags to diff instances on demand, expands accepted changes into ordinary structural edits, the dispatcher batches them, the bridge applies them, and one signal fire propagates to all subscribers.
+Multi-step orchestration. The template-editor skin sends one logical intent; the host's template-sync service uses the stored template mapping/tags to diff instances on demand, expands accepted changes into ordinary structural edits, the dispatcher batches them, OxCalc applies them, and one signal fire propagates to all subscribers.
 
 ### Trace E: External RTD value pushes asynchronously
 
 ```
-EXTERNAL SOURCE   RTD ADAPTER   BRIDGE       OXCALC         WORKSPACE        ACTIVE SKIN
+EXTERNAL SOURCE   RTD ADAPTER   OXCALC CONTEXT         WORKSPACE        ACTIVE SKIN
        |              |            |             |              |                |
        |--push value->|            |             |              |                |
-       |  for node N  |--bridge.update_external_value(N, v)    |                |
+       |  for node N  |--update external value(N, v)            |                |
        |              |            |--inject---->|              |                |
        |              |            |             |--mark N dirty                 |
        |              |            |             |--compute invalidation closure |
@@ -687,14 +685,14 @@ pub trait WorkspaceSkin {
 pub struct SkinContext {
     pub workspace: ReadSignal<serde_json::Value>,    // generic
     pub skin_state: RwSignal<serde_json::Value>,     // generic
-    pub bridge: Arc<dyn Bridge>,                     // raw bridge — leaks engine
+    pub context: Arc<OxCalcTreeContext>,             // raw engine context — leaks engine
 }
 ```
 
 Problems with that:
 - Skins parse JSON to find their state at every render — slow and error-prone.
 - No schema versioning or migration — silent breakage on format changes.
-- Bridge calls from inside skins — skin authors learn engine plumbing, leak abstractions.
+- OxCalc calls from inside skins — skin authors learn engine plumbing, leak abstractions.
 - Workspace shape is a blob — autocomplete and type-check don't help.
 
 The model we're adopting (§2.1–§2.11) replaces every blob with a typed struct:

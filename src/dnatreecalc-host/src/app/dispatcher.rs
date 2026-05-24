@@ -1,41 +1,47 @@
 use std::sync::{Arc, Mutex};
 
 use dnatreecalc_skin_framework::{
-    Dispatcher, IntentError, IntentReceipt, SelectionState, WorkspaceIntent,
+    Dispatcher, IntentError, IntentReceipt, SelectionState, WorkspaceIntent, WorkspaceState,
 };
 use leptos::prelude::*;
 
-use crate::adapters::oxcalc::OxCalcTreeBridge;
+use super::session::TreeWorkspaceSession;
 
 /// The live host-side dispatcher.
 ///
 /// Routes selection intents to the shared `RwSignal<SelectionState>`
-/// (no engine call, by design — selection is facade state per
-/// `docs/ux/SKINS.md` §2.5 routing) and accepts `EditFormula` intents.
-/// In this skeleton dispatcher the formula path simply records intents. The
-/// `dtc-osq.6` corpus runner proves the minimal walk-up reference bridge path;
-/// wiring formula-edit intents into shell projection remains the click-through
-/// lane.
-///
-/// The bridge handle is held but unused for now so that landing the
-/// next bead is an additive change inside `dispatch`, not a constructor
-/// shape change rippling through every callsite.
+/// (no engine call, by design — selection is UI/session state per
+/// `docs/ux/SKINS.md` §2.5 routing). Formula edits are routed into the
+/// direct OxCalc context session when one is attached, then the dispatcher
+/// republishes the updated workspace projection for skins.
 pub struct HostDispatcher {
     selection: RwSignal<SelectionState>,
-    #[allow(dead_code)]
-    bridge: Option<Arc<dyn OxCalcTreeBridge + Send + Sync>>,
+    workspace: Option<RwSignal<WorkspaceState>>,
+    session: Option<Arc<Mutex<TreeWorkspaceSession>>>,
     log: Mutex<Vec<WorkspaceIntent>>,
 }
 
 impl HostDispatcher {
     #[must_use]
-    pub fn new(
+    pub fn new(selection: RwSignal<SelectionState>) -> Self {
+        Self {
+            selection,
+            workspace: None,
+            session: None,
+            log: Mutex::new(Vec::new()),
+        }
+    }
+
+    #[must_use]
+    pub fn with_session(
         selection: RwSignal<SelectionState>,
-        bridge: Option<Arc<dyn OxCalcTreeBridge + Send + Sync>>,
+        workspace: RwSignal<WorkspaceState>,
+        session: Arc<Mutex<TreeWorkspaceSession>>,
     ) -> Self {
         Self {
             selection,
-            bridge,
+            workspace: Some(workspace),
+            session: Some(session),
             log: Mutex::new(Vec::new()),
         }
     }
@@ -63,12 +69,11 @@ impl Dispatcher for HostDispatcher {
                 self.selection.set(SelectionState::with_primary(target));
                 IntentReceipt::accepted()
             }
-            WorkspaceIntent::EditFormula { .. } => {
-                // Walking skeleton accepts the intent so the dispatch path
-                // is exercised, but does not yet call the bridge. The bridge
-                // already runs activated corpora; here the missing piece is
-                // the host's per-intent request builder and value projection.
-                IntentReceipt::accepted()
+            WorkspaceIntent::EditFormula { node, content } => {
+                self.apply_formula_edit(&node, content).map_or_else(
+                    |error| IntentReceipt::rejected(IntentError::Rejected(error)),
+                    |_| IntentReceipt::accepted(),
+                )
             }
             // The framework's WorkspaceIntent is intentionally
             // `#[non_exhaustive]` so adding a variant in a future bead is
@@ -77,5 +82,32 @@ impl Dispatcher for HostDispatcher {
             // rather than silently ignore.
             _ => IntentReceipt::rejected(IntentError::Unsupported),
         }
+    }
+}
+
+impl HostDispatcher {
+    fn apply_formula_edit(
+        &self,
+        node: &dnatreecalc_skin_framework::NodeId,
+        content: String,
+    ) -> Result<(), String> {
+        let Some(session) = &self.session else {
+            return Ok(());
+        };
+        let mut session = session
+            .lock()
+            .map_err(|_| "workspace session mutex poisoned".to_string())?;
+        session
+            .edit_formula(node, content)
+            .map_err(|error| error.to_string())?;
+        session.recalculate().map_err(|error| error.to_string())?;
+        if let Some(workspace) = self.workspace {
+            workspace.set(
+                session
+                    .workspace_state()
+                    .map_err(|error| error.to_string())?,
+            );
+        }
+        Ok(())
     }
 }

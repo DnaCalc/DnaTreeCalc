@@ -62,7 +62,7 @@ The user experience.
 
 ## Verification corpus
 
-The executable, spec-derived test corpus lives in [`test-corpus/`](test-corpus/) — declarative JSON cases that pin TreeCalc's **novel surface** (path-syntax → engine-reference mapping, walk-up resolution, profile gating, import mapping), with a pwsh validator (`test-corpus/tools/validate-corpus.ps1`) as the local-tier check until the OxCalc-bridge runner lands (W002). It deliberately does **not** retest engine / Excel-aligned behavior (function semantics, values, formats, dates, error codes) — that stays Excel-anchored in OxFunc/OxFml/OxCalc + OxReplay and is never reimplemented here. See [`test-corpus/README.md`](test-corpus/README.md) for the TreeCalc-vs-OxCalc boundary and the gate-tier mapping ([`../OPERATIONS.md`](../OPERATIONS.md) §6).
+The executable, spec-derived test corpus lives in [`test-corpus/`](test-corpus/) — declarative JSON cases that pin TreeCalc's **novel surface** (path-syntax → engine-reference mapping, walk-up resolution, profile gating, import mapping), with a pwsh validator (`test-corpus/tools/validate-corpus.ps1`) as the local-tier check until each direct OxCalc context runner lands. It deliberately does **not** retest engine / Excel-aligned behavior (function semantics, values, formats, dates, error codes) — that stays Excel-anchored in OxFunc/OxFml/OxCalc + OxReplay and is never reimplemented here. See [`test-corpus/README.md`](test-corpus/README.md) for the TreeCalc-vs-OxCalc boundary and the gate-tier mapping ([`../OPERATIONS.md`](../OPERATIONS.md) §6).
 
 ---
 

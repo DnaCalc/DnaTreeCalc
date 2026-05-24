@@ -18,11 +18,11 @@ use crate::theme::SHELL_CSS;
 /// and runs the previous skin's `on_deactivate` hook (if any) through
 /// Leptos's `on_cleanup`.
 ///
-/// Crucially, switching never calls the bridge: the dispatch handle the
+/// Crucially, switching never calls calculation: the dispatch handle the
 /// new skin receives is the same `Arc<dyn Dispatcher>`, and no
 /// `WorkspaceIntent` is emitted as part of the switch itself. Tests in
-/// the host crate use a recording bridge to assert that the bridge call
-/// count is unchanged across a switch.
+/// the host crate assert that the direct OxCalc context recalculation count
+/// is unchanged across a switch.
 #[component]
 pub fn WorkspaceShell(
     workspace: ReadSignal<WorkspaceState>,
@@ -124,8 +124,8 @@ fn SkinSwitcher(registry: Arc<SkinRegistry>, current: RwSignal<SkinId>) -> impl 
                                     // WorkspaceIntent and changes no host-owned
                                     // signal beyond `current_skin`, so the
                                     // selection signal (host-owned, not skin-
-                                    // owned) survives and the bridge is never
-                                    // called.
+                                    // owned) survives and calculation is never
+                                    // requested.
                                     current.set(id);
                                 }
                             }

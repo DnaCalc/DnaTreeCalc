@@ -10,11 +10,10 @@ use crate::model::{NodeContent, WorkspaceModel};
 /// per-node content text + meta flags) into the framework's
 /// `WorkspaceState` (read-only observation surface skins consume).
 ///
-/// The walking-skeleton projection leaves `computed_value` as
-/// [`NodeValueProjection::Unevaluated`]. The `dtc-osq.6` walk-up corpus now
-/// proves the bridge can publish values for the minimal reference slice; wiring
-/// those values into the interactive shell projection remains the UX
-/// click-through lane.
+/// The pure fixture projection leaves `computed_value` as
+/// [`NodeValueProjection::Unevaluated`]. Product paths that need calculation
+/// use [`crate::app::TreeWorkspaceSession`] so formula text, references, values,
+/// tables, and diagnostics come from OxCalc.
 #[must_use]
 pub fn workspace_state_from_model(model: &WorkspaceModel) -> WorkspaceState {
     let mut nodes = BTreeMap::new();

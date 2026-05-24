@@ -2,7 +2,7 @@
 # validate-corpus.ps1 - well-formedness + invariant checker for the DNA TreeCalc test corpus.
 #
 # Local-tier acceptance check (OPERATIONS.md section 6) for corpus-only beads, until the Rust runner
-# that binds cases through the OxCalcTree bridge exists. Tooling rule: pwsh, no Python.
+# that binds cases through OxCalcTreeContext exists. Tooling rule: pwsh, no Python.
 #
 # Each theme file declares the owning `workset` and an activation `status` (pending|active) so the
 # corpus traces onto the work plan and can be progressively activated. This script prints a coverage

@@ -3,7 +3,7 @@
   "theme": "tables/empty-body",
   "workset": "W004",
   "status": "active",
-  "description": "Active zero-row table corpus for headers-only and headers+totals tables. DnaTreeCalc owns these product table shapes and transition fixtures while consuming OxCalc/OxFml generic structured-reference packets and sparse readers through the real LiveOxCalc context.",
+  "description": "Active zero-row table corpus for headers-only and headers+totals tables. DnaTreeCalc owns these product table shapes and transition fixtures while consuming OxCalc/OxFml generic structured-reference packets and sparse readers through direct OxCalc context.",
   "cases": [
     {
       "id": "tbl-empty-headers-only-data",

@@ -1,7 +1,7 @@
 //! Framework-level tests over a fake "inert" skin.
 //!
 //! Concrete skin implementations live in `dnatreecalc-skins`; integration
-//! tests that mount the real skins through the shell + a recording bridge
+//! tests that mount the real skins through the shell + a direct host session
 //! live in `dnatreecalc-host` under `tests/`. The point of this module is
 //! to prove the trait/registry contract without dragging the rest of the
 //! workspace into a circular dep.

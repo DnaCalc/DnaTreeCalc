@@ -9,8 +9,7 @@
 //!   the registry's erased factory.
 //! - **UX-SK-003:** mounting either skin — including a "switch" (mounting
 //!   one then mounting the other against the same workspace and selection
-//!   signals) — never engages the bridge. Proved against a
-//!   `RecordingBridge` that counts `execute_recalc` calls.
+//!   signals) — never recalculates the direct OxCalc context.
 //! - **UX-TR-004:** a `SelectNode` dispatched through the host dispatcher
 //!   updates the shared selection signal that every mounted skin
 //!   observes, and selection survives a skin switch.
@@ -22,12 +21,12 @@
 use std::sync::Arc;
 
 use dnatreecalc_host::app::{
-    HostDispatcher, build_default_registry, preview_accounts_workspace_state,
+    HostDispatcher, TreeWorkspaceSession, build_default_registry, preview_accounts_workspace_state,
 };
-use dnatreecalc_host::test_support::RecordingBridge;
+use dnatreecalc_host::model::{WorkspaceFixture, WorkspaceModel};
 use dnatreecalc_skin_framework::{
-    Dispatcher, ErasedSkinContext, NodeId, SelectionState, SharedSkinState, SharedSkinStateHandle,
-    WorkspaceIntent,
+    Dispatcher, ErasedSkinContext, NodeId, NodeValueProjection, SelectionState, SharedSkinState,
+    SharedSkinStateHandle, WorkspaceIntent,
 };
 use dnatreecalc_skins::{OUTLINE_TABLE_ID, TRIPLE_EDITOR_ID};
 use leptos::prelude::*;
@@ -53,12 +52,11 @@ fn default_registry_ships_triple_editor_and_outline_table() {
 }
 
 #[test]
-fn select_node_intent_updates_selection_without_calling_the_bridge() {
+fn select_node_intent_updates_selection_without_recalculating() {
     let _owner = Owner::new();
     let selection = RwSignal::new(SelectionState::default());
 
-    let recording_bridge = Arc::new(RecordingBridge::new());
-    let dispatcher = HostDispatcher::new(selection, Some(recording_bridge.clone()));
+    let dispatcher = HostDispatcher::new(selection);
 
     let receipt = dispatcher.dispatch(WorkspaceIntent::SelectNode(Some(NodeId::new("Accounts"))));
     assert!(receipt.accepted);
@@ -71,29 +69,29 @@ fn select_node_intent_updates_selection_without_calling_the_bridge() {
             .map(NodeId::as_str),
         Some("Accounts")
     );
-    assert_eq!(
-        recording_bridge.recalc_count(),
-        0,
-        "SelectNode must never call the bridge"
-    );
 
     let log = dispatcher.intents();
     assert_eq!(log.len(), 1);
 }
 
 #[test]
-fn mounting_and_switching_skins_never_calls_the_bridge() {
+fn mounting_and_switching_skins_never_recalculates_the_oxcalc_context() {
     let _owner = Owner::new();
 
-    let workspace_state = preview_accounts_workspace_state();
+    let fixture = WorkspaceFixture::from_repo_fixture("accounts").unwrap();
+    let model = WorkspaceModel::try_from(fixture).unwrap();
+    let session = Arc::new(std::sync::Mutex::new(
+        TreeWorkspaceSession::from_model(&model).unwrap(),
+    ));
+    let workspace_state = session.lock().unwrap().workspace_state().unwrap();
     let workspace = RwSignal::new(workspace_state);
     let selection = RwSignal::new(SelectionState::default());
     let shared = SharedSkinStateHandle::new(SharedSkinState::default());
 
-    let recording_bridge = Arc::new(RecordingBridge::new());
-    let dispatcher = Arc::new(HostDispatcher::new(
+    let dispatcher = Arc::new(HostDispatcher::with_session(
         selection,
-        Some(recording_bridge.clone()),
+        workspace,
+        session.clone(),
     ));
     let dispatch: Arc<dyn Dispatcher> = dispatcher.clone();
 
@@ -109,7 +107,7 @@ fn mounting_and_switching_skins_never_calls_the_bridge() {
     );
 
     let registry = build_default_registry();
-    let calls_before_any_mount = recording_bridge.recalc_count();
+    let recalc_before_any_mount = session.lock().unwrap().recalc_count();
 
     // Mount A — triple-editor.
     let cx_a = ErasedSkinContext {
@@ -124,7 +122,7 @@ fn mounting_and_switching_skins_never_calls_the_bridge() {
         .mount(cx_a);
     drop(handle_a);
 
-    let calls_after_mount_a = recording_bridge.recalc_count();
+    let recalc_after_mount_a = session.lock().unwrap().recalc_count();
 
     // Mount B — outline-table. This is the "switch": same workspace and
     // selection signals, different skin in the same conceptual slot.
@@ -140,17 +138,17 @@ fn mounting_and_switching_skins_never_calls_the_bridge() {
         .mount(cx_b);
     drop(handle_b);
 
-    let calls_after_mount_b = recording_bridge.recalc_count();
+    let recalc_after_mount_b = session.lock().unwrap().recalc_count();
 
     // Invariants for `dtc-osq.5`:
-    assert_eq!(calls_before_any_mount, 0);
+    assert_eq!(recalc_before_any_mount, 0);
     assert_eq!(
-        calls_after_mount_a, 0,
-        "Mounting a skin must not call the bridge"
+        recalc_after_mount_a, 0,
+        "Mounting a skin must not recalculate OxCalc"
     );
     assert_eq!(
-        calls_after_mount_b, 0,
-        "Switching to a second skin must not call the bridge"
+        recalc_after_mount_b, 0,
+        "Switching to a second skin must not recalculate OxCalc"
     );
 
     // Selection survives the switch.
@@ -169,7 +167,7 @@ fn selection_signal_visible_to_both_skins_via_their_contexts() {
     let workspace = RwSignal::new(preview_accounts_workspace_state());
     let selection = RwSignal::new(SelectionState::default());
     let shared = SharedSkinStateHandle::new(SharedSkinState::default());
-    let dispatcher = Arc::new(HostDispatcher::new(selection, None));
+    let dispatcher = Arc::new(HostDispatcher::new(selection));
     let dispatch: Arc<dyn Dispatcher> = dispatcher.clone();
 
     let cx_for_first = ErasedSkinContext {
@@ -206,5 +204,39 @@ fn selection_signal_visible_to_both_skins_via_their_contexts() {
             .as_ref()
             .map(NodeId::as_str),
         Some("Accounts.2005.Q2.Net")
+    );
+}
+
+#[test]
+fn edit_formula_intent_recalculates_direct_context_and_updates_workspace_signal() {
+    let _owner = Owner::new();
+
+    let fixture = WorkspaceFixture::from_repo_fixture("accounts").unwrap();
+    let model = WorkspaceModel::try_from(fixture).unwrap();
+    let mut initial_session = TreeWorkspaceSession::from_model(&model).unwrap();
+    initial_session.recalculate().unwrap();
+    let workspace_state = initial_session.workspace_state().unwrap();
+    let session = Arc::new(std::sync::Mutex::new(initial_session));
+
+    let workspace = RwSignal::new(workspace_state);
+    let selection = RwSignal::new(SelectionState::default());
+    let dispatcher = HostDispatcher::with_session(selection, workspace, session.clone());
+
+    let receipt = dispatcher.dispatch(WorkspaceIntent::EditFormula {
+        node: NodeId::new("Accounts.2005.Q1.Income.Sales"),
+        content: "20".to_string(),
+    });
+
+    assert!(receipt.accepted, "{:?}", receipt.error);
+    assert_eq!(session.lock().unwrap().recalc_count(), 2);
+    let state = workspace.get_untracked();
+    assert_eq!(
+        state
+            .node(&NodeId::new("Accounts.2005.Q1.Income"))
+            .and_then(|node| match &node.computed_value {
+                NodeValueProjection::Scalar(value) => Some(value.as_str()),
+                _ => None,
+            }),
+        Some("4")
     );
 }

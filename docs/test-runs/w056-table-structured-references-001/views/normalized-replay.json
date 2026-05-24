@@ -455,13 +455,13 @@
     },
     {
       "value": {
-        "bridge": "OxCalcTreeContext",
         "class_id": "treecalc_table_structured_reference_projection_ready",
+        "engine_context": "OxCalcTreeContext",
         "engine_surface": "OxCalc W056 structured-table public APIs",
         "lane_reason_code": "dnatreecalc_w056_table_projection_retained",
         "outcome_kind": "accepted_execution",
         "outcome_schema": "dna_treecalc.execution_outcome.v1",
-        "outcome_stage": "live_oxcalc_table_projection",
+        "outcome_stage": "oxcalc_tree_context_table_projection",
         "replay_view_ready": true,
         "scenario_id": "w056_treecalc_table_structured_references_001"
       },
@@ -1017,7 +1017,6 @@
   "scenario_id": "w056_treecalc_table_structured_references_001",
   "source_metadata": {
     "adapter_id": "dnatreecalc.oxcalc_table_projection.v1",
-    "bridge_influenced": true,
     "capture_loss": "none",
     "capture_loss_summary": [],
     "capture_mode": "model_projection",
@@ -1034,6 +1033,7 @@
       "xlplay_structured_reference_workbook_001",
       "xlplay_table_construction_basic_001"
     ],
+    "direct_context": true,
     "interpretation_limits": [
       {
         "detail": "This artifact is DnaTreeCalc/OxCalc retained producer evidence; Excel black-box observation is supplied by OxXlPlay.",

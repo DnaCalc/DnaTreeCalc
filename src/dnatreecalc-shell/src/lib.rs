@@ -7,8 +7,8 @@
 //! (`docs/ux/SKINS.md` §10).
 //!
 //! The shell does not know about any concrete skin or about DnaTreeCalc's
-//! OxCalc bridge — those wirings live in the host crate. Switching skins
-//! never calls the bridge: the slot tears down the previous skin's view,
+//! OxCalc context — those wirings live in the host crate. Switching skins
+//! never calls calculation: the slot tears down the previous skin's view,
 //! mounts the new one, and shared signals (workspace, selection,
 //! shared-skin-state) survive the switch unchanged.
 

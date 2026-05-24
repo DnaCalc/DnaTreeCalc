@@ -4,7 +4,7 @@ This document covers the implementation and integration layer for DNA TreeCalc's
 
 > **Reframing 2026-05-19:** the eight existing UI mockups are not alternative layouts to choose between; they are **skins** — parallel front-ends to the same core, switchable at runtime, each with its own persisted state stored in dedicated meta-namespaces. The Winamp-skinning idiom is the right architectural metaphor. The earlier `LayoutMode`/`LayoutState` framing in §3.5 is superseded by the skin model. Read [`SKINS.md`](SKINS.md) for the full architecture before this document; the rest of this document is unchanged except for the layout-related sections.
 
-The plan extends DNA OneCalc's existing tech stack rather than replacing it. Components proven in OneCalc (formula editor, bridge pattern, drill panel, completion, persistence) carry over unchanged or with minor extensions. They are now factored as **shared UI primitives** (skin architecture §3) consumed by individual skins. New components (tree outline, canvas, table editor, format editor, template editor) are additional primitives or are themselves the bodies of specialty skins.
+The plan extends DNA OneCalc's existing tech stack rather than replacing it. Components proven in OneCalc (formula editor, direct engine integration pattern, drill panel, completion, persistence) carry over unchanged or with minor extensions. They are now factored as **shared UI primitives** (skin architecture §3) consumed by individual skins. New components (tree outline, canvas, table editor, format editor, template editor) are additional primitives or are themselves the bodies of specialty skins.
 
 ---
 
@@ -67,16 +67,10 @@ DnaTreeCalc/
 │   │   └── src/
 │   │       ├── lib.rs                  # WASM entry: mount_treecalc(element_id)
 │   │       ├── main.rs                 # native CLI entry for verification host
-│   │       ├── adapters/
-│   │       │   ├── oxfml/              # reused as-is from OneCalc (formula editor bridge)
-│   │       │   └── oxcalc/             # NEW: tree-substrate bridge
-│   │       │       ├── bridge.rs       # OxCalcTreeContext trait + request/response
-│   │       │       ├── live_bridge.rs  # caching, recalc orchestration
-│   │       │       ├── types.rs        # re-exports + UI projections
-│   │       │       └── mod.rs
 │   │       ├── app/
 │   │       │   ├── reducer.rs          # state mutations (tree edits, node selection, host state)
-│   │       │   ├── host_mount.rs       # bootstrap + bridge init
+│   │       │   ├── session.rs          # direct OxCalcTreeContext owner + UI projection
+│   │       │   ├── host_mount.rs       # bootstrap + context init
 │   │       │   ├── intents.rs          # high-level actions
 │   │       │   └── mod.rs
 │   │       ├── state/
@@ -115,7 +109,7 @@ DnaTreeCalc/
 │   │       │   ├── command_registry.rs      # command palette entries
 │   │       │   ├── import_excel.rs          # Excel import per spec §10
 │   │       │   ├── export_excel.rs          # Excel export (bidirectional fidelity)
-│   │       │   ├── live_edit.rs             # debounced bridge round-trips
+│   │       │   ├── live_edit.rs             # debounced direct-context commits
 │   │       │   └── ...
 │   │       ├── persistence/
 │   │       │   ├── workspace_storage.rs     # save/load .dnatree files
@@ -136,10 +130,10 @@ DnaTreeCalc/
 The following modules transfer with no semantic changes:
 
 - `ui/editor/` — the formula editor surface (commands, geometry, render projection, bracket matcher, etc.).
-- `adapters/oxfml/` — the formula bridge.
+- `ui/editor/` plus OxFml integration — the formula editor surface.
 - `services/completion_popup.rs` — completion handling.
 - `services/formula_drill_audit.rs` — drill panel rendering.
-- `services/live_edit.rs` — bridge orchestration (extended for tree context).
+- `services/live_edit.rs` — direct context orchestration for accepted edits.
 - Design tokens (extended with TreeCalc-specific tokens for tree rows, canvas, table grid).
 
 These crates are likely structured as `oxfml-host-components` shared between OneCalc and TreeCalc, or vendored. The natural move is to factor them into a shared crate that both host applications depend on.
@@ -148,7 +142,7 @@ These crates are likely structured as `oxfml-host-components` shared between One
 
 The following are TreeCalc-specific:
 
-- `adapters/oxcalc/` — tree-substrate bridge (analogous to OneCalc's `oxfml` adapter but for the multi-node engine).
+- `app/session.rs` — direct `OxCalcTreeContext` owner, workspace/node/table edit calls, recalculation, and UI projection.
 - `ui/components/nav_rail.rs`, `tree_row.rs` — tree outline.
 - `ui/components/canvas.rs` — free-canvas layout.
 - `ui/components/outline_table.rs` — tree-table hybrid.
@@ -270,7 +264,7 @@ Follow OneCalc's pattern:
 The OneCalc formula-editor pattern remains, but TreeCalc calculation does not use
 a host-side semantic adapter:
 
-- `OxFmlEditorBridge` for per-node formula editing — unchanged from OneCalc.
+- OxFml editor integration for per-node formula editing — unchanged from OneCalc.
 - `OxCalcTreeContext` for tree-level operations — the canonical engine context
   exported by OxCalc and owned as state by the DnaTreeCalc host/session.
 
@@ -328,10 +322,10 @@ State and caching:
 
 ### 4.4 Engine integration with formula editor
 
-The OneCalc bridge edits a single formula at a time. For TreeCalc:
+The OneCalc direct formula host edits a single formula at a time. For TreeCalc:
 
 1. User edits a node's formula in the formula editor.
-2. OneCalc-style `LiveOxfmlBridge` produces a bind result with diagnostics.
+2. OneCalc-style OxFml editor integration produces a bind result with diagnostics.
 3. Edited formula text is written to `OxCalcTreeContext` through `set_node_formula_text`.
 4. OxCalc-tree owns binding, dependency closure, and affected-node recomputation.
 5. UI receives the updated value and renders.
@@ -440,7 +434,7 @@ Auto-backup to a sibling `.dnatree.bak` file on each save. Configurable retentio
 
 - Drops in unchanged from OneCalc.
 - Bound to the currently-selected node's formula text.
-- Bridge requests use the node's id as `formula_stable_id`.
+- OxFml editor requests use the node's id as `formula_stable_id`.
 - Switching nodes commits the previous (or prompts).
 
 ### 6.3 Value detail (`value_detail.rs`)
@@ -457,7 +451,7 @@ Auto-backup to a sibling `.dnatree.bak` file on each save. Configurable retentio
 - Virtualized grid for arrays larger than ~1000 cells.
 - Per-cell rendering uses `ArrayCellFormat` from OneCalc.
 - Scroll position preserved on size changes.
-- Lazy-fetch for arrays exceeding memory budget: bridge returns cell ranges on demand.
+- Lazy-fetch for arrays exceeding memory budget: OxCalc returns visible cell ranges on demand.
 - Editable when the content is a constant (per-cell typing); read-only when it is a `=`-formula.
 
 ### 6.5 Canvas (`canvas.rs`)
@@ -558,7 +552,7 @@ Auto-backup to a sibling `.dnatree.bak` file on each save. Configurable retentio
 Measurement is central to the project's purpose: TreeCalc exists in part to stress OxCalc's coordinator / dependency / invalidation / epoch model under a real multi-node workload (CHARTER). The emphasis is on **automated, repeatable, timed runs we can iterate on — not fixed clock-time budgets to pass.**
 
 - **Named stress workloads** in the test corpus (`docs/test-corpus/perf/`): deep tree, wide tree, large-array-on-many-nodes, structural-edit storm, RTD churn. These are the models we time.
-- **Timed runs through the real stack** — recalc and structural-edit timing captured via the bridge, so we iterate on engine + host together as the workloads grow.
+- **Timed runs through the real stack** — recalc and structural-edit timing captured via the direct context, so we iterate on engine + host together as the workloads grow.
 - **Excel comparison includes timing, not just output** — the same workloads are timed in Excel via the OxXlPlay / OxReplay path (the verification harness already constructs and observes Excel), so divergence in *speed* is visible alongside divergence in *value*.
 - **Per-node recalc profiling** feeds the workspace status overview (REQUIREMENTS §2.11.1), extending "health" from error/cycle counts to slow-node visibility.
 - **No clock-time success gates now.** What must be in place is the *harness and the timed runs* (early scaffolding, like the test corpus), so concrete targets can be set later from real data rather than guessed now. Engine-internal targets remain OxCalc's; TreeCalc owns the workloads and the measurement surface (CORE_MODEL §5.1).
@@ -578,7 +572,7 @@ Measurement is central to the project's purpose: TreeCalc exists in part to stre
 ### 8.2 Components to borrow / reuse
 
 - Formula editor surface (DnaOneCalc — direct reuse).
-- Bridge pattern primitives (DnaOneCalc — extended).
+- Direct engine integration primitives (DnaOneCalc — extended).
 - Drill panel (DnaOneCalc — direct reuse).
 - Completion / signature help (DnaOneCalc — direct reuse).
 - Diagnostic squiggle rendering (DnaOneCalc — direct reuse).
@@ -636,9 +630,9 @@ For feature-level traceability from visible prototype affordances to skins, prim
 |---|---|
 | §2 Core model | §3.2 WorkspaceState, §6.1 tree outline |
 | §3 Reference syntax | §6.2 formula editor binding |
-| §4 Capability profile | §3.5 CapabilityAndEnvironmentState; profile passed in bridge request |
+| §4 Capability profile | §3.5 CapabilityAndEnvironmentState; profile passed in context configuration |
 | §5 Excel alignment | inherited from OneCalc baseline |
-| §6 Engine prereqs | §8.3 listed; bridge enables once engine ships them |
+| §6 Engine prereqs | §8.3 listed; direct context enables once engine ships them |
 | §7b Templates | §6.10 template_editor + services/template_sync.rs |
 | §10 Excel import | §6 components — import_excel.rs service + import preview UI |
 
@@ -649,7 +643,7 @@ For feature-level traceability from visible prototype affordances to skins, prim
 A natural build order based on dependencies:
 
 1. **Phase 0 — Foundation + skin scaffold.** Factor reusable OneCalc components into a shared crate, define `RegisteredSkin` / `WorkspaceSkin` / `SkinContext`, and mount the first shell through the skin registry from the start. Establish **both build targets** here — the browser WASM shell and the native **Tauri** desktop shell — so the native-code-hosting path (§1, §1.1) is viable from the start rather than retrofitted.
-2. **Phase 1 — Tree shell in TripleEditor.** Workspace state, tree outline (nav rail), basic node creation/deletion/rename. TripleEditor uses reused formula-editor primitives and persists its panel state through `skins.triple-editor` meta-nodes. Single-node evaluation via bridge. Persistence via localStorage and explicit file save.
+2. **Phase 1 — Tree shell in TripleEditor.** Workspace state, tree outline (nav rail), basic node creation/deletion/rename. TripleEditor uses reused formula-editor primitives and persists its panel state through `skins.triple-editor` meta-nodes. Single-node evaluation via direct OxCalc context. Persistence via localStorage and explicit file save.
 3. **Phase 2 — Multi-node calc.** OxCalc context integration. Recalc and dependency graph in place. Status display per node. Reference resolution with walk-up.
 4. **Phase 3 — Editing breadth.** Multi-select, move, drag-and-drop. Rename-propagation prompt. Search.
 5. **Phase 4 — Additional skins and adaptive renderers.** OutlineTable, CellView, and active-skin renderer choices for scalars/arrays/tables/templates.
@@ -699,4 +693,4 @@ This technical plan covers all components, services, and integration points requ
 
 The phasing in §10 gives a buildable path from empty TreeCalc to full-featured product. Each phase delivers a usable subset.
 
-Engine prerequisites (§8.3) are tracked as local spec content and raised through targeted handovers in [`../handovers/`](../handovers/) when cross-repo work is needed. TreeCalc UX can begin once the foundational items (multi-node bridge, is_meta flag) are available, with later items unblocking later phases.
+Engine prerequisites (§8.3) are tracked as local spec content and raised through targeted handovers in [`../handovers/`](../handovers/) when cross-repo work is needed. TreeCalc UX can begin once the foundational items (multi-node OxCalc context, is_meta flag) are available, with later items unblocking later phases.

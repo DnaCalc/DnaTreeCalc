@@ -92,7 +92,7 @@ The tree outline is the workspace's index of truth. Requirements:
 
 ### 2.3 Formula editor
 
-The formula editor is reused from DnaOneCalc (the existing `OxfmlEditorBridge` surface) with no semantic changes. Requirements:
+The formula editor is reused from DnaOneCalc (the existing OxFml editor surface) with no semantic changes. Requirements:
 
 - **Textarea-based input** with syntax overlay (reusing DnaOneCalc's `SyntaxRun` / `SyntaxTokenRole` machinery).
 - **Live diagnostics.** Red squiggles for parse / bind errors; hover for diagnostic detail.
@@ -592,7 +592,7 @@ Decisions implicit in this requirements doc:
 | Read-only mode | Available via toggle (§4.8) |
 | Persistence | Autosave + explicit save |
 | Wow-moment for v1 | Templated forecast model (Accounts.YYYY.Qx pattern) |
-| Tech reuse from DnaOneCalc | Formula editor surface, bridge pattern, drill panel, completion machinery |
+| Tech reuse from DnaOneCalc | Formula editor surface, direct engine integration pattern, drill panel, completion machinery |
 | Adaptive rendering | Chosen inside the mounted skin or skin composition, with explicit per-skin override |
 
 Dials worth surfacing for further user input:

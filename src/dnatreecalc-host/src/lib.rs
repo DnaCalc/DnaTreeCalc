@@ -2,16 +2,13 @@
 
 //! DNA TreeCalc host crate.
 //!
-//! Owns the workspace product model, the OxCalc bridge, and the host-side
-//! wiring that turns those into the typed surfaces the skin framework and
-//! shell consume (`app` module): workspace projection, host dispatcher,
-//! and the default skin registry. The shell + framework + skin crates
-//! consume from here without ever touching the bridge directly.
+//! Owns the workspace fixture/model projection and the host-side wiring that
+//! turns direct OxCalc context state into the typed surfaces the skin framework
+//! and shell consume (`app` module): workspace projection, host dispatcher,
+//! and the default skin registry.
 
-pub mod adapters;
 pub mod app;
 pub mod model;
-pub mod test_support;
 
 #[cfg(test)]
 mod tests {

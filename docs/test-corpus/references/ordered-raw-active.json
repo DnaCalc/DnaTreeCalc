@@ -7,7 +7,7 @@
   "cases": [
     {
       "id": "ordered-preceding-active",
-      "name": "@PRECEDING sums earlier siblings through the live bridge",
+      "name": "@PRECEDING sums earlier siblings through direct OxCalc context",
       "spec": "§3.5",
       "kind": "membership",
       "workspace": "ordered-raw-active",
@@ -22,7 +22,7 @@
     },
     {
       "id": "ordered-following-active",
-      "name": "@FOLLOWING sums later siblings through the live bridge",
+      "name": "@FOLLOWING sums later siblings through direct OxCalc context",
       "spec": "§3.5",
       "kind": "membership",
       "workspace": "ordered-raw-active",
@@ -37,7 +37,7 @@
     },
     {
       "id": "ordered-ancestors-active",
-      "name": "@ANCESTORS binds enclosing nodes closest first through the live bridge",
+      "name": "@ANCESTORS binds enclosing nodes closest first through direct OxCalc context",
       "spec": "§3.5",
       "kind": "membership",
       "workspace": "ordered-raw-active",
@@ -52,7 +52,7 @@
     },
     {
       "id": "ordered-recursive-tail-active",
-      "name": "Base.**.Margin sums matching recursive descendants through the live bridge",
+      "name": "Base.**.Margin sums matching recursive descendants through direct OxCalc context",
       "spec": "§3.6",
       "kind": "membership",
       "workspace": "ordered-raw-active",
@@ -67,7 +67,7 @@
     },
     {
       "id": "ordered-structural-preceding-active",
-      "name": "Explicit structural path base @PRECEDING sums earlier siblings through the live bridge",
+      "name": "Explicit structural path base @PRECEDING sums earlier siblings through direct OxCalc context",
       "spec": "§3.5",
       "kind": "membership",
       "workspace": "ordered-raw-active",
@@ -82,7 +82,7 @@
     },
     {
       "id": "ordered-structural-following-active",
-      "name": "Explicit structural path base @FOLLOWING sums later siblings through the live bridge",
+      "name": "Explicit structural path base @FOLLOWING sums later siblings through direct OxCalc context",
       "spec": "§3.5",
       "kind": "membership",
       "workspace": "ordered-raw-active",
@@ -97,7 +97,7 @@
     },
     {
       "id": "ordered-structural-recursive-tail-active",
-      "name": "Explicit structural path base recursive descent sums matching descendants through the live bridge",
+      "name": "Explicit structural path base recursive descent sums matching descendants through direct OxCalc context",
       "spec": "§3.6",
       "kind": "membership",
       "workspace": "ordered-raw-active",

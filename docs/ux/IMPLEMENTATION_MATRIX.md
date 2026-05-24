@@ -82,7 +82,7 @@ prototype affordance -> UX trace ID -> component/service contract -> scenario ch
 | `UX-CV-004` | NodesAcross orders columns from scope and graph | 07 | W006/W002 | node column projection | Projection test from graph fixture |
 | `UX-IO-001` | Save/load rehydrates workspace plus skin namespaces | all | W003/W005 | persistence service | Round-trip: tree + `skins.*` + templates/format |
 | `UX-IO-002` | Export/copy value uses published values, not skin display state | 02 | W009 | export/value command service | Unit: copy/export from value projection |
-| `UX-RX-001` | OxCalc invalidation updates calc pips before final value | 01, 04, 08 | W002/W003 | bridge subscription, calc-state projection | Scenario: dirty -> evaluating -> clean/error |
+| `UX-RX-001` | OxCalc invalidation updates calc pips before final value | 01, 04, 08 | W002/W003 | context outcome projection, calc-state projection | Scenario: dirty -> evaluating -> clean/error |
 | `UX-RX-002` | External streaming update uses same render path as recalc | 01, 08 | W002/W003 | external value adapter | Trace: external update -> invalidation -> render |
 | `UX-RX-003` | Async operations show progress and remain cancellable | 03, import/export | W007/W008/W009 | progress model, command registry | UI scenario: long sync/import shows progress |
 
@@ -151,7 +151,7 @@ Invariants:
 Inputs:
 - `WorkspaceIntent`;
 - current host state;
-- bridge availability;
+- OxCalc context availability;
 - service registry.
 
 Outputs:
@@ -192,7 +192,7 @@ Inputs:
 - selected node id;
 - selected node content string;
 - capability profile;
-- OxFml editor bridge;
+- OxFml editor integration;
 - commit policy.
 
 Outputs:
@@ -571,7 +571,7 @@ Expected:
 - skins do not enter a special streaming mode.
 
 Check shape:
-- bridge fake emits external update; UI projection changes.
+- context fake emits external update; UI projection changes.
 
 ### S14. Save/load skin state and host meta
 
@@ -628,7 +628,7 @@ The implementation should expose a test-only trace sink in host builds, not a us
 | `IntentDispatched { kind }` | dispatcher | Gesture-to-intent checks |
 | `OxFmlBindRequested { node }` | live edit service | Draft diagnostics checks |
 | `OxCalcRecalcRequested { reason }` | OxCalc context session | Calc boundary checks |
-| `WorkspacePublished { publication_id }` | bridge/reducer | Render update checks |
+| `WorkspacePublished { publication_id }` | context session/reducer | Render update checks |
 | `RenderProjectionUpdated { projection }` | projection services | Value/tree/graph checks |
 | `ResizeObserved { slot, size }` | workspace shell | Adaptive/resize checks |
 | `NoEngineCallWindow { label }` | test harness | Assert facade-only interactions stay facade-only |
@@ -662,7 +662,7 @@ Trace events must be deterministic enough for tests and cheap enough to leave co
 
 - W005 provides a minimal main-slot mount path;
 - `UX-TR-001`, `UX-TR-002`, `UX-FE-001`, and `UX-VA-001` have fixtures or planned first-bead checks;
-- the fake bridge can publish a small value/result projection.
+- the fake context can publish a small value/result projection.
 
 ### W006 additional skins can start when:
 

@@ -19,7 +19,7 @@ These epic beads were created during W001 bootstrap. Use this table only to pair
 | Workset | Epic bead |
 |---|---|
 | W001_repo_bootstrap_and_doctrine | `dtc-jfv` |
-| W002_engine_seam_and_bridge | `dtc-d6o` |
+| W002_engine_seam_and_context | `dtc-d6o` |
 | W003_tree_shell_and_core_editing | `dtc-mm0` |
 | W004_reference_model_and_resolution | `dtc-z0i` |
 | W005_walking_skeleton_min_end_to_end | `dtc-osq` |
@@ -36,7 +36,7 @@ These epic beads were created during W001 bootstrap. Use this table only to pair
 ```
 W001 → W002 → W005 → { W003, W004 } → W006 → W007 → W008 → W009 → W010
 (boot)  (engine (walking   (flesh out:     (more     (meta/  (import)(export)(UDF)
-        bridge)  skeleton)   shell+editing,  skins +   fmt/
+        context) skeleton)   shell+editing,  skins +   fmt/
                              reference       framework templ)
                              model)          hardening)
 ```
@@ -67,7 +67,7 @@ Engine prerequisites in OxCalc/OxFml/OxFunc (Spec `model/CORE_MODEL_SPEC.md` §6
 - **Closure condition:** a workspace of named nodes evaluates end-to-end through direct OxCalc context calls; per-node values and calc-state are observable.
 - **Initial epic lanes:** context contract; live-edit orchestration; calc-state plumbing.
 - **Verification:** Local recalc unit tests over a small multi-node fixture. Excel anchor deferred to W009. Scaffolding: direct-context test harness + a minimal multi-node workspace fixture.
-- **Current closure note:** W002's original proof is migration history. The active product boundary is now direct `OxCalcTreeContext`; DnaTreeCalc must not submit semantic request/result DTOs, formula catalogs, prepared carriers, or host-side reference resolutions. The W002 corpus validator remains green with zero active W002 corpus cases by design: `constants/entry-classification` is pending on the OxFml TreeCalc entry-classification API, and `cycles/cycle-profiles` is pending on executable typed cycle configuration/outcome fields in the current OxCalc context surface. Those are exact successor blockers, not hidden W002 closure claims.
+- **Current closure note:** W002's original one-shot proof is migration history. The active product boundary is now direct `OxCalcTreeContext`; DnaTreeCalc must not submit semantic request/result DTOs, formula catalogs, prepared carriers, or host-side reference resolutions. The W002 corpus validator remains green with zero active W002 corpus cases by design: `constants/entry-classification` is pending on the OxFml TreeCalc entry-classification API, and `cycles/cycle-profiles` is pending on executable typed cycle configuration/outcome fields in the current OxCalc context surface. Those are exact successor blockers, not hidden W002 closure claims.
 - **Status:** CLOSED
 
 ### W003_tree_shell_and_core_editing
@@ -95,7 +95,7 @@ Engine prerequisites in OxCalc/OxFml/OxFunc (Spec `model/CORE_MODEL_SPEC.md` §6
 - **Closure condition:** the skeleton runs — a tiny workspace loads; editing a node formula updates its value through the **real OxCalc context**; switching `triple-editor` ↔ `outline-table` preserves shared selection with **no recalc**; save/reopen round-trips using OxCalc-owned stable identities. The **first slice of the test corpus is activated** (`references/walkup` bare-name and dotted-descent cases the minimal resolution supports, flipped `pending->active` and green against direct context via the corpus runner), and a **UX click-through passes**.
 - **Initial epic lanes:** minimal skin framework + registry/switcher; minimal shell + nav rail; two minimal skins; bare-name walk-up + dotted descent over direct context; `.dnatree` round-trip; **corpus runner v1** (activate-a-slice through OxCalc, not a local parser) + **click-through harness v1**.
 - **Verification:** Local — the corpus runner over the activated walk-up/dotted-descent slice + reducer/projection tests — plus a UX click-through (edit->value, switch-skin->no-recalc, save/reopen). This workset *first runs* the test-corpus **activation** model and the UX-matrix harness for real. Scaffolding: corpus runner v1; click-through harness v1; a tiny end-to-end workspace fixture.
-- **Current direct-context note:** the earlier bridge evidence is migration history only. Current and future active slices must construct an `OxCalcTreeContext`, add workspaces/nodes/tables/formula text through OxCalc APIs, run `recalculate`, and assert values/diagnostics/dependency facts from OxCalc views/outcomes. DnaTreeCalc must not construct formula catalogs, prepared carriers, path/member packets, or table classifier inputs. Raw literals, raw dynamic/cross-workspace formulas, node-as-function calls, alias/base-token variants, profile-gated syntax, and other not-yet-admitted families remain typed pending/exclusion lanes until OxCalc/OxFml exposes direct context support.
+- **Current direct-context note:** earlier one-shot evidence is migration history only. Current and future active slices must construct an `OxCalcTreeContext`, add workspaces/nodes/tables/formula text through OxCalc APIs, run `recalculate`, and assert values/diagnostics/dependency facts from OxCalc views/outcomes. DnaTreeCalc must not construct formula catalogs, prepared carriers, path/member packets, or table classifier inputs. Raw literals, raw dynamic/cross-workspace formulas, node-as-function calls, alias/base-token variants, profile-gated syntax, and other not-yet-admitted families remain typed pending/exclusion lanes until OxCalc/OxFml exposes direct context support.
 - **Status:** OPEN
 
 ### W006_additional_skins_and_framework_hardening

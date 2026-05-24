@@ -86,7 +86,6 @@
       "value": {
         "case_reports": [
           {
-            "bridge_route": "OxCalcTreeContext::classify_dynamic_table_rebind",
             "case_id": "tbl-dyn-table-selector",
             "case_name": "Dynamic table selector rebinds a table reference",
             "cause": "selector_text_changed",
@@ -98,6 +97,7 @@
               "structured_table_data_region",
               "dynamic_potential"
             ],
+            "context_route": "TreeWorkspaceSession::classify_dynamic_table_rebind",
             "dependency_fact_kinds": [
               "table_identity",
               "row_membership",
@@ -107,7 +107,7 @@
             ],
             "diagnostics": [],
             "dynamic_rebind_identity": {
-              "digest": "fnv1a64:c0dbf78a77e26b9d",
+              "digest": "fnv1a64:a94d8e4c3b0e23b0",
               "prefix": "treecalc.dynamic_table_rebind.v1;selector_handle=19:selector:SalesTable;selector_identity=37:dyn",
               "present": true
             },
@@ -137,7 +137,6 @@
             "treecalc_v1": "admit"
           },
           {
-            "bridge_route": "OxCalcTreeContext::classify_dynamic_table_rebind",
             "case_id": "tbl-dyn-column-selector",
             "case_name": "Dynamic column selector rebinds a table column reference",
             "cause": "selector_text_changed",
@@ -149,6 +148,7 @@
               "structured_table_data_region",
               "dynamic_potential"
             ],
+            "context_route": "TreeWorkspaceSession::classify_dynamic_table_rebind",
             "dependency_fact_kinds": [
               "table_identity",
               "row_membership",
@@ -158,7 +158,7 @@
             ],
             "diagnostics": [],
             "dynamic_rebind_identity": {
-              "digest": "fnv1a64:ff85a5ae2bba768d",
+              "digest": "fnv1a64:c181a9c16fbd0823",
               "prefix": "treecalc.dynamic_table_rebind.v1;selector_handle=26:selector:SalesTable.Amount;selector_identity",
               "present": true
             },
@@ -188,7 +188,6 @@
             "treecalc_v1": "admit"
           },
           {
-            "bridge_route": "OxCalcTreeContext::classify_dynamic_table_rebind",
             "case_id": "tbl-dyn-section-selector",
             "case_name": "Dynamic section selector rebinds headers/data/totals sections",
             "cause": "dynamic_function_result_changed",
@@ -199,6 +198,7 @@
               "structured_table_totals_region",
               "dynamic_potential"
             ],
+            "context_route": "TreeWorkspaceSession::classify_dynamic_table_rebind",
             "dependency_fact_kinds": [
               "table_identity",
               "header_region",
@@ -207,7 +207,7 @@
             ],
             "diagnostics": [],
             "dynamic_rebind_identity": {
-              "digest": "fnv1a64:9f29067af56125d1",
+              "digest": "fnv1a64:6900fb5dfba9804c",
               "prefix": "treecalc.dynamic_table_rebind.v1;selector_handle=27:selector:SalesTable.Section;selector_identit",
               "present": true
             },
@@ -237,7 +237,6 @@
             "treecalc_v1": "admit"
           },
           {
-            "bridge_route": "OxCalcTreeContext::classify_dynamic_table_rebind",
             "case_id": "tbl-dyn-current-row-selector",
             "case_name": "Dynamic current-row selector carries caller context",
             "cause": "dynamic_function_result_changed",
@@ -248,6 +247,7 @@
               "structured_table_caller_context",
               "dynamic_potential"
             ],
+            "context_route": "TreeWorkspaceSession::classify_dynamic_table_rebind",
             "dependency_fact_kinds": [
               "table_identity",
               "row_order",
@@ -256,7 +256,7 @@
             ],
             "diagnostics": [],
             "dynamic_rebind_identity": {
-              "digest": "fnv1a64:4e4caaacf2da4b58",
+              "digest": "fnv1a64:9a1d31ef4289f0bf",
               "prefix": "treecalc.dynamic_table_rebind.v1;selector_handle=30:selector:SalesTable.CurrentRow;selector_iden",
               "present": true
             },
@@ -287,7 +287,6 @@
             "treecalc_v1": "admit"
           },
           {
-            "bridge_route": "OxCalcTreeContext::classify_dynamic_table_rebind",
             "case_id": "tbl-dyn-indirect-runtime-typed-exclusion",
             "case_name": "INDIRECT-style runtime structured-reference parsing is a typed exclusion",
             "cause": "unsupported_runtime_structured_reference_parsing",
@@ -299,6 +298,7 @@
               "dynamic_potential",
               "unresolved"
             ],
+            "context_route": "TreeWorkspaceSession::classify_dynamic_table_rebind",
             "dependency_fact_kinds": [],
             "diagnostics": [
               {
@@ -307,7 +307,7 @@
               }
             ],
             "dynamic_rebind_identity": {
-              "digest": "fnv1a64:fae12cd100bdd45e",
+              "digest": "fnv1a64:cd60ab7568da17c9",
               "prefix": "treecalc.dynamic_table_rebind.v1;selector_handle=35:selector:INDIRECT.SalesTable.Amount;selector",
               "present": true
             },
@@ -338,7 +338,6 @@
             "treecalc_v1": "typed_exclusion"
           },
           {
-            "bridge_route": "OxCalcTreeContext::classify_dynamic_table_rebind",
             "case_id": "tbl-dyn-target-not-table",
             "case_name": "Dynamic selector resolving to a non-table target is a typed exclusion",
             "cause": "dynamic_target_not_table",
@@ -351,6 +350,7 @@
               "dynamic_potential",
               "unresolved"
             ],
+            "context_route": "TreeWorkspaceSession::classify_dynamic_table_rebind",
             "dependency_fact_kinds": [],
             "diagnostics": [
               {
@@ -359,7 +359,7 @@
               }
             ],
             "dynamic_rebind_identity": {
-              "digest": "fnv1a64:92c43dcf195ccaae",
+              "digest": "fnv1a64:f88acdc9b60e4d80",
               "prefix": "treecalc.dynamic_table_rebind.v1;selector_handle=18:selector:NotATable;selector_identity=33:dyna",
               "present": true
             },
@@ -390,7 +390,6 @@
             "treecalc_v1": "typed_exclusion"
           },
           {
-            "bridge_route": "OxCalcTreeContext::classify_dynamic_table_rebind",
             "case_id": "tbl-dyn-deleted-table-target",
             "case_name": "Deleted table target reports deleted-target dynamic status",
             "cause": "table_delete",
@@ -407,6 +406,7 @@
               "structured_table_enclosing_table",
               "dynamic_potential"
             ],
+            "context_route": "TreeWorkspaceSession::classify_dynamic_table_rebind",
             "dependency_fact_kinds": [
               "table_identity",
               "row_membership",
@@ -416,7 +416,7 @@
             ],
             "diagnostics": [],
             "dynamic_rebind_identity": {
-              "digest": "fnv1a64:94fd12d0e2586734",
+              "digest": "fnv1a64:1bcbd16c5e814252",
               "prefix": "treecalc.dynamic_table_rebind.v1;selector_handle=26:selector:DeletedSalesTable;selector_identity",
               "present": true
             },
@@ -448,7 +448,6 @@
             "treecalc_v1": "typed_exclusion"
           },
           {
-            "bridge_route": "OxCalcTreeContext::classify_dynamic_table_rebind",
             "case_id": "tbl-dyn-cross-workspace-table",
             "case_name": "Cross-workspace dynamic table target carries workspace availability",
             "cause": "selector_text_changed",
@@ -461,6 +460,7 @@
               "dynamic_potential",
               "host_sensitive"
             ],
+            "context_route": "TreeWorkspaceSession::classify_dynamic_table_rebind",
             "dependency_fact_kinds": [
               "table_identity",
               "row_membership",
@@ -472,7 +472,7 @@
             ],
             "diagnostics": [],
             "dynamic_rebind_identity": {
-              "digest": "fnv1a64:40da0675e5a95d4b",
+              "digest": "fnv1a64:959bd837584e38e7",
               "prefix": "treecalc.dynamic_table_rebind.v1;selector_handle=25:selector:RemoteSalesTable;selector_identity=",
               "present": true
             },
@@ -503,7 +503,6 @@
             "treecalc_v1": "admit"
           },
           {
-            "bridge_route": "OxCalcTreeContext::classify_dynamic_table_rebind",
             "case_id": "tbl-dyn-cross-workspace-unavailable",
             "case_name": "Closed workspace target reports unavailable dynamic status",
             "cause": "workspace_close",
@@ -521,6 +520,7 @@
               "dynamic_potential",
               "host_sensitive"
             ],
+            "context_route": "TreeWorkspaceSession::classify_dynamic_table_rebind",
             "dependency_fact_kinds": [
               "table_identity",
               "row_membership",
@@ -532,7 +532,7 @@
             ],
             "diagnostics": [],
             "dynamic_rebind_identity": {
-              "digest": "fnv1a64:8b12fa7ff055f2b2",
+              "digest": "fnv1a64:157fc460c852f5cb",
               "prefix": "treecalc.dynamic_table_rebind.v1;selector_handle=31:selector:ClosedRemoteSalesTable;selector_ide",
               "present": true
             },
@@ -564,7 +564,6 @@
             "treecalc_v1": "typed_exclusion"
           },
           {
-            "bridge_route": "OxCalcTreeContext::classify_dynamic_table_rebind",
             "case_id": "tbl-dyn-workspace-alias-mutation",
             "case_name": "Workspace alias mutation reclassifies cross-workspace table target",
             "cause": "workspace_alias_mutation",
@@ -578,6 +577,7 @@
               "dynamic_potential",
               "host_sensitive"
             ],
+            "context_route": "TreeWorkspaceSession::classify_dynamic_table_rebind",
             "dependency_fact_kinds": [
               "table_identity",
               "row_membership",
@@ -589,7 +589,7 @@
             ],
             "diagnostics": [],
             "dynamic_rebind_identity": {
-              "digest": "fnv1a64:6d1874a215d34eda",
+              "digest": "fnv1a64:4bc6a892531392f7",
               "prefix": "treecalc.dynamic_table_rebind.v1;selector_handle=30:selector:RemoteSalesTableAlias;selector_iden",
               "present": true
             },
@@ -621,7 +621,6 @@
             "treecalc_v1": "admit"
           },
           {
-            "bridge_route": "OxCalcTreeContext::classify_dynamic_table_rebind",
             "case_id": "tbl-dyn-strict-excel-rejection",
             "case_name": "TreeCalc dynamic table selector is admitted only by the treecalc-v1 profile",
             "cause": "selector_text_changed",
@@ -633,6 +632,7 @@
               "structured_table_data_region",
               "dynamic_potential"
             ],
+            "context_route": "TreeWorkspaceSession::classify_dynamic_table_rebind",
             "dependency_fact_kinds": [
               "table_identity",
               "row_membership",
@@ -642,7 +642,7 @@
             ],
             "diagnostics": [],
             "dynamic_rebind_identity": {
-              "digest": "fnv1a64:772bf384e797b43f",
+              "digest": "fnv1a64:8d0eb0a882d93432",
               "prefix": "treecalc.dynamic_table_rebind.v1;selector_handle=26:selector:TreeCalcOnlyTable;selector_identity",
               "present": true
             },
@@ -672,8 +672,8 @@
             "treecalc_v1": "admit"
           }
         ],
-        "classification_api": "OxCalcTreeContext::classify_dynamic_table_rebind",
-        "source_status": "live_bridge_route"
+        "classification_api": "TreeWorkspaceSession::classify_dynamic_table_rebind",
+        "source_status": "direct_context_route"
       },
       "view_family": "dependency_evidence"
     },
@@ -968,8 +968,8 @@
             "status": "rebind_required"
           }
         ],
-        "classification_api": "OxCalcTreeContext::classify_dynamic_table_rebind",
-        "source_status": "live_bridge_route"
+        "classification_api": "TreeWorkspaceSession::classify_dynamic_table_rebind",
+        "source_status": "direct_context_route"
       },
       "view_family": "invalidation_evidence"
     },
@@ -1037,7 +1037,6 @@
   "scenario_id": "w056_treecalc_dynamic_cross_workspace_tables_001",
   "source_metadata": {
     "adapter_id": "dnatreecalc.oxcalc_dynamic_table_rebind.v1",
-    "bridge_influenced": true,
     "capture_loss": "none",
     "capture_loss_summary": [],
     "capture_mode": "model_projection",
@@ -1047,6 +1046,7 @@
       "invalidation_evidence",
       "retained_artifact_ref"
     ],
+    "direct_context": true,
     "interpretation_limits": [
       {
         "detail": "Runtime parsing of TreeCalc structured-reference text through INDIRECT remains a typed exclusion until OxFml supplies a generic structured bind packet.",

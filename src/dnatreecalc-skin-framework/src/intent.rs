@@ -18,8 +18,8 @@ pub enum WorkspaceIntent {
     /// Replace the host-wide primary selection. `None` clears.
     SelectNode(Option<NodeId>),
     /// Replace the content text of a node. Empty -> Empty kind;
-    /// leading `=` -> Formula; otherwise Constant. The bridge does
-    /// the rebind; the skin does not parse formula text.
+    /// leading `=` -> Formula; otherwise Constant. OxCalc does the
+    /// rebind; the skin does not parse formula text.
     EditFormula { node: NodeId, content: String },
 }
 
@@ -66,14 +66,14 @@ pub enum IntentError {
 /// outside its own typed state.
 ///
 /// The skeleton ships an [`InMemoryDispatcher`] used by tests; the host
-/// crate wires a real dispatcher backed by the OxCalc bridge for the live
+/// crate wires a real dispatcher backed by direct OxCalc context for the live
 /// shell.
 pub trait Dispatcher: Send + Sync {
     fn dispatch(&self, intent: WorkspaceIntent) -> IntentReceipt;
 }
 
 /// An in-memory dispatcher useful for unit tests and the walking-skeleton
-/// host bootstrap before the live bridge wiring lands.
+/// host bootstrap before the live direct-context dispatcher is attached.
 ///
 /// Selection intents update the provided [`RwSignal<SelectionState>`]; all
 /// other intents are recorded and accepted. Holds a recording log so tests
@@ -116,9 +116,9 @@ impl Dispatcher for InMemoryDispatcher {
             }
             WorkspaceIntent::EditFormula { .. } => {
                 // The in-memory dispatcher records but does not apply
-                // formula edits — the live host dispatcher does that
-                // through the OxCalc bridge. Tests for the skeleton
-                // verify only the routing, not the bridge effect.
+                // formula edits — the live host dispatcher does that through
+                // direct OxCalc context. Tests for the skeleton
+                // verify only the routing, not the calculation effect.
                 IntentReceipt::accepted()
             }
         }

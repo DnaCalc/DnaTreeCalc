@@ -8,7 +8,7 @@ Read with:
 
 - [`REQUIREMENTS.md`](REQUIREMENTS.md) for user-facing requirements.
 - [`SKINS.md`](SKINS.md) for the skin contract.
-- [`TECHNICAL.md`](TECHNICAL.md) for module layout and bridge shapes.
+- [`TECHNICAL.md`](TECHNICAL.md) for module layout and direct-context shapes.
 - [`prototypes/`](prototypes/) for visual sketches.
 - [`IMPLEMENTATION_MATRIX.md`](IMPLEMENTATION_MATRIX.md) for trace IDs, scenario cards, contracts, and harness expectations derived from this map.
 
@@ -57,7 +57,7 @@ The dispatcher decides whether the request is a cheap host update, a meta-node w
 | Meta visibility toggle | 01-03 | `MetaToggle` | host facade state | host chrome/shared state update | tree view model filters | none | tree projection recomputes |
 | Formula editor panel | 01-05 | `FormulaEditor` | selected node + editor local draft | `EditFormula` on commit; live bind request while editing | live edit service | OxFml parse/bind; OxCalc rebind/recalc on accepted edit | diagnostics, workspace value/calc signals |
 | Formula bar | 06-08 | `FormulaBar` | selected node + editor local draft | `EditFormula` | live edit service | same as FormulaEditor | workspace value/calc signals |
-| Reference hover/resolution | 01, 03-08 | editor token hover | editor local state | read-only bind query | OxFml bridge adapter | OxFml bind; no publication | hover overlay |
+| Reference hover/resolution | 01, 03-08 | editor token hover | editor local state | read-only bind query | OxFml editor integration | OxFml bind; no publication | hover overlay |
 | Value hero/scalar | 01, 04-08 | `ValueDisplay` | none beyond selected node | none | format resolver | reads published OxCalc value | workspace value signal |
 | Array grid | 02, 06, 07 | `ArrayGrid` | grid viewport/scroll/widths | constant-array edit if editable | array view model, format resolver | reads OxCalc array; edits recalc only when node content is constant | value shape/cell signal plus grid state |
 | Shape-change indicator | 02, 06 | `ArrayShapeBadge` | view model cache | none | value diff service | compares prior/current OxCalc value shape | workspace value signal |
@@ -93,7 +93,7 @@ The dispatcher decides whether the request is a cheap host update, a meta-node w
 
 1. User focuses `FormulaEditor` or `FormulaBar` for selected node `N`.
 2. Editor holds a local draft string. No workspace mutation is made for every keystroke unless the live-edit policy accepts it.
-3. Editor asks the OxFml editor bridge for parse/bind diagnostics using `formula_stable_id = N`.
+3. Editor asks OxFml for parse/bind diagnostics using `formula_stable_id = N`.
 4. OxFml returns syntax runs, completions, signature help, reference resolution, and diagnostics.
 5. On commit or debounced accepted live edit, the skin dispatches `WorkspaceIntent::EditFormula { node: N, formula }`.
 6. DnaTreeCalc reducer validates the selected node is regular and calls `OxCalcTreeContext::set_node_formula_text`.
@@ -130,7 +130,7 @@ The dispatcher decides whether the request is a cheap host update, a meta-node w
 4. `ArrayGrid` receives the new shape and visible cell slice.
 5. Grid scroll and column width state remain in the skin state; the grid does not jump just because the array grew.
 6. Changed rows/cells highlight transiently; tree row summaries and status foot update immediately.
-7. For very large arrays, the visible range query is host/bridge-mediated; skins still see a virtualized `ArrayGrid` model, not raw engine plumbing.
+7. For very large arrays, the visible range query is host/OxCalc-mediated; skins still see a virtualized `ArrayGrid` model, not raw engine plumbing.
 
 ### F5. Format property edit
 
@@ -174,7 +174,7 @@ The dispatcher decides whether the request is a cheap host update, a meta-node w
 
 ### F9. OxCalc invalidation to display update
 
-1. OxCalc reports invalidation/evaluation/publish events through the tree bridge.
+1. OxCalc reports invalidation/evaluation/publish events through `OxCalcTreeContext`.
 2. DnaTreeCalc updates calc-state signals first when useful (`dirty`, `evaluating`, `error`, `cycle-blocked`), then publishes values and graph when the candidate result is accepted.
 3. Tree rows update pips and value summaries.
 4. Formula editors keep their local draft unless the accepted edit belongs to the same node and policy says to reconcile.
@@ -193,7 +193,7 @@ The dispatcher decides whether the request is a cheap host update, a meta-node w
 
 ### F11. External streaming value update
 
-1. External connector pushes a value update or invalidation into the DnaTreeCalc bridge adapter.
+1. External connector pushes a value update or invalidation into the DnaTreeCalc host session.
 2. Host sends `UpdateExternalValue` or `InvalidateExternal`.
 3. OxCalc invalidates dependents and computes the affected publication candidate.
 4. DnaTreeCalc publishes updated values/calc states into workspace signals.
@@ -288,7 +288,7 @@ The dispatcher decides whether the request is a cheap host update, a meta-node w
 | `ui/components/workspace_shell.rs` | all | mount slots, context strip, status foot, resize observation, skin switcher |
 | `state/skin_registry.rs` | all | registered skins, mounted slots, state hydration, lifecycle |
 | `app/intents.rs` | all editing skins | closed `WorkspaceIntent` enum and receipts |
-| `app/reducer.rs` | all | route intents to host state, meta writes, services, or bridge |
+| `app/reducer.rs` | all | route intents to host state, meta writes, services, or direct OxCalc context calls |
 | `services/live_edit.rs` | 01, 04, 06-08 | editor draft policy, OxFml diagnostics, debounced recalc commits |
 | `adapters/oxfml/` | 01, 03-08 | formula parse/bind/completion/signature/hover support |
 | `adapters/oxcalc/` | calc-affecting features | tree recalc, transactions, invalidation subscription |
@@ -322,6 +322,6 @@ Before W003/W005/W006 implementation, a review pass should be able to answer yes
 | Does every skin persist only its own view state under `skins.<skin_id>`? | section 5, `SKINS.md` section 4 |
 | Are OneCalc visual cues optional rather than normative? | `prototypes/index.html`, design-reference notes |
 
-The prototype HTML remains static and illustrative. This traceability document is the bridge that turns those pictures into implementable UX contracts.
+The prototype HTML remains static and illustrative. This traceability document connects those pictures to implementable UX contracts.
 
 For implementation planning, use [`IMPLEMENTATION_MATRIX.md`](IMPLEMENTATION_MATRIX.md). It assigns stable trace IDs to this document's flows and turns them into workset-oriented slices, scenario checks, contract cards, and harness expectations.

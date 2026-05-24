@@ -31,13 +31,13 @@
           "function_registry_snapshot_mutation",
           "structural_rebind"
         ],
-        "bridge": "OxCalcTreeContext",
         "class_id": "treecalc_table_lifecycle_callbacks_ready",
+        "engine_context": "OxCalcTreeContext",
         "engine_surface": "OxCalc W056 table lifecycle callback public API",
         "lane_reason_code": "dnatreecalc_w056_table_lifecycle_retained",
         "outcome_kind": "accepted_execution",
         "outcome_schema": "dna_treecalc.execution_outcome.v1",
-        "outcome_stage": "live_oxcalc_table_lifecycle_callbacks",
+        "outcome_stage": "oxcalc_table_lifecycle_callbacks",
         "persistence_roundtrip": {
           "after_table_id": "tree-table:sales",
           "before_table_id": "tree-table:sales",
@@ -6694,7 +6694,6 @@
   "scenario_id": "w056_treecalc_table_lifecycle_001",
   "source_metadata": {
     "adapter_id": "dnatreecalc.oxcalc_table_lifecycle_callback.v1",
-    "bridge_influenced": true,
     "capture_loss": "none",
     "capture_loss_summary": [],
     "capture_mode": "model_projection",
@@ -6704,6 +6703,7 @@
       "invalidation_evidence",
       "retained_artifact_ref"
     ],
+    "direct_context": true,
     "interpretation_limits": [
       {
         "detail": "This artifact is DnaTreeCalc/OxCalc retained producer evidence; Excel black-box observation is supplied by OxXlPlay.",

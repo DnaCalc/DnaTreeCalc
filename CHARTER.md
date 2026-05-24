@@ -58,7 +58,7 @@ DNA TreeCalc consumes the **infrastructure (Ox\*) lanes** and parallels its **si
 - **OxVba** + a future shared UDF-hosting core — VBA UDFs and `.xll` native add-ins (developed first in OneCalc, then shared).
 
 **Parallels (hosts):**
-- **DnaOneCalc** — the single-formula host. TreeCalc reuses its formula-editor surface, engine-bridge pattern, drill panel, and verification harness conventions.
+- **DnaOneCalc** — the single-formula host. TreeCalc reuses its formula-editor surface, direct engine integration conventions, drill panel, and verification harness conventions.
 - **DnaVisiCalc** — the Round-0 grid pathfinder.
 
 **Inherits (doctrine):**

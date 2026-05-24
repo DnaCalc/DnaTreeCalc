@@ -4,9 +4,9 @@ use crate::identity::NodeId;
 
 /// Read-side projection of the workspace, as seen by a mounted skin.
 ///
-/// The host owns the canonical model and the bridge; this struct is what
+/// The host owns the UI projection while OxCalc owns the canonical model; this struct is what
 /// the host publishes through the [`SkinContext::workspace`](crate::SkinContext::workspace)
-/// signal so skins can render without knowing the OxCalc bridge or the
+/// signal so skins can render without knowing the OxCalc context or the
 /// persistence format. Mirrors the spec shape in `docs/ux/SKINS.md` §2.7,
 /// narrowed for the walking skeleton — meta-namespaces, templates, formats,
 /// and cross-workspace aliases land as later worksets extend the projection.
@@ -63,7 +63,7 @@ pub enum NodeContentKind {
 /// `UX-VA-002`/`UX-VA-003` in W003+W006.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum NodeValueProjection {
-    /// The node has never been evaluated by the bridge.
+    /// The node has never been evaluated by OxCalc.
     #[default]
     Unevaluated,
     /// Evaluation is in flight; previous value (if any) is the responsibility
@@ -72,6 +72,6 @@ pub enum NodeValueProjection {
     /// A formatted scalar ready for display. Formatting comes from the host's
     /// format resolver (W007); the walking skeleton uses raw debug text.
     Scalar(String),
-    /// The bridge reported a typed diagnostic for this node.
+    /// OxCalc reported a typed diagnostic for this node.
     Error(String),
 }
