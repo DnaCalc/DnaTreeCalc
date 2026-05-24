@@ -20,7 +20,7 @@
         "published_value": "5",
         "engine_ref": "TreeCalcReferenceCollection::ChildrenV1 over caller"
       },
-      "note": "The runner executes the node's original formula text through LiveOxCalcTreeBridge; it does not parse this reference locally."
+      "note": "The runner executes the node's original formula text through OxCalcTreeContext; it does not parse this reference locally."
     },
     {
       "id": "active-raw-children-sugar-sum",
@@ -37,7 +37,7 @@
         "published_value": "12",
         "engine_ref": "TreeCalcReferenceCollection::ChildrenV1 over caller"
       },
-      "note": "The runner executes the node's original formula text through LiveOxCalcTreeBridge; it does not parse this reference locally."
+      "note": "The runner executes the node's original formula text through OxCalcTreeContext; it does not parse this reference locally."
     },
     {
       "id": "active-raw-qualified-children-accessor-sum",

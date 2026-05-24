@@ -32,7 +32,7 @@ Skins never call OxCalc directly. A skin either:
 3. updates shared facade state; or
 4. dispatches a typed `WorkspaceIntent`.
 
-The dispatcher decides whether the request is a cheap host update, a meta-node write, a template orchestration, or an OxCalc bridge call.
+The dispatcher decides whether the request is a cheap host update, a meta-node write, a template orchestration, or an OxCalc context call.
 
 ## 2. Prototype-to-Skin Map
 
@@ -96,10 +96,10 @@ The dispatcher decides whether the request is a cheap host update, a meta-node w
 3. Editor asks the OxFml editor bridge for parse/bind diagnostics using `formula_stable_id = N`.
 4. OxFml returns syntax runs, completions, signature help, reference resolution, and diagnostics.
 5. On commit or debounced accepted live edit, the skin dispatches `WorkspaceIntent::EditFormula { node: N, formula }`.
-6. DnaTreeCalc reducer validates the selected node is regular, updates the formula catalog candidate, and builds a `TreeRecalcRequest`.
-7. `LiveOxCalcTreeBridge.execute_recalc(request)` calls the OxCalc tree runtime facade.
+6. DnaTreeCalc reducer validates the selected node is regular and calls `OxCalcTreeContext::set_node_formula_text`.
+7. The host/session calls `OxCalcTreeContext::recalculate`.
 8. OxCalc rebinding/evaluation computes dependency graph changes, invalidation closure, node states, diagnostics, and published values.
-9. DnaTreeCalc publishes the result into `WorkspaceState.last_published_result`, node value projections, and calc-state signals.
+9. DnaTreeCalc publishes the returned views/outcome into UI projections and calc-state signals.
 10. Mounted skins rerender any subscribed primitive: value displays, status pips, dependency counts, wires, drill availability, array grids, and status foot.
 11. Autosave observes dirty state and persists the updated formula text plus any changed host state.
 
@@ -149,7 +149,7 @@ The dispatcher decides whether the request is a cheap host update, a meta-node w
 3. Existing instances do not change until validate/sync is requested.
 4. On sync, the template service uses template id/version/source-node mapping plus hidden rollout tags to diff the instance subtree against the current template.
 5. Accepted changes become regular structural/content edits against instance nodes.
-6. Those regular edits go through the dispatcher and OxCalc bridge like any other structural edit.
+6. Those regular edits go through the dispatcher and OxCalc context like any other structural edit.
 7. The instance list and tree/outline/canvas badges update from the new template index and workspace signals.
 
 ### F7. Canvas drag, grouping, and auto-layout
@@ -205,9 +205,9 @@ The dispatcher decides whether the request is a cheap host update, a meta-node w
 |---|---|---|---|---|---|
 | Node name | regular tree node | `TreeNodeId` | `.dnatree` tree | structural edit service | rebind/recalc as needed |
 | Node formula/content text | regular tree node | `TreeNodeId` | `.dnatree` tree | formula editor via dispatcher | bind/recalc |
-| Node computed value | OxCalc published result | `TreeNodeId` | cache/session or saved value if chosen | OxCalc bridge only | source result |
-| Node calc state | OxCalc published result | `TreeNodeId` | session/result cache | OxCalc bridge only | source result |
-| Dependency graph | OxCalc published result | node ids/edges | session/result cache | OxCalc bridge only | source result |
+| Node computed value | OxCalc published result | `TreeNodeId` | cache/session or saved value if chosen | OxCalc context only | source result |
+| Node calc state | OxCalc published result | `TreeNodeId` | session/result cache | OxCalc context only | source result |
+| Dependency graph | OxCalc published result | node ids/edges | session/result cache | OxCalc context only | source result |
 | Selection | DnaTreeCalc host | node ids | session and/or `skins.shared` | skins via selection intents | none |
 | Collapse state | shared skin state | node ids | `skins.shared` meta | skins via shared state handle | none |
 | Pins/recent selections | shared skin state | node ids | `skins.shared` meta | skins via shared state handle | none |

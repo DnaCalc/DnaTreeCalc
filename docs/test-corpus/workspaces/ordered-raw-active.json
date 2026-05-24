@@ -1,7 +1,7 @@
 {
   "schema_version": "treecalc-workspace-v1",
   "workspace_id": "ordered-raw-active",
-  "description": "Focused active fixture for raw ordered TreeCalc collection selectors through the live OxCalc bridge. Each formula uses original TreeCalc syntax; DnaTreeCalc consumes OxCalc query/resolution packets and does not construct reference carriers locally.",
+  "description": "Focused active fixture for raw ordered TreeCalc collection selectors through the live OxCalc context. Each formula uses original TreeCalc syntax; DnaTreeCalc consumes OxCalc query/resolution packets and does not construct reference carriers locally.",
   "profile": "treecalc-v1",
   "nodes": [
     { "node_id": "Root", "formula": "" },

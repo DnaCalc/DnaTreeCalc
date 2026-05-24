@@ -2,9 +2,9 @@
 
 Status: Open
 Target: OxCalc
-Ask: Commit the **host-driven engine-handle + incremental-edit interaction shape** as the consumer-contract direction (not a deferred "session" widening lane), confirm the **sans-executor / host-as-executor** stance, and confirm the forward-compat properties (steppable, cancellable, executor-model-agnostic) so the future async / parallel / GPU engine is not foreclosed by the V1 surface.
-Context: The consumer contract packages V1 as one-shot `Document`+`Request` execution and parks "session, incremental, or driven-host packaging" as a later widening lane (§6.5, §9). For DNA TreeCalc the host↔engine *interaction shape* is a central API-design decision, not a versioned rollout — it underpins incremental editing, undo, RTD, and the long-term parallel/async engine. OxCalc already states it owns custody of the tree-model structure and that the host loads/creates/updates it through the contract (consumer §3; W051 §2.1, §3) — which is exactly a handle / open-then-update model. We want that made explicit and its V1 surface shaped as the thin first slice of the handle model rather than a path that gets replaced.
-Evidence: OxCalc `CORE_ENGINE_OXCALCTREE_CONSUMER_INTERFACE_AND_HOST_CONTRACT_V1.md` §3 (boundaries), §4–§6 (facade), §6.1 (no ambient mutable state / no smuggled scheduler), §6.5 (one-shot; later widening), §9 (V1 scope); OxCalc `W051_SPARSE_RANGE_READERS_AND_DEFINED_ENTRY_SEMANTICS.md` §2.1/§3 (tree-model custody). DNA TreeCalc `CORE_MODEL_SPEC.md` §1 (model & formula authority rule), §7 (recalc/calc-state), §8a (undo), §6; `HANDOVER_OXCALC_undo_versioning.md` (pinned-version substrate); `REQUIREMENTS.md` §1.3 + `SKINS.md` Trace E (host-side RTD).
+Ask: Commit the **host-driven engine-context + incremental-edit interaction shape** as the consumer-contract direction, confirm the **sans-executor / host-as-executor** stance, and confirm the forward-compat properties (steppable, cancellable, executor-model-agnostic) so the future async / parallel / GPU engine is not foreclosed by the V1 surface.
+Context: For DNA TreeCalc the host↔engine *interaction shape* is a central API-design decision — it underpins incremental editing, undo, RTD, and the long-term parallel/async engine. OxCalc owns custody of the tree-model structure and the host loads/creates/updates it through `OxCalcTreeContext`. DnaTreeCalc must not keep an intermediate semantic adapter surface.
+Evidence: OxCalc `CORE_ENGINE_OXCALCTREE_CONSUMER_INTERFACE_AND_HOST_CONTRACT_V1.md` boundary and context sections; OxCalc `W051_SPARSE_RANGE_READERS_AND_DEFINED_ENTRY_SEMANTICS.md` §2.1/§3 (tree-model custody). DNA TreeCalc `CORE_MODEL_SPEC.md` §1 (model & formula authority rule), §7 (recalc/calc-state), §8a (undo), §6; `HANDOVER_OXCALC_undo_versioning.md` (pinned-version substrate); `REQUIREMENTS.md` §1.3 + `SKINS.md` Trace E (host-side RTD).
 
 ## 1. The interaction model
 
@@ -17,14 +17,16 @@ OxCalc is a **passive, synchronous, sans-executor library**, not a service:
 
 ## 2. Lifecycle / call surface (the ask)
 
-A handle + incremental-edit surface, all synchronous:
+A context + incremental-edit surface, all synchronous:
 
-- `open(document) -> handle` — pins initial structural truth (the existing `OxCalcTreeDocument` is the natural seed).
+- create/import workspace calls on `OxCalcTreeContext` pin initial structural truth and OxCalc-owned stable ids.
 - typed edit calls against the handle — `update_node` / `set_formula` / structural edits / `set_external_value` — each producing a **new pinned version** (candidate → publication / epoch).
 - `recalc` / step against the handle (see §4).
 - `close(handle)`.
 
-We are **not** asking for the full surface at once. We are asking that V1's one-shot facade be explicitly the **first slice of this handle model** (open + one edit-batch + recalc), so the host does not build against a shape that is later replaced.
+The historical one-run proof is migration evidence only. Product code must build
+against `OxCalcTreeContext` directly so DnaTreeCalc does not retain an adapter
+shape that later has to be deleted.
 
 ## 3. Completion mechanism for async work (anticipate; build later)
 
@@ -57,13 +59,13 @@ Per consumer §3 and W051 §3, **OxCalc owns custody of the canonical calc tree-
 
 ## 6. Implications for the current V1 framing
 
-- Reframe one-shot `Document`+`Request` execution as the **first slice of the handle model**, not a separate path.
+- Treat `OxCalcTreeContext` as the only product calculation boundary.
 - The **"driven-host packaging" widening lane is mis-scoped**: driving is the host's job. OxCalc needs synchronous edit / update / resume entry points and steppable recalc — not a push / scheduler / callback mechanism.
-- Confirm **no engine→host callbacks** anywhere in the contract (this also retires any `subscribe_invalidation`-style idea on the DNA TreeCalc bridge).
+- Confirm **no engine→host callbacks** anywhere in the contract.
 
 ## 7. What we're asking for
 
-1. Confirm the **engine-handle + incremental-edit interaction shape** as the contract direction, with V1's one-shot facade as its first slice.
+1. Confirm the **engine-context + incremental-edit interaction shape** as the contract direction, with direct context calls as the product surface.
 2. Confirm the **sans-executor / host-as-executor / no-callbacks / no-ambient-runtime** stance against the coordinator/publication model.
 3. Confirm the **pinned-version semantics** underpin both incremental edit and undo (tie to `HANDOVER_OXCALC_undo_versioning.md`) and make cancellation safe.
 4. Confirm the **forward-compat properties** — steppable, cancellable, executor-supplied/scoped, executor-model-agnostic (sync or `async fn` surface) — so the parallel / GPU / async future is not foreclosed by V1.
@@ -72,4 +74,4 @@ Per consumer §3 and W051 §3, **OxCalc owns custody of the canonical calc tree-
 
 ## Expected disposition
 
-Part **confirm** (OxCalc's ownership statements and §6.1 constraints already imply the passive handle model; cancellation/versioning align with the undo handover), part **coordinate / re-sequence** (lifting the handle + incremental-edit surface from "later widening" to the agreed contract direction, and shaping the V1 facade as its first slice), part **design** (the `Pending` / completion-token shape and the steppable / cancellable recalc entry). No request to build the parallel / async engine now — only to not foreclose it.
+Part **confirm** (OxCalc's ownership statements and constraints already imply the passive context model; cancellation/versioning align with the undo handover), part **coordinate / re-sequence** (keeping the context + incremental-edit surface as the agreed contract direction), part **design** (the `Pending` / completion-token shape and the steppable / cancellable recalc entry). No request to build the parallel / async engine now — only to not foreclose it.

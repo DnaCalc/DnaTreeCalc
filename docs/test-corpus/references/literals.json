@@ -3,7 +3,7 @@
   "theme": "references/literals",
   "workset": "W004",
   "status": "pending",
-  "description": "Reference-array literals and mixed-array rejection (CORE_MODEL_SPEC §4, §6). A literal made only of references is a reference collection carried through the bridge; scalar array literals remain ordinary arrays; mixed scalar/reference arrays are rejected under treecalc-v1 rather than coerced by the host.",
+  "description": "Reference-array literals and mixed-array rejection (CORE_MODEL_SPEC §4, §6). A literal made only of references is a reference collection carried through OxCalc context; scalar array literals remain ordinary arrays; mixed scalar/reference arrays are rejected under treecalc-v1 rather than coerced by the host.",
   "cases": [
     {
       "id": "lit-ref-array-two-members",

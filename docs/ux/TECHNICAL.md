@@ -70,7 +70,7 @@ DnaTreeCalc/
 │   │       ├── adapters/
 │   │       │   ├── oxfml/              # reused as-is from OneCalc (formula editor bridge)
 │   │       │   └── oxcalc/             # NEW: tree-substrate bridge
-│   │       │       ├── bridge.rs       # OxCalcTreeBridge trait + request/response
+│   │       │       ├── bridge.rs       # OxCalcTreeContext trait + request/response
 │   │       │       ├── live_bridge.rs  # caching, recalc orchestration
 │   │       │       ├── types.rs        # re-exports + UI projections
 │   │       │       └── mod.rs
@@ -191,7 +191,7 @@ pub struct WorkspaceState {
     pub template_index: TemplateIndex,                 // derived host index over template meta-subtrees and rollout tags
     pub external_aliases: ExternalWorkspaceAliases,
     pub capability_profile_id: String,
-    pub last_published_result: Option<OxCalcTreeRecalcResult>,
+    pub last_published_result: Option<OxCalcTreeCalculationOutcome>,
 }
 
 pub struct TreeNodeState {
@@ -265,84 +265,61 @@ Follow OneCalc's pattern:
 - Sub-views subscribe via `state.with()` for read access.
 - Mutations go through reducer functions in `app/reducer.rs` that take the state and an intent, return new state.
 - View-model projections via `Memo` for derived views (rendered tree rows, filtered search results, etc.).
-- `Effect` for side effects (autosave, bridge calls, etc.).
+- `Effect` for side effects (autosave, context calls, etc.).
 
-The bridge pattern from OneCalc generalizes:
+The OneCalc formula-editor pattern remains, but TreeCalc calculation does not use
+a host-side semantic adapter:
 
 - `OxFmlEditorBridge` for per-node formula editing — unchanged from OneCalc.
-- `OxCalcTreeBridge` for tree-level operations — new. Wraps `OxCalcTreeRuntimeFacade` calls.
+- `OxCalcTreeContext` for tree-level operations — the canonical engine context
+  exported by OxCalc and owned as state by the DnaTreeCalc host/session.
 
 ---
 
-## 4. OxCalc bridge pattern
+## 4. OxCalc context pattern
 
-The bridge is a **thin projection of engine types for rendering and intent routing — not a re-interpretation layer.** TreeCalc consumes `EvalValue`, diagnostics, the dependency graph, and calc-state from OxCalc/OxFml directly (CORE_MODEL §5.1); the request/result shapes below carry engine data into the UI and host intents back, and must not grow host-side reimplementations of engine semantics. This mirrors DnaOneCalc's direct-use bridge pattern — any shape here that drifts toward re-interpreting engine behavior is a simplification target.
+`OxCalcTreeContext` is the product calculation boundary. DnaTreeCalc owns a
+session object that holds the context and maps UI intents to public OxCalc
+calls. It does not define a parallel request/result DTO, does not create
+formula catalogs, does not prepare reference carriers, and does not resolve
+TreeCalc paths or table selectors locally.
 
-**The interaction shape is host-driven and sans-executor** (see [`../handovers/HANDOVER_OXCALC_engine_handle_and_incremental_edit.md`](../handovers/HANDOVER_OXCALC_engine_handle_and_incremental_edit.md)). OxCalc owns custody of the canonical tree model (CORE_MODEL §1); the host holds an **engine handle** whose internals OxCalc owns and is the only thing to mutate. Every advance — open, edit, recalc (F9), external-value update (RTD), async resume — is a **synchronous call in**; results, invalidation, and any pending-completion tokens come back as **return-value data, never engine→host callbacks**. OxCalc owns no thread and nothing ticks between calls; concurrency, the RTD connection, and any async runtime are the host's. The OxCalc consumer facade (`OxCalcTreeEnvironment` / `Document` / `Request` / `Result` / `RuntimeFacade`) currently implements one-shot execution as the **first slice** of this handle model; the bridge below is a thin adapter over that facade, not a parallel seam.
+**The interaction shape is host-driven and sans-executor** (see
+[`../handovers/HANDOVER_OXCALC_engine_handle_and_incremental_edit.md`](../handovers/HANDOVER_OXCALC_engine_handle_and_incremental_edit.md)).
+OxCalc owns custody of the canonical tree model (CORE_MODEL §1); DnaTreeCalc
+holds the context and advances it by synchronous calls. Every advance — open,
+edit, recalc (F9), external-value update (RTD), async resume — is a call in;
+results, invalidation, diagnostics, and any pending-completion tokens come back
+as return-value data, never engine-to-host callbacks.
 
-### 4.1 Tree bridge interface
+### 4.1 Direct context operations
 
-```rust
-// Thin host adapter over OxCalc's consumer facade (`OxCalcTreeRuntimeFacade`).
-// Host-driven and sans-executor: every call is synchronous, results return as data,
-// and there are NO engine→host callbacks. The handle's internals are OxCalc-owned;
-// the host owns only the handle's lifetime.
-pub trait OxCalcTreeBridge {
-    /// Open a handle over an initial document (pins initial structural truth:
-    /// structural snapshot + formula catalog + seeded published values).
-    fn open(&self, document: OxCalcTreeDocument) -> EngineHandle;
-
-    /// Apply a model edit (add/move/delete/rename, formula/content change) against the
-    /// handle and recompute. Each model edit yields a new pinned version
-    /// (candidate → publication; CORE_MODEL §8a). Synchronous; returns the result.
-    fn apply_and_recalc(&self, handle: &mut EngineHandle, edit: EngineEdit) -> TreeRecalcResult;
-
-    /// Recalc / step without a structural edit — F9, external-value processing, async resume.
-    /// Returns result data (plus pending-completion tokens once async lands). No callback.
-    fn recalc(&self, handle: &mut EngineHandle, request: TreeRecalcRequest) -> TreeRecalcResult;
-
-    /// Release the handle.
-    fn close(&self, handle: EngineHandle);
-}
-```
-
-V1's one-shot facade effectively re-opens per run; the **retained handle is the agreed contract direction** (handover). A transactional batch (group N edits → one publication; CORE_MODEL §6 item 8) is a batching feature *on* the handle, not a separate session model, and lands when OxCalc exposes it. There is **no `subscribe_invalidation`** — invalidation comes back inside `TreeRecalcResult`, and the host updates its signals from the returned closure.
-
-### 4.2 Request and result shapes
+DnaTreeCalc product code uses the OxCalc API directly:
 
 ```rust
-pub struct TreeRecalcRequest {
-    pub structural_snapshot: StructuralSnapshot,      // current tree state
-    pub formula_catalog: TreeFormulaCatalog,          // formulas per node
-    pub published_values: HashMap<TreeNodeId, EvalValue>, // seed values for previously-clean nodes
-    pub host_capability_snapshot: OxCalcTreeHostCapabilitySnapshot,
-    pub runtime_policy: OxCalcTreeRuntimePolicy,
-    pub candidate_result_id: String,
-    pub publication_id: String,
-}
-
-pub struct TreeRecalcResult {
-    pub run_state: TreeRunState,                      // Published / VerifiedClean / Rejected
-    pub dependency_graph: TreeDependencyGraph,
-    pub invalidation_closure: InvalidationClosure,
-    pub evaluation_order: Vec<TreeNodeId>,
-    pub runtime_effects: Vec<RuntimeEffect>,
-    pub published_values: HashMap<TreeNodeId, PublishedValue>,
-    pub node_states: HashMap<TreeNodeId, NodeCalcState>,
-    pub diagnostics: Vec<TreeDiagnostic>,
-}
+let mut context = OxCalcTreeContext::default();
+let workspace = context.create_workspace(OxCalcTreeWorkspaceCreate::new("main"))?;
+let a = context.add_node(&workspace, OxCalcTreeNodeCreate::new("A", "=3"))?;
+let b = context.add_node(&workspace, OxCalcTreeNodeCreate::new("B", "=A+1"))?;
+let outcome = context.recalculate(&workspace)?;
+let b_view = context.node_view(&workspace, b)?;
 ```
 
-These shapes are host-side projections of OxCalc's facade objects (`OxCalcTreeRecalcRequest` / `OxCalcTreeRecalcResult`) — they carry engine data, not host reinterpretation (§4 intro). When async-function support lands, `run_state` gains a `Pending` / `AwaitingCompletion` variant carrying completion tokens; the host performs the async work and resumes via a synchronous `recalc` call (host-driven, per the engine-handle handover §3). F9, RTD updates, and async completions are the same call shape.
+The same context owns node-associated table lifecycle through `set_node_table`,
+`clear_node_table`, table views, table context packets, structured-reference
+lowering, and dynamic table rebind classification. DnaTreeCalc may expose UI
+commands for those actions, but the semantic state and facts stay in OxCalc.
 
-### 4.3 Live bridge implementation
+### 4.2 Workspace/session projection
 
-```rust
-pub struct LiveOxCalcTreeBridge {
-    runtime: OxCalcTreeRuntimeFacade,
-    handle: EngineHandle,        // engine-owned internals; the host holds the handle (no callbacks)
-}
-```
+DnaTreeCalc `WorkspaceState` is a UI/session projection:
+
+1. selected node, focused editor text, skin state, visible rows, transient
+   command state, and save/reopen workflow state are DnaTreeCalc-owned,
+2. canonical workspace/node/table/formula/value/dependency/calc-state truth is
+   OxCalc-owned,
+3. product rendering reads OxCalc `workspace_view`, `node_view`, table views,
+   and recalculation outcomes.
 
 State and caching:
 - The engine handle retains published values, the dependency graph, and pinned versions across edits (CORE_MODEL §1, §8a); the host does not re-seed them per call once the retained handle lands.
@@ -355,8 +332,8 @@ The OneCalc bridge edits a single formula at a time. For TreeCalc:
 
 1. User edits a node's formula in the formula editor.
 2. OneCalc-style `LiveOxfmlBridge` produces a bind result with diagnostics.
-3. Bind result is fed to `LiveOxCalcTreeBridge`: "this formula now binds to these dependencies; please rebind / re-evaluate."
-4. OxCalc-tree updates its catalog, computes the new dependency closure, recomputes affected nodes.
+3. Edited formula text is written to `OxCalcTreeContext` through `set_node_formula_text`.
+4. OxCalc-tree owns binding, dependency closure, and affected-node recomputation.
 5. UI receives the updated value and renders.
 
 This composition keeps the formula-editor surface unchanged but layers tree-level recalc on top.
@@ -556,11 +533,11 @@ Auto-backup to a sibling `.dnatree.bak` file on each save. Configurable retentio
 
 - Array values rendered with virtualized grid.
 - Cell formatting computed lazily per visible cell.
-- For arrays exceeding ~1M cells, the bridge supports range queries (host requests slice [i..j]).
+- For arrays exceeding ~1M cells, OxCalc context/reference-reader APIs support range queries (host requests slice [i..j]).
 
 ### 7.3 Frequent recalcs
 
-- Bridge debouncing (per OneCalc pattern): formula edits trigger bridge requests at ~150ms intervals during typing.
+- Context-call debouncing (per OneCalc pattern): formula edits trigger accepted recalc requests at ~150ms intervals during typing.
 - Cache hits avoid re-evaluation when the formula and inputs haven't changed.
 - OxCalc's incremental evaluation (publish-only-changed values) limits work per recalc.
 
@@ -572,7 +549,7 @@ Auto-backup to a sibling `.dnatree.bak` file on each save. Configurable retentio
 
 ### 7.5 UI responsiveness
 
-- All bridge calls async / non-blocking.
+- All context calls are invoked from non-blocking UI tasks.
 - Recalcs trigger UI updates via `Effect`, not synchronous within reducers.
 - Long operations (template sync, Excel import) show progress and remain cancellable.
 
@@ -673,7 +650,7 @@ A natural build order based on dependencies:
 
 1. **Phase 0 — Foundation + skin scaffold.** Factor reusable OneCalc components into a shared crate, define `RegisteredSkin` / `WorkspaceSkin` / `SkinContext`, and mount the first shell through the skin registry from the start. Establish **both build targets** here — the browser WASM shell and the native **Tauri** desktop shell — so the native-code-hosting path (§1, §1.1) is viable from the start rather than retrofitted.
 2. **Phase 1 — Tree shell in TripleEditor.** Workspace state, tree outline (nav rail), basic node creation/deletion/rename. TripleEditor uses reused formula-editor primitives and persists its panel state through `skins.triple-editor` meta-nodes. Single-node evaluation via bridge. Persistence via localStorage and explicit file save.
-3. **Phase 2 — Multi-node calc.** OxCalc bridge integration. Recalc and dependency graph in place. Status display per node. Reference resolution with walk-up.
+3. **Phase 2 — Multi-node calc.** OxCalc context integration. Recalc and dependency graph in place. Status display per node. Reference resolution with walk-up.
 4. **Phase 3 — Editing breadth.** Multi-select, move, drag-and-drop. Rename-propagation prompt. Search.
 5. **Phase 4 — Additional skins and adaptive renderers.** OutlineTable, CellView, and active-skin renderer choices for scalars/arrays/tables/templates.
 6. **Phase 5 — Meta-nodes and formatting.** is_meta flag plumbing. Format editor. Format inheritance walking.

@@ -72,7 +72,7 @@
           }
         ],
         "class_id": "treecalc_dynamic_cross_workspace_table_packets_ready",
-        "engine_surface": "LiveOxCalcTreeBridge dynamic table rebind route backed by the OxCalc W056 public packet API",
+        "engine_surface": "OxCalcTreeContext dynamic table rebind route backed by the OxCalc W056 public packet API",
         "lane_reason_code": "dnatreecalc_w056_dynamic_table_retained",
         "outcome_kind": "accepted_execution",
         "outcome_schema": "dna_treecalc.execution_outcome.v1",
@@ -86,7 +86,7 @@
       "value": {
         "case_reports": [
           {
-            "bridge_route": "LiveOxCalcTreeBridge::classify_dynamic_table_rebind",
+            "bridge_route": "OxCalcTreeContext::classify_dynamic_table_rebind",
             "case_id": "tbl-dyn-table-selector",
             "case_name": "Dynamic table selector rebinds a table reference",
             "cause": "selector_text_changed",
@@ -137,7 +137,7 @@
             "treecalc_v1": "admit"
           },
           {
-            "bridge_route": "LiveOxCalcTreeBridge::classify_dynamic_table_rebind",
+            "bridge_route": "OxCalcTreeContext::classify_dynamic_table_rebind",
             "case_id": "tbl-dyn-column-selector",
             "case_name": "Dynamic column selector rebinds a table column reference",
             "cause": "selector_text_changed",
@@ -188,7 +188,7 @@
             "treecalc_v1": "admit"
           },
           {
-            "bridge_route": "LiveOxCalcTreeBridge::classify_dynamic_table_rebind",
+            "bridge_route": "OxCalcTreeContext::classify_dynamic_table_rebind",
             "case_id": "tbl-dyn-section-selector",
             "case_name": "Dynamic section selector rebinds headers/data/totals sections",
             "cause": "dynamic_function_result_changed",
@@ -237,7 +237,7 @@
             "treecalc_v1": "admit"
           },
           {
-            "bridge_route": "LiveOxCalcTreeBridge::classify_dynamic_table_rebind",
+            "bridge_route": "OxCalcTreeContext::classify_dynamic_table_rebind",
             "case_id": "tbl-dyn-current-row-selector",
             "case_name": "Dynamic current-row selector carries caller context",
             "cause": "dynamic_function_result_changed",
@@ -287,7 +287,7 @@
             "treecalc_v1": "admit"
           },
           {
-            "bridge_route": "LiveOxCalcTreeBridge::classify_dynamic_table_rebind",
+            "bridge_route": "OxCalcTreeContext::classify_dynamic_table_rebind",
             "case_id": "tbl-dyn-indirect-runtime-typed-exclusion",
             "case_name": "INDIRECT-style runtime structured-reference parsing is a typed exclusion",
             "cause": "unsupported_runtime_structured_reference_parsing",
@@ -338,7 +338,7 @@
             "treecalc_v1": "typed_exclusion"
           },
           {
-            "bridge_route": "LiveOxCalcTreeBridge::classify_dynamic_table_rebind",
+            "bridge_route": "OxCalcTreeContext::classify_dynamic_table_rebind",
             "case_id": "tbl-dyn-target-not-table",
             "case_name": "Dynamic selector resolving to a non-table target is a typed exclusion",
             "cause": "dynamic_target_not_table",
@@ -390,7 +390,7 @@
             "treecalc_v1": "typed_exclusion"
           },
           {
-            "bridge_route": "LiveOxCalcTreeBridge::classify_dynamic_table_rebind",
+            "bridge_route": "OxCalcTreeContext::classify_dynamic_table_rebind",
             "case_id": "tbl-dyn-deleted-table-target",
             "case_name": "Deleted table target reports deleted-target dynamic status",
             "cause": "table_delete",
@@ -448,7 +448,7 @@
             "treecalc_v1": "typed_exclusion"
           },
           {
-            "bridge_route": "LiveOxCalcTreeBridge::classify_dynamic_table_rebind",
+            "bridge_route": "OxCalcTreeContext::classify_dynamic_table_rebind",
             "case_id": "tbl-dyn-cross-workspace-table",
             "case_name": "Cross-workspace dynamic table target carries workspace availability",
             "cause": "selector_text_changed",
@@ -503,7 +503,7 @@
             "treecalc_v1": "admit"
           },
           {
-            "bridge_route": "LiveOxCalcTreeBridge::classify_dynamic_table_rebind",
+            "bridge_route": "OxCalcTreeContext::classify_dynamic_table_rebind",
             "case_id": "tbl-dyn-cross-workspace-unavailable",
             "case_name": "Closed workspace target reports unavailable dynamic status",
             "cause": "workspace_close",
@@ -564,7 +564,7 @@
             "treecalc_v1": "typed_exclusion"
           },
           {
-            "bridge_route": "LiveOxCalcTreeBridge::classify_dynamic_table_rebind",
+            "bridge_route": "OxCalcTreeContext::classify_dynamic_table_rebind",
             "case_id": "tbl-dyn-workspace-alias-mutation",
             "case_name": "Workspace alias mutation reclassifies cross-workspace table target",
             "cause": "workspace_alias_mutation",
@@ -621,7 +621,7 @@
             "treecalc_v1": "admit"
           },
           {
-            "bridge_route": "LiveOxCalcTreeBridge::classify_dynamic_table_rebind",
+            "bridge_route": "OxCalcTreeContext::classify_dynamic_table_rebind",
             "case_id": "tbl-dyn-strict-excel-rejection",
             "case_name": "TreeCalc dynamic table selector is admitted only by the treecalc-v1 profile",
             "cause": "selector_text_changed",
@@ -672,7 +672,7 @@
             "treecalc_v1": "admit"
           }
         ],
-        "classification_api": "LiveOxCalcTreeBridge::classify_dynamic_table_rebind",
+        "classification_api": "OxCalcTreeContext::classify_dynamic_table_rebind",
         "source_status": "live_bridge_route"
       },
       "view_family": "dependency_evidence"
@@ -968,7 +968,7 @@
             "status": "rebind_required"
           }
         ],
-        "classification_api": "LiveOxCalcTreeBridge::classify_dynamic_table_rebind",
+        "classification_api": "OxCalcTreeContext::classify_dynamic_table_rebind",
         "source_status": "live_bridge_route"
       },
       "view_family": "invalidation_evidence"

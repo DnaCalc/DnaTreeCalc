@@ -31,7 +31,7 @@
           "function_registry_snapshot_mutation",
           "structural_rebind"
         ],
-        "bridge": "LiveOxCalcTreeBridge",
+        "bridge": "OxCalcTreeContext",
         "class_id": "treecalc_table_lifecycle_callbacks_ready",
         "engine_surface": "OxCalc W056 table lifecycle callback public API",
         "lane_reason_code": "dnatreecalc_w056_table_lifecycle_retained",

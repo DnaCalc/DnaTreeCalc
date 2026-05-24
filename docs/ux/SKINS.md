@@ -28,12 +28,12 @@ The motivation is empirical: the existing eight mockups aren't competing layouts
 |  DrillPanel, NodeCard, TreeRow, WireRenderer, ZoomControls,   |
 |  Minimap, LassoSelection, ...                                 |
 +---------------------------------------------------------------+
-|  Layer 2 — Engine bridge                                      |
-|  OxCalcTreeBridge — single shared instance, skin-independent. |
+|  Layer 2 — OxCalc engine context                              |
+|  OxCalcTreeContext — canonical calculation state and recalc.  |
 +---------------------------------------------------------------+
 |  Layer 1 — Core (skin-agnostic)                               |
-|  WorkspaceState: tree, formulas, values, formats, templates,  |
-|  capability profile. Single source of truth. Signal-based.    |
+|  WorkspaceState: UI/session projection, selection, skin state,|
+|  visible rows, edit buffers, save/reopen workflow.            |
 +---------------------------------------------------------------+
 ```
 
@@ -78,7 +78,7 @@ A skin is, abstractly, a node with four roles:
 The four roles:
 
 1. **Observer.** Subscribes to the workspace's read signals — tree shape, formulas, values, formats, calc state, selection. The skin sees what's current; reactive re-render fires when any of these change.
-2. **Mutator.** Asks the workspace to change by sending **intents** through a `Dispatcher`. Skins never directly write to workspace state and never directly call the engine bridge — both are mediated.
+2. **Mutator.** Asks the workspace to change by sending **intents** through a `Dispatcher`. Skins never directly write to workspace state and never directly call the OxCalc context — both are mediated by the host/session.
 3. **HasState.** Owns a typed, persistent block of view-specific state (canvas positions, column widths, collapse state). Mutates its own state directly; the host serializes for persistence.
 4. **Renderer.** Produces a UI fragment given the current observer + state inputs. Pure of side effects (other than dispatching intents in response to user actions and updating its own state).
 
@@ -376,10 +376,10 @@ This closed set is also the **canonical command taxonomy** the host builds on be
 This is a closed set. Skins compose user gestures into these intents. The dispatcher routes:
 
 - **Selection intents** → direct write to DnaTreeCalc host state (cheap).
-- **Structural / formula intents** → bridge call → engine recalc → workspace update.
+- **Structural / formula intents** → OxCalc context call → engine recalc → workspace projection update.
 - **Format intents** → DnaTreeCalc writes the node's `Format` meta-child, persists it, and updates render state; OxCalc sees only the normal `is_meta` behavior and does not evaluate that subtree.
 - **Template intents** → host-level orchestration (read template structure, generate N structural edits to instances).
-- **External-value intents** → bridge's external-value entry point → engine invalidation → cascade.
+- **External-value intents** → OxCalc context external-value entry point → engine invalidation → cascade.
 
 The skin doesn't know which path; it just dispatches and waits on the receipt.
 
@@ -394,7 +394,7 @@ pub struct WorkspaceState {
     pub template_index: TemplateIndex,             // derived host bookkeeping over template meta-subtrees and rollout tags
     pub external_aliases: ExternalWorkspaceAliases,
     pub capability_profile_id: CapabilityProfileId,
-    pub last_published_result: Option<OxCalcTreeRecalcResult>,
+    pub last_published_result: Option<OxCalcTreeCalculationOutcome>,
 }
 
 pub struct TreeNodeState {
@@ -704,7 +704,7 @@ The model we're adopting (§2.1–§2.11) replaces every blob with a typed struc
 - `Dispatcher` for routing intents.
 - `FormatResolver` for inheritance walks.
 
-The persistence layer serializes the typed state to JSON for meta-node storage; the skin never sees the JSON. The intent layer prevents skins from directly calling the engine bridge; the host routes correctly based on the intent kind.
+The persistence layer serializes the typed state to JSON for meta-node storage; the skin never sees the JSON. The intent layer prevents skins from directly calling the OxCalc context; the host routes correctly based on the intent kind.
 
 The cost is a moderately larger trait surface and more types to define per skin. The payoff is type-checked skin authoring, schema-versioned state, decoupling from engine plumbing, and reviewable intent flow.
 
@@ -829,7 +829,7 @@ When a node is deleted from the regular tree, the host walks all skin meta-names
 
 When a user edits in any skin:
 - The skin dispatches typed intents to DnaTreeCalc.
-- DnaTreeCalc routes only calc-affecting intents through the OxCalc bridge; facade/meta-only changes stay in the host.
+- DnaTreeCalc routes only calc-affecting intents through the OxCalc context; facade/meta-only changes stay in the host.
 - Core state's signal updates trigger re-renders in mounted skins (and any subscribed primitives).
 - Other skins' meta-namespaces are unaffected unless the host explicitly updates shared facade state.
 
@@ -838,7 +838,7 @@ When a user edits in any skin:
 When a user reorganizes the canvas (drag a node to a new position):
 - Canvas skin writes `{x: ..., y: ...}` to its meta-namespace via `skin_state.update(...)`.
 - DnaTreeCalc persists the meta-node value and updates the mounted skin signal.
-- No OxCalc bridge call, formula rebind, or value recalc occurs.
+- No OxCalc context call, formula rebind, or value recalc occurs.
 - These writes are outside the calculation undo stack by default; a skin may offer its own local view-state undo where useful.
 - The change persists with the workspace.
 - Other skins ignore it.

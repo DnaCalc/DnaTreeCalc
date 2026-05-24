@@ -50,14 +50,14 @@ the implicit-number-format scope (item 3).
 
 ## TreeCalc W002 integration note (2026-05-21)
 
-TreeCalc now has a local Rust host skeleton and a first OxCalc bridge smoke path:
+TreeCalc now has a local Rust host skeleton and a first OxCalc direct-context smoke path:
 
 - local crate: `DnaTreeCalc/src/dnatreecalc-host`;
-- bridge boundary: `adapters::oxcalc::LiveOxCalcTreeBridge`;
+- engine boundary: `OxCalcTreeContext`;
 - local smoke fixture: `Root.A = 2`, prepared `Root.B = A + 3`, submitted through OxCalc's
-  `OxCalcTreeRuntimeFacade`;
-- local quarantine: the smoke path uses a TreeCalc-local `PreparedFormulaCatalog` to carry the
-  engine-ready expression. It deliberately does **not** claim that TreeCalc formula text is bound yet.
+  `OxCalcTreeContext`;
+- local migration status: any old host-side formula catalog carrier is migration history only.
+  Product execution must send formula text and edits through OxCalc context APIs.
 
 That means the remaining OxFml unblocker is precise:
 
@@ -69,9 +69,8 @@ That means the remaining OxFml unblocker is precise:
    whether this is an existing `FormulaChannelKind`, a new generic host channel, or a context object
    attached to formula preparation.
 3. **Bind artifact into OxCalc.** Please confirm the output TreeCalc should hand to OxCalc for
-   formula entries: direct `TreeFormula` / reference carriers, a bind packet that OxCalc lowers into
-   `TreeFormulaCatalog`, or another consumer-facing object. The local `PreparedFormulaCatalog` is only
-   a temporary smoke-test carrier.
+   formula entries. The desired product shape is direct context ownership: DnaTreeCalc edits formula
+   text, while OxCalc/OxFml own binding and reference lowering.
 4. **Minimum W002 activation.** TreeCalc will keep `docs/test-corpus/constants/entry-classification.json`
    pending until this response identifies the API and value/format result surface. Once answered, the
    first active slice will be ordinary constants plus the leading-`=` formula discriminator.

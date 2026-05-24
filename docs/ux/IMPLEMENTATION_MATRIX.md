@@ -56,7 +56,7 @@ prototype affordance -> UX trace ID -> component/service contract -> scenario ch
 | `UX-TR-004` | Selection is shared across skins and panes | all | W005/W003 | selection service, mount contexts | Browser: select in one skin, observe in another |
 | `UX-FE-001` | Formula editor binds to selected node content string | 01, 04 | W003/W002 | OneCalc editor primitive, live edit service | Unit: selected-node switch updates editor draft policy |
 | `UX-FE-002` | Live diagnostics use OxFml without publishing workspace edits | 01, 06-08 | W003/W002 | OxFml adapter | No-workspace-mutation assertion during draft bind |
-| `UX-FE-003` | Commit formula dispatches `EditFormula` and recalc request | 01, 06-08 | W003/W002 | dispatcher, live edit, OxCalc bridge | Trace: intent -> recalc request -> published value |
+| `UX-FE-003` | Commit formula dispatches `EditFormula` and recalc request | 01, 06-08 | W003/W002 | dispatcher, live edit, OxCalc context | Trace: intent -> recalc request -> published value |
 | `UX-FE-004` | Constant entry and empty string semantics are represented in UI | 04, 06 | W003/W002 | editor policy, value display | Unit: blank content text -> empty node; no-equals constant; equals formula |
 | `UX-VA-001` | Scalar value display applies effective format | 01, 04-08 | W003/W007 | `ValueDisplay`, `FormatResolver` | Projection check for raw/effective display |
 | `UX-VA-002` | Array grid virtualizes and preserves scroll on shape change | 02, 06, 07 | W003/W006 | `ArrayGrid`, value diff service | UI scenario: grow array, scroll stays stable |
@@ -627,7 +627,7 @@ The implementation should expose a test-only trace sink in host builds, not a us
 | `SharedStateWritten { path }` | shared state handle | Selection/collapse/pin checks |
 | `IntentDispatched { kind }` | dispatcher | Gesture-to-intent checks |
 | `OxFmlBindRequested { node }` | live edit service | Draft diagnostics checks |
-| `OxCalcRecalcRequested { reason }` | OxCalc bridge adapter | Calc boundary checks |
+| `OxCalcRecalcRequested { reason }` | OxCalc context session | Calc boundary checks |
 | `WorkspacePublished { publication_id }` | bridge/reducer | Render update checks |
 | `RenderProjectionUpdated { projection }` | projection services | Value/tree/graph checks |
 | `ResizeObserved { slot, size }` | workspace shell | Adaptive/resize checks |
@@ -643,7 +643,7 @@ Trace events must be deterministic enough for tests and cheap enough to leave co
 | Skin-state round-trip fixture | W005 | typed state persists through `skins.*` meta nodes |
 | Tree projection fixture | W003 | visible rows, collapse, meta visibility, selection |
 | Intent/dispatcher trace fixture | W003/W005 | gestures route through the right boundary |
-| Fake OxFml/OxCalc bridge harness | W002/W003 | editor-to-publication and invalidation-to-display flows |
+| Fake OxFml/OxCalc context harness | W002/W003 | editor-to-publication and invalidation-to-display flows |
 | Value projection fixture | W003 | scalar/array/error/reference render models |
 | Browser click-through harness | W003/W006 | shell, switching, resize, key gestures, visible affordances |
 | Canvas geometry harness | W006 | card positions, wire endpoints, minimap, viewport |

@@ -67,7 +67,7 @@
     { "name": "Skin-state round-trip fixture", "first_workset": "W005" },
     { "name": "Tree projection fixture", "first_workset": "W005" },
     { "name": "Intent/dispatcher trace fixture", "first_workset": "W005" },
-    { "name": "Fake OxFml/OxCalc bridge harness", "first_workset": "W005" },
+    { "name": "Fake OxFml/OxCalc context harness", "first_workset": "W005" },
     { "name": "Value projection fixture", "first_workset": "W005" },
     { "name": "Browser click-through harness", "first_workset": "W005" },
     { "name": "Canvas geometry harness", "first_workset": "W006" },

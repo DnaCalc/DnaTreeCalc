@@ -54,7 +54,7 @@ Excel-anchored and "never reimplemented here."
 **The grey line — walk-up resolution.** The engine's bind layer *computes* walk-up, but TreeCalc
 *specifies* it (§3.2, §3.7) and owns the corpus of expected
 `(tree, caller, reference) → target | Unresolved | reject` outcomes. These are the host's contract
-on the engine: they run as acceptance checks through the bridge once it exists. If the engine
+on the engine: they run as acceptance checks through OxCalc context once it exists. If the engine
 resolves differently than a case says, that is an engine bug → **handover**, not a corpus edit.
 
 > For context, OxCalc's own corpus (`OxCalc/docs/test-corpus/core-engine/tracecalc/`) uses the
@@ -138,7 +138,7 @@ maps cleanly onto the work plan and can be switched on area-by-area as the engin
   cases runnable (e.g. `W004`).
 - `status` — `pending` (authored + well-formed, but no executable runner yet) or `active` (wired to a
   runner/check). A theme flips to `active` only when a repo-local runner binds it through the real
-  OxCalc bridge and asserts the declared outcome. Do not activate a theme with a TreeCalc-local
+  OxCalc context and asserts the declared outcome. Do not activate a theme with a TreeCalc-local
   parser or resolver.
 
 `validate-corpus.ps1` prints a coverage matrix grouped by workset + status. The future runner selects
@@ -151,7 +151,7 @@ maps cleanly onto the work plan and can be switched on area-by-area as the engin
 | **W007** meta/format/templates | `templates/`, `formatting/` | §7b templates; `Format` inheritance (META_NODES) |
 | **W008** import | `import/`, `value-equivalence/import-*` | §10 defined-name import + recompute-equals-Excel |
 | **W009** export/replay | `value-equivalence/export-*` | export round-trip; whole-workspace value-equivalence |
-| **Tables** (W004, cross-repo prereq) | `tables/` | §7c structured-ref resolution + column formulas; activation waits for the table-node unpacking handover and then runs through the OxCalc bridge |
+| **Tables** (W004, cross-repo prereq) | `tables/` | §7c structured-ref resolution + column formulas; activation waits for the table-node unpacking handover and then runs through the OxCalc context |
 | cross-cutting | `perf/` | timed stress workloads (`ux/TECHNICAL.md` §7.6) — measured, not asserted pass/fail |
 
 The matrix in the validator output is the live source of truth; this table is the human overview.
@@ -160,44 +160,43 @@ The matrix in the validator output is the live source of truth; this table is th
 
 Every family below starts as `pending`: the JSON is the durable contract, and
 `validate-corpus.ps1` proves only well-formedness. A family becomes `active`
-when the named runner path exists and passes through the OxCalc bridge. The
+when the named runner path exists and passes through the OxCalc context. The
 bridge runner owns parse/bind/resolve assertions; TreeCalc does not implement a
 parallel parser to make activation possible.
 
 | Corpus family | First active route | Activation gate |
 |---|---|---|
-| `references/walkup` | W005 active walk-up runner | The minimal bare-name walk-up and dotted-descent corpus now runs through `LiveOxCalcTreeBridge` with typed OxCalc `RelativePath` carriers. The runner asserts resolved dependency targets, canonical path expectations, unresolved diagnostics, and self-reference rejection without parsing TreeCalc formula text locally. |
-| `references/anchors`, `references/sibling-offsets` | W004 reference runner | Ancestor/root/workspace anchors and `@PREV`/`@NEXT` bind through OxCalc bridge variants. |
+| `references/walkup` | W005 active walk-up runner | The minimal bare-name walk-up and dotted-descent corpus now runs through `OxCalcTreeContext` with typed OxCalc `RelativePath` carriers. The runner asserts resolved dependency targets, canonical path expectations, unresolved diagnostics, and self-reference rejection without parsing TreeCalc formula text locally. |
+| `references/anchors`, `references/sibling-offsets` | W004 reference runner | Ancestor/root/workspace anchors and `@PREV`/`@NEXT` bind through OxCalc context variants. |
 | `references/syntax`, `references/escaping`, `profiles/gating` | W004 parser/binder runner | OxFml parses under the OxCalc-supplied TreeCalc capability profile and rejects under `strict-excel` where specified. |
 | `references/cross-workspace` | W004 active external workspace runner | Host loads aliased/direct external workspaces, uses OxCalc's public workspace-resolution registry and workspace-qualified carrier, and asserts target workspace/path plus workspace reverse-edge facts without collapsing external targets to local node ids. |
 | `references/meta-nodes`, `formatting/`, `templates/` | W004/W007 bridge runners | `is_meta` filtering is honored by binding/positional operators; W007 then consumes the same flag for format/template host data. |
-| `references/children-raw-active` | W005 active children runner | The current public OxCalc prebind accepts free-standing raw `=SUM(@CHILDREN)` / `=SUM(.*)` and focused qualified raw `=SUM(base.@CHILDREN)` / `=SUM(base.*)` through OxCalc's public qualified-base query packet. The runner executes the workspace through `LiveOxCalcTreeBridge` and asserts published value plus dependency membership. |
-| `references/ordered-raw-active` | W004 active ordered-selector runner | The current public OxCalc ordered-selector query/prebind accepts raw `@PRECEDING`, `@FOLLOWING`, `@ANCESTORS`, and recursive `Base.**.Margin` forms when DnaTreeCalc supplies only resolved base/member packets. The runner executes the workspace through `LiveOxCalcTreeBridge` and asserts published value plus dependency membership. |
-| `references/literals-active` | W004 reference-literal carrier runner | Explicit reference-only literal arrays and mixed scalar/reference rejection run through `LiveOxCalcTreeBridge` using OxCalc `TreeCalcReferenceCollection::ReferenceLiteralArrayV1` prepared carriers. DnaTreeCalc supplies fixture-resolved element paths and source-token/span metadata; it does not parse formula text or inspect OxFml/OxFunc semantics. |
-| `references/set-membership`, `references/literals` | W004 reference-collection runner | Ordered reference collections (`@CHILDREN`/`.*`, `@PRECEDING`, `@FOLLOWING`, `@ANCESTORS`), recursive `**`, broad explicit reference literals, duplicate preservation, and mixed scalar/reference rejection are asserted through bridge results. The broad set-membership and literals themes remain pending until the full family, including raw formula literal syntax and non-active base forms, has public OxCalc bridge support. |
+| `references/children-raw-active` | W005 active children runner | The current public OxCalc prebind accepts free-standing raw `=SUM(@CHILDREN)` / `=SUM(.*)` and focused qualified raw `=SUM(base.@CHILDREN)` / `=SUM(base.*)` through OxCalc's public qualified-base query packet. The runner executes the workspace through `OxCalcTreeContext` and asserts published value plus dependency membership. |
+| `references/ordered-raw-active` | W004 active ordered-selector runner | The current public OxCalc ordered-selector query/prebind accepts raw `@PRECEDING`, `@FOLLOWING`, `@ANCESTORS`, and recursive `Base.**.Margin` forms when DnaTreeCalc supplies only resolved base/member packets. The runner executes the workspace through `OxCalcTreeContext` and asserts published value plus dependency membership. |
+| `references/literals-active` | W004 reference-literal carrier runner | Explicit reference-only literal arrays and mixed scalar/reference rejection run through `OxCalcTreeContext` using OxCalc `TreeCalcReferenceCollection::ReferenceLiteralArrayV1` prepared carriers. DnaTreeCalc supplies fixture-resolved element paths and source-token/span metadata; it does not parse formula text or inspect OxFml/OxFunc semantics. |
+| `references/set-membership`, `references/literals` | W004 reference-collection runner | Ordered reference collections (`@CHILDREN`/`.*`, `@PRECEDING`, `@FOLLOWING`, `@ANCESTORS`), recursive `**`, broad explicit reference literals, duplicate preservation, and mixed scalar/reference rejection are asserted through OxCalc context results. The broad set-membership and literals themes remain pending until the full family, including raw formula literal syntax and non-active base forms, has public OxCalc context support. |
 | `dynamic-references/indirect` | W004 active CTRO carrier runner | Static and selector-driven `INDIRECT` cases execute through typed OxCalc `DynamicResolved` / `DynamicPotential` carriers. The runner asserts resolved values, selector+target dependency sets, dynamic reject diagnostics, and CTRO cycle rejection without parsing raw formula text locally. |
 | `references/node-functions` | W004 node-call runner | Single-reference lambda-valued nodes are invocable through OxFml/OxCalc; set-valued callees reject. |
-| `tables/structured-references` | W004 active table runner + W056 retained replay producer | Structured refs lower through DnaTreeCalc's table fixture projection and OxCalc's public W056 table runtime path; TreeCalc asserts target kind, selected columns, `#All`, row-context values, bracket-escaped table/column cases, formula/totals results, dependency lowering, update impact, and bridge-retained table context identity. The retained producer artifact `../test-runs/w056-table-structured-references-001/` publishes the primary `SalesTable` update/evidence slice as OxReplay-facing `table_slice`, `per_node_value`, `effective_display_text`, `execution_outcome`, `dependency_evidence`, `invalidation_evidence`, and `retained_artifact_ref` views generated from the same live OxCalc table projection; bracket-escaped table cases remain exercised by the active runner and are called out as outside this first retained slice. |
-| `tables/empty-body` | W004 active empty-body table runner | DnaTreeCalc owns headers-only and headers+totals product table fixtures, plus first-row insert and last-row delete transition endpoints. The runner now activates zero-row `#Data`, `[Col]`, `#All`, `#Headers`, `#Totals`, and `[@Col]` current-row diagnostics through `LiveOxCalcTreeBridge`, OxCalc's public table projection, OxFml generic structured-reference packets, and OxCalc sparse readers. |
-| `arrays/` | W004 array/reference runner | Array-valued nodes and reference collections travel through the bridge without inter-node spill; Excel-aligned scalar array values remain engine/Excel anchored. |
+| `tables/structured-references` | W004 active table runner + W056 retained replay producer | Structured refs lower through OxCalc's public W056 table runtime path owned by `OxCalcTreeContext`; TreeCalc asserts target kind, selected columns, `#All`, row-context values, bracket-escaped table/column cases, formula/totals results, dependency lowering, update impact, and retained table context identity. The retained producer artifact `../test-runs/w056-table-structured-references-001/` must be regenerated with direct context producer labels before final W056 closure. |
+| `tables/empty-body` | W004 active empty-body table runner | DnaTreeCalc owns headers-only and headers+totals product table fixtures, plus first-row insert and last-row delete transition endpoints. The runner now activates zero-row `#Data`, `[Col]`, `#All`, `#Headers`, `#Totals`, and `[@Col]` current-row diagnostics through `OxCalcTreeContext`, OxCalc's public table projection, OxFml generic structured-reference packets, and OxCalc sparse readers. |
+| `arrays/` | W004 array/reference runner | Array-valued nodes and reference collections travel through OxCalc context/reference carriers without inter-node spill; Excel-aligned scalar array values remain engine/Excel anchored. |
 | `structural-edits/` | W004 structural-edit runner | Rename/move/delete/insert operations go through OxCalc structural edit APIs and post-edit binding consequences match cases. |
-| `constants/`, `cycles/` | W002 bridge runners | Pending until the upstream channels are executable in the local bridge: constants wait for the OxFml TreeCalc entry-classification API, and cycle corpus activation waits for the OxCalc consumer facade to expose the typed `cycle_config` / `cycle_diagnostics` fields. The W002 bridge smoke itself is covered by the `LiveOxCalcTreeBridge` Rust tests. |
+| `constants/`, `cycles/` | W002 context runners | Pending until the upstream channels are executable in the local context path: constants wait for the OxFml TreeCalc entry-classification API, and cycle corpus activation waits for OxCalc context support for typed `cycle_config` / `cycle_diagnostics` fields. |
 | `import/`, `value-equivalence/` | W008/W009 import/replay runners | Import/export flows emit replay bundles; OxXlPlay observes Excel and OxReplay governs comparison. |
 
-### Current bridge activation floor
+### Current direct-context activation floor
 
-The W002 local Rust bridge smoke is implemented in
-`src/dnatreecalc-host/src/adapters/oxcalc/live_bridge.rs`: it submits a tiny
-named-node workspace through `LiveOxCalcTreeBridge`, receives published values,
-dependency edges, node state, evaluation order, and OxCalc diagnostics, and is
-run by `cargo test --workspace`. The authored W002 corpus themes remain
+The W002 local Rust smoke path must be direct `OxCalcTreeContext`: it creates a
+tiny named-node workspace, receives published values, dependency edges, node
+state, evaluation order, and OxCalc diagnostics, and is run by
+`cargo test --workspace`. The authored W002 corpus themes remain
 `pending`: `constants/entry-classification` is blocked on the OxFml TreeCalc
 entry-classification response, while `cycles/cycle-profiles` is blocked on the
-current OxCalc consumer facade not yet carrying the typed cycle request/result
-fields. `validate-corpus.ps1` is therefore expected to report zero active W002
+current OxCalc context not yet carrying the typed cycle request/result fields.
+`validate-corpus.ps1` is therefore expected to report zero active W002
 cases until those two upstream surfaces are executable.
 
-As of the W004/W005 raw-prebind adoption, the local Rust bridge can submit
+As of the W004/W005 raw-prebind adoption, the local Rust runner can submit
 original TreeCalc formula text for the first `ChildrenV1` slice through OxCalc's
 public `prebind_treecalc_formula_text(owner_node_id, source_text)` interface and
 can consume OxCalc's public qualified-children base-query packet for the focused
@@ -213,7 +212,7 @@ OxCalc/OxFml/OxFunc path publishes the sum of the child values.
 The first JSON-backed active slice is now
 `references/children-raw-active` with workspace fixture
 `workspaces/children-raw-active`. The Rust test runner loads that active theme,
-submits the workspace unchanged through `LiveOxCalcTreeBridge`, and asserts only
+submits the workspace unchanged through `OxCalcTreeContext`, and asserts only
 the supported focused raw children formulas:
 `=SUM(@CHILDREN)`, `=SUM(.*)`, `=SUM(base.@CHILDREN)`, and `=SUM(base.*)`. It
 asserts published values and dependency membership, not parser output, and it
@@ -242,7 +241,8 @@ surface can classify and bind the full literal/array syntax family.
 The remaining raw-formula blocker is narrowed in bead `dtc-osq.2`: the
 `references/walkup` corpus is active through typed relative-reference carriers,
 but authored raw formula text for walk-up/dotted names such as `=A+3` remains
-pending until the generic host-name bind lane is exercised in the local bridge.
+pending until the generic host-name bind lane is exercised in the local
+direct-context runner.
 Other pending families include node-as-function calls, raw reference literal
 syntax, authored raw dynamic/cross-workspace formula parsing beyond the active
 typed carrier runners, alias/base-token variants beyond the focused active query

@@ -33,28 +33,25 @@ already exist), part **coordinate** (production host-facing field names + the di
 
 ## TreeCalc W002 integration note (2026-05-21)
 
-TreeCalc now has the first local Rust bridge smoke path wired to OxCalc's consumer facade:
+TreeCalc now targets direct `OxCalcTreeContext` use for local Rust execution:
 
 - local crate: `DnaTreeCalc/src/dnatreecalc-host`;
-- local bridge: `adapters::oxcalc::LiveOxCalcTreeBridge`;
-- consumed OxCalc surface: `OxCalcTreeEnvironment`, `OxCalcTreeDocument`,
-  `OxCalcTreeRecalcRequest`, `OxCalcTreeRecalcResult`, and `OxCalcTreeRuntimeFacade`;
-- local smoke fixture: `Root.A = 2`, prepared `Root.B = A + 3`, with published value,
+- consumed OxCalc surface: `OxCalcTreeContext`, workspace/node edit APIs,
+  `OxCalcTreeCalculationOutcome`, and context views;
+- local smoke fixture: `Root.A = 2`, `Root.B = A + 3`, with published value,
   dependency edge, diagnostics, and node-state projection observed.
 
-The current OxCalc consumer facade gives TreeCalc a good acyclic smoke path, but cycle configuration is
-still not a production host contract from TreeCalc's point of view:
+The current OxCalc context gives TreeCalc a good acyclic smoke path, but cycle
+configuration is still not a production host contract from TreeCalc's point of
+view:
 
 1. `OxCalcTreeHostCapabilitySnapshot` currently carries `capability_profile_id` and runtime-effect
    booleans, but TreeCalc does not see a typed cycle-profile field or iterative bounds field there.
-2. `OxCalcTreeRecalcRequest` carries `compatibility_basis` as a string. If cycle profile and bounds are
-   meant to ride there for now, TreeCalc needs the exact encoding and whether it is temporary or
-   production-facing.
-3. TreeCalc's local `CycleConfig` (`profile_id`, `maximum_iterations`, `maximum_change`) is currently
+2. TreeCalc's local `CycleConfig` (`profile_id`, `maximum_iterations`, `maximum_change`) is currently
    host-side only and is **not submitted to OxCalc** by the W002 smoke path. It exists to preserve the
    workspace/config boundary while waiting for this response.
-4. `docs/test-corpus/cycles/cycle-profiles.json` remains pending until TreeCalc can submit cycle config
-   and assert typed diagnostics/results against the real facade.
+3. `docs/test-corpus/cycles/cycle-profiles.json` remains pending until TreeCalc can submit cycle config
+   and assert typed diagnostics/results against the real context path.
 
 Minimum unblocker for TreeCalc W002/W005:
 
@@ -66,24 +63,24 @@ Minimum unblocker for TreeCalc W002/W005:
 
 Sibling-review checklist:
 
-- confirm whether cycle config belongs in `OxCalcTreeEnvironment`, `OxCalcTreeHostCapabilitySnapshot`,
-  `OxCalcTreeRuntimePolicy`, `OxCalcTreeRecalcRequest`, or a new structured compatibility object;
+- confirm whether cycle config belongs in `OxCalcTreeHostCapabilitySnapshot`,
+  `OxCalcTreeRuntimePolicy`, `OxCalcTreeContext`, or a new structured context option;
 - name the exact fields and defaults for Maximum Iterations and Maximum Change;
 - name the host-facing cycle diagnostic/result fields (`CircularReference` equivalent,
   cycle-region membership, iteration trace, terminal classification);
 - state whether W002 should keep cycle corpus cases pending until a later OxCalc workset, or can activate
-  a non-iterative subset against the current facade.
+  a non-iterative subset against the current context surface.
 
 ## Resolution (from OxCalc consumer contract §6.3 / §6.4, W055)
 
 OxCalc answered this in `CORE_ENGINE_OXCALCTREE_CONSUMER_INTERFACE_AND_HOST_CONTRACT_V1.md`:
 
-- **Profile + bounds channel:** a typed `cycle_config` field on `OxCalcTreeRecalcRequest` (§6.3, W055).
+- **Profile + bounds channel:** a typed `cycle_config` field on the OxCalc context recalc surface (§6.3, W055).
   `cycle_config.cycle_profile_id` admits `cycle.non_iterative_stage1` (the default when `cycle_config`
   is absent), `cycle.excel_match_iterative`, and `cycle.iterative_deterministic_v0`;
   `cycle_config.maximum_iterations` / `maximum_change` carry host overrides, profile defaults otherwise.
-  **`compatibility_basis` must not be used as the cycle channel.**
-- **Diagnostics back:** a typed `cycle_diagnostics` field on `OxCalcTreeRecalcResult` (§6.4) — cycle
+  No compatibility-basis string is allowed as the cycle channel.
+- **Diagnostics back:** a typed `cycle_diagnostics` field on `OxCalcTreeCalculationOutcome` (§6.4) — cycle
   region, selected profile, region source, members, root/report node, member order, terminal state,
   publication decision, reject kind, and iteration-trace summary; plus a typed
   `Worksheet.CircularReference` equivalent for non-iterative rejection. Hosts read these typed facts,

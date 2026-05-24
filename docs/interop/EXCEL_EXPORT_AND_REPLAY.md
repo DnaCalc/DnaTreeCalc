@@ -195,7 +195,7 @@ The output is an OxXlPlay replay bundle (the existing bundle format) carrying th
 
 ## 4. DNA TreeCalc's converter: workspace → WorkbookConstructionSpec
 
-This is TreeCalc's core contribution. It lives in TreeCalc (`services/excel_export.rs`). It reads the workspace + the bind results (from the OxCalc bridge) and produces a `WorkbookConstructionSpec`.
+This is TreeCalc's core contribution. It lives in TreeCalc (`services/excel_export.rs`). It reads the workspace + the bind results (from the OxCalc context) and produces a `WorkbookConstructionSpec`.
 
 ### 4.1 Export strategies
 
@@ -401,7 +401,7 @@ DNA TreeCalc                    OxXlPlay                    OxReplay
 -----------                     --------                    --------
 verify-workspace foo.dnatree
    |
-   |-- load workspace + bind via OxCalc bridge
+   |-- load workspace + bind through OxCalc context
    |-- converter: bake, mangle, grid-promote
    |       |
    |       +--> WorkbookConstructionSpec (JSON)
