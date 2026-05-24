@@ -892,7 +892,8 @@
               "structured_table_identity",
               "structured_table_header_region",
               "structured_table_data_region",
-              "structured_table_totals_region"
+              "structured_table_totals_region",
+              "structured_table_enclosing_table"
             ],
             "invalidation_reasons": [
               "structural_rebind_required",
@@ -917,7 +918,8 @@
               "structured_table_enclosing_table"
             ],
             "invalidation_reasons": [
-              "structural_rebind_required"
+              "structural_rebind_required",
+              "dependency_removed"
             ],
             "prepared_identity_inputs": [
               "host_namespace_version",
