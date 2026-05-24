@@ -4,7 +4,8 @@ use std::path::{Path, PathBuf};
 
 use dnatreecalc_host::app::TreeWorkspaceSession;
 use dnatreecalc_host::model::{NodeContent, WorkspaceFixture, WorkspaceModel};
-use dnatreecalc_skin_framework::NodeId;
+use dnatreecalc_skin_framework::{NodeId, NodeValueProjection, WorkspaceState};
+use oxcalc_core::consumer::OxCalcTreeRunState;
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
@@ -43,7 +44,7 @@ struct ReferenceLiteralExpectation {
 }
 
 #[test]
-fn active_reference_literal_array_corpus_is_direct_context_typed_pending() {
+fn active_reference_literal_array_corpus_executes_reference_only_arrays_through_direct_context() {
     let theme = load_theme(repo_corpus_path("references/literals-active.json"));
     assert_eq!(theme.schema_version, "treecalc-corpus-v1");
     assert_eq!(theme.theme, "references/literals-active");
@@ -87,27 +88,56 @@ fn active_reference_literal_array_corpus_is_direct_context_typed_pending() {
             "{} source formula must enter OxCalc unchanged",
             case.id
         );
-        assert!(
-            result.diagnostics.iter().any(|diagnostic| {
-                diagnostic
-                    .contains("typed_exclusion:reference_literal_collection_raw_context_pending")
-            }),
-            "{} should remain a typed direct-context pending lane, got {:?}",
-            case.id,
-            result.diagnostics
-        );
         if case.kind == "membership" {
             assert_eq!(
                 case.expect.outcome.as_deref(),
                 Some("resolved"),
-                "{} preserves the old carrier-slice expectation as migration history",
+                "{} is outside the admitted reference-only literal-array slice",
                 case.id
             );
-            assert!(case.expect.members.is_some());
-            assert!(case.expect.published_value.is_some());
+            assert_eq!(
+                result.run_state,
+                OxCalcTreeRunState::Published,
+                "{} run state",
+                case.id
+            );
+            assert!(
+                !result.diagnostics.iter().any(|diagnostic| diagnostic
+                    .contains("typed_exclusion:reference_literal_collection_raw_context_pending")),
+                "{} should execute without the reference-literal typed-exclusion diagnostic, got {:?}",
+                case.id,
+                result.diagnostics
+            );
+            assert_eq!(
+                scalar_value(&state, &case.caller),
+                case.expect.published_value.as_deref(),
+                "{} published value",
+                case.id
+            );
+            let actual_members = session
+                .dependency_members_for(&result, &NodeId::new(case.caller.clone()))
+                .unwrap_or_else(|error| {
+                    panic!("case {} dependency projection failed: {error}", case.id)
+                })
+                .iter()
+                .map(|member| member.as_str().to_string())
+                .collect::<Vec<_>>();
+            assert_eq!(
+                Some(actual_members),
+                case.expect.members.clone(),
+                "{} dependency membership preserves source order and duplicates",
+                case.id
+            );
         } else {
             assert_eq!(case.expect.parse.as_deref(), Some("reject"));
             assert!(case.expect.reason.is_some());
+            assert!(
+                result.diagnostics.iter().any(|diagnostic| diagnostic
+                    .contains("typed_exclusion:reference_literal_collection_raw_context_pending")),
+                "{} should remain a typed direct-context pending lane, got {:?}",
+                case.id,
+                result.diagnostics
+            );
         }
     }
 }
@@ -133,6 +163,15 @@ fn blank_non_target_formula_nodes(workspace: &mut WorkspaceModel, caller: &str) 
             node.content = NodeContent::Empty;
         }
     }
+}
+
+fn scalar_value<'a>(state: &'a WorkspaceState, node_id: &str) -> Option<&'a str> {
+    state
+        .node(&NodeId::new(node_id.to_string()))
+        .and_then(|node| match &node.computed_value {
+            NodeValueProjection::Scalar(value) => Some(value.as_str()),
+            _ => None,
+        })
 }
 
 fn repo_corpus_path(path: impl AsRef<Path>) -> PathBuf {

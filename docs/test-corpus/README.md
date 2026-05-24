@@ -173,7 +173,7 @@ does not implement a parallel parser to make activation possible.
 | `references/meta-nodes`, `formatting/`, `templates/` | W004/W007 direct-context runners | `is_meta` filtering is honored by binding/positional operators; W007 then consumes the same flag for format/template host data. |
 | `references/children-raw-active` | W005 active children runner | The current public OxCalc prebind accepts free-standing raw `=SUM(@CHILDREN)` / `=SUM(.*)` and focused qualified raw `=SUM(base.@CHILDREN)` / `=SUM(base.*)` through OxCalc's public qualified-base query packet. The runner executes the workspace through `OxCalcTreeContext` and asserts published value plus dependency membership. |
 | `references/ordered-raw-active` | W004 active ordered-selector runner | The current public OxCalc ordered-selector query/prebind accepts raw `@PRECEDING`, `@FOLLOWING`, `@ANCESTORS`, and recursive `Base.**.Margin` forms when DnaTreeCalc supplies only resolved base/member packets. The runner executes the workspace through `OxCalcTreeContext` and asserts published value plus dependency membership. |
-| `references/literals-active` | W004 reference-literal direct-context runner | Raw explicit reference-only literal arrays and mixed scalar/reference rejection run through `OxCalcTreeContext` as typed pending until OxCalc/OxFml admits raw reference-literal collection syntax. DnaTreeCalc supplies formula text only; it does not prepare carriers, resolve element paths, parse formula text, or inspect OxFml/OxFunc semantics. |
+| `references/literals-active` | W004 reference-literal direct-context runner | Raw explicit reference-only literal arrays now execute through `OxCalcTreeContext` with published values and dependency membership, including duplicate preservation. Mixed scalar/reference arrays remain typed exclusions. DnaTreeCalc supplies formula text only; it does not prepare carriers, resolve element paths, parse formula text, or inspect OxFml/OxFunc semantics. |
 | `references/set-membership`, `references/literals` | W004 reference-collection runner | Ordered reference collections (`@CHILDREN`/`.*`, `@PRECEDING`, `@FOLLOWING`, `@ANCESTORS`), recursive `**`, broad explicit reference literals, duplicate preservation, and mixed scalar/reference rejection are asserted through OxCalc context results. The broad set-membership and literals themes remain pending until the full family, including raw formula literal syntax and non-active base forms, has public OxCalc context support. |
 | `dynamic-references/indirect` | W004 active CTRO runner | Static and selector-driven `INDIRECT` cases run through `OxCalcTreeContext` as explicit typed-pending outcomes for raw dynamic formula text. Historical `DynamicResolved` / `DynamicPotential` expectations remain the product target; DnaTreeCalc supplies formula text and does not construct dynamic carriers. |
 | `references/node-functions` | W004 node-call runner | Node-as-function cases now run through `TreeWorkspaceSession` / `OxCalcTreeContext` as explicit typed-pending outcomes for lambda-valued host-node calls and set-valued callee rejection. The product target remains the OxFml/OxCalc defined-name-LAMBDA lane; DnaTreeCalc does not add a function mirror. |
@@ -230,21 +230,23 @@ parser output, and it does not construct reference carriers locally. Do not
 treat either active raw slice as completion of W004 set-membership.
 
 The reference-literal raw slice is also active as `references/literals-active`
-with workspace fixture `workspaces/reference-literals-active`. That runner now
-submits the original formula text through `OxCalcTreeContext` and asserts the
-typed-pending diagnostic for raw reference-literal collection syntax. Historical
-carrier expectations in the JSON are retained only as migration history until
-the public raw query/prebind surface can classify and bind the full literal/array
-syntax family.
+with workspace fixture `workspaces/reference-literals-active`. That runner
+submits the original formula text through `OxCalcTreeContext`; all-resolved
+reference-only arrays publish values through OxCalc's raw
+`ReferenceLiteralArrayV1` prebind path, while mixed scalar/reference arrays stay
+typed exclusions. The runner asserts values and dependency membership, including
+duplicate preservation, and does not translate strings to carriers in
+DnaTreeCalc.
 
 The remaining raw-formula blocker is narrowed in bead `dtc-osq.2`: the
 `references/walkup` corpus is active through typed relative-reference carriers,
 but authored raw formula text for walk-up/dotted names such as `=A+3` remains
 pending until the generic host-name bind lane is exercised in the local
 direct-context runner.
-Other pending families include product admission for node-as-function calls, raw
-reference literal syntax, authored raw dynamic/cross-workspace formula parsing
-beyond the active direct-context typed-pending runners, alias/base-token variants
+Other pending families include product admission for node-as-function calls, broad
+reference literal syntax beyond the active reference-only slice, authored raw
+dynamic/cross-workspace formula parsing beyond the active direct-context
+typed-pending runners, alias/base-token variants
 beyond the focused active query packets, traversal-bound policy, and strict
 profile-gated parser behavior beyond the current capability-profile identity
 projection. Table structured

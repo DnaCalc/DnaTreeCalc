@@ -3,11 +3,11 @@
   "theme": "references/literals-active",
   "workset": "W004",
   "status": "active",
-  "description": "Focused W004 active slice for raw explicit reference-literal arrays through direct OxCalc context. Current direct-context behavior is a typed-pending lane until OxCalc/OxFml admits raw reference-literal collection syntax; DnaTreeCalc does not prepare carriers, resolve element paths, parse formula text, or inspect OxFml/OxFunc semantics.",
+  "description": "Focused W004 active slice for raw explicit reference-literal arrays through direct OxCalc context. All-resolved reference-only arrays execute through OxCalc ReferenceLiteralArrayV1; mixed scalar/reference arrays remain a typed exclusion. DnaTreeCalc supplies formula text only and does not prepare carriers, resolve element paths, parse formula text, or inspect OxFml/OxFunc semantics.",
   "cases": [
     {
       "id": "lit-ref-array-two-members-active",
-      "name": "reference literal source order is a direct-context typed-pending lane",
+      "name": "reference literal source order executes through direct context",
       "spec": "§4, §6",
       "kind": "membership",
       "workspace": "reference-literals-active",
@@ -28,7 +28,7 @@
     },
     {
       "id": "lit-ref-array-duplicates-preserved-active",
-      "name": "explicit reference literal duplicates are a direct-context typed-pending lane",
+      "name": "explicit reference literal duplicates execute through direct context",
       "spec": "§3.5b, §6",
       "kind": "membership",
       "workspace": "reference-literals-active",
