@@ -2,8 +2,8 @@
   "schema_version": "treecalc-corpus-v1",
   "theme": "references/sibling-offsets",
   "workset": "W004",
-  "status": "pending",
-  "description": "@PREV / @NEXT positional sibling navigators (CORE_MODEL_SPEC §3.2, §3.5, §3.7). Sibling order is the workspace node array order.",
+  "status": "active",
+  "description": "@PREV / @NEXT positional sibling navigators through direct OxCalc context (CORE_MODEL_SPEC §3.2, §3.5, §3.7). Sibling order is the workspace node array order; DnaTreeCalc submits formula text only.",
   "cases": [
     {
       "id": "ref-prev-tail",
@@ -17,6 +17,7 @@
       "expect": {
         "outcome": "resolved",
         "target": "Accounts.2005.Q1.Net",
+        "published_value": "7",
         "engine_ref": "SiblingOffset{ offset: -1, tail: [Net] }"
       },
       "note": "Under 2005 the order is [Q1, Q2, Total]; Q2's previous sibling is Q1."
@@ -33,6 +34,7 @@
       "expect": {
         "outcome": "resolved",
         "target": "Accounts.2005.Q2.Margin",
+        "published_value": "0.25",
         "engine_ref": "SiblingOffset{ offset: +1, tail: [Margin] }"
       },
       "note": "Q1's next sibling is Q2; descend child Margin."

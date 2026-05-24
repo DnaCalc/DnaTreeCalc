@@ -167,7 +167,8 @@ does not implement a parallel parser to make activation possible.
 | Corpus family | First active route | Activation gate |
 |---|---|---|
 | `references/walkup` | W005 active walk-up runner | The minimal bare-name walk-up and dotted-descent corpus now runs through `OxCalcTreeContext` with typed OxCalc `RelativePath` carriers. The runner asserts resolved dependency targets, canonical path expectations, unresolved diagnostics, and self-reference rejection without parsing TreeCalc formula text locally. |
-| `references/anchors`, `references/sibling-offsets` | W004 reference runner | Ancestor/root/workspace anchors and `@PREV`/`@NEXT` bind through OxCalc context variants. |
+| `references/anchors` | W004 reference runner | Ancestor/root/workspace anchors bind through OxCalc context variants; raw activation remains pending. |
+| `references/sibling-offsets` | W004 active sibling-offset runner | Raw `@PREV`/`@NEXT` single-reference navigation now runs through `OxCalcTreeContext`. The runner asserts tail values, dependency membership, and out-of-range relative-bound descriptors without preparing carriers or parsing formula text locally. |
 | `references/syntax`, `references/escaping`, `profiles/gating` | W004 parser/binder runner | Profile-gating cases now run through `TreeWorkspaceSession` / `OxCalcTreeContext` with the workspace capability profile supplied to OxCalc. TreeCalc-only raw syntax remains an explicit typed-pending/profile-exclusion lane until OxCalc/OxFml expose full profile-specific parser gating; DnaTreeCalc does not parse or mirror the syntax. |
 | `references/cross-workspace` | W004 active external workspace runner | Host loads aliased/direct external workspaces through OxCalc-owned context state and asserts either direct-context typed pending outcomes or target workspace/path plus workspace reverse-edge facts once admitted, without collapsing external targets to local node ids. |
 | `references/meta-nodes`, `formatting/`, `templates/` | W004/W007 direct-context runners | `is_meta` filtering is honored by binding/positional operators; W007 then consumes the same flag for format/template host data. |
@@ -238,6 +239,13 @@ typed exclusions. The runner asserts values and dependency membership, including
 duplicate preservation, and does not translate strings to carriers in
 DnaTreeCalc.
 
+The sibling-offset slice is active as `references/sibling-offsets` with workspace
+fixture `workspaces/accounts`. The runner submits raw `=@PREV.Net`,
+`=@NEXT.Margin`, and `=@NEXT` formulas through `OxCalcTreeContext`, asserts
+published values and dependency membership for in-range sibling tails, and
+asserts a typed unresolved `RelativeBound` descriptor for the out-of-range
+`@NEXT` case.
+
 The remaining raw-formula blocker is narrowed in bead `dtc-osq.2`: the
 `references/walkup` corpus is active through typed relative-reference carriers,
 but authored raw formula text for walk-up/dotted names such as `=A+3` remains
@@ -246,8 +254,8 @@ direct-context runner.
 Other pending families include product admission for node-as-function calls, broad
 reference literal syntax beyond the active reference-only slice, authored raw
 dynamic/cross-workspace formula parsing beyond the active direct-context
-typed-pending runners, alias/base-token variants
-beyond the focused active query packets, traversal-bound policy, and strict
+typed-pending runners, ancestor/root anchors, alias/base-token variants beyond
+the focused active query packets, traversal-bound policy, and strict
 profile-gated parser behavior beyond the current capability-profile identity
 projection. Table structured
 references are no longer part of that raw-formula blocker for the declared active
