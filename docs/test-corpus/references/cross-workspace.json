@@ -2,7 +2,7 @@
   "schema_version": "treecalc-corpus-v1",
   "theme": "references/cross-workspace",
   "workset": "W004",
-  "status": "pending",
+  "status": "active",
   "description": "Cross-workspace references (CORE_MODEL_SPEC §3.3): [alias]path resolves into another workspace; ['quoted path'] / [bare.dnatree] are direct paths; a bracket prefix is always absolute from that workspace's root (so ^ after it is rejected). Engine carrier is OxFml External(ExternalRef) -> OxCalc HostSensitive, live-latest by default. `expect.target_workspace` names the resolving workspace. The 'accounts' workspace registers alias 'projections' -> the projections workspace.",
   "cases": [
     { "id": "xws-alias-path", "name": "[alias]path resolves into the aliased workspace", "spec": "§3.3", "kind": "resolution", "workspace": "accounts", "caller": "Accounts.2005.Q1.Income", "reference": "[projections]Branch1.MyNode", "profile": "treecalc-v1", "expect": { "outcome": "resolved", "target": "Branch1.MyNode", "target_workspace": "projections", "engine_ref": "External(ExternalRef) -> HostSensitive" }, "note": "A bracket prefix is absolute from the selected workspace's root; live-latest by default." },

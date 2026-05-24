@@ -169,13 +169,13 @@ parallel parser to make activation possible.
 | `references/walkup` | W005 active walk-up runner | The minimal bare-name walk-up and dotted-descent corpus now runs through `LiveOxCalcTreeBridge` with typed OxCalc `RelativePath` carriers. The runner asserts resolved dependency targets, canonical path expectations, unresolved diagnostics, and self-reference rejection without parsing TreeCalc formula text locally. |
 | `references/anchors`, `references/sibling-offsets` | W004 reference runner | Ancestor/root/workspace anchors and `@PREV`/`@NEXT` bind through OxCalc bridge variants. |
 | `references/syntax`, `references/escaping`, `profiles/gating` | W004 parser/binder runner | OxFml parses under the OxCalc-supplied TreeCalc capability profile and rejects under `strict-excel` where specified. |
-| `references/cross-workspace` | W004 external workspace runner | Host loads the aliased workspace, OxCalc receives the external/host-sensitive edge, and unavailable externals surface as diagnostics. |
+| `references/cross-workspace` | W004 active external workspace runner | Host loads aliased/direct external workspaces, uses OxCalc's public workspace-resolution registry and workspace-qualified carrier, and asserts target workspace/path plus workspace reverse-edge facts without collapsing external targets to local node ids. |
 | `references/meta-nodes`, `formatting/`, `templates/` | W004/W007 bridge runners | `is_meta` filtering is honored by binding/positional operators; W007 then consumes the same flag for format/template host data. |
 | `references/children-raw-active` | W005 active children runner | The current public OxCalc prebind accepts free-standing raw `=SUM(@CHILDREN)` / `=SUM(.*)` and focused qualified raw `=SUM(base.@CHILDREN)` / `=SUM(base.*)` through OxCalc's public qualified-base query packet. The runner executes the workspace through `LiveOxCalcTreeBridge` and asserts published value plus dependency membership. |
 | `references/ordered-raw-active` | W004 active ordered-selector runner | The current public OxCalc ordered-selector query/prebind accepts raw `@PRECEDING`, `@FOLLOWING`, `@ANCESTORS`, and recursive `Base.**.Margin` forms when DnaTreeCalc supplies only resolved base/member packets. The runner executes the workspace through `LiveOxCalcTreeBridge` and asserts published value plus dependency membership. |
 | `references/literals-active` | W004 reference-literal carrier runner | Explicit reference-only literal arrays and mixed scalar/reference rejection run through `LiveOxCalcTreeBridge` using OxCalc `TreeCalcReferenceCollection::ReferenceLiteralArrayV1` prepared carriers. DnaTreeCalc supplies fixture-resolved element paths and source-token/span metadata; it does not parse formula text or inspect OxFml/OxFunc semantics. |
 | `references/set-membership`, `references/literals` | W004 reference-collection runner | Ordered reference collections (`@CHILDREN`/`.*`, `@PRECEDING`, `@FOLLOWING`, `@ANCESTORS`), recursive `**`, broad explicit reference literals, duplicate preservation, and mixed scalar/reference rejection are asserted through bridge results. The broad set-membership and literals themes remain pending until the full family, including raw formula literal syntax and non-active base forms, has public OxCalc bridge support. |
-| `dynamic-references/indirect` | W004 CTRO runner | `INDIRECT` strings rebind at calc time through the engine overlay; TreeCalc asserts outcome/diagnostics only. |
+| `dynamic-references/indirect` | W004 active CTRO carrier runner | Static and selector-driven `INDIRECT` cases execute through typed OxCalc `DynamicResolved` / `DynamicPotential` carriers. The runner asserts resolved values, selector+target dependency sets, dynamic reject diagnostics, and CTRO cycle rejection without parsing raw formula text locally. |
 | `references/node-functions` | W004 node-call runner | Single-reference lambda-valued nodes are invocable through OxFml/OxCalc; set-valued callees reject. |
 | `tables/structured-references` | W004 active table runner + W056 retained replay producer | Structured refs lower through DnaTreeCalc's table fixture projection and OxCalc's public W056 table runtime path; TreeCalc asserts target kind, selected columns, `#All`, row-context values, bracket-escaped table/column cases, formula/totals results, dependency lowering, update impact, and bridge-retained table context identity. The retained producer artifact `../test-runs/w056-table-structured-references-001/` publishes the primary `SalesTable` update/evidence slice as OxReplay-facing `table_slice`, `per_node_value`, `effective_display_text`, `execution_outcome`, `dependency_evidence`, `invalidation_evidence`, and `retained_artifact_ref` views generated from the same live OxCalc table projection; bracket-escaped table cases remain exercised by the active runner and are called out as outside this first retained slice. |
 | `tables/empty-body` | W004 active empty-body table runner | DnaTreeCalc owns headers-only and headers+totals product table fixtures, plus first-row insert and last-row delete transition endpoints. The runner now activates zero-row `#Data`, `[Col]`, `#All`, `#Headers`, `#Totals`, and `[@Col]` current-row diagnostics through `LiveOxCalcTreeBridge`, OxCalc's public table projection, OxFml generic structured-reference packets, and OxCalc sparse readers. |
@@ -244,11 +244,11 @@ The remaining raw-formula blocker is narrowed in bead `dtc-osq.2`: the
 but authored raw formula text for walk-up/dotted names such as `=A+3` remains
 pending until the generic host-name bind lane is exercised in the local bridge.
 Other pending families include node-as-function calls, raw reference literal
-syntax, dynamic references, cross-workspace and alias/base-token variants beyond
-the focused active query packets, traversal-bound policy, and profile-gated
-syntax. Table structured references are no longer part of that raw-formula
-blocker for the declared active table slice; they remain open only for broader
-raw/corpus families outside the active
+syntax, authored raw dynamic/cross-workspace formula parsing beyond the active
+typed carrier runners, alias/base-token variants beyond the focused active query
+packets, traversal-bound policy, and profile-gated syntax. Table structured
+references are no longer part of that raw-formula blocker for the declared active
+table slice; they remain open only for broader raw/corpus families outside the active
 `tables/structured-references` runner and retained replay slice.
 
 ## Runner contract

@@ -7,6 +7,7 @@ pub use live_bridge::LiveOxCalcTreeBridge;
 pub use types::{
     CycleConfig, CycleProfileId, NodeCalcStateProjection, PreparedBinaryOp, PreparedFormula,
     PreparedFormulaCatalog, PreparedFormulaOperand, PreparedFormulaReferenceCarrier,
-    PreparedReferenceLiteralArrayElement, PreparedRelativePathBase, TreeRecalcRequest,
-    TreeRecalcResult,
+    PreparedReferenceLiteralArrayElement, PreparedRelativePathBase,
+    TreeCalcCrossWorkspaceReferenceRequest, TreeCalcCrossWorkspaceReferenceResolution,
+    TreeCalcExternalWorkspace, TreeRecalcRequest, TreeRecalcResult,
 };

@@ -2,7 +2,7 @@
   "schema_version": "treecalc-corpus-v1",
   "theme": "dynamic-references/indirect",
   "workset": "W004",
-  "status": "pending",
+  "status": "active",
   "description": "INDIRECT-driven dynamic references — the TreeCalc surface of OxCalc's CTRO (Calc-Time Rebinding Overlay, W047/W055). Pins calc-time resolution outcomes and the dynamic dependency set (selector + resolved target) including re-binding. `given` supplies the runtime text value of the selector node. OUT OF SCOPE here: the overlay / effective-graph machinery (G_eff, frontier repair) and invalidation timing (engine-internal), and grid/spill expansion/contraction (TreeCalc has no grid — §1). Iterated values for dynamic cycles are governed by §7a (see the cycles theme); exact values are engine/Excel-anchored.",
   "cases": [
     {

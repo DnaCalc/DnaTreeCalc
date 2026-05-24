@@ -1,4 +1,7 @@
-use super::types::{TreeRecalcRequest, TreeRecalcResult};
+use super::types::{
+    TreeCalcCrossWorkspaceReferenceRequest, TreeCalcCrossWorkspaceReferenceResolution,
+    TreeRecalcRequest, TreeRecalcResult,
+};
 use oxcalc_core::structured_table::{
     TreeCalcDynamicTableRebindReport, TreeCalcDynamicTableRebindRequest,
 };
@@ -23,4 +26,13 @@ pub trait OxCalcTreeBridge {
         &self,
         request: TreeCalcDynamicTableRebindRequest,
     ) -> Result<TreeCalcDynamicTableRebindReport, OxCalcTreeBridgeError>;
+
+    fn resolve_cross_workspace_reference(
+        &self,
+        _request: TreeCalcCrossWorkspaceReferenceRequest,
+    ) -> Result<TreeCalcCrossWorkspaceReferenceResolution, OxCalcTreeBridgeError> {
+        Err(OxCalcTreeBridgeError::Upstream(
+            "cross-workspace reference resolution is not implemented by this bridge".to_string(),
+        ))
+    }
 }

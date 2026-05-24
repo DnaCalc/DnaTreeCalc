@@ -12,9 +12,10 @@ use oxcalc_core::formula::{
     TreeCalcOrderedSelectorResolutionLayer, TreeCalcOrderedSelectorTraversalPolicy,
     TreeCalcQualifiedBaseResolutionLayer, TreeCalcQualifiedChildrenBaseQuery,
     TreeCalcQualifiedChildrenBaseResolution, TreeCalcReferenceCollection,
-    TreeCalcReferenceLiteralArrayCollection, TreeCalcReferenceLiteralArrayElement, TreeFormula,
-    TreeFormulaBinding, TreeFormulaCatalog, TreeFormulaReferenceCarrier, TreeReference,
-    prebind_treecalc_formula_text_with_context, treecalc_formula_text_needs_prebind,
+    TreeCalcReferenceLiteralArrayCollection, TreeCalcReferenceLiteralArrayElement,
+    TreeCalcWorkspaceResolutionRegistry, TreeFormula, TreeFormulaBinding, TreeFormulaCatalog,
+    TreeFormulaReferenceCarrier, TreeReference, prebind_treecalc_formula_text_with_context,
+    resolve_treecalc_workspace_host_path_base, treecalc_formula_text_needs_prebind,
     treecalc_formula_text_ordered_selector_queries,
     treecalc_formula_text_qualified_children_base_queries,
 };
@@ -35,7 +36,8 @@ use super::bridge::{OxCalcTreeBridge, OxCalcTreeBridgeError};
 use super::types::{
     NodeCalcStateProjection, PreparedBinaryOp, PreparedFormula, PreparedFormulaCatalog,
     PreparedFormulaOperand, PreparedFormulaReferenceCarrier, PreparedReferenceLiteralArrayElement,
-    PreparedRelativePathBase, TreeRecalcRequest, TreeRecalcResult,
+    PreparedRelativePathBase, TreeCalcCrossWorkspaceReferenceRequest,
+    TreeCalcCrossWorkspaceReferenceResolution, TreeRecalcRequest, TreeRecalcResult,
 };
 use crate::model::{
     NodeContentKind, TableColumnBodyKind, TableColumnFixture, TableFormulaFixture,
@@ -129,6 +131,13 @@ impl OxCalcTreeBridge for LiveOxCalcTreeBridge {
         request: TreeCalcDynamicTableRebindRequest,
     ) -> Result<TreeCalcDynamicTableRebindReport, OxCalcTreeBridgeError> {
         Ok(classify_treecalc_dynamic_table_rebind(&request))
+    }
+
+    fn resolve_cross_workspace_reference(
+        &self,
+        request: TreeCalcCrossWorkspaceReferenceRequest,
+    ) -> Result<TreeCalcCrossWorkspaceReferenceResolution, OxCalcTreeBridgeError> {
+        resolve_cross_workspace_reference_request(request)
     }
 }
 
@@ -232,6 +241,125 @@ impl PreparedSubmission {
     }
 }
 
+struct ReferenceResolutionWorkspaceProjection {
+    workspace_handle: String,
+    availability_version: String,
+    structural_snapshot: StructuralSnapshot,
+    paths_by_node_id: BTreeMap<TreeNodeId, String>,
+}
+
+impl ReferenceResolutionWorkspaceProjection {
+    fn from_workspace(
+        workspace_handle: String,
+        workspace: &WorkspaceModel,
+        availability_version: String,
+    ) -> Result<Self, OxCalcTreeBridgeError> {
+        let node_ids_by_path = assign_node_ids(workspace);
+        let paths_by_node_id = node_ids_by_path
+            .iter()
+            .map(|(path, node_id)| (*node_id, path.clone()))
+            .collect::<BTreeMap<_, _>>();
+        let root_node_id = reference_resolution_root_node_id(workspace, &node_ids_by_path)?;
+        let structural_snapshot = build_reference_resolution_structural_snapshot(
+            workspace,
+            &node_ids_by_path,
+            root_node_id,
+        )?;
+
+        Ok(Self {
+            workspace_handle,
+            availability_version,
+            structural_snapshot,
+            paths_by_node_id,
+        })
+    }
+
+    fn path_for(&self, node_id: TreeNodeId) -> Result<String, OxCalcTreeBridgeError> {
+        if node_id == TreeNodeId(0) {
+            return Ok("/".to_string());
+        }
+        self.paths_by_node_id.get(&node_id).cloned().ok_or_else(|| {
+            OxCalcTreeBridgeError::InvalidWorkspace(format!(
+                "resolved node {node_id} is not present in workspace {}",
+                self.workspace_handle
+            ))
+        })
+    }
+}
+
+fn resolve_cross_workspace_reference_request(
+    request: TreeCalcCrossWorkspaceReferenceRequest,
+) -> Result<TreeCalcCrossWorkspaceReferenceResolution, OxCalcTreeBridgeError> {
+    let mut projections = Vec::with_capacity(1 + request.external_workspaces.len());
+    projections.push(ReferenceResolutionWorkspaceProjection::from_workspace(
+        request.current_workspace_handle,
+        &request.current_workspace,
+        request.current_availability_version,
+    )?);
+    for external in &request.external_workspaces {
+        projections.push(ReferenceResolutionWorkspaceProjection::from_workspace(
+            external.workspace_handle.clone(),
+            &external.workspace,
+            external.availability_version.clone(),
+        )?);
+    }
+
+    let current = projections
+        .first()
+        .expect("current workspace projection was inserted");
+    let mut registry = TreeCalcWorkspaceResolutionRegistry::with_current_workspace(
+        current.workspace_handle.clone(),
+        &current.structural_snapshot,
+        current.availability_version.clone(),
+    );
+    for projection in projections.iter().skip(1) {
+        registry.add_workspace(
+            projection.workspace_handle.clone(),
+            &projection.structural_snapshot,
+            projection.availability_version.clone(),
+        );
+    }
+    for (selector, workspace_handle) in &request.aliases {
+        registry.add_alias(selector.clone(), workspace_handle.clone());
+    }
+
+    let resolution = resolve_treecalc_workspace_host_path_base(&registry, &request.base_token_text)
+        .map_err(|error| OxCalcTreeBridgeError::FormulaBindingUnavailable(error.to_string()))?;
+    let target_projection = projections
+        .iter()
+        .find(|projection| projection.workspace_handle == resolution.workspace_handle)
+        .ok_or_else(|| {
+            OxCalcTreeBridgeError::InvalidWorkspace(format!(
+                "resolution returned unregistered workspace handle {}",
+                resolution.workspace_handle
+            ))
+        })?;
+    let target_path = target_projection.path_for(resolution.base_node_id)?;
+    let carrier_id = format!("dnatreecalc-cross-workspace:v1:{}", request.source_token);
+    let prepared_carrier = PreparedFormulaReferenceCarrier::CrossWorkspaceResolved {
+        source_token: request.source_token.clone(),
+        workspace_handle: resolution.workspace_handle.clone(),
+        target_node_id: resolution.base_node_id.0,
+        target_node_handle: resolution.base_node_handle.clone(),
+        availability_version: resolution.availability_packet.availability_version.clone(),
+        carrier_id,
+        detail: resolution.resolution_identity.clone(),
+    };
+
+    Ok(TreeCalcCrossWorkspaceReferenceResolution {
+        source_token: request.source_token,
+        workspace_handle: resolution.workspace_handle,
+        target_path,
+        target_node_id: resolution.base_node_id.0,
+        target_node_handle: resolution.base_node_handle,
+        availability_version: resolution.availability_packet.availability_version,
+        workspace_resolution_layer: format!("{:?}", resolution.workspace_resolution_layer),
+        local_resolution_layer: format!("{:?}", resolution.local_resolution_layer),
+        resolution_identity: resolution.resolution_identity,
+        prepared_carrier,
+    })
+}
+
 fn assign_node_ids(workspace: &WorkspaceModel) -> BTreeMap<String, TreeNodeId> {
     workspace
         .node_order
@@ -251,10 +379,10 @@ fn root_node_id(
     node_ids_by_path: &BTreeMap<String, TreeNodeId>,
 ) -> Result<TreeNodeId, OxCalcTreeBridgeError> {
     if workspace.root_paths.len() != 1 {
-        return Err(OxCalcTreeBridgeError::InvalidWorkspace(format!(
-            "W002 bridge smoke expects exactly one root, found {}",
-            workspace.root_paths.len()
-        )));
+        for root in &workspace.root_paths {
+            node_id_for(root, node_ids_by_path)?;
+        }
+        return Ok(TreeNodeId(0));
     }
 
     node_ids_by_path
@@ -268,6 +396,17 @@ fn root_node_id(
         })
 }
 
+fn reference_resolution_root_node_id(
+    workspace: &WorkspaceModel,
+    node_ids_by_path: &BTreeMap<String, TreeNodeId>,
+) -> Result<TreeNodeId, OxCalcTreeBridgeError> {
+    if workspace.root_paths.len() == 1 {
+        return node_id_for(&workspace.root_paths[0], node_ids_by_path);
+    }
+
+    Ok(TreeNodeId(0))
+}
+
 fn build_structural_snapshot(
     workspace: &WorkspaceModel,
     formula_catalog: &PreparedFormulaCatalog,
@@ -276,6 +415,25 @@ fn build_structural_snapshot(
     table_projections: &[TreeCalcTableNodeProjection],
 ) -> Result<StructuralSnapshot, OxCalcTreeBridgeError> {
     let mut nodes = Vec::new();
+    let synthetic_root = root_node_id == TreeNodeId(0);
+
+    if synthetic_root {
+        let child_ids = workspace
+            .root_paths
+            .iter()
+            .map(|root| node_id_for(root, node_ids_by_path))
+            .collect::<Result<Vec<_>, _>>()?;
+        nodes.push(StructuralNode {
+            node_id: root_node_id,
+            kind: StructuralNodeKind::Root,
+            symbol: workspace.workspace_id.clone(),
+            parent_id: None,
+            child_ids,
+            formula_artifact_id: None,
+            bind_artifact_id: None,
+            constant_value: None,
+        });
+    }
 
     for path in &workspace.node_order {
         let node = workspace.node(path).ok_or_else(|| {
@@ -286,7 +444,79 @@ fn build_structural_snapshot(
             formula_catalog,
             node_ids_by_path,
             table_projections,
+            synthetic_root.then_some(root_node_id),
         )?);
+    }
+
+    StructuralSnapshot::create(StructuralSnapshotId(1), root_node_id, nodes)
+        .map_err(|error| OxCalcTreeBridgeError::InvalidWorkspace(error.to_string()))
+}
+
+fn build_reference_resolution_structural_snapshot(
+    workspace: &WorkspaceModel,
+    node_ids_by_path: &BTreeMap<String, TreeNodeId>,
+    root_node_id: TreeNodeId,
+) -> Result<StructuralSnapshot, OxCalcTreeBridgeError> {
+    let mut nodes = Vec::new();
+
+    let synthetic_root = root_node_id == TreeNodeId(0);
+    if synthetic_root {
+        let child_ids = workspace
+            .root_paths
+            .iter()
+            .map(|root| node_id_for(root, node_ids_by_path))
+            .collect::<Result<Vec<_>, _>>()?;
+        nodes.push(StructuralNode {
+            node_id: root_node_id,
+            kind: StructuralNodeKind::Root,
+            symbol: workspace.workspace_id.clone(),
+            parent_id: None,
+            child_ids,
+            formula_artifact_id: None,
+            bind_artifact_id: None,
+            constant_value: None,
+        });
+    }
+
+    for path in &workspace.node_order {
+        let node = workspace.node(path).ok_or_else(|| {
+            OxCalcTreeBridgeError::InvalidWorkspace(format!("node {path} missing from workspace"))
+        })?;
+        let node_id = node_id_for(&node.path, node_ids_by_path)?;
+        let parent_id = node
+            .parent_path
+            .as_deref()
+            .map(|parent| node_id_for(parent, node_ids_by_path))
+            .transpose()?
+            .or_else(|| synthetic_root.then_some(root_node_id));
+        let child_ids = node
+            .child_paths
+            .iter()
+            .map(|child| node_id_for(child, node_ids_by_path))
+            .collect::<Result<Vec<_>, _>>()?;
+        let kind = if parent_id.is_none() {
+            StructuralNodeKind::Root
+        } else {
+            match node.content.kind() {
+                NodeContentKind::Constant => StructuralNodeKind::Constant,
+                NodeContentKind::Empty | NodeContentKind::Formula => StructuralNodeKind::Container,
+            }
+        };
+        let constant_value = if node.content.kind() == NodeContentKind::Constant {
+            Some(node.content.text().to_string())
+        } else {
+            None
+        };
+        nodes.push(StructuralNode {
+            node_id,
+            kind,
+            symbol: oxcalc_structural_symbol(&node.name),
+            parent_id,
+            child_ids,
+            formula_artifact_id: None,
+            bind_artifact_id: None,
+            constant_value,
+        });
     }
 
     StructuralSnapshot::create(StructuralSnapshotId(1), root_node_id, nodes)
@@ -298,13 +528,15 @@ fn build_structural_node(
     formula_catalog: &PreparedFormulaCatalog,
     node_ids_by_path: &BTreeMap<String, TreeNodeId>,
     table_projections: &[TreeCalcTableNodeProjection],
+    synthetic_root_id: Option<TreeNodeId>,
 ) -> Result<StructuralNode, OxCalcTreeBridgeError> {
     let node_id = node_id_for(&node.path, node_ids_by_path)?;
     let parent_id = node
         .parent_path
         .as_deref()
         .map(|parent| node_id_for(parent, node_ids_by_path))
-        .transpose()?;
+        .transpose()?
+        .or(synthetic_root_id);
     let child_ids = node
         .child_paths
         .iter()
@@ -347,7 +579,7 @@ fn build_structural_node(
     Ok(StructuralNode {
         node_id,
         kind,
-        symbol: node.name.clone(),
+        symbol: oxcalc_structural_symbol(&node.name),
         parent_id,
         child_ids,
         formula_artifact_id,
@@ -1094,6 +1326,49 @@ fn prepared_reference_carrier_to_tree_carrier(
                 ),
             ))
         }
+        PreparedFormulaReferenceCarrier::CrossWorkspaceResolved {
+            source_token,
+            workspace_handle,
+            target_node_id,
+            target_node_handle,
+            availability_version,
+            carrier_id,
+            detail,
+        } => Ok(TreeFormulaReferenceCarrier::named(
+            source_token.clone(),
+            TreeReference::CrossWorkspaceResolved {
+                workspace_handle: workspace_handle.clone(),
+                target_node_id: TreeNodeId(*target_node_id),
+                target_node_handle: target_node_handle.clone(),
+                availability_version: availability_version.clone(),
+                carrier_id: carrier_id.clone(),
+                detail: detail.clone(),
+            },
+        )),
+        PreparedFormulaReferenceCarrier::DynamicResolved {
+            source_token,
+            target_path,
+            carrier_id,
+            detail,
+        } => Ok(TreeFormulaReferenceCarrier::named(
+            source_token.clone(),
+            TreeReference::DynamicResolved {
+                target_node_id: node_id_for(target_path, node_ids_by_path)?,
+                carrier_id: carrier_id.clone(),
+                detail: detail.clone(),
+            },
+        )),
+        PreparedFormulaReferenceCarrier::DynamicPotential {
+            source_token,
+            carrier_id,
+            detail,
+        } => Ok(TreeFormulaReferenceCarrier::named(
+            source_token.clone(),
+            TreeReference::DynamicPotential {
+                carrier_id: carrier_id.clone(),
+                detail: detail.clone(),
+            },
+        )),
     }
 }
 
@@ -1138,6 +1413,13 @@ fn node_id_for(
             "node {path} has no assigned OxCalc node id"
         ))
     })
+}
+
+fn oxcalc_structural_symbol(name: &str) -> String {
+    name.strip_prefix('[')
+        .and_then(|rest| rest.strip_suffix(']'))
+        .unwrap_or(name)
+        .to_string()
 }
 
 fn formula_artifact_id(path: &str) -> String {

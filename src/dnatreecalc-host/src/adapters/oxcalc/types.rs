@@ -66,6 +66,38 @@ pub struct TreeRecalcResult {
     pub diagnostics: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TreeCalcExternalWorkspace {
+    pub workspace_handle: String,
+    pub workspace: WorkspaceModel,
+    pub availability_version: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TreeCalcCrossWorkspaceReferenceRequest {
+    pub current_workspace_handle: String,
+    pub current_workspace: WorkspaceModel,
+    pub current_availability_version: String,
+    pub external_workspaces: Vec<TreeCalcExternalWorkspace>,
+    pub aliases: BTreeMap<String, String>,
+    pub base_token_text: String,
+    pub source_token: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TreeCalcCrossWorkspaceReferenceResolution {
+    pub source_token: String,
+    pub workspace_handle: String,
+    pub target_path: String,
+    pub target_node_id: u64,
+    pub target_node_handle: String,
+    pub availability_version: String,
+    pub workspace_resolution_layer: String,
+    pub local_resolution_layer: String,
+    pub resolution_identity: String,
+    pub prepared_carrier: PreparedFormulaReferenceCarrier,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PreparedFormulaCatalog {
     bindings: BTreeMap<String, PreparedFormula>,
@@ -152,6 +184,26 @@ pub enum PreparedFormulaReferenceCarrier {
         source_token_text: String,
         source_span_utf8: Option<(usize, usize)>,
         elements: Vec<PreparedReferenceLiteralArrayElement>,
+    },
+    CrossWorkspaceResolved {
+        source_token: String,
+        workspace_handle: String,
+        target_node_id: u64,
+        target_node_handle: String,
+        availability_version: String,
+        carrier_id: String,
+        detail: String,
+    },
+    DynamicResolved {
+        source_token: String,
+        target_path: String,
+        carrier_id: String,
+        detail: String,
+    },
+    DynamicPotential {
+        source_token: String,
+        carrier_id: String,
+        detail: String,
     },
 }
 
