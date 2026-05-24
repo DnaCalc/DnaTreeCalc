@@ -2,7 +2,8 @@
   "schema_version": "treecalc-corpus-v1",
   "theme": "references/walkup",
   "workset": "W004",
-  "status": "active",
+  "status": "pending",
+  "status_note": "Reverted from active to pending 2026-05-24: the previous activation went through DnaTreeCalc's host-side mini-AST stop-gap (PreparedFormula::Binary + PreparedFormulaOperand + PreparedRelativePathBase) routed through OxCalc's fixture-AST helpers, which bypasses OxFml's binder. Those host-side types have been excised. Honest activation needs the public OxFml bare-name/dotted bind surface (OxFml W074) + the matching OxCalc public formula packet (W056 generic host-name) — tracked by dtc-z0i.4 (BLOCKED).",
   "description": "Bare-name lexical walk-up resolution: own children first, then each ancestor's children one scope at a time, first match wins (CORE_MODEL_SPEC §3.2, §3.7).",
   "cases": [
     {

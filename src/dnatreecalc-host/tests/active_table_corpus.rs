@@ -1436,6 +1436,11 @@ fn snapshot_projection_and_state(
     Ok((projection, state))
 }
 
+// The signature is genuinely complex (three nested optional projection
+// pairs plus the callback packet) and a type alias would obscure rather
+// than clarify each slot's role. Pre-existing; flagged when warnings
+// were tightened on the workspace.
+#[allow(clippy::type_complexity)]
 fn table_lifecycle_packet_for_case(
     case: &TableLifecycleCase,
     owner: TreeNodeId,

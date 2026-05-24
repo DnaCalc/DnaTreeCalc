@@ -130,41 +130,21 @@ impl PreparedFormulaCatalog {
     }
 }
 
+/// A formula binding the host marshals into OxCalc through the bridge.
+///
+/// **Closed by design** to OxFml-bound source text plus typed reference
+/// carriers OxCalc accepts on its public surface. The host never represents
+/// formula structure or arithmetic itself — `OpaqueOxfml.source_text` is
+/// handed to OxFml, OxFml parses it, and OxCalc binds it with the carrier
+/// hints. `#[non_exhaustive]` so additional OxCalc public formula packets
+/// can land additively as the engine surface grows.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum PreparedFormula {
-    Literal {
-        value: String,
-    },
-    Binary {
-        op: PreparedBinaryOp,
-        left: PreparedFormulaOperand,
-        right: PreparedFormulaOperand,
-    },
     OpaqueOxfml {
         source_text: String,
         reference_carriers: Vec<PreparedFormulaReferenceCarrier>,
     },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PreparedFormulaOperand {
-    Literal {
-        value: String,
-    },
-    DirectNode {
-        path: String,
-    },
-    RelativePath {
-        base: PreparedRelativePathBase,
-        path_segments: Vec<String>,
-    },
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PreparedRelativePathBase {
-    SelfNode,
-    ParentNode,
-    Ancestor(usize),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -211,14 +191,6 @@ pub enum PreparedFormulaReferenceCarrier {
 pub enum PreparedReferenceLiteralArrayElement {
     ReferencePath { path: String },
     ScalarValue { source_text: String },
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PreparedBinaryOp {
-    Add,
-    Subtract,
-    Multiply,
-    Divide,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

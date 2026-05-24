@@ -5,9 +5,8 @@ mod types;
 pub use bridge::{OxCalcTreeBridge, OxCalcTreeBridgeError};
 pub use live_bridge::LiveOxCalcTreeBridge;
 pub use types::{
-    CycleConfig, CycleProfileId, NodeCalcStateProjection, PreparedBinaryOp, PreparedFormula,
-    PreparedFormulaCatalog, PreparedFormulaOperand, PreparedFormulaReferenceCarrier,
-    PreparedReferenceLiteralArrayElement, PreparedRelativePathBase,
+    CycleConfig, CycleProfileId, NodeCalcStateProjection, PreparedFormula, PreparedFormulaCatalog,
+    PreparedFormulaReferenceCarrier, PreparedReferenceLiteralArrayElement,
     TreeCalcCrossWorkspaceReferenceRequest, TreeCalcCrossWorkspaceReferenceResolution,
     TreeCalcExternalWorkspace, TreeRecalcRequest, TreeRecalcResult,
 };

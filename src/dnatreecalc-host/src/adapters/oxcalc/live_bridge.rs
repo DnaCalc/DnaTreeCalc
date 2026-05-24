@@ -5,7 +5,6 @@ use oxcalc_core::consumer::{
 };
 use oxcalc_core::dependency::{DependencyDescriptorKind, DependencyGraph};
 use oxcalc_core::formula::{
-    FixtureFormulaAst, FixtureFormulaBinaryOp, RelativeReferenceBase,
     TreeCalcChildrenReferenceCollection, TreeCalcFormulaTextPrebindContext,
     TreeCalcFormulaTextPrebindDiagnostic, TreeCalcOrderedSelectorFamily,
     TreeCalcOrderedSelectorQuery, TreeCalcOrderedSelectorResolution,
@@ -34,10 +33,10 @@ use oxcalc_core::structured_table::{
 
 use super::bridge::{OxCalcTreeBridge, OxCalcTreeBridgeError};
 use super::types::{
-    NodeCalcStateProjection, PreparedBinaryOp, PreparedFormula, PreparedFormulaCatalog,
-    PreparedFormulaOperand, PreparedFormulaReferenceCarrier, PreparedReferenceLiteralArrayElement,
-    PreparedRelativePathBase, TreeCalcCrossWorkspaceReferenceRequest,
-    TreeCalcCrossWorkspaceReferenceResolution, TreeRecalcRequest, TreeRecalcResult,
+    NodeCalcStateProjection, PreparedFormula, PreparedFormulaCatalog,
+    PreparedFormulaReferenceCarrier, PreparedReferenceLiteralArrayElement,
+    TreeCalcCrossWorkspaceReferenceRequest, TreeCalcCrossWorkspaceReferenceResolution,
+    TreeRecalcRequest, TreeRecalcResult,
 };
 use crate::model::{
     NodeContentKind, TableColumnBodyKind, TableColumnFixture, TableFormulaFixture,
@@ -1196,10 +1195,6 @@ fn prepared_formula_to_tree_formula(
     node_ids_by_path: &BTreeMap<String, TreeNodeId>,
 ) -> Result<TreeFormula, OxCalcTreeBridgeError> {
     match formula {
-        PreparedFormula::Literal { .. } | PreparedFormula::Binary { .. } => {
-            Ok(prepared_formula_to_fixture_ast(formula, node_ids_by_path)?
-                .to_tree_formula(owner_node_id))
-        }
         PreparedFormula::OpaqueOxfml {
             source_text,
             reference_carriers,
@@ -1219,30 +1214,15 @@ fn prepared_formula_to_tree_formula(
     }
 }
 
-fn prepared_formula_to_fixture_ast(
-    formula: &PreparedFormula,
-    node_ids_by_path: &BTreeMap<String, TreeNodeId>,
-) -> Result<FixtureFormulaAst, OxCalcTreeBridgeError> {
-    match formula {
-        PreparedFormula::Literal { value } => Ok(FixtureFormulaAst::Literal {
-            value: value.clone(),
-        }),
-        PreparedFormula::Binary { op, left, right } => Ok(FixtureFormulaAst::Binary {
-            op: match op {
-                PreparedBinaryOp::Add => FixtureFormulaBinaryOp::Add,
-                PreparedBinaryOp::Subtract => FixtureFormulaBinaryOp::Subtract,
-                PreparedBinaryOp::Multiply => FixtureFormulaBinaryOp::Multiply,
-                PreparedBinaryOp::Divide => FixtureFormulaBinaryOp::Divide,
-            },
-            left: Box::new(prepared_operand_to_fixture_ast(left, node_ids_by_path)?),
-            right: Box::new(prepared_operand_to_fixture_ast(right, node_ids_by_path)?),
-        }),
-        PreparedFormula::OpaqueOxfml { .. } => Err(OxCalcTreeBridgeError::InvalidWorkspace(
-            "opaque OxFml source is already a TreeFormula and cannot be lowered through fixture AST"
-                .to_string(),
-        )),
-    }
-}
+// Host-side mini-AST conversion (`prepared_formula_to_fixture_ast` /
+// `prepared_operand_to_fixture_ast` / `prepared_relative_path_base`)
+// was excised: it routed `PreparedFormula::Binary` through OxCalc's
+// fixture-AST helpers, which is a synthetic test path that bypasses
+// OxFml's binder. Live formula binding always goes through
+// `PreparedFormula::OpaqueOxfml` → `TreeFormula::opaque_oxfml`; new
+// formula shapes land as additional carrier variants or as new
+// `PreparedFormula` variants matched to public OxCalc packets — never
+// as a host-side formula AST.
 
 fn prepared_reference_carrier_to_tree_carrier(
     carrier: &PreparedFormulaReferenceCarrier,
@@ -1372,38 +1352,6 @@ fn prepared_reference_carrier_to_tree_carrier(
     }
 }
 
-fn prepared_operand_to_fixture_ast(
-    operand: &PreparedFormulaOperand,
-    node_ids_by_path: &BTreeMap<String, TreeNodeId>,
-) -> Result<FixtureFormulaAst, OxCalcTreeBridgeError> {
-    match operand {
-        PreparedFormulaOperand::Literal { value } => Ok(FixtureFormulaAst::Literal {
-            value: value.clone(),
-        }),
-        PreparedFormulaOperand::DirectNode { path } => {
-            let target_node_id = node_id_for(path, node_ids_by_path)?;
-            Ok(FixtureFormulaAst::Reference(TreeReference::DirectNode {
-                target_node_id,
-            }))
-        }
-        PreparedFormulaOperand::RelativePath {
-            base,
-            path_segments,
-        } => Ok(FixtureFormulaAst::Reference(TreeReference::RelativePath {
-            base: prepared_relative_path_base(*base),
-            path_segments: path_segments.clone(),
-        })),
-    }
-}
-
-fn prepared_relative_path_base(base: PreparedRelativePathBase) -> RelativeReferenceBase {
-    match base {
-        PreparedRelativePathBase::SelfNode => RelativeReferenceBase::SelfNode,
-        PreparedRelativePathBase::ParentNode => RelativeReferenceBase::ParentNode,
-        PreparedRelativePathBase::Ancestor(distance) => RelativeReferenceBase::Ancestor(distance),
-    }
-}
-
 fn node_id_for(
     path: &str,
     node_ids_by_path: &BTreeMap<String, TreeNodeId>,
@@ -1438,73 +1386,14 @@ mod tests {
 
     use crate::model::{WorkspaceFixture, WorkspaceNodeFixture};
 
-    #[test]
-    fn live_bridge_executes_minimal_named_node_smoke_fixture() {
-        let workspace = WorkspaceModel::try_from(WorkspaceFixture {
-            schema_version: "treecalc-workspace-v1".to_string(),
-            workspace_id: "w002-smoke".to_string(),
-            description: None,
-            profile: None,
-            nodes: vec![
-                WorkspaceNodeFixture {
-                    node_id: "Root".to_string(),
-                    formula: String::new(),
-                    is_meta: false,
-                    table: None,
-                },
-                WorkspaceNodeFixture {
-                    node_id: "Root.A".to_string(),
-                    formula: "2".to_string(),
-                    is_meta: false,
-                    table: None,
-                },
-                WorkspaceNodeFixture {
-                    node_id: "Root.B".to_string(),
-                    formula: "=A+3".to_string(),
-                    is_meta: false,
-                    table: None,
-                },
-            ],
-        })
-        .unwrap();
-
-        let bridge = LiveOxCalcTreeBridge::default();
-        let result = bridge
-            .execute_recalc(TreeRecalcRequest {
-                workspace,
-                formula_catalog: PreparedFormulaCatalog::new([(
-                    "Root.B",
-                    PreparedFormula::Binary {
-                        op: PreparedBinaryOp::Add,
-                        left: PreparedFormulaOperand::DirectNode {
-                            path: "Root.A".to_string(),
-                        },
-                        right: PreparedFormulaOperand::Literal {
-                            value: "3".to_string(),
-                        },
-                    },
-                )]),
-                candidate_result_id: "cand:w002-smoke".to_string(),
-                publication_id: "pub:w002-smoke".to_string(),
-                compatibility_basis: "snapshot:w002-smoke".to_string(),
-                artifact_token_basis: "snapshot:w002-smoke".to_string(),
-                capability_profile_id: "treecalc-v1".to_string(),
-                cycle_config: Default::default(),
-            })
-            .unwrap();
-
-        assert_eq!(result.run_state, OxCalcTreeRunState::Published);
-        assert_eq!(result.published_values["Root.B"], "5");
-        assert_eq!(
-            result.dependency_edges_by_owner["Root.B"],
-            vec!["Root.A".to_string()]
-        );
-        assert_eq!(result.node_states["Root.B"], NodeCalcStateProjection::Clean);
-        assert!(result.evaluation_order.contains(&"Root.B".to_string()));
-        assert!(result.diagnostics.iter().any(|diagnostic| {
-            diagnostic == "oxcalc_tree_environment_runtime_lane:local_sequential_treecalc"
-        }));
-    }
+    // The W002 smoke test `live_bridge_executes_minimal_named_node_smoke_fixture`
+    // was excised together with `PreparedFormula::Binary`: it relied on the
+    // host-side mini-AST stop-gap to evaluate `=A+3` through OxCalc's
+    // fixture-AST helpers, not through OxFml's real binder. The next test
+    // (`live_bridge_prebinds_raw_children_formula_text_through_oxcalc`) and
+    // the W004 corpus tests cover the honest OxFml-bound path. Reinstating a
+    // smoke test for bare-name expressions waits for OxFml W074 + OxCalc W056
+    // (dtc-z0i.4 BLOCKED).
 
     #[test]
     fn live_bridge_prebinds_raw_children_formula_text_through_oxcalc() {
