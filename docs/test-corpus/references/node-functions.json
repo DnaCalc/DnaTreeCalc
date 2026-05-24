@@ -2,7 +2,7 @@
   "schema_version": "treecalc-corpus-v1",
   "theme": "references/node-functions",
   "workset": "W004",
-  "status": "pending",
+  "status": "active",
   "description": "Node-as-function invocation for lambda-valued nodes (CORE_MODEL_SPEC §3.8). OxFml parses the call and OxCalc resolves the callee as a single TreeCalc reference; LAMBDA arity/closure/value semantics remain OxFml/OxFunc owned.",
   "cases": [
     {

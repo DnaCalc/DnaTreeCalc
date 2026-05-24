@@ -2,7 +2,7 @@
   "schema_version": "treecalc-corpus-v1",
   "theme": "profiles/gating",
   "workset": "W004",
-  "status": "pending",
+  "status": "active",
   "description": "Capability-profile gating (CORE_MODEL_SPEC §4). Every TreeCalc-specific extension parses/binds under treecalc-v1 and is rejected at parse/bind time under strict-excel. Profile-agnostic surface (scalar array literals, function semantics) is accepted under both. Capability mismatch is a bind-time error, never silent drift.",
   "cases": [
     {

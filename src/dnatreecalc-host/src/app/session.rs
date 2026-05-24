@@ -4,7 +4,8 @@ use dnatreecalc_skin_framework::{
     NodeContentKind as FrameworkContentKind, NodeId, NodeValueProjection, NodeView, WorkspaceState,
 };
 use oxcalc_core::consumer::{
-    OxCalcTreeCalculationOutcome, OxCalcTreeContext, OxCalcTreeContextError, OxCalcTreeNodeCreate,
+    OxCalcTreeCalculationOutcome, OxCalcTreeContext, OxCalcTreeContextError,
+    OxCalcTreeContextOptions, OxCalcTreeHostCapabilitySnapshot, OxCalcTreeNodeCreate,
     OxCalcTreeWorkspaceCreate, OxCalcTreeWorkspaceId, OxCalcTreeWorkspaceSnapshot,
 };
 use oxcalc_core::recalc::NodeCalcState;
@@ -16,8 +17,8 @@ use oxcalc_core::structured_table::{
 };
 
 use crate::model::{
-    NodeContent, TableColumnBodyKind, TableColumnFixture, TableFormulaFixture, TableNodeFixture,
-    WorkspaceModel,
+    CapabilityProfileId, NodeContent, TableColumnBodyKind, TableColumnFixture, TableFormulaFixture,
+    TableNodeFixture, WorkspaceModel,
 };
 
 const ENGINE_ROOT_SYMBOL: &str = "__dnatreecalc_workspace__";
@@ -34,7 +35,7 @@ pub struct TreeWorkspaceSession {
 
 impl TreeWorkspaceSession {
     pub fn from_model(model: &WorkspaceModel) -> Result<Self, TreeWorkspaceSessionError> {
-        let mut context = OxCalcTreeContext::default();
+        let mut context = context_for_profile(&model.profile);
         let workspace_id = context.create_workspace(
             OxCalcTreeWorkspaceCreate::new(&model.workspace_id)
                 .with_root_symbol(ENGINE_ROOT_SYMBOL),
@@ -90,7 +91,7 @@ impl TreeWorkspaceSession {
         snapshot: OxCalcTreeWorkspaceSnapshot,
         profile: &'static str,
     ) -> Result<Self, TreeWorkspaceSessionError> {
-        let mut context = OxCalcTreeContext::default();
+        let mut context = context_for_profile_id(profile);
         let workspace_id = context.import_workspace_snapshot(snapshot)?;
         let workspace_view = context.workspace_view(&workspace_id)?;
         let engine_root_id = workspace_view.root_node_id;
@@ -144,6 +145,15 @@ impl TreeWorkspaceSession {
     #[must_use]
     pub fn recalc_count(&self) -> usize {
         self.recalc_count
+    }
+
+    #[must_use]
+    pub fn capability_profile_id(&self) -> &str {
+        &self
+            .context
+            .options()
+            .host_capabilities
+            .capability_profile_id
     }
 
     pub fn edit_formula(
@@ -391,6 +401,26 @@ impl TreeWorkspaceSession {
         self.display_order = display_order;
         Ok(())
     }
+}
+
+fn context_for_profile(profile: &CapabilityProfileId) -> OxCalcTreeContext {
+    context_for_profile_id(profile.as_str())
+}
+
+fn context_for_profile_id(profile: &str) -> OxCalcTreeContext {
+    let capability_profile_id = match profile {
+        "strict-excel" => "host-capabilities:strict-excel",
+        _ => "host-capabilities:treecalc-v1",
+    };
+    OxCalcTreeContext::new(OxCalcTreeContextOptions::new().with_host_capabilities(
+        OxCalcTreeHostCapabilitySnapshot {
+            capability_profile_id: capability_profile_id.to_string(),
+            dynamic_dependency_effects: true,
+            execution_restriction_effects: true,
+            capability_sensitive_effects: true,
+            shape_topology_effects: true,
+        },
+    ))
 }
 
 #[derive(Debug, thiserror::Error)]
