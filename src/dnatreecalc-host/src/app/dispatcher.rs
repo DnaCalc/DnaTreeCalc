@@ -12,10 +12,10 @@ use crate::adapters::oxcalc::OxCalcTreeBridge;
 /// Routes selection intents to the shared `RwSignal<SelectionState>`
 /// (no engine call, by design — selection is facade state per
 /// `docs/ux/SKINS.md` §2.5 routing) and accepts `EditFormula` intents.
-/// In this bead the formula path simply records intents; wiring the
-/// OxCalc bridge call (build a `TreeRecalcRequest`, submit, project
-/// the published values back into the workspace signal) is the
-/// follow-up bead `dtc-osq.6`.
+/// In this skeleton dispatcher the formula path simply records intents. The
+/// `dtc-osq.6` corpus runner proves the minimal walk-up reference bridge path;
+/// wiring formula-edit intents into shell projection remains the click-through
+/// lane.
 ///
 /// The bridge handle is held but unused for now so that landing the
 /// next bead is an additive change inside `dispatch`, not a constructor
@@ -65,10 +65,9 @@ impl Dispatcher for HostDispatcher {
             }
             WorkspaceIntent::EditFormula { .. } => {
                 // Walking skeleton accepts the intent so the dispatch path
-                // is exercised, but does not yet call the bridge — that
-                // lands in dtc-osq.6 alongside the walkup corpus activation
-                // (the bridge already runs activated corpora; here the
-                // missing piece is the host's per-intent request builder).
+                // is exercised, but does not yet call the bridge. The bridge
+                // already runs activated corpora; here the missing piece is
+                // the host's per-intent request builder and value projection.
                 IntentReceipt::accepted()
             }
             // The framework's WorkspaceIntent is intentionally

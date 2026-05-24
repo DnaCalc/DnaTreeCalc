@@ -35,7 +35,8 @@
           "properties": {
             "outcome": { "enum": ["resolved", "unresolved", "reject", "error", "cycle_blocked", "published", "rejected"] },
             "target": { "type": "string", "description": "node_id of the resolved node, or '/' for the workspace root." },
-            "engine_ref": { "type": "string", "description": "Intended TreeReference mapping (§3.7); informational until the runner asserts it." },
+            "engine_ref": { "type": "string", "description": "Intended TreeReference mapping (§3.7); human-readable and not parsed by active runners." },
+            "engine_ref_shape": { "type": "object", "description": "Optional structured TreeReference shape consumed by active runners that need to construct prepared references." },
             "reason": { "type": "string" },
             "calc": { "type": "string", "description": "Evaluation-time note, e.g. 'cycle'." },
             "cardinality": { "enum": ["single", "set", "value"] },

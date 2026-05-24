@@ -116,8 +116,23 @@ pub enum PreparedFormula {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PreparedFormulaOperand {
-    Literal { value: String },
-    DirectNode { path: String },
+    Literal {
+        value: String,
+    },
+    DirectNode {
+        path: String,
+    },
+    RelativePath {
+        base: PreparedRelativePathBase,
+        path_segments: Vec<String>,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PreparedRelativePathBase {
+    SelfNode,
+    ParentNode,
+    Ancestor(usize),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -5,9 +5,10 @@ use oxcalc_core::consumer::{
 };
 use oxcalc_core::dependency::{DependencyDescriptorKind, DependencyGraph};
 use oxcalc_core::formula::{
-    FixtureFormulaAst, FixtureFormulaBinaryOp, TreeCalcChildrenReferenceCollection,
-    TreeCalcFormulaTextPrebindContext, TreeCalcFormulaTextPrebindDiagnostic,
-    TreeCalcOrderedSelectorFamily, TreeCalcOrderedSelectorQuery, TreeCalcOrderedSelectorResolution,
+    FixtureFormulaAst, FixtureFormulaBinaryOp, RelativeReferenceBase,
+    TreeCalcChildrenReferenceCollection, TreeCalcFormulaTextPrebindContext,
+    TreeCalcFormulaTextPrebindDiagnostic, TreeCalcOrderedSelectorFamily,
+    TreeCalcOrderedSelectorQuery, TreeCalcOrderedSelectorResolution,
     TreeCalcOrderedSelectorResolutionLayer, TreeCalcOrderedSelectorTraversalPolicy,
     TreeCalcQualifiedBaseResolutionLayer, TreeCalcQualifiedChildrenBaseQuery,
     TreeCalcQualifiedChildrenBaseResolution, TreeCalcReferenceCollection,
@@ -34,7 +35,7 @@ use super::bridge::{OxCalcTreeBridge, OxCalcTreeBridgeError};
 use super::types::{
     NodeCalcStateProjection, PreparedBinaryOp, PreparedFormula, PreparedFormulaCatalog,
     PreparedFormulaOperand, PreparedFormulaReferenceCarrier, PreparedReferenceLiteralArrayElement,
-    TreeRecalcRequest, TreeRecalcResult,
+    PreparedRelativePathBase, TreeRecalcRequest, TreeRecalcResult,
 };
 use crate::model::{
     NodeContentKind, TableColumnBodyKind, TableColumnFixture, TableFormulaFixture,
@@ -1110,6 +1111,21 @@ fn prepared_operand_to_fixture_ast(
                 target_node_id,
             }))
         }
+        PreparedFormulaOperand::RelativePath {
+            base,
+            path_segments,
+        } => Ok(FixtureFormulaAst::Reference(TreeReference::RelativePath {
+            base: prepared_relative_path_base(*base),
+            path_segments: path_segments.clone(),
+        })),
+    }
+}
+
+fn prepared_relative_path_base(base: PreparedRelativePathBase) -> RelativeReferenceBase {
+    match base {
+        PreparedRelativePathBase::SelfNode => RelativeReferenceBase::SelfNode,
+        PreparedRelativePathBase::ParentNode => RelativeReferenceBase::ParentNode,
+        PreparedRelativePathBase::Ancestor(distance) => RelativeReferenceBase::Ancestor(distance),
     }
 }
 

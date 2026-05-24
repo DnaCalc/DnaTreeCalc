@@ -11,10 +11,10 @@ use crate::model::{NodeContent, WorkspaceModel};
 /// `WorkspaceState` (read-only observation surface skins consume).
 ///
 /// The walking-skeleton projection leaves `computed_value` as
-/// [`NodeValueProjection::Unevaluated`] — wiring the bridge result into
-/// the projected values lands with `dtc-osq.6` (walkup corpus
-/// activation), where the bridge's published values per node become
-/// honest scalar/array projections.
+/// [`NodeValueProjection::Unevaluated`]. The `dtc-osq.6` walk-up corpus now
+/// proves the bridge can publish values for the minimal reference slice; wiring
+/// those values into the interactive shell projection remains the UX
+/// click-through lane.
 #[must_use]
 pub fn workspace_state_from_model(model: &WorkspaceModel) -> WorkspaceState {
     let mut nodes = BTreeMap::new();

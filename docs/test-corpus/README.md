@@ -107,14 +107,15 @@ Section references (`§3.2`, etc.) are into [`../model/CORE_MODEL_SPEC.md`](../m
   workspace by id and name a `caller` node + a `reference` string.
 - **Every case** carries a stable `id`, a human `name`, a `spec` citation (e.g. `"§3.2, §3.7"`),
   a `kind`, and asserts exactly one outcome.
-- `expect.engine_ref` records the **intended** engine `TreeReference` mapping (§3.7) — informational
-  today, asserted by the runner later.
+- `expect.engine_ref` records the **intended** engine `TreeReference` mapping (§3.7) for
+  human review. Active runners that need to construct a prepared reference use a structured
+  companion such as `expect.engine_ref_shape`; they must not parse the display string.
 
 ### Case kinds
 
 | `kind` | Required fields | `expect` shape |
 |---|---|---|
-| `resolution` | `workspace`, `caller`, `reference` | `{ outcome: resolved\|unresolved\|reject\|error, target?, engine_ref?, reason?, calc? }` (`target` is a `node_id`, or `/` for the workspace root) |
+| `resolution` | `workspace`, `caller`, `reference` | `{ outcome: resolved\|unresolved\|reject\|error, target?, engine_ref?, engine_ref_shape?, reason?, calc? }` (`target` is a `node_id`, or `/` for the workspace root) |
 | `classification` | `reference` | `{ cardinality: single\|set\|value, result_kind? }` (§3.5b / §3.5) |
 | `profile` | `reference`, `profiles` | `profiles` maps a profile id to `"accept"`/`"reject"` or `{ verdict, as? }` (§4) |
 | `syntax` | `reference` | `{ parse: accept\|reject, equivalent_to?, reason? }` (§3.1, §3.3) |
@@ -165,7 +166,7 @@ parallel parser to make activation possible.
 
 | Corpus family | First active route | Activation gate |
 |---|---|---|
-| `references/walkup` | W005 corpus runner v1 | Bare walk-up and dotted descent bind through OxCalc; expected target/canonical path assertions pass. |
+| `references/walkup` | W005 active walk-up runner | The minimal bare-name walk-up and dotted-descent corpus now runs through `LiveOxCalcTreeBridge` with typed OxCalc `RelativePath` carriers. The runner asserts resolved dependency targets, canonical path expectations, unresolved diagnostics, and self-reference rejection without parsing TreeCalc formula text locally. |
 | `references/anchors`, `references/sibling-offsets` | W004 reference runner | Ancestor/root/workspace anchors and `@PREV`/`@NEXT` bind through OxCalc bridge variants. |
 | `references/syntax`, `references/escaping`, `profiles/gating` | W004 parser/binder runner | OxFml parses under the OxCalc-supplied TreeCalc capability profile and rejects under `strict-excel` where specified. |
 | `references/cross-workspace` | W004 external workspace runner | Host loads the aliased workspace, OxCalc receives the external/host-sensitive edge, and unavailable externals surface as diagnostics. |
@@ -238,13 +239,16 @@ This is not a TreeCalc raw-formula parser: the broad `references/literals` and
 `arrays/array-references` themes remain pending until the public raw query/prebind
 surface can classify and bind the full literal/array syntax family.
 
-The remaining raw-formula blocker is narrowed in bead `dtc-osq.2`: unsupported
-families include walk-up and dotted names such as `=A+3`, node-as-function calls,
-raw reference literal syntax, dynamic references, cross-workspace and
-alias/base-token variants beyond the focused active query packets,
-traversal-bound policy, and profile-gated syntax. Table structured references
-are no longer part of that raw-formula blocker for the declared active table
-slice; they remain open only for broader raw/corpus families outside the active
+The remaining raw-formula blocker is narrowed in bead `dtc-osq.2`: the
+`references/walkup` corpus is active through typed relative-reference carriers,
+but authored raw formula text for walk-up/dotted names such as `=A+3` remains
+pending until the generic host-name bind lane is exercised in the local bridge.
+Other pending families include node-as-function calls, raw reference literal
+syntax, dynamic references, cross-workspace and alias/base-token variants beyond
+the focused active query packets, traversal-bound policy, and profile-gated
+syntax. Table structured references are no longer part of that raw-formula
+blocker for the declared active table slice; they remain open only for broader
+raw/corpus families outside the active
 `tables/structured-references` runner and retained replay slice.
 
 ## Runner contract
@@ -252,7 +256,7 @@ slice; they remain open only for broader raw/corpus families outside the active
 When the `OxCalcTree` bridge exists (W002), a Rust runner consumes this corpus:
 
 1. **resolution** — build the workspace tree as a structural snapshot, bind `reference` from `caller`
-   under `profile` via the bridge, assert resolved node / `engine_ref` / `Unresolved` / reject matches `expect`.
+   under `profile` via the bridge, assert resolved node / structured engine reference shape / `Unresolved` / reject matches `expect`.
 2. **classification** — assert the bound reference's cardinality / result-kind.
 3. **profile** — assert accept/reject (and INDIRECT parse-interpretation) under each profile id.
 4. **membership / table / dynamic / edit** — execute the typed bridge operation for the family and assert ordered members, table target shape, CTRO dependency outcome, or post-edit rebinding consequence.
