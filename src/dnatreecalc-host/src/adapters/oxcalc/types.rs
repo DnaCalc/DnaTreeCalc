@@ -62,7 +62,7 @@ pub struct TreeRecalcResult {
     pub dependency_edges_by_owner: BTreeMap<String, Vec<String>>,
     pub table_context_identities: BTreeMap<String, String>,
     pub published_values: BTreeMap<String, String>,
-    pub node_states: BTreeMap<String, NodeCalcStateProjection>,
+    pub node_states: BTreeMap<String, NodeCalcState>,
     pub diagnostics: Vec<String>,
 }
 
@@ -191,31 +191,4 @@ pub enum PreparedFormulaReferenceCarrier {
 pub enum PreparedReferenceLiteralArrayElement {
     ReferencePath { path: String },
     ScalarValue { source_text: String },
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NodeCalcStateProjection {
-    Clean,
-    DirtyPending,
-    Needed,
-    Evaluating,
-    VerifiedClean,
-    PublishReady,
-    RejectedPendingRepair,
-    CycleBlocked,
-}
-
-impl From<NodeCalcState> for NodeCalcStateProjection {
-    fn from(value: NodeCalcState) -> Self {
-        match value {
-            NodeCalcState::Clean => Self::Clean,
-            NodeCalcState::DirtyPending => Self::DirtyPending,
-            NodeCalcState::Needed => Self::Needed,
-            NodeCalcState::Evaluating => Self::Evaluating,
-            NodeCalcState::VerifiedClean => Self::VerifiedClean,
-            NodeCalcState::PublishReady => Self::PublishReady,
-            NodeCalcState::RejectedPendingRepair => Self::RejectedPendingRepair,
-            NodeCalcState::CycleBlocked => Self::CycleBlocked,
-        }
-    }
 }

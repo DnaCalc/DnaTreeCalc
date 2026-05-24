@@ -33,10 +33,9 @@ use oxcalc_core::structured_table::{
 
 use super::bridge::{OxCalcTreeBridge, OxCalcTreeBridgeError};
 use super::types::{
-    NodeCalcStateProjection, PreparedFormula, PreparedFormulaCatalog,
-    PreparedFormulaReferenceCarrier, PreparedReferenceLiteralArrayElement,
-    TreeCalcCrossWorkspaceReferenceRequest, TreeCalcCrossWorkspaceReferenceResolution,
-    TreeRecalcRequest, TreeRecalcResult,
+    PreparedFormula, PreparedFormulaCatalog, PreparedFormulaReferenceCarrier,
+    PreparedReferenceLiteralArrayElement, TreeCalcCrossWorkspaceReferenceRequest,
+    TreeCalcCrossWorkspaceReferenceResolution, TreeRecalcRequest, TreeRecalcResult,
 };
 use crate::model::{
     NodeContentKind, TableColumnBodyKind, TableColumnFixture, TableFormulaFixture,
@@ -98,7 +97,7 @@ impl OxCalcTreeBridge for LiveOxCalcTreeBridge {
                 submission
                     .paths_by_node_id
                     .get(node_id)
-                    .map(|path| (path.clone(), NodeCalcStateProjection::from(*state)))
+                    .map(|path| (path.clone(), *state))
             })
             .collect();
 
