@@ -82,7 +82,7 @@ foreach ($entry in $caseDocs) {
     switch ($c.kind) {
       'resolution' {
         foreach ($req in 'workspace', 'caller', 'reference') { if (-not $c.$req) { Add-Err "CASE   ${rel} [$cid]: resolution missing '$req'" } }
-        if ($c.expect.outcome -notin 'resolved', 'unresolved', 'reject', 'error') { Add-Err "CASE   ${rel} [$cid]: bad expect.outcome '$($c.expect.outcome)'" }
+        if ($c.expect.outcome -notin 'resolved', 'value', 'unresolved', 'reject', 'error') { Add-Err "CASE   ${rel} [$cid]: bad expect.outcome '$($c.expect.outcome)'" }
         if ($set) {
           if ($c.caller -and -not (InWs $set $c.caller)) { Add-Err "CASE   ${rel} [$cid]: caller '$($c.caller)' not in '$ws'" }
           if ($c.expect.outcome -eq 'resolved') {

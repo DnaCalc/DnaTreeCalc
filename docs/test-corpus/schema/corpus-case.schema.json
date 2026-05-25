@@ -33,7 +33,7 @@
           "type": "object",
           "description": "Outcome assertion. Shape depends on kind; see the case-kinds table in README.md.",
           "properties": {
-            "outcome": { "enum": ["resolved", "unresolved", "reject", "error", "cycle_blocked", "published", "rejected"] },
+            "outcome": { "enum": ["resolved", "value", "unresolved", "reject", "error", "cycle_blocked", "published", "rejected"] },
             "target": { "type": "string", "description": "node_id of the resolved node, or '/' for the workspace root." },
             "engine_ref": { "type": "string", "description": "Intended TreeReference mapping (§3.7); human-readable and not parsed by active runners." },
             "engine_ref_shape": { "type": "object", "description": "Optional structured TreeReference shape consumed by active runners that need to construct prepared references." },

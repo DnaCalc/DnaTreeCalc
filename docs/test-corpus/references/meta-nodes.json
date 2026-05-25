@@ -35,6 +35,71 @@
         "engine_ref": "SiblingOffset{ offset: -1 } over non-meta siblings"
       },
       "note": "Sibling order under Section is [Rate, Config(meta), Item]; @PREV from Item skips meta Config and lands on Rate."
+    },
+    {
+      "id": "meta-parent-accessor",
+      "name": "@PARENT resolves to the caller parent",
+      "spec": "§3.5b",
+      "kind": "resolution",
+      "workspace": "meta-demo",
+      "caller": "Section.Item",
+      "reference": "@PARENT",
+      "profile": "treecalc-v1",
+      "expect": {
+        "outcome": "resolved",
+        "target": "Section",
+        "value": "0",
+        "engine_ref": "RelativePath{ base: ParentNode }"
+      },
+      "note": "@PARENT is a single-reference accessor handled through OxFml host syntax packets and OxCalc relative reference resolution."
+    },
+    {
+      "id": "meta-name-accessor",
+      "name": "@NAME returns the caller node name",
+      "spec": "§3.5",
+      "kind": "resolution",
+      "workspace": "meta-demo",
+      "caller": "Section.Item",
+      "reference": "@NAME",
+      "profile": "treecalc-v1",
+      "expect": {
+        "outcome": "value",
+        "value": "Item",
+        "engine_ref": "metadata-value:text"
+      },
+      "note": "@NAME is a value-producing metadata accessor, not a reference carrier."
+    },
+    {
+      "id": "meta-index-accessor",
+      "name": "@INDEX skips meta siblings",
+      "spec": "§3.5, §6 item 9",
+      "kind": "resolution",
+      "workspace": "meta-demo",
+      "caller": "Section.Item",
+      "reference": "@INDEX",
+      "profile": "treecalc-v1",
+      "expect": {
+        "outcome": "value",
+        "value": "2",
+        "engine_ref": "metadata-value:number-1-based-visible-sibling-index"
+      },
+      "note": "Visible sibling order under Section is [Rate, Item] because Config is meta-effective."
+    },
+    {
+      "id": "meta-formula-accessor",
+      "name": "@FORMULA returns source formula text",
+      "spec": "§3.5, §6",
+      "kind": "resolution",
+      "workspace": "meta-demo",
+      "caller": "Section.Item",
+      "reference": "@FORMULA",
+      "profile": "treecalc-v1",
+      "expect": {
+        "outcome": "value",
+        "value": "=@FORMULA",
+        "engine_ref": "metadata-value:text"
+      },
+      "note": "@FORMULA returns the OxCalc-owned formula text for the target node."
     }
   ]
 }

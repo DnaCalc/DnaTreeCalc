@@ -37,6 +37,7 @@ struct MetaCase {
 struct MetaExpectation {
     outcome: String,
     target: Option<String>,
+    value: Option<String>,
 }
 
 #[test]
@@ -98,14 +99,32 @@ fn active_meta_nodes_corpus_executes_through_direct_oxcalc_context() {
                 );
                 assert_eq!(
                     scalar_value(&state, &case.caller),
-                    Some("0.1"),
+                    Some(case.expect.value.as_deref().unwrap_or("0.1")),
                     "{} published value",
                     case.id
                 );
+                if case.expect.target.is_some() {
+                    assert_eq!(
+                        dependency_members(&session, &result, &case.caller),
+                        case.expect.target.iter().cloned().collect::<Vec<_>>(),
+                        "{} dependency membership",
+                        case.id
+                    );
+                }
+            }
+            "value" => {
                 assert_eq!(
-                    dependency_members(&session, &result, &case.caller),
-                    case.expect.target.iter().cloned().collect::<Vec<_>>(),
-                    "{} dependency membership",
+                    result.run_state,
+                    OxCalcTreeRunState::Published,
+                    "{} run state: reject={:?}; diagnostics={:?}",
+                    case.id,
+                    result.reject_detail,
+                    result.diagnostics
+                );
+                assert_eq!(
+                    scalar_value(&state, &case.caller),
+                    case.expect.value.as_deref(),
+                    "{} published value",
                     case.id
                 );
             }
