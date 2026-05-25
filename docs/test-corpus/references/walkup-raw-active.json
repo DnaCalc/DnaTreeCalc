@@ -81,6 +81,22 @@
       }
     },
     {
+      "id": "active-ref-selfref-cycle",
+      "name": "self-reference resolves to self and cycles",
+      "spec": "§3.2",
+      "kind": "resolution",
+      "workspace": "accounts",
+      "caller": "Accounts.2005.Q1.Net",
+      "reference": "Net",
+      "profile": "treecalc-v1",
+      "expect": {
+        "outcome": "resolved",
+        "target": "Accounts.2005.Q1.Net",
+        "engine_ref": "RelativePath{ base: ParentNode, path: [Net] }",
+        "calc": "cycle"
+      }
+    },
+    {
       "id": "active-ref-walkup-case-insensitive-canonical",
       "name": "lookup is case-insensitive and reports the canonical display path",
       "spec": "§2, §3.2, §5",
