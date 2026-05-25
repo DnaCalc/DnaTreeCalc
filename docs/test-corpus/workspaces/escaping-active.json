@@ -1,0 +1,18 @@
+{
+  "schema_version": "treecalc-workspace-v1",
+  "workspace_id": "escaping-active",
+  "description": "Focused active fixture for bracket-escaped TreeCalc host paths. DnaTreeCalc supplies formula text only; OxFml emits escaped-path packets and OxCalc resolves decoded path segments.",
+  "profile": "treecalc-v1",
+  "nodes": [
+    { "node_id": "Escapes", "formula": "" },
+    { "node_id": "Escapes.Caller", "formula": "" },
+    { "node_id": "Escapes.Sales Q1", "formula": "5" },
+    { "node_id": "Escapes.Foo[Bar", "formula": "6" },
+    { "node_id": "Escapes.Foo]Bar", "formula": "7" },
+    { "node_id": "Escapes.Col#Name", "formula": "8" },
+    { "node_id": "Escapes.Foo'Bar", "formula": "9" },
+    { "node_id": "Escapes.@Special", "formula": "10" },
+    { "node_id": "Escapes.Region", "formula": "" },
+    { "node_id": "Escapes.Region.Net Revenue", "formula": "11" }
+  ]
+}

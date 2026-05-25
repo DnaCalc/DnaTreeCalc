@@ -3,7 +3,7 @@
   "theme": "references/children-raw-active",
   "workset": "W005",
   "status": "active",
-  "description": "Narrow W005 active slice for raw TreeCalc children formulas that the current public OxCalc prebind supports, including the focused qualified children base-query forms. This does not activate the broader W004 set-membership surface.",
+  "description": "Narrow W005 active slice for raw TreeCalc children formulas on the OxFml host syntax packet path, including the focused qualified children base-query forms. This is migration evidence only and does not activate the broader W004 set-membership surface.",
   "cases": [
     {
       "id": "active-raw-children-accessor-sum",

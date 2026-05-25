@@ -3,7 +3,7 @@
   "theme": "references/walkup",
   "workset": "W004",
   "status": "pending",
-  "status_note": "Reverted from active to pending 2026-05-24: the previous activation used a host-side mini-AST stop-gap routed through OxCalc fixture-AST helpers, bypassing OxFml's binder. Those host-side types have been excised. Honest activation needs the public OxFml bare-name/dotted bind surface (OxFml W074) plus the matching OxCalc public formula packet (W056 generic host-name) — tracked by dtc-z0i.4 (BLOCKED).",
+  "status_note": "Full walk-up remains pending because Excel-cell-like host names such as Q1 still require OxFml W074 name/cell precedence evidence. The focused non-cell-like slice is active in references/walkup-raw-active.json through direct OxCalcTreeContext.",
   "description": "Bare-name lexical walk-up resolution: own children first, then each ancestor's children one scope at a time, first match wins (CORE_MODEL_SPEC §3.2, §3.7).",
   "cases": [
     {

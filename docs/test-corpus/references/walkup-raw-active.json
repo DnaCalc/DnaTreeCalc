@@ -1,0 +1,100 @@
+{
+  "schema_version": "treecalc-corpus-v1",
+  "theme": "references/walkup-raw-active",
+  "workset": "W004",
+  "status": "active",
+  "status_note": "Focused active subset for non-cell-like bare names and dotted descent through direct OxCalcTreeContext. The broader references/walkup corpus remains pending for W074 name/cell precedence cases such as Q1.",
+  "description": "Bare-name lexical walk-up and dotted descent where OxFml exposes unresolved host names and OxCalc resolves them against the canonical tree context.",
+  "cases": [
+    {
+      "id": "active-ref-walkup-own-child",
+      "name": "bare name resolves to own child first",
+      "spec": "§3.2, §3.7",
+      "kind": "resolution",
+      "workspace": "accounts",
+      "caller": "Accounts.2005.Q1.Income",
+      "reference": "Sales",
+      "profile": "treecalc-v1",
+      "expect": {
+        "outcome": "resolved",
+        "target": "Accounts.2005.Q1.Income.Sales",
+        "engine_ref": "RelativePath{ base: SelfNode, path: [Sales] }"
+      }
+    },
+    {
+      "id": "active-ref-walkup-sibling",
+      "name": "bare name resolves to a sibling in parent scope",
+      "spec": "§3.2, §3.7",
+      "kind": "resolution",
+      "workspace": "accounts",
+      "caller": "Accounts.2005.Q1.Income",
+      "reference": "Margin",
+      "profile": "treecalc-v1",
+      "expect": {
+        "outcome": "resolved",
+        "target": "Accounts.2005.Q1.Margin",
+        "engine_ref": "RelativePath{ base: ParentNode, path: [Margin] }"
+      }
+    },
+    {
+      "id": "active-ref-walkup-ancestor-scope",
+      "name": "bare name resolves at a deeper enclosing scope",
+      "spec": "§3.2",
+      "kind": "resolution",
+      "workspace": "accounts",
+      "caller": "Accounts.2005.Q1.Income.Sales",
+      "reference": "Margin",
+      "profile": "treecalc-v1",
+      "expect": {
+        "outcome": "resolved",
+        "target": "Accounts.2005.Q1.Margin",
+        "engine_ref": "RelativePath{ base: Ancestor(2), path: [Margin] }"
+      }
+    },
+    {
+      "id": "active-ref-walkup-descent",
+      "name": "bare descent resolves sibling then child",
+      "spec": "§3.2, §3.7",
+      "kind": "resolution",
+      "workspace": "accounts",
+      "caller": "Accounts.2005.Total",
+      "reference": "Q1.Margin",
+      "profile": "treecalc-v1",
+      "expect": {
+        "outcome": "resolved",
+        "target": "Accounts.2005.Q1.Margin",
+        "engine_ref": "RelativePath{ base: ParentNode, path: [Q1, Margin] }"
+      }
+    },
+    {
+      "id": "active-ref-walkup-unresolved",
+      "name": "no scope matches and reports unresolved",
+      "spec": "§3.2, §3.7",
+      "kind": "resolution",
+      "workspace": "accounts",
+      "caller": "Accounts.2005.Q1.Income",
+      "reference": "Nonexistent",
+      "profile": "treecalc-v1",
+      "expect": {
+        "outcome": "unresolved",
+        "engine_ref": "Unresolved"
+      }
+    },
+    {
+      "id": "active-ref-walkup-case-insensitive-canonical",
+      "name": "lookup is case-insensitive and reports the canonical display path",
+      "spec": "§2, §3.2, §5",
+      "kind": "resolution",
+      "workspace": "accounts",
+      "caller": "Accounts.2005.Q1.Income",
+      "reference": "margin",
+      "profile": "treecalc-v1",
+      "expect": {
+        "outcome": "resolved",
+        "target": "Accounts.2005.Q1.Margin",
+        "canonical_path": "Accounts.2005.Q1.Margin",
+        "engine_ref": "RelativePath{ base: ParentNode, path: [Margin] }"
+      }
+    }
+  ]
+}

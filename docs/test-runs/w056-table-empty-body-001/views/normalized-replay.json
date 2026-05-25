@@ -361,9 +361,8 @@
           {
             "case_id": "tbl-empty-current-row-diagnostic",
             "diagnostic": {
-              "diagnostic_code": "caller_row_out_of_range",
-              "row_count": 0,
-              "row_offset": 0
+              "debug": "BindRecordIntake { detail: \"UnresolvedStructuredReference { bind_record_handle: \\\"structured-ref:2cb9b90a986646ad\\\", source_token_text: \\\"[@Amount]\\\", diagnostic_codes: [\\\"structured_reference_bind_error\\\"] }\" }",
+              "diagnostic_code": "unexpected_reader_error"
             },
             "outcome_kind": "typed_reader_diagnostic",
             "published_value": null,
@@ -438,8 +437,8 @@
             "published_value": "0",
             "reader_identity": {
               "reader_id": {
-                "digest": "fnv1a64:827ef2910f0999a9",
-                "prefix": "treecalc-table-reader:v1:treecalc.structured_table_ref.handle.v1;start=1:8;len=2:23",
+                "digest": "fnv1a64:94697a5180ac69ff",
+                "prefix": "treecalc-table-reader:v1:structured-ref:318230b6d2a5ec72",
                 "present": true
               },
               "snapshot_identity": {
@@ -454,7 +453,9 @@
               }
             },
             "reference": "EmptyHeadersOnly[#Data]",
-            "selected_column_ids": [],
+            "selected_column_ids": [
+              "col:amount"
+            ],
             "selected_sections": [
               "data"
             ],
@@ -473,8 +474,8 @@
             "published_value": "0",
             "reader_identity": {
               "reader_id": {
-                "digest": "fnv1a64:a3e31134eb1fb625",
-                "prefix": "treecalc-table-reader:v1:treecalc.structured_table_ref.handle.v1;start=1:5;len=2:24",
+                "digest": "fnv1a64:547a38d1efc24614",
+                "prefix": "treecalc-table-reader:v1:structured-ref:bb8b325826adecc9",
                 "present": true
               },
               "snapshot_identity": {
@@ -510,8 +511,8 @@
             "published_value": "1",
             "reader_identity": {
               "reader_id": {
-                "digest": "fnv1a64:827ef1910f0997f6",
-                "prefix": "treecalc-table-reader:v1:treecalc.structured_table_ref.handle.v1;start=1:8;len=2:22",
+                "digest": "fnv1a64:d5b2e5348a9aaf8e",
+                "prefix": "treecalc-table-reader:v1:structured-ref:178776b8cf6b934f",
                 "present": true
               },
               "snapshot_identity": {
@@ -526,7 +527,9 @@
               }
             },
             "reference": "EmptyHeadersOnly[#All]",
-            "selected_column_ids": [],
+            "selected_column_ids": [
+              "col:amount"
+            ],
             "selected_sections": [
               "all"
             ],
@@ -545,8 +548,8 @@
             "published_value": "1",
             "reader_identity": {
               "reader_id": {
-                "digest": "fnv1a64:827ef5910f099ec2",
-                "prefix": "treecalc-table-reader:v1:treecalc.structured_table_ref.handle.v1;start=1:8;len=2:26",
+                "digest": "fnv1a64:60357f545fdd38e7",
+                "prefix": "treecalc-table-reader:v1:structured-ref:33e4fd1173268e59",
                 "present": true
               },
               "snapshot_identity": {
@@ -561,7 +564,9 @@
               }
             },
             "reference": "EmptyHeadersOnly[#Headers]",
-            "selected_column_ids": [],
+            "selected_column_ids": [
+              "col:amount"
+            ],
             "selected_sections": [
               "headers"
             ],
@@ -580,8 +585,8 @@
             "published_value": "1",
             "reader_identity": {
               "reader_id": {
-                "digest": "fnv1a64:827ef6910f09a075",
-                "prefix": "treecalc-table-reader:v1:treecalc.structured_table_ref.handle.v1;start=1:8;len=2:27",
+                "digest": "fnv1a64:0a9191b2f6b160f5",
+                "prefix": "treecalc-table-reader:v1:structured-ref:08fac9cb26d3fb52",
                 "present": true
               },
               "snapshot_identity": {
@@ -596,7 +601,9 @@
               }
             },
             "reference": "EmptyHeadersTotals[#Totals]",
-            "selected_column_ids": [],
+            "selected_column_ids": [
+              "col:amount"
+            ],
             "selected_sections": [
               "totals"
             ],
@@ -607,9 +614,8 @@
           {
             "case_id": "tbl-empty-current-row-diagnostic",
             "diagnostic": {
-              "diagnostic_code": "caller_row_out_of_range",
-              "row_count": 0,
-              "row_offset": 0
+              "debug": "BindRecordIntake { detail: \"UnresolvedStructuredReference { bind_record_handle: \\\"structured-ref:2cb9b90a986646ad\\\", source_token_text: \\\"[@Amount]\\\", diagnostic_codes: [\\\"structured_reference_bind_error\\\"] }\" }",
+              "diagnostic_code": "unexpected_reader_error"
             },
             "expected_reason": "CallerRowOutOfRange",
             "outcome_kind": "typed_reader_diagnostic",
@@ -628,8 +634,8 @@
             "published_value": "1",
             "reader_identity": {
               "reader_id": {
-                "digest": "fnv1a64:a3e00f34eb1d7ce8",
-                "prefix": "treecalc-table-reader:v1:treecalc.structured_table_ref.handle.v1;start=1:5;len=2:38",
+                "digest": "fnv1a64:e8084ea5c34a57bb",
+                "prefix": "treecalc-table-reader:v1:structured-ref:3c4cc06ea9a6cca5",
                 "present": true
               },
               "snapshot_identity": {
@@ -665,8 +671,8 @@
             "published_value": "0",
             "reader_identity": {
               "reader_id": {
-                "digest": "fnv1a64:a3f40934eb2e1bc0",
-                "prefix": "treecalc-table-reader:v1:treecalc.structured_table_ref.handle.v1;start=1:5;len=2:52",
+                "digest": "fnv1a64:f25e18ce58ded799",
+                "prefix": "treecalc-table-reader:v1:structured-ref:7443792fed329cdd",
                 "present": true
               },
               "snapshot_identity": {
@@ -713,14 +719,16 @@
             "caller_context_dependency": false,
             "case_id": "tbl-empty-headers-only-data",
             "diagnostics": [],
-            "host_ref_handle": "treecalc.structured_table_ref.handle.v1;start=1:8;len=2:23",
+            "host_ref_handle": "structured-ref:318230b6d2a5ec72",
             "replay_identity": {
-              "digest": "fnv1a64:c86bfaa68be1ebc4",
-              "prefix": "treecalc.structured_table_ref.replay.v1;handle=58:treecalc.structured_table_ref.handle.v1;start=",
+              "digest": "fnv1a64:29d9180bd77252c7",
+              "prefix": "treecalc.table.oxfml_bind_record.v1:structured-ref:318230b6d2a5ec72:tree-table:empty-headers-onl",
               "present": true
             },
             "resolved_table_id": "tree-table:empty-headers-only",
-            "selected_column_ids": [],
+            "selected_column_ids": [
+              "col:amount"
+            ],
             "selected_sections": [
               "data"
             ],
@@ -734,10 +742,10 @@
             "caller_context_dependency": false,
             "case_id": "tbl-empty-headers-only-column",
             "diagnostics": [],
-            "host_ref_handle": "treecalc.structured_table_ref.handle.v1;start=1:5;len=2:24",
+            "host_ref_handle": "structured-ref:bb8b325826adecc9",
             "replay_identity": {
-              "digest": "fnv1a64:69bc443b4b487fb7",
-              "prefix": "treecalc.structured_table_ref.replay.v1;handle=58:treecalc.structured_table_ref.handle.v1;start=",
+              "digest": "fnv1a64:106f5026c6193a50",
+              "prefix": "treecalc.table.oxfml_bind_record.v1:structured-ref:bb8b325826adecc9:tree-table:empty-headers-onl",
               "present": true
             },
             "resolved_table_id": "tree-table:empty-headers-only",
@@ -757,14 +765,16 @@
             "caller_context_dependency": false,
             "case_id": "tbl-empty-headers-only-all",
             "diagnostics": [],
-            "host_ref_handle": "treecalc.structured_table_ref.handle.v1;start=1:8;len=2:22",
+            "host_ref_handle": "structured-ref:178776b8cf6b934f",
             "replay_identity": {
-              "digest": "fnv1a64:fdc38de43e7e84ea",
-              "prefix": "treecalc.structured_table_ref.replay.v1;handle=58:treecalc.structured_table_ref.handle.v1;start=",
+              "digest": "fnv1a64:d7ed7a4d8955de6b",
+              "prefix": "treecalc.table.oxfml_bind_record.v1:structured-ref:178776b8cf6b934f:tree-table:empty-headers-onl",
               "present": true
             },
             "resolved_table_id": "tree-table:empty-headers-only",
-            "selected_column_ids": [],
+            "selected_column_ids": [
+              "col:amount"
+            ],
             "selected_sections": [
               "all"
             ],
@@ -778,14 +788,16 @@
             "caller_context_dependency": false,
             "case_id": "tbl-empty-headers-only-headers",
             "diagnostics": [],
-            "host_ref_handle": "treecalc.structured_table_ref.handle.v1;start=1:8;len=2:26",
+            "host_ref_handle": "structured-ref:33e4fd1173268e59",
             "replay_identity": {
-              "digest": "fnv1a64:8f16344d96430e6a",
-              "prefix": "treecalc.structured_table_ref.replay.v1;handle=58:treecalc.structured_table_ref.handle.v1;start=",
+              "digest": "fnv1a64:56d7de3de0ee1bbf",
+              "prefix": "treecalc.table.oxfml_bind_record.v1:structured-ref:33e4fd1173268e59:tree-table:empty-headers-onl",
               "present": true
             },
             "resolved_table_id": "tree-table:empty-headers-only",
-            "selected_column_ids": [],
+            "selected_column_ids": [
+              "col:amount"
+            ],
             "selected_sections": [
               "headers"
             ],
@@ -799,14 +811,16 @@
             "caller_context_dependency": false,
             "case_id": "tbl-empty-headers-totals-totals",
             "diagnostics": [],
-            "host_ref_handle": "treecalc.structured_table_ref.handle.v1;start=1:8;len=2:27",
+            "host_ref_handle": "structured-ref:08fac9cb26d3fb52",
             "replay_identity": {
-              "digest": "fnv1a64:9b01cf79d0b6f58d",
-              "prefix": "treecalc.structured_table_ref.replay.v1;handle=58:treecalc.structured_table_ref.handle.v1;start=",
+              "digest": "fnv1a64:6aa839e5be8fc35d",
+              "prefix": "treecalc.table.oxfml_bind_record.v1:structured-ref:08fac9cb26d3fb52:tree-table:empty-headers-tot",
               "present": true
             },
             "resolved_table_id": "tree-table:empty-headers-totals",
-            "selected_column_ids": [],
+            "selected_column_ids": [
+              "col:amount"
+            ],
             "selected_sections": [
               "totals"
             ],
@@ -819,11 +833,16 @@
           {
             "caller_context_dependency": true,
             "case_id": "tbl-empty-current-row-diagnostic",
-            "diagnostics": [],
-            "host_ref_handle": "treecalc.structured_table_ref.handle.v1;start=1:1;len=1:9",
+            "diagnostics": [
+              {
+                "diagnostic_code": "structured_reference_bind_error",
+                "message": "current-row structured reference has no table data row in the selected data body"
+              }
+            ],
+            "host_ref_handle": "structured-ref:2cb9b90a986646ad",
             "replay_identity": {
-              "digest": "fnv1a64:6f914bc9d8390b30",
-              "prefix": "treecalc.structured_table_ref.replay.v1;handle=57:treecalc.structured_table_ref.handle.v1;start=",
+              "digest": "fnv1a64:6b34344836e74cfc",
+              "prefix": "treecalc.table.oxfml_bind_record.v1:structured-ref:2cb9b90a986646ad:tree-table:empty-headers-onl",
               "present": true
             },
             "resolved_table_id": "tree-table:empty-headers-only",
@@ -843,10 +862,10 @@
             "caller_context_dependency": false,
             "case_id": "tbl-first-row-insert-endpoint",
             "diagnostics": [],
-            "host_ref_handle": "treecalc.structured_table_ref.handle.v1;start=1:5;len=2:38",
+            "host_ref_handle": "structured-ref:3c4cc06ea9a6cca5",
             "replay_identity": {
-              "digest": "fnv1a64:2ee4c43810f05c23",
-              "prefix": "treecalc.structured_table_ref.replay.v1;handle=58:treecalc.structured_table_ref.handle.v1;start=",
+              "digest": "fnv1a64:39fb89eecc838af7",
+              "prefix": "treecalc.table.oxfml_bind_record.v1:structured-ref:3c4cc06ea9a6cca5:tree-table:first-row-insert:",
               "present": true
             },
             "resolved_table_id": "tree-table:first-row-insert",
@@ -866,10 +885,10 @@
             "caller_context_dependency": false,
             "case_id": "tbl-last-row-delete-endpoint",
             "diagnostics": [],
-            "host_ref_handle": "treecalc.structured_table_ref.handle.v1;start=1:5;len=2:52",
+            "host_ref_handle": "structured-ref:7443792fed329cdd",
             "replay_identity": {
-              "digest": "fnv1a64:7a4a579c13b8e5ad",
-              "prefix": "treecalc.structured_table_ref.replay.v1;handle=58:treecalc.structured_table_ref.handle.v1;start=",
+              "digest": "fnv1a64:48c728872943e486",
+              "prefix": "treecalc.table.oxfml_bind_record.v1:structured-ref:7443792fed329cdd:tree-table:last-row-delete:[",
               "present": true
             },
             "resolved_table_id": "tree-table:last-row-delete",

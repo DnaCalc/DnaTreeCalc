@@ -107,7 +107,7 @@
             ],
             "diagnostics": [],
             "dynamic_rebind_identity": {
-              "digest": "fnv1a64:a94d8e4c3b0e23b0",
+              "digest": "fnv1a64:1c59764e12316ad9",
               "prefix": "treecalc.dynamic_table_rebind.v1;selector_handle=19:selector:SalesTable;selector_identity=37:dyn",
               "present": true
             },
@@ -129,7 +129,7 @@
             "selector_handle": "selector:SalesTable",
             "selector_identity": "dynamic-selector:SalesTable[#Data]:v1",
             "source_reference_expected_handle": "treecalc.structured_table_ref.handle.v1;start=1:0;len=2:17",
-            "source_reference_handle": "treecalc.structured_table_ref.handle.v1;start=1:0;len=2:17",
+            "source_reference_handle": "structured-ref:c1fa2e8369fea3df",
             "source_reference_mode": "oxcalc_structured_bind",
             "status": "rebind_required",
             "strict_excel": "reject",
@@ -158,7 +158,7 @@
             ],
             "diagnostics": [],
             "dynamic_rebind_identity": {
-              "digest": "fnv1a64:c181a9c16fbd0823",
+              "digest": "fnv1a64:edfd493a3716366c",
               "prefix": "treecalc.dynamic_table_rebind.v1;selector_handle=26:selector:SalesTable.Amount;selector_identity",
               "present": true
             },
@@ -180,7 +180,7 @@
             "selector_handle": "selector:SalesTable.Amount",
             "selector_identity": "dynamic-selector:SalesTable[Amount]:v1",
             "source_reference_expected_handle": "treecalc.structured_table_ref.handle.v1;start=1:0;len=2:18",
-            "source_reference_handle": "treecalc.structured_table_ref.handle.v1;start=1:0;len=2:18",
+            "source_reference_handle": "structured-ref:8b20b70f43841609",
             "source_reference_mode": "oxcalc_structured_bind",
             "status": "rebind_required",
             "strict_excel": "reject",
@@ -207,7 +207,7 @@
             ],
             "diagnostics": [],
             "dynamic_rebind_identity": {
-              "digest": "fnv1a64:6900fb5dfba9804c",
+              "digest": "fnv1a64:f55882d0835da9cf",
               "prefix": "treecalc.dynamic_table_rebind.v1;selector_handle=27:selector:SalesTable.Section;selector_identit",
               "present": true
             },
@@ -229,7 +229,7 @@
             "selector_handle": "selector:SalesTable.Section",
             "selector_identity": "dynamic-selector:SalesTable[#Totals]:v1",
             "source_reference_expected_handle": "treecalc.structured_table_ref.handle.v1;start=1:0;len=2:19",
-            "source_reference_handle": "treecalc.structured_table_ref.handle.v1;start=1:0;len=2:19",
+            "source_reference_handle": "structured-ref:61400cd2aa76700a",
             "source_reference_mode": "oxcalc_structured_bind",
             "status": "rebind_required",
             "strict_excel": "reject",
@@ -256,7 +256,7 @@
             ],
             "diagnostics": [],
             "dynamic_rebind_identity": {
-              "digest": "fnv1a64:9a1d31ef4289f0bf",
+              "digest": "fnv1a64:6087d0544cf07cb3",
               "prefix": "treecalc.dynamic_table_rebind.v1;selector_handle=30:selector:SalesTable.CurrentRow;selector_iden",
               "present": true
             },
@@ -279,7 +279,7 @@
             "selector_handle": "selector:SalesTable.CurrentRow",
             "selector_identity": "dynamic-selector:SalesTable[@Amount]:v1",
             "source_reference_expected_handle": "treecalc.structured_table_ref.handle.v1;start=1:0;len=2:19",
-            "source_reference_handle": "treecalc.structured_table_ref.handle.v1;start=1:0;len=2:19",
+            "source_reference_handle": "structured-ref:fa71a136c4389a37",
             "source_reference_mode": "oxcalc_structured_bind",
             "status": "rebind_required",
             "strict_excel": "reject",
@@ -416,7 +416,7 @@
             ],
             "diagnostics": [],
             "dynamic_rebind_identity": {
-              "digest": "fnv1a64:1bcbd16c5e814252",
+              "digest": "fnv1a64:b4474b615161f3c1",
               "prefix": "treecalc.dynamic_table_rebind.v1;selector_handle=26:selector:DeletedSalesTable;selector_identity",
               "present": true
             },
@@ -440,7 +440,7 @@
             "selector_handle": "selector:DeletedSalesTable",
             "selector_identity": "dynamic-selector:SalesTable[#Data]:deleted",
             "source_reference_expected_handle": "treecalc.structured_table_ref.handle.v1;start=1:0;len=2:17",
-            "source_reference_handle": "treecalc.structured_table_ref.handle.v1;start=1:0;len=2:17",
+            "source_reference_handle": "structured-ref:c1fa2e8369fea3df",
             "source_reference_mode": "oxcalc_structured_bind",
             "status": "deleted_target",
             "strict_excel": "reject",

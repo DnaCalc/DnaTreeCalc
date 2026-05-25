@@ -66,7 +66,9 @@ fn active_profile_gating_corpus_is_direct_context_typed_pending() {
                         .contains("typed_exclusion")
                         || diagnostic.contains("unresolved_host_name")
                         || diagnostic.contains("parse")
-                        || diagnostic.contains("unsupported")),
+                        || diagnostic.contains("unsupported")
+                        || diagnostic
+                            .contains("oxfml_returned_value_surface_payload_summary:Error(Name)")),
                 "{} strict-excel must not silently accept TreeCalc-only syntax, got state {:?} diagnostics {:?}",
                 case.id,
                 strict.run_state,

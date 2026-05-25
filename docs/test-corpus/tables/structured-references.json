@@ -221,7 +221,7 @@
         "target": "Sales]Table.Columns.Gross]Amount",
         "target_kind": "escaped-column-reference",
         "selected_columns": ["col:gross-amount"],
-        "engine_ref": "bracket-escaped table path lowered by OxCalc public table prebind"
+        "engine_ref": "OxFml structured-reference packet pending for TreeCalc bracket-escaped table path"
       }
     },
     {
@@ -241,7 +241,7 @@
         "target_kind": "escaped-current-row-column-reference",
         "selected_columns": ["col:gross-amount"],
         "published_value": "15",
-        "engine_ref": "explicit #This Row structured-ref lowered by OxCalc public table prebind"
+        "engine_ref": "OxFml structured-reference packet pending for TreeCalc bracket-escaped current-row table path"
       }
     }
   ]

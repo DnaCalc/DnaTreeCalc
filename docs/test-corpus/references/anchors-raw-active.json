@@ -1,0 +1,74 @@
+{
+  "schema_version": "treecalc-corpus-v1",
+  "theme": "references/anchors-raw-active",
+  "workset": "W004",
+  "status": "active",
+  "status_note": "Focused active subset for ancestor anchors through direct OxCalcTreeContext. Workspace-root and sheet-alias forms remain pending in references/anchors until their host packet and name/cell precedence lanes are admitted.",
+  "description": "Ancestor anchor sigils where OxFml emits repeated-prefix host-reference packets and OxCalc resolves parent/ancestor RelativePath carriers.",
+  "cases": [
+    {
+      "id": "active-ref-parent",
+      "name": "^ resolves to the caller's parent",
+      "spec": "§3.2, §3.7",
+      "kind": "resolution",
+      "workspace": "accounts",
+      "caller": "Accounts.2005.Q1.Margin",
+      "reference": "^",
+      "profile": "treecalc-v1",
+      "expect": {
+        "outcome": "resolved",
+        "target": "Accounts.2005.Q1",
+        "published_value": "0",
+        "engine_ref": "RelativePath{ base: ParentNode, path: [] }"
+      }
+    },
+    {
+      "id": "active-ref-parent-child",
+      "name": "^.Name resolves to a parent's child",
+      "spec": "§3.2, §3.7",
+      "kind": "resolution",
+      "workspace": "accounts",
+      "caller": "Accounts.2005.Q1.Income",
+      "reference": "^.Margin",
+      "profile": "treecalc-v1",
+      "expect": {
+        "outcome": "resolved",
+        "target": "Accounts.2005.Q1.Margin",
+        "published_value": "0.2",
+        "engine_ref": "RelativePath{ base: ParentNode, path: [Margin] }"
+      }
+    },
+    {
+      "id": "active-ref-grandparent-child",
+      "name": "^^.Name resolves to a grandparent's child",
+      "spec": "§3.2, §3.7",
+      "kind": "resolution",
+      "workspace": "accounts",
+      "caller": "Accounts.2005.Q1.Income",
+      "reference": "^^.Total",
+      "profile": "treecalc-v1",
+      "expect": {
+        "outcome": "resolved",
+        "target": "Accounts.2005.Total",
+        "published_value": "3",
+        "engine_ref": "RelativePath{ base: Ancestor(2), path: [Total] }"
+      }
+    },
+    {
+      "id": "active-ref-great-grandparent",
+      "name": "^^^ resolves to the great-grandparent",
+      "spec": "§3.2",
+      "kind": "resolution",
+      "workspace": "accounts",
+      "caller": "Accounts.2005.Q1.Margin",
+      "reference": "^^^",
+      "profile": "treecalc-v1",
+      "expect": {
+        "outcome": "resolved",
+        "target": "Accounts",
+        "published_value": "4",
+        "engine_ref": "RelativePath{ base: Ancestor(3), path: [] }"
+      }
+    }
+  ]
+}

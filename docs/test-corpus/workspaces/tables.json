@@ -91,7 +91,7 @@
           "rename_preserves_table_id": true,
           "move_preserves_table_id": true,
           "delete_releases_table_id": true,
-          "note": "Escaped table fixture proves bracket-escaped table and column names use the OxCalc table prebind path without TreeCalc host parsing."
+          "note": "Escaped table fixture records bracket-escaped table and column names as an OxFml structured-reference packet blocker without DnaTreeCalc host parsing."
         },
         "header": { "present": true },
         "totals": { "present": false },

@@ -1,7 +1,7 @@
 {
   "schema_version": "treecalc-workspace-v1",
   "workspace_id": "children-raw-active",
-  "description": "Narrow active W005 fixture for raw TreeCalc children formulas currently supported by OxCalc public prebind, including focused qualified children base queries.",
+  "description": "Narrow active W005 fixture for raw TreeCalc children formulas being migrated to the OxFml host syntax packet path, including focused qualified children base queries.",
   "profile": "treecalc-v1",
   "nodes": [
     { "node_id": "Root", "formula": "" },

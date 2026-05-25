@@ -3,7 +3,7 @@
   "theme": "references/ordered-raw-active",
   "workset": "W004",
   "status": "active",
-  "description": "Focused W004 active slice for raw ordered TreeCalc collection formulas supported by OxCalc's public ordered-selector query/resolved-collection prebind surface, including explicit structural path base resolution. This does not activate the full W004 set-membership family.",
+  "description": "Focused W004 active slice for raw ordered TreeCalc collection formulas being migrated to OxFml host syntax packets plus OxCalc ordered-selector resolution, including explicit structural path base resolution. This is migration evidence only and does not activate the full W004 set-membership family.",
   "cases": [
     {
       "id": "ordered-preceding-active",

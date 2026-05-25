@@ -109,7 +109,7 @@
     },
     {
       "id": "tbl-first-row-insert-endpoint",
-      "name": "first-row insert endpoint projects and prebinds from the same table contract",
+      "name": "first-row insert endpoint projects and resolves from the same table contract",
       "spec": "section 7c",
       "kind": "table",
       "workspace": "empty-body-tables",

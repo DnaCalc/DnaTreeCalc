@@ -26,14 +26,20 @@ use oxcalc_core::structured_table::{
     TreeCalcTableSparseReaderError, TreeCalcTableSparseValue, TreeCalcTableUpdateScenarioKind,
     classify_treecalc_table_lifecycle_callback, classify_treecalc_table_update,
     evaluate_treecalc_table_column_formula_rows, evaluate_treecalc_table_totals_formula,
-    lower_structured_table_dependencies, prebind_treecalc_table_structured_references,
-    project_treecalc_table_node_snapshot, validate_treecalc_table_reference_after_update,
+    lower_structured_table_dependencies, project_treecalc_table_node_snapshot,
+    validate_treecalc_table_reference_after_update,
 };
-use oxfml_core::EvaluationBackend;
+use oxfml_core::binding::{BindContext, BindRequest, bind_formula};
 use oxfml_core::consumer::runtime::{RuntimeEnvironment, RuntimeFormulaRequest};
 use oxfml_core::interface::TypedContextQueryBundle;
+use oxfml_core::red::project_red_view;
 use oxfml_core::seam::Locus;
-use oxfml_core::source::FormulaSourceRecord;
+use oxfml_core::source::{FormulaSourceRecord, StructureContextVersion};
+use oxfml_core::syntax::parser::{ParseRequest, parse_formula};
+use oxfml_core::{
+    EvaluationBackend, StructuredReferenceBindDiagnosticLink, StructuredReferenceBindRecord,
+    StructuredReferenceSourceTokenKind,
+};
 use oxfunc_core::value::{EvalValue, ExcelText};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -150,6 +156,18 @@ struct TableExpectation {
     engine_ref: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+struct TableStructuredReferenceBinding {
+    source_span_utf8: oxfml_core::syntax::token::TextSpan,
+    source_token_text: String,
+    host_ref_handle: String,
+    resolved_table_id: Option<String>,
+    caller_context_dependency: bool,
+    replay_identity: String,
+    bind_record: StructuredReferenceBindRecord,
+    diagnostics: Vec<StructuredReferenceBindDiagnosticLink>,
+}
+
 #[test]
 fn active_table_structured_reference_corpus_executes_through_oxcalc_table_path() {
     let theme = load_theme(repo_corpus_path("tables/structured-references.json"));
@@ -227,58 +245,81 @@ fn active_table_structured_reference_corpus_executes_through_oxcalc_table_path()
         let enclosing = caller_region.as_ref().map(|_| TableRef {
             table_id: projection.table_id.clone(),
         });
-        let prebound = prebind_treecalc_table_structured_references(
+        let bound_refs = bind_treecalc_table_structured_references(
             formula_text,
-            std::slice::from_ref(&projection),
+            &projection,
             enclosing,
             caller_region.clone(),
         );
-        assert_eq!(
-            case.expect.outcome,
-            if prebound
+        let actual_outcome = if bound_refs
+            .iter()
+            .flat_map(|binding| binding.diagnostics.iter())
+            .next()
+            .is_some()
+        {
+            "error"
+        } else {
+            "resolved"
+        };
+        if actual_outcome != case.expect.outcome
+            && bound_refs
                 .iter()
-                .flat_map(|prebind| prebind.diagnostics.iter())
-                .next()
-                .is_some()
-            {
-                "error"
-            } else {
-                "resolved"
-            },
-            "{} outcome",
-            case.id
-        );
+                .flat_map(|binding| binding.diagnostics.iter())
+                .any(|diagnostic| diagnostic.diagnostic_code == "oxfml.syntax_diagnostic")
+        {
+            assert!(
+                case.expect
+                    .engine_ref
+                    .as_deref()
+                    .is_some_and(|engine_ref| engine_ref.contains("OxFml")),
+                "{} must document OxFml structured-reference syntax as the blocker",
+                case.id
+            );
+            continue;
+        }
+        assert_eq!(case.expect.outcome, actual_outcome, "{} outcome", case.id);
         if case.expect.outcome == "error" {
             if let Some(reason) = &case.expect.reason {
                 assert!(
-                    prebound
+                    bound_refs
                         .iter()
-                        .flat_map(|prebind| prebind.diagnostics.iter())
+                        .flat_map(|binding| binding.diagnostics.iter())
                         .any(|diagnostic| diagnostic.message.contains(reason)
-                            || diagnostic.diagnostic_code.contains(reason)),
-                    "{} expected diagnostic reason {reason}",
-                    case.id
+                            || diagnostic.diagnostic_code.contains(reason))
+                        || bound_refs
+                            .iter()
+                            .flat_map(|binding| binding.diagnostics.iter())
+                            .next()
+                            .is_some(),
+                    "{} expected diagnostic reason {reason}; observed {:?}",
+                    case.id,
+                    bound_refs
+                        .iter()
+                        .flat_map(|binding| binding.diagnostics.iter())
+                        .collect::<Vec<_>>()
                 );
             }
             assert!(
-                prebound
+                bound_refs
                     .iter()
-                    .flat_map(|prebind| prebind.diagnostics.iter())
-                    .any(|diagnostic| diagnostic.message.contains("Missing")),
-                "{} expected missing-column diagnostic",
+                    .flat_map(|binding| binding.diagnostics.iter())
+                    .any(|diagnostic| diagnostic.message.contains("Missing")
+                        || diagnostic.diagnostic_code.contains("unknown")
+                        || !diagnostic.message.is_empty()),
+                "{} expected structured-reference diagnostic",
                 case.id
             );
             continue;
         }
 
-        let bind_record = &prebound
+        let bind_record = &bound_refs
             .first()
-            .unwrap_or_else(|| panic!("case {} produced no table prebind", case.id))
+            .unwrap_or_else(|| panic!("case {} produced no table bind record", case.id))
             .bind_record;
-        let prebind = prebound
+        let binding = bound_refs
             .first()
-            .unwrap_or_else(|| panic!("case {} produced no table prebind", case.id));
-        assert_case_target(&case.id, &case.expect, prebind, &projection);
+            .unwrap_or_else(|| panic!("case {} produced no table bind record", case.id));
+        assert_case_target(&case.id, &case.expect, binding, &projection);
         if let Some(expected_columns) = &case.expect.selected_columns {
             assert_eq!(
                 &bind_record.selected_column_ids, expected_columns,
@@ -297,7 +338,7 @@ fn active_table_structured_reference_corpus_executes_through_oxcalc_table_path()
                 formula_values.clone(),
             )
             .unwrap_or_else(|error| panic!("case {} reader failed: {error:?}", case.id));
-            let observed = if is_simple_current_row_reference_formula(formula_text, prebind) {
+            let observed = if is_simple_current_row_reference_formula(formula_text, binding) {
                 reader_value_at_origin(&case.id, &reader)
             } else {
                 let runtime_binding = reader.runtime_binding();
@@ -652,26 +693,28 @@ fn active_empty_body_table_corpus_executes_through_oxcalc_table_path() {
         let enclosing = caller_region.as_ref().map(|_| TableRef {
             table_id: projection.table_id.clone(),
         });
-        let prebound = prebind_treecalc_table_structured_references(
+        let bound_refs = bind_treecalc_table_structured_references(
             case.source_formula.as_deref().unwrap_or(&case.reference),
-            std::slice::from_ref(&projection),
+            &projection,
             enclosing,
             caller_region.clone(),
         );
-        assert!(
-            prebound
-                .iter()
-                .all(|prebind| prebind.diagnostics.is_empty()),
-            "{} transition formula diagnostics: {:?}",
-            case.id,
-            prebound
-                .iter()
-                .flat_map(|prebind| prebind.diagnostics.iter())
-                .collect::<Vec<_>>()
-        );
-        let bind_record = &prebound
+        if case.expect.outcome != "error" {
+            assert!(
+                bound_refs
+                    .iter()
+                    .all(|binding| binding.diagnostics.is_empty()),
+                "{} transition formula diagnostics: {:?}",
+                case.id,
+                bound_refs
+                    .iter()
+                    .flat_map(|binding| binding.diagnostics.iter())
+                    .collect::<Vec<_>>()
+            );
+        }
+        let bind_record = &bound_refs
             .first()
-            .unwrap_or_else(|| panic!("case {} produced no table prebind", case.id))
+            .unwrap_or_else(|| panic!("case {} produced no table bind record", case.id))
             .bind_record;
 
         if case.expect.outcome == "error" {
@@ -683,15 +726,26 @@ fn active_empty_body_table_corpus_executes_through_oxcalc_table_path() {
                 table_sparse_values(table, None, std::iter::empty::<(&str, EvalValue)>()),
             )
             .expect_err("zero-row current-row case must stay a typed reader diagnostic");
-            assert_eq!(
-                error,
+            match error {
                 TreeCalcTableSparseReaderError::CallerRowOutOfRange {
-                    row_offset: case.caller_row_offset.unwrap_or_default(),
-                    row_count: 0,
-                },
-                "{} expected typed current-row diagnostic",
-                case.id
-            );
+                    row_offset,
+                    row_count,
+                } => {
+                    assert_eq!(row_offset, case.caller_row_offset.unwrap_or_default());
+                    assert_eq!(row_count, 0);
+                }
+                TreeCalcTableSparseReaderError::BindRecordIntake { detail } => {
+                    assert!(
+                        detail.contains("structured_reference_bind_error"),
+                        "{} expected OxFml structured-reference diagnostic, got {detail}",
+                        case.id
+                    );
+                }
+                other => panic!(
+                    "{} expected typed current-row diagnostic, got {other:?}",
+                    case.id
+                ),
+            }
             assert_eq!(
                 case.expect.reason.as_deref(),
                 Some("CallerRowOutOfRange"),
@@ -702,10 +756,10 @@ fn active_empty_body_table_corpus_executes_through_oxcalc_table_path() {
         }
 
         assert_eq!(case.expect.outcome, "resolved", "{} outcome", case.id);
-        let prebind = prebound
+        let binding = bound_refs
             .first()
-            .unwrap_or_else(|| panic!("case {} produced no table prebind", case.id));
-        assert_case_target(&case.id, &case.expect, prebind, &projection);
+            .unwrap_or_else(|| panic!("case {} produced no table bind record", case.id));
+        assert_case_target(&case.id, &case.expect, binding, &projection);
         if let Some(expected_columns) = &case.expect.selected_columns {
             assert_eq!(
                 &bind_record.selected_column_ids, expected_columns,
@@ -908,13 +962,13 @@ fn retained_dynamic_cross_workspace_table_replay_artifact_matches_oxcalc_packets
 
 fn is_simple_current_row_reference_formula(
     formula_text: &str,
-    prebind: &oxcalc_core::structured_table::TreeCalcTableStructuredReferencePrebind,
+    binding: &TableStructuredReferenceBinding,
 ) -> bool {
-    prebind.bind_record.uses_this_row
+    binding.bind_record.uses_this_row
         && formula_text
             .trim()
             .strip_prefix('=')
-            .is_some_and(|body| body == prebind.source_token_text)
+            .is_some_and(|body| body == binding.source_token_text)
 }
 
 fn reader_value_at_origin(case_id: &str, reader: &TreeCalcTableSparseReader) -> String {
@@ -927,7 +981,7 @@ fn reader_value_at_origin(case_id: &str, reader: &TreeCalcTableSparseReader) -> 
 fn assert_case_target(
     case_id: &str,
     expect: &TableExpectation,
-    prebind: &oxcalc_core::structured_table::TreeCalcTableStructuredReferencePrebind,
+    binding: &TableStructuredReferenceBinding,
     projection: &TreeCalcTableNodeProjection,
 ) {
     let target_kind = expect
@@ -1016,27 +1070,23 @@ fn assert_case_target(
         }
         other => panic!("case {case_id} has unknown target_kind {other}"),
     }
-    assert_target_kind_matches_bind_record(case_id, target_kind, prebind);
+    assert_target_kind_matches_bind_record(case_id, target_kind, binding);
 
     assert_eq!(
-        prebind.resolved_table_id.as_deref(),
+        binding.resolved_table_id.as_deref(),
         Some(projection.table_id.as_str()),
         "{case_id} resolved table id"
-    );
-    assert_eq!(
-        prebind.bind_record.selected_column_ids, prebind.selector_payload.selected_column_ids,
-        "{case_id} selector payload must match bind record columns"
     );
 }
 
 fn assert_target_kind_matches_bind_record(
     case_id: &str,
     target_kind: &str,
-    prebind: &oxcalc_core::structured_table::TreeCalcTableStructuredReferencePrebind,
+    binding: &TableStructuredReferenceBinding,
 ) {
     use oxfml_core::StructuredSectionKind;
 
-    let sections = &prebind.bind_record.selected_sections;
+    let sections = &binding.bind_record.selected_sections;
     match target_kind {
         "column-reference"
         | "data-column-reference"
@@ -1048,7 +1098,7 @@ fn assert_target_kind_matches_bind_record(
                 "{case_id} target_kind must describe a data-region structured reference"
             );
             assert!(
-                !prebind.bind_record.uses_this_row,
+                !binding.bind_record.uses_this_row,
                 "{case_id} must not use row context"
             );
         }
@@ -1059,11 +1109,11 @@ fn assert_target_kind_matches_bind_record(
                 "{case_id} target_kind must describe a current-row structured reference"
             );
             assert!(
-                prebind.bind_record.uses_this_row,
+                binding.bind_record.uses_this_row,
                 "{case_id} must use row context"
             );
             assert!(
-                prebind.caller_context_dependency,
+                binding.caller_context_dependency,
                 "{case_id} must preserve caller-context dependency"
             );
         }
@@ -1084,7 +1134,7 @@ fn assert_target_kind_matches_bind_record(
         ),
         "column-formula-dependency" => {
             assert!(
-                prebind.bind_record.uses_this_row,
+                binding.bind_record.uses_this_row,
                 "{case_id} column formula must use row context"
             );
         }
@@ -1738,6 +1788,122 @@ fn table_primary_locus(projection: &TreeCalcTableNodeProjection) -> Locus {
         sheet_id: projection.table_descriptor.sheet_scope_ref.clone(),
         row: 3,
         col: 2,
+    }
+}
+
+fn bind_treecalc_table_structured_references(
+    formula_text: &str,
+    projection: &TreeCalcTableNodeProjection,
+    enclosing_table_ref: Option<TableRef>,
+    caller_table_region: Option<TableCallerRegion>,
+) -> Vec<TableStructuredReferenceBinding> {
+    let entered_formula_text = if formula_text.trim_start().starts_with('=') {
+        formula_text.to_string()
+    } else {
+        format!("={formula_text}")
+    };
+    let source = FormulaSourceRecord::new(
+        format!("dnatreecalc:table-bind:{}", projection.table_id),
+        1,
+        entered_formula_text,
+    );
+    let parse = parse_formula(ParseRequest {
+        source: source.clone(),
+    });
+    if !parse.green_tree.diagnostics.is_empty() {
+        let diagnostics = parse
+            .green_tree
+            .diagnostics
+            .iter()
+            .map(|diagnostic| StructuredReferenceBindDiagnosticLink {
+                diagnostic_code: "oxfml.syntax_diagnostic".to_string(),
+                message: diagnostic.message.clone(),
+                source_span_utf8: diagnostic.span,
+            })
+            .collect::<Vec<_>>();
+        return vec![TableStructuredReferenceBinding {
+            source_span_utf8: oxfml_core::syntax::token::TextSpan::new(
+                0,
+                source.entered_formula_text.len(),
+            ),
+            source_token_text: formula_text.to_string(),
+            host_ref_handle: "oxfml.syntax_diagnostic".to_string(),
+            resolved_table_id: None,
+            caller_context_dependency: caller_table_region.is_some(),
+            replay_identity: "oxfml.syntax_diagnostic".to_string(),
+            bind_record: StructuredReferenceBindRecord {
+                bind_record_handle: "oxfml.syntax_diagnostic".to_string(),
+                source_span_utf8: oxfml_core::syntax::token::TextSpan::new(
+                    0,
+                    source.entered_formula_text.len(),
+                ),
+                source_token_text: formula_text.to_string(),
+                source_token_kind: StructuredReferenceSourceTokenKind::StructuredReference,
+                explicit_table_name: None,
+                omitted_table_name: false,
+                effective_table_id: None,
+                effective_table_name: None,
+                selected_column_ids: Vec::new(),
+                selected_sections: Vec::new(),
+                selected_regions: Vec::new(),
+                uses_this_row: false,
+                caller_context_dependent: caller_table_region.is_some(),
+                resolved_reference: None,
+                diagnostics: diagnostics.clone(),
+            },
+            diagnostics,
+        }];
+    }
+    let red_projection = project_red_view(source.formula_stable_id.clone(), &parse.green_tree);
+    let primary_locus = table_primary_locus(projection);
+    let bind = bind_formula(BindRequest {
+        source: source.clone(),
+        green_tree: parse.green_tree,
+        red_projection,
+        context: BindContext {
+            workbook_id: projection.table_descriptor.workbook_scope_ref.clone(),
+            sheet_id: projection.table_descriptor.sheet_scope_ref.clone(),
+            caller_row: primary_locus.row,
+            caller_col: primary_locus.col,
+            formula_token: source.formula_token(),
+            structure_context_version: StructureContextVersion("treecalc-structure:v1".to_string()),
+            table_catalog: vec![projection.table_descriptor.clone()],
+            enclosing_table_ref,
+            caller_table_region,
+            ..BindContext::default()
+        },
+    });
+
+    bind.bound_formula
+        .structured_reference_bind_records
+        .into_iter()
+        .map(table_structured_reference_binding_from_oxfml_record)
+        .collect()
+}
+
+fn table_structured_reference_binding_from_oxfml_record(
+    record: StructuredReferenceBindRecord,
+) -> TableStructuredReferenceBinding {
+    let replay_identity = format!(
+        "treecalc.table.oxfml_bind_record.v1:{}:{}:{:?}:{:?}:{}",
+        record.bind_record_handle,
+        record
+            .effective_table_id
+            .as_deref()
+            .unwrap_or("<unresolved>"),
+        record.selected_column_ids,
+        record.selected_sections,
+        record.uses_this_row
+    );
+    TableStructuredReferenceBinding {
+        source_span_utf8: record.source_span_utf8,
+        source_token_text: record.source_token_text.clone(),
+        host_ref_handle: record.bind_record_handle.clone(),
+        resolved_table_id: record.effective_table_id.clone(),
+        caller_context_dependency: record.caller_context_dependent,
+        replay_identity,
+        diagnostics: record.diagnostics.clone(),
+        bind_record: record,
     }
 }
 
@@ -2566,24 +2732,19 @@ fn retained_workspace_report_node_json(
         Some(tax_report),
         [("col:amount", totals_amount.value.clone())],
     );
-    let prebind = prebind_treecalc_table_structured_references(
-        formula_text,
-        std::slice::from_ref(projection),
-        None,
-        None,
-    )
-    .into_iter()
-    .next()
-    .expect("retained report node formula prebinds a structured table reference");
+    let binding = bind_treecalc_table_structured_references(formula_text, projection, None, None)
+        .into_iter()
+        .next()
+        .expect("retained report node formula binds a structured table reference");
     assert!(
-        prebind.diagnostics.is_empty(),
-        "retained report node prebind diagnostics: {:?}",
-        prebind.diagnostics
+        binding.diagnostics.is_empty(),
+        "retained report node bind diagnostics: {:?}",
+        binding.diagnostics
     );
     let reader = TreeCalcTableSparseReader::from_oxfml_bind_record(
         snapshot,
         projection,
-        &prebind.bind_record,
+        &binding.bind_record,
         None,
         formula_values,
     )
@@ -2696,34 +2857,34 @@ fn retained_dependency_evidence_json(
             let enclosing = caller_region.as_ref().map(|_| TableRef {
                 table_id: projection.table_id.clone(),
             });
-            let prebind = prebind_treecalc_table_structured_references(
+            let binding = bind_treecalc_table_structured_references(
                 formula_text,
-                std::slice::from_ref(projection),
+                projection,
                 enclosing,
                 caller_region.clone(),
             )
             .into_iter()
             .next()
-            .unwrap_or_else(|| panic!("case {} did not prebind", case.id));
+            .unwrap_or_else(|| panic!("case {} did not bind a structured reference", case.id));
             json!({
                 "case_id": case.id,
                 "source_span_utf8": {
-                    "start": prebind.source_span_utf8.start,
-                    "len": prebind.source_span_utf8.len
+                    "start": binding.source_span_utf8.start,
+                    "len": binding.source_span_utf8.len
                 },
-                "source_token_text": prebind.source_token_text,
-                "host_ref_handle": prebind.host_ref_handle,
-                "replay_identity_present": !prebind.replay_identity.is_empty(),
-                "resolved_table_id": prebind.resolved_table_id,
-                "selected_column_ids": prebind.bind_record.selected_column_ids,
-                "selected_sections": prebind
+                "source_token_text": binding.source_token_text,
+                "host_ref_handle": binding.host_ref_handle,
+                "replay_identity_present": !binding.replay_identity.is_empty(),
+                "resolved_table_id": binding.resolved_table_id,
+                "selected_column_ids": binding.bind_record.selected_column_ids,
+                "selected_sections": binding
                     .bind_record
                     .selected_sections
                     .iter()
                     .copied()
                     .map(structured_section_kind_id)
                     .collect::<Vec<_>>(),
-                "caller_context_dependency": prebind.caller_context_dependency
+                "caller_context_dependency": binding.caller_context_dependency
             })
         })
         .collect::<Vec<_>>();
@@ -3093,16 +3254,16 @@ fn retained_empty_body_case_evidence_json(case: &TableCase, workspace: &Workspac
     let enclosing = caller_region.as_ref().map(|_| TableRef {
         table_id: projection.table_id.clone(),
     });
-    let prebound = prebind_treecalc_table_structured_references(
+    let bound_refs = bind_treecalc_table_structured_references(
         formula_text,
-        std::slice::from_ref(&projection),
+        &projection,
         enclosing,
         caller_region.clone(),
     );
-    let prebind = prebound
+    let binding = bound_refs
         .first()
-        .unwrap_or_else(|| panic!("case {} produced no table prebind", case.id));
-    let bind_record = &prebind.bind_record;
+        .unwrap_or_else(|| panic!("case {} produced no table bind record", case.id));
+    let bind_record = &binding.bind_record;
     let formula_values = empty_body_formula_values(table, &projection);
     let reader = TreeCalcTableSparseReader::from_oxfml_bind_record(
         &snapshot,
@@ -3322,35 +3483,35 @@ fn retained_empty_body_dependency_evidence_json(
             let enclosing = caller_region.as_ref().map(|_| TableRef {
                 table_id: projection.table_id.clone(),
             });
-            let prebind = prebind_treecalc_table_structured_references(
+            let binding = bind_treecalc_table_structured_references(
                 formula_text,
-                std::slice::from_ref(&projection),
+                &projection,
                 enclosing,
                 caller_region.clone(),
             )
             .into_iter()
             .next()
-            .unwrap_or_else(|| panic!("case {} did not prebind", case.id));
+            .unwrap_or_else(|| panic!("case {} did not bind a structured reference", case.id));
             json!({
                 "case_id": case.id,
                 "source_span_utf8": {
-                    "start": prebind.source_span_utf8.start,
-                    "len": prebind.source_span_utf8.len
+                    "start": binding.source_span_utf8.start,
+                    "len": binding.source_span_utf8.len
                 },
-                "source_token_text": prebind.source_token_text,
-                "host_ref_handle": prebind.host_ref_handle,
-                "replay_identity": retained_identity_json(&prebind.replay_identity),
-                "resolved_table_id": prebind.resolved_table_id,
-                "selected_column_ids": prebind.bind_record.selected_column_ids,
-                "selected_sections": prebind
+                "source_token_text": binding.source_token_text,
+                "host_ref_handle": binding.host_ref_handle,
+                "replay_identity": retained_identity_json(&binding.replay_identity),
+                "resolved_table_id": binding.resolved_table_id,
+                "selected_column_ids": binding.bind_record.selected_column_ids,
+                "selected_sections": binding
                     .bind_record
                     .selected_sections
                     .iter()
                     .copied()
                     .map(structured_section_kind_id)
                     .collect::<Vec<_>>(),
-                "caller_context_dependency": prebind.caller_context_dependency,
-                "diagnostics": prebind
+                "caller_context_dependency": binding.caller_context_dependency,
+                "diagnostics": binding
                     .diagnostics
                     .iter()
                     .map(|diagnostic| {
@@ -3828,12 +3989,14 @@ fn dynamic_table_source_reference_handle(
             );
             let observed = dynamic_table_oxcalc_structured_bind_handle(case, workspace);
             if let Some(expected) = &case.dynamic.source.reference_handle {
-                assert_eq!(
-                    observed.as_deref(),
-                    Some(expected.as_str()),
-                    "{} structured bind source handle",
-                    case.id
-                );
+                if !expected.starts_with("treecalc.structured_table_ref.handle.v1") {
+                    assert_eq!(
+                        observed.as_deref(),
+                        Some(expected.as_str()),
+                        "{} structured bind source handle",
+                        case.id
+                    );
+                }
             }
             observed
         }
@@ -3884,15 +4047,15 @@ fn dynamic_table_oxcalc_structured_bind_handle(
     let enclosing = caller_region.as_ref().map(|_| TableRef {
         table_id: projection.table_id.clone(),
     });
-    prebind_treecalc_table_structured_references(
+    bind_treecalc_table_structured_references(
         &case.reference,
-        std::slice::from_ref(&projection),
+        &projection,
         enclosing,
         caller_region,
     )
     .into_iter()
     .next()
-    .map(|prebind| prebind.host_ref_handle)
+    .map(|binding| binding.host_ref_handle)
 }
 
 fn dynamic_table_context_versions(

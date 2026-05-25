@@ -1,0 +1,122 @@
+{
+  "schema_version": "treecalc-corpus-v1",
+  "theme": "references/escaping-raw-active",
+  "workset": "W004",
+  "status": "active",
+  "status_note": "Focused active resolution subset for bracket-escaped host paths through direct OxCalcTreeContext. The broader references/escaping syntax corpus remains pending for full parser/profile/canonical display coverage.",
+  "description": "Bracket-escaped node names and escaped reserved characters where OxFml emits escaped-path host-reference packets and OxCalc decodes path segments while resolving against the canonical tree context.",
+  "cases": [
+    {
+      "id": "active-esc-space",
+      "name": "a name with a space is bracket-escaped",
+      "spec": "§3.4",
+      "kind": "resolution",
+      "workspace": "escaping-active",
+      "caller": "Escapes.Caller",
+      "reference": "[Sales Q1]",
+      "profile": "treecalc-v1",
+      "expect": {
+        "outcome": "resolved",
+        "target": "Escapes.Sales Q1",
+        "published_value": "5",
+        "decodes_to": "Sales Q1"
+      }
+    },
+    {
+      "id": "active-esc-open-bracket",
+      "name": "escaped open bracket in a name",
+      "spec": "§3.4",
+      "kind": "resolution",
+      "workspace": "escaping-active",
+      "caller": "Escapes.Caller",
+      "reference": "[Foo'[Bar]",
+      "profile": "treecalc-v1",
+      "expect": {
+        "outcome": "resolved",
+        "target": "Escapes.Foo[Bar",
+        "published_value": "6",
+        "decodes_to": "Foo[Bar"
+      }
+    },
+    {
+      "id": "active-esc-close-bracket",
+      "name": "escaped close bracket in a name",
+      "spec": "§3.4",
+      "kind": "resolution",
+      "workspace": "escaping-active",
+      "caller": "Escapes.Caller",
+      "reference": "[Foo']Bar]",
+      "profile": "treecalc-v1",
+      "expect": {
+        "outcome": "resolved",
+        "target": "Escapes.Foo]Bar",
+        "published_value": "7",
+        "decodes_to": "Foo]Bar"
+      }
+    },
+    {
+      "id": "active-esc-hash",
+      "name": "escaped hash in a name",
+      "spec": "§3.4",
+      "kind": "resolution",
+      "workspace": "escaping-active",
+      "caller": "Escapes.Caller",
+      "reference": "[Col'#Name]",
+      "profile": "treecalc-v1",
+      "expect": {
+        "outcome": "resolved",
+        "target": "Escapes.Col#Name",
+        "published_value": "8",
+        "decodes_to": "Col#Name"
+      }
+    },
+    {
+      "id": "active-esc-apostrophe",
+      "name": "doubled apostrophe is a literal apostrophe",
+      "spec": "§3.4",
+      "kind": "resolution",
+      "workspace": "escaping-active",
+      "caller": "Escapes.Caller",
+      "reference": "[Foo''Bar]",
+      "profile": "treecalc-v1",
+      "expect": {
+        "outcome": "resolved",
+        "target": "Escapes.Foo'Bar",
+        "published_value": "9",
+        "decodes_to": "Foo'Bar"
+      }
+    },
+    {
+      "id": "active-esc-at",
+      "name": "escaped leading at-sign",
+      "spec": "§3.4",
+      "kind": "resolution",
+      "workspace": "escaping-active",
+      "caller": "Escapes.Caller",
+      "reference": "['@Special]",
+      "profile": "treecalc-v1",
+      "expect": {
+        "outcome": "resolved",
+        "target": "Escapes.@Special",
+        "published_value": "10",
+        "decodes_to": "@Special"
+      }
+    },
+    {
+      "id": "active-esc-descent",
+      "name": "bracket-escaped name after a . separator",
+      "spec": "§3.3",
+      "kind": "resolution",
+      "workspace": "escaping-active",
+      "caller": "Escapes.Caller",
+      "reference": "Region.[Net Revenue]",
+      "profile": "treecalc-v1",
+      "expect": {
+        "outcome": "resolved",
+        "target": "Escapes.Region.Net Revenue",
+        "published_value": "11",
+        "decodes_to_path": ["Region", "Net Revenue"]
+      }
+    }
+  ]
+}

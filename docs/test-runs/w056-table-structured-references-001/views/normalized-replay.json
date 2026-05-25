@@ -474,7 +474,7 @@
           {
             "caller_context_dependency": false,
             "case_id": "tbl-column-ref",
-            "host_ref_handle": "treecalc.structured_table_ref.handle.v1;start=1:5;len=2:18",
+            "host_ref_handle": "structured-ref:5e2b471d7dac1bb8",
             "replay_identity_present": true,
             "resolved_table_id": "tree-table:sales",
             "selected_column_ids": [
@@ -492,7 +492,7 @@
           {
             "caller_context_dependency": true,
             "case_id": "tbl-path-current-row-ref",
-            "host_ref_handle": "treecalc.structured_table_ref.handle.v1;start=1:1;len=2:19",
+            "host_ref_handle": "structured-ref:fa71a136c4389a37",
             "replay_identity_present": true,
             "resolved_table_id": "tree-table:sales",
             "selected_column_ids": [
@@ -510,7 +510,7 @@
           {
             "caller_context_dependency": true,
             "case_id": "tbl-current-row-ref",
-            "host_ref_handle": "treecalc.structured_table_ref.handle.v1;start=1:1;len=1:9",
+            "host_ref_handle": "structured-ref:4b4aca4e39ae6eec",
             "replay_identity_present": true,
             "resolved_table_id": "tree-table:sales",
             "selected_column_ids": [
@@ -528,10 +528,14 @@
           {
             "caller_context_dependency": false,
             "case_id": "tbl-special-headers",
-            "host_ref_handle": "treecalc.structured_table_ref.handle.v1;start=1:8;len=2:20",
+            "host_ref_handle": "structured-ref:30e33f317fd9c417",
             "replay_identity_present": true,
             "resolved_table_id": "tree-table:sales",
-            "selected_column_ids": [],
+            "selected_column_ids": [
+              "col:region",
+              "col:amount",
+              "col:tax"
+            ],
             "selected_sections": [
               "headers"
             ],
@@ -544,7 +548,7 @@
           {
             "caller_context_dependency": false,
             "case_id": "tbl-special-data-column",
-            "host_ref_handle": "treecalc.structured_table_ref.handle.v1;start=1:5;len=2:28",
+            "host_ref_handle": "structured-ref:7d54f5b8565b1233",
             "replay_identity_present": true,
             "resolved_table_id": "tree-table:sales",
             "selected_column_ids": [
@@ -562,7 +566,7 @@
           {
             "caller_context_dependency": false,
             "case_id": "tbl-special-totals-column",
-            "host_ref_handle": "treecalc.structured_table_ref.handle.v1;start=1:5;len=2:30",
+            "host_ref_handle": "structured-ref:1e46548534c96264",
             "replay_identity_present": true,
             "resolved_table_id": "tree-table:sales",
             "selected_column_ids": [
@@ -580,10 +584,14 @@
           {
             "caller_context_dependency": false,
             "case_id": "tbl-special-all",
-            "host_ref_handle": "treecalc.structured_table_ref.handle.v1;start=1:8;len=2:16",
+            "host_ref_handle": "structured-ref:3479285e21782b43",
             "replay_identity_present": true,
             "resolved_table_id": "tree-table:sales",
-            "selected_column_ids": [],
+            "selected_column_ids": [
+              "col:region",
+              "col:amount",
+              "col:tax"
+            ],
             "selected_sections": [
               "all"
             ],
@@ -596,7 +604,7 @@
           {
             "caller_context_dependency": false,
             "case_id": "tbl-composite-data-columns",
-            "host_ref_handle": "treecalc.structured_table_ref.handle.v1;start=1:5;len=2:34",
+            "host_ref_handle": "structured-ref:846d38b6a5f958ee",
             "replay_identity_present": true,
             "resolved_table_id": "tree-table:sales",
             "selected_column_ids": [
@@ -615,7 +623,7 @@
           {
             "caller_context_dependency": true,
             "case_id": "tbl-column-formula",
-            "host_ref_handle": "treecalc.structured_table_ref.handle.v1;start=1:1;len=1:9",
+            "host_ref_handle": "structured-ref:f809a42c79be6f34",
             "replay_identity_present": true,
             "resolved_table_id": "tree-table:sales",
             "selected_column_ids": [
@@ -633,7 +641,7 @@
           {
             "caller_context_dependency": false,
             "case_id": "tbl-totals-formula",
-            "host_ref_handle": "treecalc.structured_table_ref.handle.v1;start=1:5;len=2:18",
+            "host_ref_handle": "structured-ref:5e2b471d7dac1bb8",
             "replay_identity_present": true,
             "resolved_table_id": "tree-table:sales",
             "selected_column_ids": [

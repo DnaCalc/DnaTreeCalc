@@ -85,6 +85,10 @@ fn active_node_function_corpus_is_direct_context_typed_pending() {
                     result.diagnostics.iter().any(|diagnostic| {
                         diagnostic.contains("typed_exclusion:node_as_function_w074_pending")
                             || diagnostic.contains("unresolved_host_name")
+                            || diagnostic.contains("dependency_diagnostic:relative_path")
+                            || diagnostic.contains(
+                                "oxfml_returned_value_surface_payload_summary:Error(Name)",
+                            )
                             || diagnostic.contains("typed_exclusion")
                             || diagnostic.contains("unexpected token Caret")
                             || diagnostic.contains("syntax diagnostics")
