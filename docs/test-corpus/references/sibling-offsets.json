@@ -40,6 +40,40 @@
       "note": "Q1's next sibling is Q2; descend child Margin."
     },
     {
+      "id": "ref-qualified-prev-tail",
+      "name": "Base.@PREV.Name reads the previous sibling of the base node",
+      "spec": "§3.2, §3.7",
+      "kind": "resolution",
+      "workspace": "accounts",
+      "caller": "Accounts.2005.Total",
+      "reference": "Q2.@PREV.Net",
+      "profile": "treecalc-v1",
+      "expect": {
+        "outcome": "resolved",
+        "target": "Accounts.2005.Q1.Net",
+        "published_value": "7",
+        "engine_ref": "QualifiedSiblingOffset{ base: Q2, offset: -1, tail: [Net] }"
+      },
+      "note": "The base Q2 resolves by walk-up from Total; @PREV then navigates from Q2 to Q1 before applying the tail Net."
+    },
+    {
+      "id": "ref-qualified-next-tail",
+      "name": "Base.@NEXT.Name reads the next sibling of the base node",
+      "spec": "§3.2, §3.7",
+      "kind": "resolution",
+      "workspace": "accounts",
+      "caller": "Accounts.2005.Total",
+      "reference": "Q1.@NEXT.Margin",
+      "profile": "treecalc-v1",
+      "expect": {
+        "outcome": "resolved",
+        "target": "Accounts.2005.Q2.Margin",
+        "published_value": "0.25",
+        "engine_ref": "QualifiedSiblingOffset{ base: Q1, offset: +1, tail: [Margin] }"
+      },
+      "note": "The base Q1 resolves by walk-up from Total; @NEXT then navigates from Q1 to Q2 before applying the tail Margin."
+    },
+    {
       "id": "ref-next-out-of-range",
       "name": "@NEXT past the last sibling errors",
       "spec": "§3.5",

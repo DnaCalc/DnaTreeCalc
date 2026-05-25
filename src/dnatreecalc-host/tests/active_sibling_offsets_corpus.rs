@@ -61,7 +61,7 @@ fn active_sibling_offset_corpus_executes_through_direct_oxcalc_context() {
         assert!(
             matches!(
                 case.reference.as_str(),
-                "@PREV.Net" | "@NEXT.Margin" | "@NEXT"
+                "@PREV.Net" | "@NEXT.Margin" | "Q2.@PREV.Net" | "Q1.@NEXT.Margin" | "@NEXT"
             ),
             "{} activates unexpected sibling reference {}",
             case.id,
@@ -129,7 +129,10 @@ fn prepare_sibling_case_workspace(workspace: &mut WorkspaceModel, case: &Sibling
             node.content = NodeContent::Empty;
         }
     }
-    if case.id == "ref-prev-tail" {
+    if matches!(
+        case.id.as_str(),
+        "ref-prev-tail" | "ref-qualified-prev-tail"
+    ) {
         workspace
             .nodes
             .get_mut("Accounts.2005.Q1.Net")
