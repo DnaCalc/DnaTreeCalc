@@ -240,3 +240,92 @@ fn edit_formula_intent_recalculates_direct_context_and_updates_workspace_signal(
         Some("4")
     );
 }
+
+#[test]
+fn walking_skeleton_click_through_harness_edits_switches_saves_and_reopens() {
+    let _owner = Owner::new();
+
+    let fixture = WorkspaceFixture::from_repo_fixture("accounts").unwrap();
+    let model = WorkspaceModel::try_from(fixture).unwrap();
+    let mut initial_session = TreeWorkspaceSession::from_model(&model).unwrap();
+    initial_session.recalculate().unwrap();
+    let workspace_state = initial_session.workspace_state().unwrap();
+    let session = Arc::new(std::sync::Mutex::new(initial_session));
+
+    let workspace = RwSignal::new(workspace_state);
+    let selection = RwSignal::new(SelectionState::default());
+    let shared = SharedSkinStateHandle::new(SharedSkinState::default());
+    let dispatcher = Arc::new(HostDispatcher::with_session(
+        selection,
+        workspace,
+        session.clone(),
+    ));
+    let dispatch: Arc<dyn Dispatcher> = dispatcher.clone();
+
+    dispatcher.dispatch(WorkspaceIntent::SelectNode(Some(NodeId::new(
+        "Accounts.2005.Q1.Income.Sales",
+    ))));
+    let receipt = dispatcher.dispatch(WorkspaceIntent::EditFormula {
+        node: NodeId::new("Accounts.2005.Q1.Income.Sales"),
+        content: "20".to_string(),
+    });
+    assert!(receipt.accepted, "{:?}", receipt.error);
+    assert_eq!(
+        scalar_value(&workspace.get_untracked(), "Accounts.2005.Q1.Income"),
+        Some("4")
+    );
+
+    let registry = build_default_registry();
+    let recalc_before_switch = session.lock().unwrap().recalc_count();
+    for skin_id in [TRIPLE_EDITOR_ID, OUTLINE_TABLE_ID] {
+        let cx = ErasedSkinContext {
+            workspace: workspace.read_only(),
+            selection: selection.read_only(),
+            shared,
+            dispatch: dispatch.clone(),
+        };
+        let handle = registry
+            .get(skin_id)
+            .expect("skeleton skin must be registered")
+            .mount(cx);
+        drop(handle);
+    }
+    assert_eq!(
+        session.lock().unwrap().recalc_count(),
+        recalc_before_switch,
+        "switching skeleton skins must not recalculate"
+    );
+
+    let selected = selection.get_untracked().primary.clone();
+    let document = session
+        .lock()
+        .unwrap()
+        .export_dnatree_document(selected.as_ref())
+        .unwrap();
+    let json = serde_json::to_string_pretty(&document).unwrap();
+    let reparsed = serde_json::from_str(&json).unwrap();
+    let (reopened, reopened_selection) =
+        TreeWorkspaceSession::from_dnatree_document(reparsed).unwrap();
+    let reopened_state = reopened.workspace_state().unwrap();
+
+    assert_eq!(
+        reopened_selection.as_ref().map(NodeId::as_str),
+        Some("Accounts.2005.Q1.Income.Sales")
+    );
+    assert_eq!(
+        scalar_value(&reopened_state, "Accounts.2005.Q1.Income"),
+        Some("4")
+    );
+}
+
+fn scalar_value<'a>(
+    state: &'a dnatreecalc_skin_framework::WorkspaceState,
+    node_id: &str,
+) -> Option<&'a str> {
+    state
+        .node(&NodeId::new(node_id))
+        .and_then(|node| match &node.computed_value {
+            NodeValueProjection::Scalar(value) => Some(value.as_str()),
+            _ => None,
+        })
+}
