@@ -15,6 +15,7 @@ use oxcalc_core::structured_table::{
     TreeCalcTableColumnBodyMetadata, TreeCalcTableColumnSnapshot, TreeCalcTableFormulaMetadata,
     TreeCalcTableNodeSnapshot, TreeCalcTableRowId, TreeCalcTableVirtualAnchor,
 };
+use serde::{Deserialize, Serialize};
 
 use crate::model::{
     CapabilityProfileId, NodeContent, TableColumnBodyKind, TableColumnFixture, TableFormulaFixture,
@@ -22,6 +23,16 @@ use crate::model::{
 };
 
 const ENGINE_ROOT_SYMBOL: &str = "__dnatreecalc_workspace__";
+const DNATREE_DOCUMENT_SCHEMA_VERSION: &str = "dnatreecalc-workspace-document-v1";
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DnaTreeWorkspaceDocument {
+    pub schema_version: String,
+    pub profile: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selected_node: Option<String>,
+    pub oxcalc_workspace: OxCalcTreeWorkspaceSnapshot,
+}
 
 pub struct TreeWorkspaceSession {
     context: OxCalcTreeContext,
@@ -110,6 +121,35 @@ impl TreeWorkspaceSession {
         &self,
     ) -> Result<OxCalcTreeWorkspaceSnapshot, TreeWorkspaceSessionError> {
         Ok(self.context.export_workspace_snapshot(&self.workspace_id)?)
+    }
+
+    pub fn export_dnatree_document(
+        &self,
+        selected_node: Option<&NodeId>,
+    ) -> Result<DnaTreeWorkspaceDocument, TreeWorkspaceSessionError> {
+        Ok(DnaTreeWorkspaceDocument {
+            schema_version: DNATREE_DOCUMENT_SCHEMA_VERSION.to_string(),
+            profile: self.profile.to_string(),
+            selected_node: selected_node.map(|node| node.as_str().to_string()),
+            oxcalc_workspace: self.export_workspace_snapshot()?,
+        })
+    }
+
+    pub fn from_dnatree_document(
+        document: DnaTreeWorkspaceDocument,
+    ) -> Result<(Self, Option<NodeId>), TreeWorkspaceSessionError> {
+        if document.schema_version != DNATREE_DOCUMENT_SCHEMA_VERSION {
+            return Err(TreeWorkspaceSessionError::UnsupportedDocumentSchema {
+                schema_version: document.schema_version,
+            });
+        }
+        let profile = leaked_profile(document.profile);
+        let selection = document
+            .selected_node
+            .as_ref()
+            .map(|node| NodeId::new(node.clone()));
+        let session = Self::from_workspace_snapshot(document.oxcalc_workspace, profile)?;
+        Ok((session, selection))
     }
 
     pub fn table_context_identity(
@@ -421,10 +461,20 @@ fn context_for_profile_id(profile: &str) -> OxCalcTreeContext {
     ))
 }
 
+fn leaked_profile(profile: String) -> &'static str {
+    match profile.as_str() {
+        "strict-excel" => "strict-excel",
+        "treecalc-v1" => "treecalc-v1",
+        other => Box::leak(other.to_string().into_boxed_str()),
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum TreeWorkspaceSessionError {
     #[error(transparent)]
     OxCalc(#[from] OxCalcTreeContextError),
+    #[error("unsupported .dnatree document schema {schema_version}")]
+    UnsupportedDocumentSchema { schema_version: String },
     #[error("unknown DnaTreeCalc node path {node}")]
     UnknownNodePath { node: String },
     #[error("duplicate DnaTreeCalc node path {node}")]
@@ -710,6 +760,68 @@ mod tests {
         let table_node = state.node(&NodeId::new("SalesTable")).unwrap();
         assert_eq!(table_node.content_kind, FrameworkContentKind::Empty);
         assert_eq!(table_node.computed_value, NodeValueProjection::Unevaluated);
+    }
+
+    #[test]
+    fn dnatree_document_roundtrip_reopens_oxcalc_snapshot_and_selection() {
+        let fixture = WorkspaceFixture {
+            schema_version: "treecalc-workspace-v1".to_string(),
+            workspace_id: "save-reopen".to_string(),
+            description: None,
+            profile: None,
+            nodes: vec![
+                WorkspaceNodeFixture {
+                    node_id: "Root".to_string(),
+                    formula: String::new(),
+                    is_meta: false,
+                    table: None,
+                },
+                WorkspaceNodeFixture {
+                    node_id: "Root.A".to_string(),
+                    formula: "=3".to_string(),
+                    is_meta: false,
+                    table: None,
+                },
+                WorkspaceNodeFixture {
+                    node_id: "Root.B".to_string(),
+                    formula: "=A+1".to_string(),
+                    is_meta: false,
+                    table: None,
+                },
+            ],
+        };
+        let model = WorkspaceModel::try_from(fixture).unwrap();
+        let mut session = TreeWorkspaceSession::from_model(&model).unwrap();
+        session.recalculate().unwrap();
+
+        let document = session
+            .export_dnatree_document(Some(&NodeId::new("Root.B")))
+            .unwrap();
+        let json = serde_json::to_string_pretty(&document).unwrap();
+        let reparsed: DnaTreeWorkspaceDocument = serde_json::from_str(&json).unwrap();
+        let (mut reopened, selected_node) =
+            TreeWorkspaceSession::from_dnatree_document(reparsed).unwrap();
+
+        assert_eq!(selected_node.as_ref().map(NodeId::as_str), Some("Root.B"));
+        assert_eq!(
+            scalar_value(&reopened.workspace_state().unwrap(), "Root.B"),
+            Some("4")
+        );
+
+        reopened.recalculate().unwrap();
+        assert_eq!(
+            scalar_value(&reopened.workspace_state().unwrap(), "Root.B"),
+            Some("4")
+        );
+
+        reopened
+            .edit_formula(&NodeId::new("Root.A"), "=4")
+            .expect("reopened .dnatree document remains bridge-ready");
+        reopened.recalculate().unwrap();
+        assert_eq!(
+            scalar_value(&reopened.workspace_state().unwrap(), "Root.B"),
+            Some("5")
+        );
     }
 
     fn scalar_value<'a>(state: &'a WorkspaceState, node_id: &str) -> Option<&'a str> {
