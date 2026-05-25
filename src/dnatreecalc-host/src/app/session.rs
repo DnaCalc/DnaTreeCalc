@@ -61,11 +61,9 @@ impl TreeWorkspaceSession {
             };
             let tree_node_id = session.context.add_node(
                 &session.workspace_id,
-                OxCalcTreeNodeCreate {
-                    parent_node_id,
-                    symbol: node.name.clone(),
-                    formula_text: node.content.text().to_string(),
-                },
+                OxCalcTreeNodeCreate::new(node.name.clone(), node.content.text())
+                    .with_meta(node.is_meta)
+                    .under(parent_node_id.unwrap_or(engine_root_id)),
             )?;
             let node_id = NodeId::new(path.clone());
             session.node_ids.insert(node_id.clone(), tree_node_id);
@@ -301,7 +299,7 @@ impl TreeWorkspaceSession {
                     content_kind,
                     content_text: tree_view.formula_text.clone(),
                     computed_value,
-                    is_meta: false,
+                    is_meta: tree_view.is_meta,
                 },
             );
         }

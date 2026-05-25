@@ -172,7 +172,7 @@ does not implement a parallel parser to make activation possible.
 | `references/escaping-raw-active` / `references/escaping` | W004 active escaping runner | Focused bracket-escaped host-path forms now run through OxFml escaped-path packets plus OxCalc decoded-segment resolver outputs. The broader syntax-only escaping corpus remains pending for full parser/profile/canonical-display coverage. |
 | `references/syntax`, `profiles/gating` | W004 parser/binder runner | Profile-gating cases now run through `TreeWorkspaceSession` / `OxCalcTreeContext` with the workspace capability profile supplied to OxCalc. TreeCalc-only raw syntax remains an explicit typed-pending/profile-exclusion lane until OxCalc/OxFml expose full profile-specific parser gating; DnaTreeCalc does not parse or mirror the syntax. |
 | `references/cross-workspace` | W004 active external workspace runner | Host loads aliased/direct external workspaces through OxCalc-owned context state and asserts either direct-context typed pending outcomes or target workspace/path plus workspace reverse-edge facts once admitted, without collapsing external targets to local node ids. |
-| `references/meta-nodes`, `formatting/`, `templates/` | W004/W007 direct-context runners | `is_meta` filtering is honored by binding/positional operators; W007 then consumes the same flag for format/template host data. |
+| `references/meta-nodes`, `formatting/`, `templates/` | W004 active meta-node runner plus W007 direct-context runners | `is_meta` now flows into `OxCalcTreeContext`; OxCalc-owned resolution hides meta-effective subtrees from host-name lookup and skips meta nodes for the active `@PREV` positional case. W007 then consumes the same flag for format/template host data. |
 | `references/children-raw-active` | W005 active children runner | Raw `@CHILDREN`, `.*`, `base.@CHILDREN`, and `base.*` now execute through OxFml host-reference syntax packets plus OxCalc `OxCalcTreeContext` resolver outputs. |
 | `references/ordered-raw-active` | W004 active ordered-selector runner | Raw `@PRECEDING`, `@FOLLOWING`, `@ANCESTORS`, qualified structural-base selectors, and recursive-tail selectors now execute through OxFml host-reference syntax packets plus OxCalc ordered-selector resolver outputs. |
 | `references/literals-active` | W004 reference-literal direct-context runner | Raw explicit reference-only literal arrays now execute through `OxCalcTreeContext` with published values and dependency membership, including duplicate preservation. Mixed scalar/reference arrays remain typed exclusions. DnaTreeCalc supplies formula text only; it does not prepare carriers, resolve element paths, parse formula text, or inspect OxFml/OxFunc semantics. |
@@ -249,6 +249,12 @@ host paths such as `=[Sales Q1]`, `=[Foo'[Bar]`, `=[Foo']Bar]`,
 `OxCalcTreeContext`, asserts published values and dependency membership, and
 relies on OxFml escaped-path packets plus OxCalc decoded-segment resolution.
 
+The meta-node slice is active as `references/meta-nodes` with workspace fixture
+`workspaces/meta-demo`. The runner passes `is_meta` flags into
+`OxCalcTreeContext`, asserts that lookup of `Secret` inside a meta subtree stays
+unresolved, asserts that `@PREV` skips the meta sibling and lands on `Rate`, and
+checks that projected node views preserve the OxCalc-owned meta flag.
+
 The ancestor-anchor slice is active as `references/anchors-raw-active` with
 workspace fixture `workspaces/accounts`. The runner submits raw `=^`,
 `=^.Margin`, `=^^.Total`, and `=^^^` formulas through
@@ -271,8 +277,8 @@ direct-context typed-pending runners, workspace-root anchors, alias/base-token
 variants beyond the focused active query packets, traversal-bound policy, and
 strict profile-gated parser behavior beyond the current capability-profile
 identity projection. Children, ordered selectors, reference literals, sibling
-offsets, focused ancestor anchors, focused bracket-escaped paths, and table
-structured references are no longer part of that raw-formula blocker for their
+offsets, focused ancestor anchors, focused bracket-escaped paths, active
+meta-node invisibility, and table structured references are no longer part of that raw-formula blocker for their
 declared active slices; they remain open only for broader raw/corpus families outside the active
 `tables/structured-references` runner and retained replay slice.
 
