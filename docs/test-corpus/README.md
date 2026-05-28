@@ -174,13 +174,13 @@ does not implement a parallel parser to make activation possible.
 | `references/cross-workspace` | W004 active external workspace runner | Host loads aliased/direct external workspaces through OxCalc-owned context state and asserts either direct-context typed pending outcomes or target workspace/path plus workspace reverse-edge facts once admitted, without collapsing external targets to local node ids. |
 | `references/meta-nodes`, `formatting/`, `templates/` | W004 active meta-node runner plus W007 direct-context runners | `is_meta` now flows into `OxCalcTreeContext`; OxCalc-owned resolution hides meta-effective subtrees from host-name lookup and skips meta nodes for the active `@PREV` positional case. W007 then consumes the same flag for format/template host data. |
 | `references/children-raw-active` | W005 active children runner | Raw `@CHILDREN`, `.*`, `base.@CHILDREN`, and `base.*` now execute through OxFml host-reference syntax packets plus OxCalc `OxCalcTreeContext` resolver outputs. |
-| `references/ordered-raw-active` | W004 active ordered-selector runner | Raw `@PRECEDING`, `@FOLLOWING`, `@ANCESTORS`, qualified structural-base selectors, and recursive-tail selectors now execute through OxFml host-reference syntax packets plus OxCalc ordered-selector resolver outputs. |
+| `references/ordered-raw-active`, `references/set-membership-active` | W004 active ordered/set-membership runners | Raw `@PRECEDING`, `@FOLLOWING`, `@ANCESTORS`, qualified structural-base selectors, recursive-tail selectors, `Q1.*`, empty preceding sets, and recursive all-descendant selectors now execute through OxFml host-reference syntax packets plus OxCalc ordered-selector resolver outputs. |
 | `references/literals-active` | W004 reference-literal direct-context runner | Raw explicit reference-only literal arrays now execute through `OxCalcTreeContext` with published values and dependency membership, including duplicate preservation. Mixed scalar/reference arrays remain typed exclusions. DnaTreeCalc supplies formula text only; it does not prepare carriers, resolve element paths, parse formula text, or inspect OxFml/OxFunc semantics. |
-| `references/set-membership`, `references/literals` | W004 reference-collection runner | Ordered reference collections (`@CHILDREN`/`.*`, `@PRECEDING`, `@FOLLOWING`, `@ANCESTORS`), recursive `**`, broad explicit reference literals, duplicate preservation, and mixed scalar/reference rejection are asserted through OxCalc context results. The broad set-membership and literals themes remain pending until the full family, including raw formula literal syntax and non-active base forms, has public OxCalc context support. |
+| `references/set-membership`, `references/set-membership-active`, `references/literals` | W004 reference-collection runners | The authored set-membership oracle records semantic membership expectations; its active raw mirror now asserts broad raw formula collection references through OxCalc context results. Broad explicit reference literals, duplicate preservation, and mixed scalar/reference rejection are asserted through the active literal runner; array-valued node references remain pending. |
 | `dynamic-references/indirect` | W004 active CTRO runner | Static and selector-driven `INDIRECT` cases run through `OxCalcTreeContext` as explicit typed-pending outcomes for raw dynamic formula text. Historical `DynamicResolved` / `DynamicPotential` expectations remain the product target; DnaTreeCalc supplies formula text and does not construct dynamic carriers. |
 | `references/node-functions` | W004 node-call runner | Node-as-function cases now run through `TreeWorkspaceSession` / `OxCalcTreeContext` as explicit typed-pending outcomes for lambda-valued host-node calls and set-valued callee rejection. The product target remains the OxFml/OxCalc defined-name-LAMBDA lane; DnaTreeCalc does not add a function mirror. |
-| `tables/structured-references` | W004 active table runner + W056 retained replay producer | Structured refs lower through OxCalc's public W056 table runtime path owned by `OxCalcTreeContext`; TreeCalc asserts target kind, selected columns, `#All`, row-context values, bracket-escaped table/column cases, formula/totals results, dependency lowering, update impact, and retained table context identity. The retained producer artifact `../test-runs/w056-table-structured-references-001/` must be regenerated with direct context producer labels before final W056 closure. |
-| `tables/empty-body` | W004 active empty-body table runner | DnaTreeCalc owns headers-only and headers+totals product table fixtures, plus first-row insert and last-row delete transition endpoints. The runner now activates zero-row `#Data`, `[Col]`, `#All`, `#Headers`, `#Totals`, and `[@Col]` current-row diagnostics through `OxCalcTreeContext`, OxCalc's public table projection, OxFml generic structured-reference packets, and OxCalc sparse readers. |
+| `tables/structured-references` | W004 active table runner + W056 retained replay producer | Structured refs lower through OxCalc's public W056 table runtime path owned by `OxCalcTreeContext`; TreeCalc asserts target kind, selected columns, `#All`, row-context values, bracket-escaped table/column cases, formula/totals results, dependency lowering, update impact, and retained table context identity. The checked-in retained bundle `test-runs/w056-table-structured-references-001/` is generated from that live direct-context route. |
+| `tables/empty-body` | W004 active empty-body table runner + W056 retained replay producer | DnaTreeCalc owns headers-only and headers+totals product table fixtures, plus first-row insert and last-row delete transition endpoints. The runner activates zero-row `#Data`, `[Col]`, `#All`, `#Headers`, `#Totals`, and `[@Col]` current-row diagnostics through `OxCalcTreeContext`, OxCalc's public table projection, OxFml generic structured-reference packets, and OxCalc sparse readers, with retained bundle `test-runs/w056-table-empty-body-001/`. |
 | `arrays/` | W004 array/reference runner | Array-valued nodes and reference collections travel through OxCalc context/reference carriers without inter-node spill; Excel-aligned scalar array values remain engine/Excel anchored. |
 | `structural-edits/` | W004 structural-edit runner | Rename/move/delete/insert operations go through OxCalc structural edit APIs and post-edit binding consequences match cases. |
 | `constants/`, `cycles/` | W002 context runners | Pending until the upstream channels are executable in the local context path: constants wait for the OxFml TreeCalc entry-classification API, and cycle corpus activation waits for OxCalc context support for typed `cycle_config` / `cycle_diagnostics` fields. |
@@ -224,14 +224,25 @@ the supported focused raw children formulas:
 asserts published values and dependency membership, not parser output, and it
 does not translate strings to carriers in DnaTreeCalc.
 
-The authored `references/set-membership` theme remains `pending`: it contains
-broader selectors beyond the current migration slices. The first W004
-JSON-backed active ordered-selector slice is now
+The authored `references/set-membership` theme remains the semantic membership
+oracle for caller/reference/member expectations. Its active raw execution mirror
+is now `references/set-membership-active` with workspace fixture
+`workspaces/set-membership-active`. The runner blanks every non-target probe
+formula before each case, submits the target formula unchanged through
+`OxCalcTreeContext`, and asserts published values plus dependency membership for
+`Q1.*`, `@CHILDREN`, `@ANCESTORS`, non-empty and empty `@PRECEDING`,
+`@FOLLOWING`, `Accounts.2005.**.Margin`, and `Q2.**`.
+
+The first W004 JSON-backed active ordered-selector slice remains
 `references/ordered-raw-active` with workspace fixture
-`workspaces/ordered-raw-active`. The current runner now exercises OxFml-owned
-host syntax packets for structural selectors, qualified selector bases, and
-recursive-tail selectors. Do not treat either active raw slice as completion of
-W004 set-membership; broader selector families and retained replay remain open.
+`workspaces/ordered-raw-active`. Together, these runners exercise OxFml-owned
+host syntax packets for structural selectors, qualified selector bases,
+recursive-tail selectors, and the broader set-membership forms. They no longer
+read generic dependency edges for collection order: DnaTreeCalc now exposes
+`TreeWorkspaceSession::collection_dependencies_for`, which projects OxCalc's
+typed collection descriptor facts, including member order and duplicate
+members. The active ordered, set-membership, and reference-literal runners
+assert that projection. Retained replay remains open.
 
 The reference-literal raw slice is also active as `references/literals-active`
 with workspace fixture `workspaces/reference-literals-active`. That runner
@@ -274,13 +285,41 @@ still waits on W074 name/cell precedence for cell-like host names such as `Q1`,
 and broader families still include product admission for node-as-function calls,
 authored raw dynamic/cross-workspace formula parsing beyond the active
 direct-context typed-pending runners, workspace-root anchors, alias/base-token
-variants beyond the focused active query packets, traversal-bound policy, and
-strict profile-gated parser behavior beyond the current capability-profile
-identity projection. Children, ordered selectors, reference literals, sibling
-offsets, focused ancestor anchors, focused bracket-escaped paths, active
+variants beyond the focused active query packets, traversal-bound policy,
+and strict profile-gated parser behavior beyond the current capability-profile
+identity projection. Children, ordered
+selectors, set-membership forms, reference literals, sibling offsets, focused
+ancestor anchors, focused bracket-escaped paths, active
 meta-node invisibility, and table structured references are no longer part of that raw-formula blocker for their
 declared active slices; they remain open only for broader raw/corpus families outside the active
 `tables/structured-references` runner and retained replay slice.
+
+### Table retained replay maintenance
+
+`src/dnatreecalc-host/tests/active_table_corpus.rs` owns the current table
+retained replay producers. Normal test runs compare the checked-in JSON bundles
+under `docs/test-runs/` against fresh live `OxCalcTreeContext` projections. A
+mismatch means either the retained artifact is stale or the table packet
+contract changed and must be named before accepting the update.
+
+The env-gated update paths are:
+
+- `DNATREECALC_UPDATE_RETAINED_TABLE_REPLAY=1` updates
+  `test-runs/w056-table-structured-references-001/`.
+- `DNATREECALC_UPDATE_RETAINED_TABLE_LIFECYCLE=1` updates
+  `test-runs/w056-table-lifecycle-001/`.
+- `DNATREECALC_UPDATE_RETAINED_EMPTY_BODY_TABLE_REPLAY=1` updates
+  `test-runs/w056-table-empty-body-001/`.
+- `DNATREECALC_UPDATE_RETAINED_DYNAMIC_TABLE_REPLAY=1` updates
+  `test-runs/w056-table-dynamic-cross-workspace-001/`.
+
+The retained table bundles are producer snapshots, not private semantics:
+statuses, dependency facts, invalidation reasons, prepared-identity inputs,
+source handles, and retained artifact refs come from OxCalc public table packets
+or DnaTreeCalc fixture metadata. OxReplay owns cross-bundle validation and
+comparison. On 2026-05-28 the dynamic/cross-workspace table bundle was
+refreshed for digest-only `dynamic_rebind_identity` churn; the manifest and
+observable packet facts did not change.
 
 ## Runner contract
 

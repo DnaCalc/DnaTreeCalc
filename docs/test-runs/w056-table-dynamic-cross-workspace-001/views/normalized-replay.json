@@ -107,7 +107,7 @@
             ],
             "diagnostics": [],
             "dynamic_rebind_identity": {
-              "digest": "fnv1a64:1c59764e12316ad9",
+              "digest": "fnv1a64:28a80f200fb25c97",
               "prefix": "treecalc.dynamic_table_rebind.v1;selector_handle=19:selector:SalesTable;selector_identity=37:dyn",
               "present": true
             },
@@ -158,7 +158,7 @@
             ],
             "diagnostics": [],
             "dynamic_rebind_identity": {
-              "digest": "fnv1a64:edfd493a3716366c",
+              "digest": "fnv1a64:2741922de8164573",
               "prefix": "treecalc.dynamic_table_rebind.v1;selector_handle=26:selector:SalesTable.Amount;selector_identity",
               "present": true
             },
@@ -207,7 +207,7 @@
             ],
             "diagnostics": [],
             "dynamic_rebind_identity": {
-              "digest": "fnv1a64:f55882d0835da9cf",
+              "digest": "fnv1a64:b38fd586cde3acf5",
               "prefix": "treecalc.dynamic_table_rebind.v1;selector_handle=27:selector:SalesTable.Section;selector_identit",
               "present": true
             },
@@ -256,7 +256,7 @@
             ],
             "diagnostics": [],
             "dynamic_rebind_identity": {
-              "digest": "fnv1a64:6087d0544cf07cb3",
+              "digest": "fnv1a64:ef67a9dbaf437a01",
               "prefix": "treecalc.dynamic_table_rebind.v1;selector_handle=30:selector:SalesTable.CurrentRow;selector_iden",
               "present": true
             },
@@ -307,7 +307,7 @@
               }
             ],
             "dynamic_rebind_identity": {
-              "digest": "fnv1a64:cd60ab7568da17c9",
+              "digest": "fnv1a64:e8b06b98d92d6387",
               "prefix": "treecalc.dynamic_table_rebind.v1;selector_handle=35:selector:INDIRECT.SalesTable.Amount;selector",
               "present": true
             },
@@ -359,7 +359,7 @@
               }
             ],
             "dynamic_rebind_identity": {
-              "digest": "fnv1a64:f88acdc9b60e4d80",
+              "digest": "fnv1a64:65b04644fc8254d2",
               "prefix": "treecalc.dynamic_table_rebind.v1;selector_handle=18:selector:NotATable;selector_identity=33:dyna",
               "present": true
             },
@@ -416,7 +416,7 @@
             ],
             "diagnostics": [],
             "dynamic_rebind_identity": {
-              "digest": "fnv1a64:b4474b615161f3c1",
+              "digest": "fnv1a64:210cc79d42506b47",
               "prefix": "treecalc.dynamic_table_rebind.v1;selector_handle=26:selector:DeletedSalesTable;selector_identity",
               "present": true
             },
@@ -472,7 +472,7 @@
             ],
             "diagnostics": [],
             "dynamic_rebind_identity": {
-              "digest": "fnv1a64:959bd837584e38e7",
+              "digest": "fnv1a64:8b9e7a85b6227c71",
               "prefix": "treecalc.dynamic_table_rebind.v1;selector_handle=25:selector:RemoteSalesTable;selector_identity=",
               "present": true
             },
@@ -532,7 +532,7 @@
             ],
             "diagnostics": [],
             "dynamic_rebind_identity": {
-              "digest": "fnv1a64:157fc460c852f5cb",
+              "digest": "fnv1a64:75c96f8d71d66345",
               "prefix": "treecalc.dynamic_table_rebind.v1;selector_handle=31:selector:ClosedRemoteSalesTable;selector_ide",
               "present": true
             },
@@ -589,7 +589,7 @@
             ],
             "diagnostics": [],
             "dynamic_rebind_identity": {
-              "digest": "fnv1a64:4bc6a892531392f7",
+              "digest": "fnv1a64:f46631d6c2ddfec1",
               "prefix": "treecalc.dynamic_table_rebind.v1;selector_handle=30:selector:RemoteSalesTableAlias;selector_iden",
               "present": true
             },
@@ -642,7 +642,7 @@
             ],
             "diagnostics": [],
             "dynamic_rebind_identity": {
-              "digest": "fnv1a64:8d0eb0a882d93432",
+              "digest": "fnv1a64:cb3a0f9311673e38",
               "prefix": "treecalc.dynamic_table_rebind.v1;selector_handle=26:selector:TreeCalcOnlyTable;selector_identity",
               "present": true
             },

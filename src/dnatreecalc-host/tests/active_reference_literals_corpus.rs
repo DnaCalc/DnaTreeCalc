@@ -114,11 +114,22 @@ fn active_reference_literal_array_corpus_executes_reference_only_arrays_through_
                 "{} published value",
                 case.id
             );
-            let actual_members = session
-                .dependency_members_for(&result, &NodeId::new(case.caller.clone()))
+            let collections = session
+                .collection_dependencies_for(&result, &NodeId::new(case.caller.clone()))
                 .unwrap_or_else(|error| {
-                    panic!("case {} dependency projection failed: {error}", case.id)
-                })
+                    panic!(
+                        "case {} collection dependency projection failed: {error}",
+                        case.id
+                    )
+                });
+            assert_eq!(
+                collections.len(),
+                1,
+                "{} should publish exactly one collection dependency",
+                case.id
+            );
+            let actual_members = collections[0]
+                .members
                 .iter()
                 .map(|member| member.as_str().to_string())
                 .collect::<Vec<_>>();

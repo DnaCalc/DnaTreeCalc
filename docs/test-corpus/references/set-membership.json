@@ -3,6 +3,7 @@
   "theme": "references/set-membership",
   "workset": "W004",
   "status": "pending",
+  "status_note": "Semantic membership oracle. The active raw-formula execution mirror is references/set-membership-active; this file remains pending because it records caller/reference membership expectations rather than executable probe formulas.",
   "description": "Set-producing operators (CORE_MODEL_SPEC §3.5, §3.5b, §3.6) — which node-set each resolves to from a given caller, and order where it matters. Complements references/classification (which only pins single-vs-set cardinality). Carried as set-membership references (§3.7, §6 items 1/3); membership invalidates on structural change.",
   "cases": [
     { "id": "mem-children-sugar", "name": ".* yields the resolved node's children", "spec": "§3.2, §3.5b", "kind": "membership", "workspace": "accounts", "caller": "Accounts.2005", "reference": "Q1.*", "expect": { "outcome": "resolved", "ordered": true, "members": ["Accounts.2005.Q1.Income", "Accounts.2005.Q1.Margin", "Accounts.2005.Q1.Net"], "engine_ref": "children-set of Accounts.2005.Q1" }, "note": "Q1 resolves by walk-up; .* is its children in sibling order." },

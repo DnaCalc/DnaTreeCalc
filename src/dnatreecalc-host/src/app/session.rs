@@ -8,6 +8,7 @@ use oxcalc_core::consumer::{
     OxCalcTreeContextOptions, OxCalcTreeHostCapabilitySnapshot, OxCalcTreeNodeCreate,
     OxCalcTreeWorkspaceCreate, OxCalcTreeWorkspaceId, OxCalcTreeWorkspaceSnapshot,
 };
+use oxcalc_core::dependency::DependencyDescriptorKind;
 use oxcalc_core::recalc::NodeCalcState;
 use oxcalc_core::structural::TreeNodeId;
 use oxcalc_core::structured_table::{
@@ -32,6 +33,16 @@ pub struct DnaTreeWorkspaceDocument {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub selected_node: Option<String>,
     pub oxcalc_workspace: OxCalcTreeWorkspaceSnapshot,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TreeWorkspaceCollectionDependencyProjection {
+    pub family: String,
+    pub source_reference_handle: String,
+    pub base_node: Option<NodeId>,
+    pub membership_version: String,
+    pub order_version: String,
+    pub members: Vec<NodeId>,
 }
 
 pub struct TreeWorkspaceSession {
@@ -370,6 +381,51 @@ impl TreeWorkspaceSession {
                         .iter()
                         .filter(|edge| edge.target_node_id != self.engine_root_id)
                         .map(|edge| self.node_id_for_tree_node(edge.target_node_id))
+                        .collect()
+                },
+            )
+    }
+
+    pub fn collection_dependencies_for(
+        &self,
+        outcome: &OxCalcTreeCalculationOutcome,
+        owner: &NodeId,
+    ) -> Result<Vec<TreeWorkspaceCollectionDependencyProjection>, TreeWorkspaceSessionError> {
+        let owner_node_id = self.tree_node_id(owner.as_str())?;
+        outcome
+            .dependency_graph
+            .descriptors_by_owner
+            .get(&owner_node_id)
+            .map_or_else(
+                || Ok(Vec::new()),
+                |descriptors| {
+                    descriptors
+                        .iter()
+                        .filter(|descriptor| {
+                            descriptor.kind
+                                == DependencyDescriptorKind::TreeReferenceCollectionMembership
+                        })
+                        .filter_map(|descriptor| descriptor.tree_reference_collection.as_ref())
+                        .map(|collection| {
+                            let base_node = if collection.base_node_id == self.engine_root_id {
+                                None
+                            } else {
+                                Some(self.node_id_for_tree_node(collection.base_node_id)?)
+                            };
+                            let members = collection
+                                .member_node_ids
+                                .iter()
+                                .map(|member| self.node_id_for_tree_node(*member))
+                                .collect::<Result<Vec<_>, _>>()?;
+                            Ok(TreeWorkspaceCollectionDependencyProjection {
+                                family: collection.family.stable_id().to_string(),
+                                source_reference_handle: collection.host_ref_handle.clone(),
+                                base_node,
+                                membership_version: collection.membership_version.clone(),
+                                order_version: collection.order_version.clone(),
+                                members,
+                            })
+                        })
                         .collect()
                 },
             )

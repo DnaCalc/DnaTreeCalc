@@ -74,6 +74,17 @@ fn active_profile_gating_corpus_is_direct_context_typed_pending() {
                 strict.run_state,
                 strict.diagnostics
             );
+            if strict_profile_reason(case) == Some("strict_excel_profile_not_supported") {
+                assert!(
+                    strict.run_state == Some(oxcalc_core::consumer::OxCalcTreeRunState::Rejected)
+                        && strict.diagnostics.iter().any(|diagnostic| diagnostic
+                            .contains("typed_exclusion:strict_excel_profile_not_supported")),
+                    "{} strict-excel future reference behavior should be an explicit profile-pending rejection, got state {:?} diagnostics {:?}",
+                    case.id,
+                    strict.run_state,
+                    strict.diagnostics
+                );
+            }
         } else {
             assert!(
                 strict.run_state == Some(oxcalc_core::consumer::OxCalcTreeRunState::Published)
@@ -114,6 +125,13 @@ fn run_profile_case(case: &ProfileCase, profile: CapabilityProfileId) -> Profile
             run_state: None,
             diagnostics: vec![error.to_string()],
         },
+    }
+}
+
+fn strict_profile_reason(case: &ProfileCase) -> Option<&str> {
+    match &case.profiles["strict-excel"] {
+        Value::Object(object) => object.get("reason").and_then(Value::as_str),
+        _ => None,
     }
 }
 

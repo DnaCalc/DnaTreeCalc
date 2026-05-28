@@ -12,4 +12,6 @@ pub use dispatcher::HostDispatcher;
 pub use preview::preview_accounts_workspace_state;
 pub use projection::workspace_state_from_model;
 pub use registry::build_default_registry;
-pub use session::{TreeWorkspaceSession, TreeWorkspaceSessionError};
+pub use session::{
+    TreeWorkspaceCollectionDependencyProjection, TreeWorkspaceSession, TreeWorkspaceSessionError,
+};

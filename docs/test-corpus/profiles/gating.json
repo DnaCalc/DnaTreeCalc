@@ -3,7 +3,7 @@
   "theme": "profiles/gating",
   "workset": "W004",
   "status": "active",
-  "description": "Capability-profile gating (CORE_MODEL_SPEC §4). Every TreeCalc-specific extension parses/binds under treecalc-v1 and is rejected at parse/bind time under strict-excel. Profile-agnostic surface (scalar array literals, function semantics) is accepted under both. Capability mismatch is a bind-time error, never silent drift.",
+  "description": "Capability-profile gating (CORE_MODEL_SPEC §4). Every TreeCalc-specific extension parses/binds under treecalc-v1 and is rejected at parse/bind time under strict-excel. Profile-agnostic scalar/function surface is accepted under both where already implemented. Excel-compatible runtime reference behavior is future strict-excel work and must currently fail explicitly rather than drift into TreeCalc semantics.",
   "cases": [
     {
       "id": "prof-caret-anchor",
@@ -104,12 +104,12 @@
       "name": "INDIRECT string parsed per active profile",
       "spec": "§4, §10.3",
       "kind": "profile",
-      "reference": "INDIRECT(\"Sheet1.Foo\")",
+      "reference": "INDIRECT(\"Sheet1!Foo\")",
       "profiles": {
-        "treecalc-v1": { "verdict": "accept", "as": "tree-path" },
-        "strict-excel": { "verdict": "accept", "as": "A1/R1C1" }
+        "treecalc-v1": { "verdict": "accept", "as": "tree-path-or-host-reference" },
+        "strict-excel": { "verdict": "reject", "reason": "strict_excel_profile_not_supported" }
       },
-      "note": "Same function, accepted under both; the string argument is parsed as a tree path under treecalc-v1 and as A1/R1C1 under strict-excel (§6 item 7)."
+      "note": "Future strict-excel should interpret this as an Excel-compatible sheet/name reference if admitted. Until that profile is implemented, OxCalc must reject it with an explicit strict-excel profile-not-supported diagnostic."
     }
   ]
 }

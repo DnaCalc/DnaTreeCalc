@@ -1,0 +1,164 @@
+{
+  "schema_version": "treecalc-corpus-v1",
+  "theme": "references/set-membership-active",
+  "workset": "W056",
+  "status": "active",
+  "description": "Active raw-formula set-membership slice. Each case submits TreeCalc reference syntax unchanged through TreeWorkspaceSession/OxCalcTreeContext and asserts published value plus dependency membership. This mirrors the broader references/set-membership semantic oracle without DnaTreeCalc constructing carriers locally.",
+  "cases": [
+    {
+      "id": "mem-children-sugar-active",
+      "name": "Q1.* yields the resolved node's children",
+      "spec": "CORE_MODEL_SPEC §3.2, §3.5b",
+      "kind": "membership",
+      "workspace": "set-membership-active",
+      "caller": "Root.ChildrenSugar.Accounts.2005",
+      "reference": "Q1.*",
+      "source_formula": "=SUM(Q1.*)",
+      "expect": {
+        "outcome": "resolved",
+        "ordered": true,
+        "members": [
+          "Root.ChildrenSugar.Accounts.2005.Q1.Income",
+          "Root.ChildrenSugar.Accounts.2005.Q1.Margin",
+          "Root.ChildrenSugar.Accounts.2005.Q1.Net"
+        ],
+        "published_value": "60"
+      }
+    },
+    {
+      "id": "mem-children-accessor-active",
+      "name": "@CHILDREN yields the caller's children",
+      "spec": "CORE_MODEL_SPEC §3.5",
+      "kind": "membership",
+      "workspace": "set-membership-active",
+      "caller": "Root.ChildrenAccessor.Accounts.2005.Q1",
+      "reference": "@CHILDREN",
+      "source_formula": "=SUM(@CHILDREN)",
+      "expect": {
+        "outcome": "resolved",
+        "ordered": true,
+        "members": [
+          "Root.ChildrenAccessor.Accounts.2005.Q1.Income",
+          "Root.ChildrenAccessor.Accounts.2005.Q1.Margin",
+          "Root.ChildrenAccessor.Accounts.2005.Q1.Net"
+        ],
+        "published_value": "60"
+      }
+    },
+    {
+      "id": "mem-ancestors-active",
+      "name": "@ANCESTORS yields enclosing nodes closest first",
+      "spec": "CORE_MODEL_SPEC §3.5",
+      "kind": "membership",
+      "workspace": "set-membership-active",
+      "caller": "Root.Ancestors.Accounts.2005.Q1.Income.Sales",
+      "reference": "@ANCESTORS",
+      "source_formula": "=SUM(@ANCESTORS)",
+      "expect": {
+        "outcome": "resolved",
+        "ordered": true,
+        "members": [
+          "Root.Ancestors.Accounts.2005.Q1.Income",
+          "Root.Ancestors.Accounts.2005.Q1",
+          "Root.Ancestors.Accounts.2005",
+          "Root.Ancestors.Accounts",
+          "Root.Ancestors",
+          "Root"
+        ],
+        "published_value": "0"
+      }
+    },
+    {
+      "id": "mem-preceding-active",
+      "name": "@PRECEDING yields earlier siblings in order",
+      "spec": "CORE_MODEL_SPEC §3.5",
+      "kind": "membership",
+      "workspace": "set-membership-active",
+      "caller": "Root.Preceding.Accounts.2005.Q1.Net",
+      "reference": "@PRECEDING",
+      "source_formula": "=SUM(@PRECEDING)",
+      "expect": {
+        "outcome": "resolved",
+        "ordered": true,
+        "members": [
+          "Root.Preceding.Accounts.2005.Q1.Income",
+          "Root.Preceding.Accounts.2005.Q1.Margin"
+        ],
+        "published_value": "30"
+      }
+    },
+    {
+      "id": "mem-preceding-empty-active",
+      "name": "@PRECEDING of the first sibling is the empty set",
+      "spec": "CORE_MODEL_SPEC §3.5",
+      "kind": "membership",
+      "workspace": "set-membership-active",
+      "caller": "Root.PrecedingEmpty.Accounts.2005.Q1.Income",
+      "reference": "@PRECEDING",
+      "source_formula": "=SUM(@PRECEDING)",
+      "expect": {
+        "outcome": "resolved",
+        "ordered": true,
+        "members": [],
+        "published_value": "0"
+      }
+    },
+    {
+      "id": "mem-following-active",
+      "name": "@FOLLOWING yields later siblings in order",
+      "spec": "CORE_MODEL_SPEC §3.5",
+      "kind": "membership",
+      "workspace": "set-membership-active",
+      "caller": "Root.Following.Accounts.2005.Q1.Income",
+      "reference": "@FOLLOWING",
+      "source_formula": "=SUM(@FOLLOWING)",
+      "expect": {
+        "outcome": "resolved",
+        "ordered": true,
+        "members": [
+          "Root.Following.Accounts.2005.Q1.Margin",
+          "Root.Following.Accounts.2005.Q1.Net"
+        ],
+        "published_value": "50"
+      }
+    },
+    {
+      "id": "mem-recursive-descent-match-active",
+      "name": "Foo.**.Bar gathers matching nodes at any depth",
+      "spec": "CORE_MODEL_SPEC §3.6",
+      "kind": "membership",
+      "workspace": "set-membership-active",
+      "caller": "Root.RecursiveMatch.Accounts.2005.Total",
+      "reference": "Accounts.2005.**.Margin",
+      "source_formula": "=SUM(Accounts.2005.**.Margin)",
+      "expect": {
+        "outcome": "resolved",
+        "ordered": true,
+        "members": [
+          "Root.RecursiveMatch.Accounts.2005.Q1.Margin",
+          "Root.RecursiveMatch.Accounts.2005.Q2.Margin"
+        ],
+        "published_value": "18"
+      }
+    },
+    {
+      "id": "mem-recursive-descent-all-active",
+      "name": "Foo.** gathers every descendant",
+      "spec": "CORE_MODEL_SPEC §3.6",
+      "kind": "membership",
+      "workspace": "set-membership-active",
+      "caller": "Root.RecursiveAll.Accounts.2005.Total",
+      "reference": "Q2.**",
+      "source_formula": "=SUM(Q2.**)",
+      "expect": {
+        "outcome": "resolved",
+        "ordered": true,
+        "members": [
+          "Root.RecursiveAll.Accounts.2005.Q2.Margin",
+          "Root.RecursiveAll.Accounts.2005.Q2.Net"
+        ],
+        "published_value": "111"
+      }
+    }
+  ]
+}
