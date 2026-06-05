@@ -1,8 +1,13 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use dnatreecalc_skin_framework::{
-    NodeContentKind as FrameworkContentKind, NodeId, NodeValueProjection, NodeView, WorkspaceState,
+    CalcRunProjection, CalcRunStateProjection, DependencyDescriptorProjection,
+    DependencyEdgeProjection, DependencyGraphProjection, NodeCalcStateProjection,
+    NodeContentKind as FrameworkContentKind, NodeId, NodeInvalidationProjection,
+    NodeValueProjection, NodeView, TableProjection, TreeReferenceCollectionProjection,
+    WorkspaceRevisionProjection, WorkspaceState,
 };
+use oxcalc_core::consumer::OxCalcTreeRunState;
 use oxcalc_core::consumer::{
     OxCalcTreeCalculationOutcome, OxCalcTreeContext, OxCalcTreeContextError,
     OxCalcTreeContextOptions, OxCalcTreeHostCapabilitySnapshot, OxCalcTreeNodeCreate,
@@ -53,6 +58,7 @@ pub struct TreeWorkspaceSession {
     node_ids: BTreeMap<NodeId, TreeNodeId>,
     display_order: Vec<NodeId>,
     recalc_count: usize,
+    last_outcome: Option<OxCalcTreeCalculationOutcome>,
 }
 
 impl TreeWorkspaceSession {
@@ -71,6 +77,7 @@ impl TreeWorkspaceSession {
             node_ids: BTreeMap::new(),
             display_order: Vec::new(),
             recalc_count: 0,
+            last_outcome: None,
         };
 
         for path in &model.node_order {
@@ -123,6 +130,7 @@ impl TreeWorkspaceSession {
             node_ids: BTreeMap::new(),
             display_order: Vec::new(),
             recalc_count: 0,
+            last_outcome: None,
         };
         session.refresh_projection_from_context()?;
         Ok(session)
@@ -188,6 +196,7 @@ impl TreeWorkspaceSession {
     ) -> Result<OxCalcTreeCalculationOutcome, TreeWorkspaceSessionError> {
         let outcome = self.context.recalculate(&self.workspace_id)?;
         self.recalc_count += 1;
+        self.last_outcome = Some(outcome.clone());
         Ok(outcome)
     }
 
@@ -213,6 +222,7 @@ impl TreeWorkspaceSession {
         let tree_node_id = self.tree_node_id(node.as_str())?;
         self.context
             .set_node_formula_text(&self.workspace_id, tree_node_id, content)?;
+        self.last_outcome = None;
         Ok(())
     }
 
@@ -243,6 +253,7 @@ impl TreeWorkspaceSession {
         )?;
         self.node_ids.insert(node_id.clone(), tree_node_id);
         self.display_order.push(node_id.clone());
+        self.last_outcome = None;
         Ok(node_id)
     }
 
@@ -255,6 +266,7 @@ impl TreeWorkspaceSession {
         self.context
             .rename_node(&self.workspace_id, tree_node_id, new_symbol)?;
         self.refresh_projection_from_context()?;
+        self.last_outcome = None;
         self.node_id_for_tree_node(tree_node_id)
     }
 
@@ -272,6 +284,7 @@ impl TreeWorkspaceSession {
         self.context
             .move_node(&self.workspace_id, tree_node_id, new_parent_id, new_index)?;
         self.refresh_projection_from_context()?;
+        self.last_outcome = None;
         self.node_id_for_tree_node(tree_node_id)
     }
 
@@ -283,6 +296,7 @@ impl TreeWorkspaceSession {
         let tree_node_id = self.tree_node_id(node.as_str())?;
         self.context
             .reorder_node(&self.workspace_id, tree_node_id, new_index)?;
+        self.last_outcome = None;
         let Some(parent) = parent_path(node.as_str()) else {
             reorder_root(&mut self.display_order, node, new_index);
             return Ok(());
@@ -300,11 +314,32 @@ impl TreeWorkspaceSession {
         let tree_node_id = self.tree_node_id(node.as_str())?;
         self.context.delete_node(&self.workspace_id, tree_node_id)?;
         self.refresh_projection_from_context()?;
+        self.last_outcome = None;
         Ok(())
     }
 
     pub fn workspace_state(&self) -> Result<WorkspaceState, TreeWorkspaceSessionError> {
         let workspace_view = self.context.workspace_view(&self.workspace_id)?;
+        let revision = WorkspaceRevisionProjection {
+            structural_snapshot_id: Some(workspace_view.snapshot_id.to_string()),
+            workspace_revision_id: Some(workspace_view.workspace_revision_id.to_string()),
+            node_input_snapshot_id: Some(workspace_view.node_input_snapshot_id.to_string()),
+            namespace_snapshot_id: Some(workspace_view.namespace_snapshot_id.to_string()),
+            formula_binding_snapshot_id: Some(
+                workspace_view.formula_binding_snapshot_id.to_string(),
+            ),
+            dependency_shape_snapshot_id: Some(
+                workspace_view.dependency_shape_snapshot_id.to_string(),
+            ),
+            publication_snapshot_id: Some(workspace_view.publication_snapshot_id.to_string()),
+            runtime_overlay_set_id: Some(workspace_view.runtime_overlay_set_id.to_string()),
+            value_epoch: workspace_view.value_epoch,
+        };
+        let table_views_by_tree_id = workspace_view
+            .tables
+            .iter()
+            .map(|view| (view.table_node_id, table_projection_for(view)))
+            .collect::<BTreeMap<_, _>>();
         let views_by_tree_id = workspace_view
             .nodes
             .into_iter()
@@ -339,6 +374,7 @@ impl TreeWorkspaceSession {
             let content_kind = content_kind_for_text(&tree_view.formula_text);
             let computed_value =
                 value_projection_for(tree_view.value_text.clone(), tree_view.calc_state);
+            let table = table_views_by_tree_id.get(&tree_node_id).cloned();
             nodes.insert(
                 node_id.clone(),
                 NodeView {
@@ -350,17 +386,47 @@ impl TreeWorkspaceSession {
                     content_kind,
                     content_text: tree_view.formula_text.clone(),
                     computed_value,
+                    calc_state: tree_view.calc_state.map(calc_state_projection_for),
                     is_meta: tree_view.is_meta,
+                    table,
                 },
             );
         }
+        let tables = table_views_by_tree_id
+            .into_iter()
+            .map(|(tree_node_id, table)| Ok((self.node_id_for_tree_node(tree_node_id)?, table)))
+            .collect::<Result<BTreeMap<_, _>, TreeWorkspaceSessionError>>()?;
+        let dependencies = self.last_outcome.as_ref().map_or_else(
+            || Ok(DependencyGraphProjection::default()),
+            |outcome| self.dependency_graph_projection(outcome),
+        )?;
+        let last_run = self
+            .last_outcome
+            .as_ref()
+            .map(|outcome| self.calc_run_projection(outcome))
+            .transpose()?;
+        let diagnostics = workspace_view
+            .diagnostics
+            .into_iter()
+            .chain(
+                self.last_outcome
+                    .as_ref()
+                    .into_iter()
+                    .flat_map(|outcome| outcome.diagnostics.clone()),
+            )
+            .collect();
 
         Ok(WorkspaceState {
             workspace_id: self.workspace_id.as_str().to_string(),
             profile: self.profile,
+            revision,
+            last_run,
             node_order: self.display_order.clone(),
             root_paths,
             nodes,
+            dependencies,
+            tables,
+            diagnostics,
         })
     }
 
@@ -495,6 +561,195 @@ impl TreeWorkspaceSession {
         self.display_order = display_order;
         Ok(())
     }
+
+    fn dependency_graph_projection(
+        &self,
+        outcome: &OxCalcTreeCalculationOutcome,
+    ) -> Result<DependencyGraphProjection, TreeWorkspaceSessionError> {
+        let mut descriptors_by_owner = BTreeMap::new();
+        for (owner, descriptors) in &outcome.dependency_graph.descriptors_by_owner {
+            if *owner == self.engine_root_id {
+                continue;
+            }
+            descriptors_by_owner.insert(
+                self.node_id_for_tree_node(*owner)?,
+                descriptors
+                    .iter()
+                    .map(|descriptor| {
+                        let collection = descriptor
+                            .tree_reference_collection
+                            .as_ref()
+                            .map(|collection| {
+                                Ok::<TreeReferenceCollectionProjection, TreeWorkspaceSessionError>(
+                                    TreeReferenceCollectionProjection {
+                                        family: collection.family.stable_id().to_string(),
+                                        source_reference_handle: collection.host_ref_handle.clone(),
+                                        base_node: if collection.base_node_id == self.engine_root_id
+                                        {
+                                            None
+                                        } else {
+                                            Some(
+                                                self.node_id_for_tree_node(
+                                                    collection.base_node_id,
+                                                )?,
+                                            )
+                                        },
+                                        membership_version: collection.membership_version.clone(),
+                                        order_version: collection.order_version.clone(),
+                                        members: collection
+                                            .member_node_ids
+                                            .iter()
+                                            .filter(|member| **member != self.engine_root_id)
+                                            .map(|member| self.node_id_for_tree_node(*member))
+                                            .collect::<Result<Vec<_>, _>>()?,
+                                    },
+                                )
+                            })
+                            .transpose()?;
+                        Ok(DependencyDescriptorProjection {
+                            descriptor_id: descriptor.descriptor_id.clone(),
+                            source_reference_handle: descriptor.source_reference_handle.clone(),
+                            target: descriptor
+                                .target_node_id
+                                .filter(|target| *target != self.engine_root_id)
+                                .map(|target| self.node_id_for_tree_node(target))
+                                .transpose()?,
+                            workspace_target: descriptor
+                                .workspace_target
+                                .as_ref()
+                                .map(|target| target.target_node_handle.clone()),
+                            kind: format!("{:?}", descriptor.kind),
+                            carrier_detail: descriptor.carrier_detail.clone(),
+                            collection,
+                            requires_rebind_on_structural_change: descriptor
+                                .requires_rebind_on_structural_change,
+                        })
+                    })
+                    .collect::<Result<Vec<_>, TreeWorkspaceSessionError>>()?,
+            );
+        }
+
+        let mut edges_by_owner = BTreeMap::new();
+        for (owner, edges) in &outcome.dependency_graph.edges_by_owner {
+            if *owner == self.engine_root_id {
+                continue;
+            }
+            edges_by_owner.insert(
+                self.node_id_for_tree_node(*owner)?,
+                edges
+                    .iter()
+                    .filter(|edge| edge.target_node_id != self.engine_root_id)
+                    .map(|edge| self.dependency_edge_projection(edge))
+                    .collect::<Result<Vec<_>, _>>()?,
+            );
+        }
+
+        let mut reverse_edges = BTreeMap::new();
+        for (target, edges) in &outcome.dependency_graph.reverse_edges {
+            if *target == self.engine_root_id {
+                continue;
+            }
+            reverse_edges.insert(
+                self.node_id_for_tree_node(*target)?,
+                edges
+                    .iter()
+                    .filter(|edge| {
+                        edge.owner_node_id != self.engine_root_id
+                            && edge.target_node_id != self.engine_root_id
+                    })
+                    .map(|edge| self.dependency_edge_projection(edge))
+                    .collect::<Result<Vec<_>, _>>()?,
+            );
+        }
+
+        let cycle_groups = outcome
+            .dependency_graph
+            .cycle_groups
+            .iter()
+            .map(|group| {
+                group
+                    .iter()
+                    .filter(|node| **node != self.engine_root_id)
+                    .map(|node| self.node_id_for_tree_node(*node))
+                    .collect::<Result<Vec<_>, _>>()
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(DependencyGraphProjection {
+            descriptors_by_owner,
+            edges_by_owner,
+            reverse_edges,
+            cycle_groups,
+            diagnostics: outcome
+                .dependency_graph
+                .diagnostics
+                .iter()
+                .map(|diagnostic| {
+                    format!(
+                        "{}:{:?}:{}",
+                        diagnostic.descriptor_id, diagnostic.kind, diagnostic.detail
+                    )
+                })
+                .collect(),
+        })
+    }
+
+    fn dependency_edge_projection(
+        &self,
+        edge: &oxcalc_core::dependency::DependencyEdge,
+    ) -> Result<DependencyEdgeProjection, TreeWorkspaceSessionError> {
+        Ok(DependencyEdgeProjection {
+            edge_id: edge.edge_id.clone(),
+            descriptor_id: edge.descriptor_id.clone(),
+            owner: self.node_id_for_tree_node(edge.owner_node_id)?,
+            target: self.node_id_for_tree_node(edge.target_node_id)?,
+            kind: format!("{:?}", edge.kind),
+        })
+    }
+
+    fn calc_run_projection(
+        &self,
+        outcome: &OxCalcTreeCalculationOutcome,
+    ) -> Result<CalcRunProjection, TreeWorkspaceSessionError> {
+        let invalidated_nodes = outcome
+            .invalidation_closure
+            .impacted_order
+            .iter()
+            .filter_map(|node_id| outcome.invalidation_closure.records.get(node_id))
+            .filter(|record| record.node_id != self.engine_root_id)
+            .map(|record| {
+                Ok(NodeInvalidationProjection {
+                    node: self.node_id_for_tree_node(record.node_id)?,
+                    calc_state: calc_state_projection_for(record.calc_state),
+                    requires_rebind: record.requires_rebind,
+                    reasons: record
+                        .reasons
+                        .iter()
+                        .map(|reason| format!("{reason:?}"))
+                        .collect(),
+                })
+            })
+            .collect::<Result<Vec<_>, TreeWorkspaceSessionError>>()?;
+        Ok(CalcRunProjection {
+            run_state: match outcome.run_state {
+                OxCalcTreeRunState::Published => CalcRunStateProjection::Published,
+                OxCalcTreeRunState::VerifiedClean => CalcRunStateProjection::VerifiedClean,
+                OxCalcTreeRunState::Rejected => CalcRunStateProjection::Rejected,
+            },
+            evaluation_order: outcome
+                .evaluation_order
+                .iter()
+                .filter(|node| **node != self.engine_root_id)
+                .map(|node| self.node_id_for_tree_node(*node))
+                .collect::<Result<Vec<_>, _>>()?,
+            runtime_effect_count: outcome.runtime_effects.len(),
+            runtime_overlay_count: outcome.runtime_effect_overlays.len(),
+            derivation_trace_count: outcome.derivation_traces.len(),
+            invalidated_nodes,
+            phase_timings_micros: outcome.phase_timings_micros.clone(),
+            diagnostics: outcome.diagnostics.clone(),
+        })
+    }
 }
 
 fn context_for_profile(profile: &CapabilityProfileId) -> OxCalcTreeContext {
@@ -576,6 +831,8 @@ fn table_snapshot_from_fixture(
             .iter()
             .map(table_column_snapshot_from_fixture)
             .collect(),
+        body_cell_nodes: Vec::new(),
+        totals_cell_nodes: Vec::new(),
         header_row_present: table.header.present,
         totals_row_present: table.totals.present,
         table_namespace_version: table.table_namespace_version.clone(),
@@ -661,6 +918,42 @@ fn value_projection_for(
             NodeValueProjection::Unevaluated,
             NodeValueProjection::Scalar,
         ),
+    }
+}
+
+fn calc_state_projection_for(calc_state: NodeCalcState) -> NodeCalcStateProjection {
+    match calc_state {
+        NodeCalcState::Clean => NodeCalcStateProjection::Clean,
+        NodeCalcState::DirtyPending => NodeCalcStateProjection::DirtyPending,
+        NodeCalcState::Needed => NodeCalcStateProjection::Needed,
+        NodeCalcState::Evaluating => NodeCalcStateProjection::Evaluating,
+        NodeCalcState::VerifiedClean => NodeCalcStateProjection::VerifiedClean,
+        NodeCalcState::PublishReady => NodeCalcStateProjection::PublishReady,
+        NodeCalcState::RejectedPendingRepair => NodeCalcStateProjection::RejectedPendingRepair,
+        NodeCalcState::CycleBlocked => NodeCalcStateProjection::CycleBlocked,
+    }
+}
+
+fn table_projection_for(view: &oxcalc_core::consumer::OxCalcTreeTableView) -> TableProjection {
+    TableProjection {
+        table_id: view.table_id.clone(),
+        table_name: view.table_name.clone(),
+        display_path: view.display_path.clone(),
+        canonical_path: view.canonical_path.clone(),
+        row_count: view.snapshot.rows.len(),
+        column_count: view.snapshot.columns.len(),
+        header_row_present: view.snapshot.header_row_present,
+        totals_row_present: view.snapshot.totals_row_present,
+        table_namespace_version: view.snapshot.table_namespace_version.clone(),
+        row_membership_version: view.snapshot.row_membership_version.clone(),
+        row_order_version: view.snapshot.row_order_version.clone(),
+        column_identity_version: view.snapshot.column_identity_version.clone(),
+        dependency_inventory_summary: view
+            .dependency_inventory
+            .facts
+            .iter()
+            .map(|fact| format!("{:?}", fact.kind))
+            .collect(),
     }
 }
 

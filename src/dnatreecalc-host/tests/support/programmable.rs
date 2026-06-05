@@ -1,0 +1,339 @@
+#![allow(dead_code)]
+
+use std::sync::{Arc, Mutex};
+
+use dnatreecalc_host::app::{HostDispatcher, TreeWorkspaceSession};
+use dnatreecalc_host::model::{WorkspaceFixture, WorkspaceModel};
+use dnatreecalc_skin_framework::{
+    Dispatcher, ErasedSkinContext, IntentReceipt, NodeId, NodeValueProjection, RegisteredSkin,
+    SelectionState, SharedSkinState, SharedSkinStateHandle, SkinCapabilities, SkinCategory,
+    SkinContext, SkinHandle, SkinId, SkinManifest, SkinState, WorkspaceIntent,
+    WorkspaceRevisionProjection, WorkspaceSkin, WorkspaceState,
+};
+use leptos::prelude::*;
+use serde::{Deserialize, Serialize};
+
+const PROGRAMMABLE_SKIN_ID: SkinId = SkinId::new("programmable-test-skin");
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+struct ProgrammableSkinState {
+    command_count: usize,
+}
+
+impl SkinState for ProgrammableSkinState {
+    fn schema_version() -> u32 {
+        1
+    }
+}
+
+#[derive(Clone)]
+pub struct ProgrammableDriver {
+    workspace: ReadSignal<WorkspaceState>,
+    selection: ReadSignal<SelectionState>,
+    shared: SharedSkinStateHandle,
+    dispatch: Arc<dyn Dispatcher>,
+}
+
+impl ProgrammableDriver {
+    pub fn add_node(&self, parent: Option<&str>, symbol: &str, content: &str) {
+        self.accept(self.add_node_intent(parent, symbol, content));
+    }
+
+    pub fn try_add_node(&self, parent: Option<&str>, symbol: &str, content: &str) -> IntentReceipt {
+        self.dispatch
+            .dispatch(self.add_node_intent(parent, symbol, content))
+    }
+
+    pub fn edit(&self, node: &str, content: &str) {
+        self.accept(WorkspaceIntent::EditContent {
+            node: NodeId::new(node),
+            content: content.to_string(),
+        });
+    }
+
+    pub fn try_edit(&self, node: &str, content: &str) -> IntentReceipt {
+        self.dispatch.dispatch(WorkspaceIntent::EditContent {
+            node: NodeId::new(node),
+            content: content.to_string(),
+        })
+    }
+
+    pub fn recalc(&self) {
+        self.accept(WorkspaceIntent::Recalculate);
+    }
+
+    pub fn try_recalc(&self) -> IntentReceipt {
+        self.dispatch.dispatch(WorkspaceIntent::Recalculate)
+    }
+
+    pub fn rename(&self, node: &str, new_symbol: &str) {
+        self.accept(WorkspaceIntent::RenameNode {
+            node: NodeId::new(node),
+            new_symbol: new_symbol.to_string(),
+        });
+    }
+
+    pub fn try_rename(&self, node: &str, new_symbol: &str) -> IntentReceipt {
+        self.dispatch.dispatch(WorkspaceIntent::RenameNode {
+            node: NodeId::new(node),
+            new_symbol: new_symbol.to_string(),
+        })
+    }
+
+    pub fn move_node(&self, node: &str, new_parent: Option<&str>, new_index: Option<usize>) {
+        self.accept(WorkspaceIntent::MoveNode {
+            node: NodeId::new(node),
+            new_parent: new_parent.map(NodeId::new),
+            new_index,
+        });
+    }
+
+    pub fn try_move_node(
+        &self,
+        node: &str,
+        new_parent: Option<&str>,
+        new_index: Option<usize>,
+    ) -> IntentReceipt {
+        self.dispatch.dispatch(WorkspaceIntent::MoveNode {
+            node: NodeId::new(node),
+            new_parent: new_parent.map(NodeId::new),
+            new_index,
+        })
+    }
+
+    pub fn reorder(&self, node: &str, new_index: usize) {
+        self.accept(WorkspaceIntent::ReorderNode {
+            node: NodeId::new(node),
+            new_index,
+        });
+    }
+
+    pub fn try_reorder(&self, node: &str, new_index: usize) -> IntentReceipt {
+        self.dispatch.dispatch(WorkspaceIntent::ReorderNode {
+            node: NodeId::new(node),
+            new_index,
+        })
+    }
+
+    pub fn delete(&self, node: &str) {
+        self.accept(WorkspaceIntent::DeleteNode {
+            node: NodeId::new(node),
+        });
+    }
+
+    pub fn try_delete(&self, node: &str) -> IntentReceipt {
+        self.dispatch.dispatch(WorkspaceIntent::DeleteNode {
+            node: NodeId::new(node),
+        })
+    }
+
+    pub fn select(&self, node: Option<&str>) {
+        self.accept(WorkspaceIntent::SelectNode(node.map(NodeId::new)));
+    }
+
+    pub fn collapse(&self, node: &str) {
+        let node = NodeId::new(node);
+        self.shared.update(|state| {
+            state.tree_collapsed.insert(node);
+        });
+    }
+
+    pub fn pin(&self, node: &str) {
+        let node = NodeId::new(node);
+        self.shared.update(|state| {
+            if !state.pinned.contains(&node) {
+                state.pinned.push(node);
+            }
+        });
+    }
+
+    pub fn state(&self) -> WorkspaceState {
+        self.workspace.get_untracked()
+    }
+
+    pub fn scalar(&self, node: &str) -> Option<String> {
+        scalar_value(&self.state(), node).map(str::to_string)
+    }
+
+    pub fn selected(&self) -> Option<String> {
+        self.selection
+            .get_untracked()
+            .primary
+            .map(|node| node.as_str().to_string())
+    }
+
+    pub fn outgoing_count(&self, node: &str) -> usize {
+        self.state().dependencies.outgoing_count(&NodeId::new(node))
+    }
+
+    pub fn incoming_count(&self, node: &str) -> usize {
+        self.state().dependencies.incoming_count(&NodeId::new(node))
+    }
+
+    pub fn assert_scalar(&self, node: &str, expected: &str) {
+        assert_eq!(self.scalar(node).as_deref(), Some(expected), "{node}");
+    }
+
+    pub fn assert_children(&self, node: &str, expected: &[&str]) {
+        let state = self.state();
+        let actual = state
+            .node(&NodeId::new(node))
+            .unwrap_or_else(|| panic!("{node} must project"))
+            .children
+            .iter()
+            .map(NodeId::as_str)
+            .collect::<Vec<_>>();
+        assert_eq!(actual, expected, "{node} children");
+    }
+
+    fn add_node_intent(
+        &self,
+        parent: Option<&str>,
+        symbol: &str,
+        content: &str,
+    ) -> WorkspaceIntent {
+        WorkspaceIntent::AddNode {
+            parent: parent.map(NodeId::new),
+            symbol: symbol.to_string(),
+            content: content.to_string(),
+        }
+    }
+
+    fn accept(&self, intent: WorkspaceIntent) {
+        let receipt = self.dispatch.dispatch(intent);
+        assert!(receipt.accepted, "{:?}", receipt.error);
+    }
+}
+
+#[derive(Clone)]
+struct ProgrammableSkin {
+    mounted: Arc<Mutex<Option<ProgrammableDriver>>>,
+}
+
+impl WorkspaceSkin for ProgrammableSkin {
+    type State = ProgrammableSkinState;
+
+    fn id(&self) -> SkinId {
+        PROGRAMMABLE_SKIN_ID
+    }
+
+    fn manifest(&self) -> SkinManifest {
+        SkinManifest {
+            display_name: "Programmable test skin",
+            description: "Test-only skin exposing the skin IR as a Rust command DSL.",
+            category: SkinCategory::Inspector,
+            version: "0.1.0",
+        }
+    }
+
+    fn capabilities(&self) -> SkinCapabilities {
+        SkinCapabilities {
+            supports_multi_select: false,
+            supports_inline_formula_edit: true,
+            supports_meta_node_display: true,
+            renders_arrays_inline: true,
+            renders_table_values: true,
+        }
+    }
+
+    fn mount(&self, cx: SkinContext<Self::State>) -> SkinHandle {
+        *self
+            .mounted
+            .lock()
+            .expect("programmable skin lock poisoned") = Some(ProgrammableDriver {
+            workspace: cx.workspace,
+            selection: cx.selection,
+            shared: cx.shared,
+            dispatch: cx.dispatch,
+        });
+        SkinHandle::new(view! { <div class="dtc-programmable-test-skin"></div> }.into_any())
+    }
+}
+
+pub struct Harness {
+    pub driver: ProgrammableDriver,
+    pub session: Arc<Mutex<TreeWorkspaceSession>>,
+    _owner: Owner,
+}
+
+impl Harness {
+    pub fn empty() -> Self {
+        Self::from_fixture(WorkspaceFixture {
+            schema_version: "treecalc-workspace-v1".to_string(),
+            workspace_id: "programmable-skin-ir".to_string(),
+            description: None,
+            profile: None,
+            nodes: Vec::new(),
+        })
+    }
+
+    pub fn from_repo_fixture(name: &str) -> Self {
+        Self::from_fixture(WorkspaceFixture::from_repo_fixture(name).unwrap())
+    }
+
+    pub fn from_fixture(fixture: WorkspaceFixture) -> Self {
+        let owner = Owner::new();
+        let model = WorkspaceModel::try_from(fixture).unwrap();
+        let session = Arc::new(Mutex::new(
+            TreeWorkspaceSession::from_model(&model).unwrap(),
+        ));
+        let workspace = RwSignal::new(session.lock().unwrap().workspace_state().unwrap());
+        let selection = RwSignal::new(SelectionState::default());
+        let shared = SharedSkinStateHandle::new(SharedSkinState::default());
+        let dispatcher = Arc::new(HostDispatcher::with_session(
+            selection,
+            workspace,
+            session.clone(),
+        ));
+        let dispatch: Arc<dyn Dispatcher> = dispatcher;
+        let mounted = Arc::new(Mutex::new(None));
+        let skin = ProgrammableSkin {
+            mounted: mounted.clone(),
+        };
+        let registered = RegisteredSkin::from_skin(skin);
+        let handle = registered.mount(ErasedSkinContext {
+            workspace: workspace.read_only(),
+            selection: selection.read_only(),
+            shared,
+            dispatch,
+        });
+        drop(handle);
+        let driver = mounted
+            .lock()
+            .expect("programmable skin lock poisoned")
+            .clone()
+            .expect("programmable skin mounted");
+        Self {
+            driver,
+            session,
+            _owner: owner,
+        }
+    }
+
+    pub fn recalc_count(&self) -> usize {
+        self.session.lock().unwrap().recalc_count()
+    }
+}
+
+pub fn scalar_value<'a>(state: &'a WorkspaceState, node_id: &str) -> Option<&'a str> {
+    state
+        .node(&NodeId::new(node_id))
+        .and_then(|node| match &node.computed_value {
+            NodeValueProjection::Scalar(value) => Some(value.as_str()),
+            _ => None,
+        })
+}
+
+pub fn revision_fingerprint(revision: &WorkspaceRevisionProjection) -> Vec<Option<String>> {
+    vec![
+        revision.structural_snapshot_id.clone(),
+        revision.workspace_revision_id.clone(),
+        revision.node_input_snapshot_id.clone(),
+        revision.namespace_snapshot_id.clone(),
+        revision.formula_binding_snapshot_id.clone(),
+        revision.dependency_shape_snapshot_id.clone(),
+        revision.publication_snapshot_id.clone(),
+        revision.runtime_overlay_set_id.clone(),
+        Some(revision.value_epoch.to_string()),
+    ]
+}

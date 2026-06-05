@@ -29,18 +29,23 @@ use oxcalc_core::structured_table::{
     lower_structured_table_dependencies, project_treecalc_table_node_snapshot,
     validate_treecalc_table_reference_after_update,
 };
+use oxcalc_core::tree_reference_system::{
+    TreeCalcReferenceSystemProvider, TreeCalcSparseReferenceValuesBinding,
+};
 use oxfml_core::binding::{BindContext, BindRequest, bind_formula};
-use oxfml_core::consumer::runtime::{RuntimeEnvironment, RuntimeFormulaRequest};
+use oxfml_core::consumer::runtime::{
+    RuntimeEnvironment, RuntimeFormulaRequest, RuntimeHostNameBindResult, RuntimeHostNameBinding,
+};
 use oxfml_core::interface::TypedContextQueryBundle;
 use oxfml_core::red::project_red_view;
 use oxfml_core::seam::Locus;
 use oxfml_core::source::{FormulaSourceRecord, StructureContextVersion};
 use oxfml_core::syntax::parser::{ParseRequest, parse_formula};
 use oxfml_core::{
-    EvaluationBackend, StructuredReferenceBindDiagnosticLink, StructuredReferenceBindRecord,
-    StructuredReferenceSourceTokenKind,
+    DefinedNameBinding, EvaluationBackend, StructuredReferenceBindDiagnosticLink,
+    StructuredReferenceBindRecord, StructuredReferenceSourceTokenKind,
 };
-use oxfunc_core::value::{EvalValue, ExcelText};
+use oxfunc_core::value::{CalcValue, CoreValue, ExcelText};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -209,10 +214,10 @@ fn active_table_structured_reference_corpus_executes_through_oxcalc_table_path()
             table_sparse_values(
                 table,
                 Some(&tax_report),
-                [("col:amount", EvalValue::Number(60.0))],
+                [("col:amount", CalcValue::number(60.0))],
             )
         } else {
-            table_sparse_values(table, None, std::iter::empty::<(&str, EvalValue)>())
+            table_sparse_values(table, None, std::iter::empty::<(&str, CalcValue)>())
         };
 
         match case.id.as_str() {
@@ -723,7 +728,7 @@ fn active_empty_body_table_corpus_executes_through_oxcalc_table_path() {
                 &projection,
                 bind_record,
                 caller_region.as_ref(),
-                table_sparse_values(table, None, std::iter::empty::<(&str, EvalValue)>()),
+                table_sparse_values(table, None, std::iter::empty::<(&str, CalcValue)>()),
             )
             .expect_err("zero-row current-row case must stay a typed reader diagnostic");
             match error {
@@ -769,9 +774,9 @@ fn active_empty_body_table_corpus_executes_through_oxcalc_table_path() {
         }
 
         let formula_values = if projection.table_descriptor.totals_row_present {
-            table_sparse_values(table, None, [("col:amount", EvalValue::Number(0.0))])
+            table_sparse_values(table, None, [("col:amount", CalcValue::number(0.0))])
         } else {
-            table_sparse_values(table, None, std::iter::empty::<(&str, EvalValue)>())
+            table_sparse_values(table, None, std::iter::empty::<(&str, CalcValue)>())
         };
         let reader = TreeCalcTableSparseReader::from_oxfml_bind_record(
             &snapshot,
@@ -1222,6 +1227,8 @@ fn table_snapshot(table_path: &str, table: &TableNodeFixture) -> TreeCalcTableNo
             .map(|row| TreeCalcTableRowId(row.row_id.clone()))
             .collect(),
         columns: table.columns.iter().map(table_column_snapshot).collect(),
+        body_cell_nodes: Vec::new(),
+        totals_cell_nodes: Vec::new(),
         header_row_present: table.header.present,
         totals_row_present: table.totals.present,
         table_namespace_version: table.table_namespace_version.clone(),
@@ -1633,7 +1640,7 @@ fn evaluate_amount_totals(
 fn table_sparse_values<'a>(
     table: &TableNodeFixture,
     formula_report: Option<&oxcalc_core::structured_table::TreeCalcTableFormulaRuntimeReport>,
-    totals_values: impl IntoIterator<Item = (&'a str, EvalValue)>,
+    totals_values: impl IntoIterator<Item = (&'a str, CalcValue)>,
 ) -> Vec<TreeCalcTableSparseValue> {
     let mut values = table_constant_sparse_values(table);
     if let Some(formula_report) = formula_report {
@@ -1669,10 +1676,10 @@ fn table_constant_sparse_values(table: &TableNodeFixture) -> Vec<TreeCalcTableSp
     values
 }
 
-fn parse_fixture_value(value: &str) -> EvalValue {
+fn parse_fixture_value(value: &str) -> CalcValue {
     value.parse::<f64>().map_or_else(
-        |_| EvalValue::Text(ExcelText::from_interop_assignment(value)),
-        EvalValue::Number,
+        |_| CalcValue::text(ExcelText::from_interop_assignment(value)),
+        CalcValue::number,
     )
 }
 
@@ -1754,7 +1761,12 @@ fn evaluate_case_formula_value(
     projection: &TreeCalcTableNodeProjection,
     caller_region: Option<TableCallerRegion>,
     runtime_binding: oxcalc_core::structured_table::TreeCalcStructuredTableRuntimeBinding,
-) -> EvalValue {
+) -> CalcValue {
+    let reference_system_provider = TreeCalcReferenceSystemProvider::sparse_only()
+        .with_sparse_reference_values(
+            runtime_binding.sparse_reference_values.reference.clone(),
+            runtime_binding.sparse_reference_values.resolved_values(),
+        );
     let result = RuntimeEnvironment::new()
         .with_primary_locus(table_primary_locus(projection))
         .with_table_context(
@@ -1765,11 +1777,18 @@ fn evaluate_case_formula_value(
             caller_region,
         )
         .with_cell_values(runtime_binding.scalar_cell_values)
-        .with_sparse_reference_value_bindings(vec![runtime_binding.sparse_reference_values])
+        .with_host_name_bindings(vec![
+            runtime_host_name_binding_from_sparse_reference_values(
+                runtime_binding.sparse_reference_values,
+            ),
+        ])
         .execute(
             RuntimeFormulaRequest::new(
                 FormulaSourceRecord::new(format!("dnatreecalc:{case_id}"), 1, formula_text),
-                TypedContextQueryBundle::default(),
+                TypedContextQueryBundle::default().with_reference_system_provider(Some(
+                    &reference_system_provider
+                        as &dyn oxfunc_core::resolver::ReferenceSystemProvider,
+                )),
             )
             .with_backend(EvaluationBackend::OxFuncBacked),
         )
@@ -1781,6 +1800,28 @@ fn evaluate_case_formula_value(
         result.bind_diagnostics
     );
     result.evaluation.oxfunc_value
+}
+
+fn runtime_host_name_binding_from_sparse_reference_values(
+    binding: TreeCalcSparseReferenceValuesBinding,
+) -> RuntimeHostNameBinding {
+    let canonical_name = binding.reference.target().to_string();
+    RuntimeHostNameBinding {
+        bind_result: RuntimeHostNameBindResult {
+            host_name_handle: canonical_name.clone(),
+            canonical_name: canonical_name.clone(),
+            host_dependency_key: None,
+            source_span: oxfml_core::syntax::token::TextSpan::new(0, canonical_name.len()),
+            source_token_text: canonical_name.clone(),
+            resolution_layer: "treecalc_sparse_reference_values".to_string(),
+            binding_kind: "defined_name_value_like".to_string(),
+            shape_hint: Some("sparse_reference_values".to_string()),
+            caller_context_dependent: false,
+            diagnostics: Vec::new(),
+            replay_identity_contribution: format!("treecalc:sparse-reference:{canonical_name}"),
+        },
+        binding: DefinedNameBinding::Value(CalcValue::reference(binding.reference)),
+    }
 }
 
 fn table_primary_locus(projection: &TreeCalcTableNodeProjection) -> Locus {
@@ -1872,6 +1913,7 @@ fn bind_treecalc_table_structured_references(
             caller_table_region,
             ..BindContext::default()
         },
+        host_name_resolver: None,
     });
 
     bind.bound_formula
@@ -1907,10 +1949,10 @@ fn table_structured_reference_binding_from_oxfml_record(
     }
 }
 
-fn display_value(value: &EvalValue) -> String {
-    match value {
-        EvalValue::Number(number) => display_number(*number),
-        EvalValue::Text(text) => text.to_string_lossy(),
+fn display_value(value: &CalcValue) -> String {
+    match &value.core {
+        CoreValue::Number(number) => display_number(*number),
+        CoreValue::Text(text) => text.to_string_lossy(),
         other => format!("{other:?}"),
     }
 }
@@ -3645,9 +3687,9 @@ fn empty_body_formula_values(
     projection: &TreeCalcTableNodeProjection,
 ) -> Vec<TreeCalcTableSparseValue> {
     if projection.table_descriptor.totals_row_present {
-        table_sparse_values(table, None, [("col:amount", EvalValue::Number(0.0))])
+        table_sparse_values(table, None, [("col:amount", CalcValue::number(0.0))])
     } else {
-        table_sparse_values(table, None, std::iter::empty::<(&str, EvalValue)>())
+        table_sparse_values(table, None, std::iter::empty::<(&str, CalcValue)>())
     }
 }
 
@@ -4429,7 +4471,7 @@ fn table_cell_value(
     tax_report: &oxcalc_core::structured_table::TreeCalcTableFormulaRuntimeReport,
     row_id: &str,
     column_id: &str,
-) -> Option<EvalValue> {
+) -> Option<CalcValue> {
     if column_id == tax_report.target_column_id {
         return tax_report
             .cell_results
@@ -4472,9 +4514,9 @@ fn table_formula_json(formula: &TableFormulaFixture) -> Value {
     })
 }
 
-fn comparison_value_json(value: &EvalValue) -> Value {
-    match value {
-        EvalValue::Number(number) => json!({
+fn comparison_value_json(value: &CalcValue) -> Value {
+    match &value.core {
+        CoreValue::Number(number) => json!({
             "wire_schema": "oxfunc_value_types.aligned_json.v1",
             "boundary": "published_formula_result",
             "value": {
@@ -4482,7 +4524,7 @@ fn comparison_value_json(value: &EvalValue) -> Value {
                 "number": number
             }
         }),
-        EvalValue::Text(text) => {
+        CoreValue::Text(text) => {
             let text = text.to_string_lossy();
             json!({
                 "wire_schema": "oxfunc_value_types.aligned_json.v1",

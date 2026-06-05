@@ -17,10 +17,43 @@ use leptos::prelude::*;
 pub enum WorkspaceIntent {
     /// Replace the host-wide primary selection. `None` clears.
     SelectNode(Option<NodeId>),
+    /// Force the host to run calculation and publish a fresh projection.
+    Recalculate,
     /// Replace the content text of a node. Empty -> Empty kind;
     /// leading `=` -> Formula; otherwise Constant. OxCalc does the
     /// rebind; the skin does not parse formula text.
-    EditFormula { node: NodeId, content: String },
+    EditFormula {
+        node: NodeId,
+        content: String,
+    },
+    /// Preferred spelling for content edits. Kept separate from
+    /// `EditFormula` while the skeleton tests and skins still use the
+    /// older variant name.
+    EditContent {
+        node: NodeId,
+        content: String,
+    },
+    AddNode {
+        parent: Option<NodeId>,
+        symbol: String,
+        content: String,
+    },
+    RenameNode {
+        node: NodeId,
+        new_symbol: String,
+    },
+    MoveNode {
+        node: NodeId,
+        new_parent: Option<NodeId>,
+        new_index: Option<usize>,
+    },
+    ReorderNode {
+        node: NodeId,
+        new_index: usize,
+    },
+    DeleteNode {
+        node: NodeId,
+    },
 }
 
 /// Outcome of dispatching a single intent.
@@ -121,6 +154,13 @@ impl Dispatcher for InMemoryDispatcher {
                 // verify only the routing, not the calculation effect.
                 IntentReceipt::accepted()
             }
+            WorkspaceIntent::Recalculate
+            | WorkspaceIntent::EditContent { .. }
+            | WorkspaceIntent::AddNode { .. }
+            | WorkspaceIntent::RenameNode { .. }
+            | WorkspaceIntent::MoveNode { .. }
+            | WorkspaceIntent::ReorderNode { .. }
+            | WorkspaceIntent::DeleteNode { .. } => IntentReceipt::accepted(),
         }
     }
 }

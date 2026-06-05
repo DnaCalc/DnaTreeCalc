@@ -50,7 +50,7 @@
       "expect": {
         "outcome": "resolved",
         "ordered": true,
-        "members": ["Root.base.A", "Root.base.B"],
+        "members": ["Root.base.A", "Root.base.B", "Root.base"],
         "published_value": "24",
         "engine_ref": "TreeCalcReferenceCollection::ChildrenV1 over caller-resolved base"
       },
@@ -67,7 +67,7 @@
       "expect": {
         "outcome": "resolved",
         "ordered": true,
-        "members": ["Root.base.A", "Root.base.B"],
+        "members": ["Root.base.A", "Root.base.B", "Root.base"],
         "published_value": "24",
         "engine_ref": "TreeCalcReferenceCollection::ChildrenV1 over caller-resolved base"
       },

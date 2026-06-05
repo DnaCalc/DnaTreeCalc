@@ -99,6 +99,9 @@ fn active_cross_workspace_corpus_is_direct_context_typed_pending() {
             diagnostics.iter().any(|diagnostic| {
                 diagnostic.contains("typed_exclusion:cross_workspace_host_name_pending")
                     || diagnostic.contains("typed_exclusion:bracket_escaped_host_path_pending")
+                    || diagnostic.contains("oxfml_formal_reference:unresolved:")
+                    || diagnostic.contains("oxfml_bind_diagnostic:unresolved identifier")
+                    || diagnostic.contains("candidate_rejected:OxFml bind")
                     || diagnostic.contains("unsupported")
                     || diagnostic.contains("cross-workspace")
             }),

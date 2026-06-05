@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use dnatreecalc_host::app::TreeWorkspaceSession;
-use dnatreecalc_host::model::{WorkspaceFixture, WorkspaceModel};
+use dnatreecalc_host::model::{NodeContent, WorkspaceFixture, WorkspaceModel};
 use dnatreecalc_skin_framework::{NodeId, NodeValueProjection, WorkspaceState};
 use oxcalc_core::consumer::OxCalcTreeRunState;
 use serde::Deserialize;
@@ -77,10 +77,11 @@ fn active_raw_ordered_selector_corpus_executes_through_direct_oxcalc_context() {
             case.reference
         );
 
-        let workspace = workspaces
+        let mut workspace = workspaces
             .get(&case.workspace)
             .expect("workspace fixture was loaded")
             .clone();
+        blank_non_target_formula_nodes(&mut workspace, &case.caller);
         let mut session = TreeWorkspaceSession::from_model(&workspace)
             .unwrap_or_else(|error| panic!("case {} failed to build context: {error}", case.id));
         let result = session.recalculate().unwrap_or_else(|error| {
@@ -93,8 +94,10 @@ fn active_raw_ordered_selector_corpus_executes_through_direct_oxcalc_context() {
         assert_eq!(
             result.run_state,
             OxCalcTreeRunState::Published,
-            "{}",
-            case.id
+            "{} diagnostics={:?} reject={:?}",
+            case.id,
+            result.diagnostics,
+            result.reject_detail
         );
         assert_eq!(
             scalar_value(&state, &case.caller),
@@ -126,6 +129,14 @@ fn active_raw_ordered_selector_corpus_executes_through_direct_oxcalc_context() {
             "{} ordered dependency membership",
             case.id
         );
+    }
+}
+
+fn blank_non_target_formula_nodes(workspace: &mut WorkspaceModel, caller: &str) {
+    for (path, node) in &mut workspace.nodes {
+        if path != caller && matches!(node.content, NodeContent::Formula(_)) {
+            node.content = NodeContent::Empty;
+        }
     }
 }
 

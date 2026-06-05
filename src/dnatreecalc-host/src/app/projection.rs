@@ -1,7 +1,8 @@
 use std::collections::BTreeMap;
 
 use dnatreecalc_skin_framework::{
-    NodeContentKind as FrameworkContentKind, NodeId, NodeValueProjection, NodeView, WorkspaceState,
+    DependencyGraphProjection, NodeContentKind as FrameworkContentKind, NodeId,
+    NodeValueProjection, NodeView, WorkspaceRevisionProjection, WorkspaceState,
 };
 
 use crate::model::{NodeContent, WorkspaceModel};
@@ -41,7 +42,9 @@ pub fn workspace_state_from_model(model: &WorkspaceModel) -> WorkspaceState {
             content_kind,
             content_text,
             computed_value: NodeValueProjection::Unevaluated,
+            calc_state: None,
             is_meta: node.is_meta,
+            table: None,
         };
 
         nodes.insert(id, view);
@@ -50,6 +53,8 @@ pub fn workspace_state_from_model(model: &WorkspaceModel) -> WorkspaceState {
     WorkspaceState {
         workspace_id: model.workspace_id.clone(),
         profile: model.profile.as_str(),
+        revision: WorkspaceRevisionProjection::default(),
+        last_run: None,
         node_order: model
             .node_order
             .iter()
@@ -61,6 +66,9 @@ pub fn workspace_state_from_model(model: &WorkspaceModel) -> WorkspaceState {
             .map(|p| NodeId::new(p.clone()))
             .collect(),
         nodes,
+        dependencies: DependencyGraphProjection::default(),
+        tables: BTreeMap::new(),
+        diagnostics: Vec::new(),
     }
 }
 

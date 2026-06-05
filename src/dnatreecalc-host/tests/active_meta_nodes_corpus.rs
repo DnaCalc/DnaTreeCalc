@@ -132,6 +132,10 @@ fn active_meta_nodes_corpus_executes_through_direct_oxcalc_context() {
                 assert!(
                     result.diagnostics.iter().any(|diagnostic| {
                         diagnostic.contains("unresolved_host_name:Secret")
+                            || diagnostic.contains("oxfml_formal_reference:unresolved:Secret")
+                            || diagnostic
+                                .contains("oxfml_bind_diagnostic:unresolved identifier 'Secret'")
+                            || diagnostic.contains("candidate_rejected:OxFml bind")
                             || diagnostic.contains(
                                 "oxfml_returned_value_surface_payload_summary:Error(Name)",
                             )

@@ -86,6 +86,15 @@ This is roughly the Elm / MVU pattern adapted to multi-source state (core worksp
 
 The remainder of this section spells out each role with concrete typed interfaces.
 
+## 2.0 Current implementation checkpoint
+
+The live framework now exposes the same boundary in code:
+
+- `WorkspaceIntent` covers selection, recalculation, content edits, and structural edits (`AddNode`, `RenameNode`, `MoveNode`, `ReorderNode`, `DeleteNode`).
+- `WorkspaceState` carries the skin-facing projection for tree nodes, values, calc state, last run status, diagnostics, dependency graph summaries, invalidation summaries, and table identity/lifecycle summaries.
+- `HostDispatcher` routes accepted calc-affecting intents through `TreeWorkspaceSession`, which calls `OxCalcTreeContext` and republishes the typed projection. Selection and shared skin state remain facade state and do not call OxCalc.
+- `src/dnatreecalc-host/tests/programmable_skin_ir.rs` mounts a test-only programmable skin and drives the IR from the outside with a compact Rust DSL. Product behavior tests should prefer that harness over direct session calls when the skin contract is the behavior under test.
+
 ## 2.1 The `WorkspaceSkin` trait
 
 ```rust

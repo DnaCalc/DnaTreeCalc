@@ -28,7 +28,12 @@ pub use skin::{
 pub use state::{
     MigrationError, SharedSkinState, SharedSkinStateHandle, SkinState, SkinStateHandle,
 };
-pub use workspace::{NodeContentKind, NodeValueProjection, NodeView, WorkspaceState};
+pub use workspace::{
+    CalcRunProjection, CalcRunStateProjection, DependencyDescriptorProjection,
+    DependencyEdgeProjection, DependencyGraphProjection, NodeCalcStateProjection, NodeContentKind,
+    NodeInvalidationProjection, NodeValueProjection, NodeView, TableProjection,
+    TreeReferenceCollectionProjection, WorkspaceRevisionProjection, WorkspaceState,
+};
 
 #[cfg(test)]
 mod tests;

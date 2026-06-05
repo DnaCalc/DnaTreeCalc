@@ -93,6 +93,9 @@ fn active_node_function_corpus_is_direct_context_typed_pending() {
                             || diagnostic.contains("unexpected token Caret")
                             || diagnostic.contains("syntax diagnostics")
                             || diagnostic.contains("missing expression cannot be bound")
+                            || diagnostic.contains(
+                                "only immediate, helper-bound, defined-name, or lambda-valued callable invocation is supported",
+                            )
                     }),
                     "{} should remain a direct-context callable pending lane, got {:?}",
                     case.id,

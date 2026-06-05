@@ -643,7 +643,7 @@ Trace events must be deterministic enough for tests and cheap enough to leave co
 | Skin-state round-trip fixture | W005 | typed state persists through `skins.*` meta nodes |
 | Tree projection fixture | W003 | visible rows, collapse, meta visibility, selection |
 | Intent/dispatcher trace fixture | W003/W005 | gestures route through the right boundary |
-| Fake OxFml/OxCalc context harness | W002/W003 | editor-to-publication and invalidation-to-display flows |
+| Programmable skin IR harness | W003/W005 | Rust DSL drives `WorkspaceIntent` and reads `WorkspaceState` through a mounted test skin |
 | Value projection fixture | W003 | scalar/array/error/reference render models |
 | Browser click-through harness | W003/W006 | shell, switching, resize, key gestures, visible affordances |
 | Canvas geometry harness | W006 | card positions, wire endpoints, minimap, viewport |

@@ -3,7 +3,7 @@
   "theme": "references/literals-active",
   "workset": "W004",
   "status": "active",
-  "description": "Focused W004 active slice for raw explicit reference-literal arrays through direct OxCalc context. All-resolved reference-only arrays execute through OxCalc ReferenceLiteralArrayV1; mixed scalar/reference arrays remain a typed exclusion. DnaTreeCalc supplies formula text only and does not prepare carriers, resolve element paths, parse formula text, or inspect OxFml/OxFunc semantics.",
+  "description": "Focused W004 active slice for raw explicit reference-literal arrays through direct OxCalc context. All-resolved reference-only arrays execute through OxCalc ReferenceLiteralArrayV1; mixed scalar/reference arrays now execute through OxFml/OxFunc array semantics. DnaTreeCalc supplies formula text only and does not prepare carriers, resolve element paths, parse formula text, or inspect OxFml/OxFunc semantics.",
   "cases": [
     {
       "id": "lit-ref-array-two-members-active",
@@ -49,9 +49,9 @@
     },
     {
       "id": "lit-mixed-ref-scalar-reject-active",
-      "name": "mixed reference/scalar array literal remains a direct-context typed-pending lane",
+      "name": "mixed reference/scalar array literal executes through direct context",
       "spec": "§4, §6",
-      "kind": "syntax",
+      "kind": "membership",
       "workspace": "reference-literals-active",
       "caller": "Root.Literals.MixedReject",
       "reference": "{A,1}",
@@ -62,8 +62,11 @@
         { "kind": "scalar", "source_text": "1" }
       ],
       "expect": {
-        "parse": "reject",
-        "reason": "mixed scalar/reference array literal"
+        "outcome": "resolved",
+        "ordered": true,
+        "members": ["Root.Literals.A"],
+        "published_value": "3",
+        "engine_ref": "TreeCalcReferenceCollection::ReferenceLiteralArrayV1 plus scalar array member"
       }
     }
   ]

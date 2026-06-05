@@ -34,6 +34,12 @@ Skins never call OxCalc directly. A skin either:
 
 The dispatcher decides whether the request is a cheap host update, a meta-node write, a template orchestration, or an OxCalc context call.
 
+The current executable harness for this rule is the Rust programmable skin in
+`src/dnatreecalc-host/tests/programmable_skin_ir.rs`. It mounts through the
+normal `WorkspaceSkin` contract, drives `WorkspaceIntent` from test code, and
+reads only `WorkspaceState`, selection, and shared skin state. Use it for
+product behavior that should be proven from outside the host/session adapter.
+
 ## 2. Prototype-to-Skin Map
 
 | Prototype | Skin or mount role | Primary primitives | Skin state | Shared state | Workspace reads | Workspace writes | Engine path |
