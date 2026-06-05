@@ -12,13 +12,13 @@ use std::sync::Arc;
 
 #[cfg(target_arch = "wasm32")]
 use dnatreecalc_host::app::{
-    HostDispatcher, build_default_registry, preview_accounts_workspace_state,
+    HostDispatcher, build_default_registry, preview_accounts_workspace_session,
 };
 #[cfg(target_arch = "wasm32")]
 use dnatreecalc_shell::WorkspaceShell;
 #[cfg(target_arch = "wasm32")]
 use dnatreecalc_skin_framework::{
-    Dispatcher, SelectionState, SharedSkinState, SharedSkinStateHandle,
+    Dispatcher, NodeId, SelectionState, SharedSkinState, SharedSkinStateHandle,
 };
 #[cfg(target_arch = "wasm32")]
 use dnatreecalc_skins::TRIPLE_EDITOR_ID;
@@ -43,12 +43,19 @@ pub fn mount_dnatreecalc(element_id: &str) -> Result<(), JsValue> {
         .ok_or_else(|| JsValue::from_str("mount element not found"))?
         .dyn_into::<web_sys::HtmlElement>()?;
 
-    let workspace_state = preview_accounts_workspace_state();
+    let session = Arc::new(std::sync::Mutex::new(preview_accounts_workspace_session()));
+    let workspace_state = session
+        .lock()
+        .map_err(|_| JsValue::from_str("workspace session mutex poisoned"))?
+        .workspace_state()
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
     let workspace = RwSignal::new(workspace_state);
-    let selection = RwSignal::new(SelectionState::default());
+    let selection = RwSignal::new(SelectionState::with_primary(Some(NodeId::new(
+        "Sheet1.RandArray5x5",
+    ))));
     let shared = SharedSkinStateHandle::new(SharedSkinState::default());
 
-    let dispatcher = Arc::new(HostDispatcher::new(selection));
+    let dispatcher = Arc::new(HostDispatcher::with_session(selection, workspace, session));
     let dispatch: Arc<dyn Dispatcher> = dispatcher;
 
     let registry = Arc::new(build_default_registry());
@@ -67,4 +74,10 @@ pub fn mount_dnatreecalc(element_id: &str) -> Result<(), JsValue> {
     });
     std::mem::forget(mount_handle);
     Ok(())
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen(start)]
+pub fn start() -> Result<(), JsValue> {
+    mount_dnatreecalc("dnatreecalc-app")
 }

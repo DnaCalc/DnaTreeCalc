@@ -7,7 +7,7 @@ use dnatreecalc_host::model::{WorkspaceFixture, WorkspaceModel};
 use dnatreecalc_skin_framework::{
     Dispatcher, ErasedSkinContext, IntentReceipt, NodeId, NodeValueProjection, RegisteredSkin,
     SelectionState, SharedSkinState, SharedSkinStateHandle, SkinCapabilities, SkinCategory,
-    SkinContext, SkinHandle, SkinId, SkinManifest, SkinState, WorkspaceIntent,
+    SkinContext, SkinHandle, SkinId, SkinManifest, SkinState, WorkspaceIntent, WorkspaceRecalcMode,
     WorkspaceRevisionProjection, WorkspaceSkin, WorkspaceState,
 };
 use leptos::prelude::*;
@@ -56,6 +56,13 @@ impl ProgrammableDriver {
             node: NodeId::new(node),
             content: content.to_string(),
         })
+    }
+
+    pub fn edit_deferred(&self, node: &str, content: &str) {
+        self.accept(WorkspaceIntent::EditContentDeferred {
+            node: NodeId::new(node),
+            content: content.to_string(),
+        });
     }
 
     pub fn recalc(&self) {
@@ -160,6 +167,29 @@ impl ProgrammableDriver {
             .get_untracked()
             .primary
             .map(|node| node.as_str().to_string())
+    }
+
+    pub fn set_recalc_mode(&self, mode: WorkspaceRecalcMode) {
+        self.shared.update(|state| {
+            state.recalc_mode = mode;
+            if mode == WorkspaceRecalcMode::Auto {
+                state.manual_recalc_pending = false;
+            }
+        });
+    }
+
+    pub fn recalc_mode(&self) -> WorkspaceRecalcMode {
+        self.shared.get_untracked().recalc_mode
+    }
+
+    pub fn set_manual_recalc_pending(&self, pending: bool) {
+        self.shared.update(|state| {
+            state.manual_recalc_pending = pending;
+        });
+    }
+
+    pub fn manual_recalc_pending(&self) -> bool {
+        self.shared.get_untracked().manual_recalc_pending
     }
 
     pub fn outgoing_count(&self, node: &str) -> usize {

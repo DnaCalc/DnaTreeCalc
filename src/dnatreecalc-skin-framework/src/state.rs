@@ -101,10 +101,29 @@ impl<S: SkinState> Copy for SkinStateHandle<S> {}
 /// (`docs/ux/SKINS.md` §2.4). The walking skeleton uses only the collapse
 /// set and the pinned list; richer fields land with W003 (recent
 /// selections) and W007 (per-skin format defaults).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum WorkspaceRecalcMode {
+    #[default]
+    Auto,
+    Manual,
+}
+
+impl WorkspaceRecalcMode {
+    #[must_use]
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Auto => "Auto",
+            Self::Manual => "Manual",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SharedSkinState {
     pub tree_collapsed: HashSet<NodeId>,
     pub pinned: Vec<NodeId>,
+    pub recalc_mode: WorkspaceRecalcMode,
+    pub manual_recalc_pending: bool,
 }
 
 /// Reactive handle to the shared meta-namespace state, mirrored from

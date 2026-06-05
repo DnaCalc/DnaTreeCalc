@@ -33,6 +33,13 @@ pub enum WorkspaceIntent {
         node: NodeId,
         content: String,
     },
+    /// Replace node content without running calculation immediately.
+    /// Manual recalc mode uses this to keep editing responsive; an
+    /// explicit [`WorkspaceIntent::Recalculate`] publishes values.
+    EditContentDeferred {
+        node: NodeId,
+        content: String,
+    },
     AddNode {
         parent: Option<NodeId>,
         symbol: String,
@@ -156,6 +163,7 @@ impl Dispatcher for InMemoryDispatcher {
             }
             WorkspaceIntent::Recalculate
             | WorkspaceIntent::EditContent { .. }
+            | WorkspaceIntent::EditContentDeferred { .. }
             | WorkspaceIntent::AddNode { .. }
             | WorkspaceIntent::RenameNode { .. }
             | WorkspaceIntent::MoveNode { .. }

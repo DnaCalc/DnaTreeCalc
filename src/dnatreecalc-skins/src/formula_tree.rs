@@ -1,10 +1,11 @@
 use dnatreecalc_skin_framework::{
     NodeId, NodeView, SkinCapabilities, SkinCategory, SkinContext, SkinHandle, SkinId,
-    SkinManifest, SkinState, WorkspaceIntent, WorkspaceSkin,
+    SkinManifest, SkinState, WorkspaceIntent, WorkspaceRecalcMode, WorkspaceSkin,
 };
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::node_management::NodeManagementPanel;
 use crate::value_render::render_value;
 
 pub const FORMULA_TREE_ID: SkinId = SkinId::new("formula-tree");
@@ -71,6 +72,7 @@ impl WorkspaceSkin for FormulaTree {
 fn FormulaTreeView(cx: SkinContext<FormulaTreeState>) -> impl IntoView {
     let workspace = cx.workspace;
     let selection = cx.selection;
+    let shared = cx.shared;
     let dispatch = cx.dispatch.clone();
     let editor_text = RwSignal::new(String::new());
 
@@ -96,12 +98,14 @@ fn FormulaTreeView(cx: SkinContext<FormulaTreeState>) -> impl IntoView {
 
     let apply_dispatch = dispatch.clone();
     let recalc_dispatch = dispatch.clone();
+    let nav_dispatch = dispatch.clone();
+    let management_dispatch = dispatch.clone();
 
     view! {
         <section class="dtc-formula-tree">
             <aside class="dtc-formula-tree__nav" aria-label="Formula tree nodes">
                 {move || {
-                    let dispatch = dispatch.clone();
+                    let dispatch = nav_dispatch.clone();
                     rows.with(|rs| {
                         rs.iter()
                             .map(|row| tree_row(row.clone(), selection, dispatch.clone()))
@@ -110,6 +114,11 @@ fn FormulaTreeView(cx: SkinContext<FormulaTreeState>) -> impl IntoView {
                 }}
             </aside>
             <section class="dtc-formula-tree__workbench">
+                <NodeManagementPanel
+                    workspace=workspace
+                    selection=selection
+                    dispatch=management_dispatch.clone()
+                />
                 <div class="dtc-section-label">"Content"</div>
                 <textarea
                     class="dtc-formula-tree__input"
@@ -121,10 +130,29 @@ fn FormulaTreeView(cx: SkinContext<FormulaTreeState>) -> impl IntoView {
                         type="button"
                         on:click=move |_| {
                             if let Some(node) = selected.get_untracked() {
-                                apply_dispatch.dispatch(WorkspaceIntent::EditContent {
-                                    node: node.id,
-                                    content: editor_text.get_untracked(),
-                                });
+                                let content = editor_text.get_untracked();
+                                match shared.get_untracked().recalc_mode {
+                                    WorkspaceRecalcMode::Auto => {
+                                        apply_dispatch.dispatch(WorkspaceIntent::EditContent {
+                                            node: node.id,
+                                            content,
+                                        });
+                                        shared.update(|state| {
+                                            state.manual_recalc_pending = false;
+                                        });
+                                    }
+                                    WorkspaceRecalcMode::Manual => {
+                                        apply_dispatch.dispatch(
+                                            WorkspaceIntent::EditContentDeferred {
+                                                node: node.id,
+                                                content,
+                                            },
+                                        );
+                                        shared.update(|state| {
+                                            state.manual_recalc_pending = true;
+                                        });
+                                    }
+                                }
                             }
                         }
                     >
@@ -134,6 +162,9 @@ fn FormulaTreeView(cx: SkinContext<FormulaTreeState>) -> impl IntoView {
                         type="button"
                         on:click=move |_| {
                             recalc_dispatch.dispatch(WorkspaceIntent::Recalculate);
+                            shared.update(|state| {
+                                state.manual_recalc_pending = false;
+                            });
                         }
                     >
                         "Recalculate"

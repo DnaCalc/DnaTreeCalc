@@ -7,6 +7,7 @@
 
 pub mod dependency_inspector;
 pub mod formula_tree;
+mod node_management;
 pub mod outline_table;
 pub mod triple_editor;
 pub mod value_board;

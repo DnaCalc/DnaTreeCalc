@@ -21,6 +21,7 @@ use oxcalc_core::structured_table::{
     TreeCalcTableColumnBodyMetadata, TreeCalcTableColumnSnapshot, TreeCalcTableFormulaMetadata,
     TreeCalcTableNodeSnapshot, TreeCalcTableRowId, TreeCalcTableVirtualAnchor,
 };
+use oxfunc_core::value::{CalcValue, CoreValue};
 use serde::{Deserialize, Serialize};
 
 use crate::model::{
@@ -372,8 +373,15 @@ impl TreeWorkspaceSession {
                 .map(NodeId::new)
                 .filter(|parent| known_ids.contains(parent));
             let content_kind = content_kind_for_text(&tree_view.formula_text);
-            let computed_value =
-                value_projection_for(tree_view.value_text.clone(), tree_view.calc_state);
+            let calc_value = self
+                .last_outcome
+                .as_ref()
+                .and_then(|outcome| outcome.published_calc_values.get(&tree_node_id));
+            let computed_value = value_projection_for(
+                tree_view.value_text.clone(),
+                tree_view.calc_state,
+                calc_value,
+            );
             let table = table_views_by_tree_id.get(&tree_node_id).cloned();
             nodes.insert(
                 node_id.clone(),
@@ -907,6 +915,7 @@ fn content_kind_for_text(text: &str) -> FrameworkContentKind {
 fn value_projection_for(
     value_text: Option<String>,
     calc_state: Option<NodeCalcState>,
+    calc_value: Option<&CalcValue>,
 ) -> NodeValueProjection {
     match calc_state {
         Some(NodeCalcState::RejectedPendingRepair | NodeCalcState::CycleBlocked) => {
@@ -914,10 +923,54 @@ fn value_projection_for(
                 value_text.unwrap_or_else(|| "calculation rejected".to_string()),
             )
         }
-        _ => value_text.map_or(
-            NodeValueProjection::Unevaluated,
-            NodeValueProjection::Scalar,
+        _ => calc_value.map_or_else(
+            || {
+                value_text.map_or(
+                    NodeValueProjection::Unevaluated,
+                    NodeValueProjection::Scalar,
+                )
+            },
+            calc_value_projection,
         ),
+    }
+}
+
+fn calc_value_projection(value: &CalcValue) -> NodeValueProjection {
+    match value.core() {
+        CoreValue::Array(array) => {
+            let shape = array.shape();
+            let rows = (0..shape.rows)
+                .map(|row| {
+                    (0..shape.cols)
+                        .map(|col| {
+                            array
+                                .get(row, col)
+                                .map(calc_value_display_text)
+                                .unwrap_or_default()
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .collect::<Vec<_>>();
+            NodeValueProjection::Array(rows)
+        }
+        CoreValue::Error(_) => NodeValueProjection::Error(calc_value_display_text(value)),
+        _ => NodeValueProjection::Scalar(calc_value_display_text(value)),
+    }
+}
+
+fn calc_value_display_text(value: &CalcValue) -> String {
+    match value.core() {
+        CoreValue::Number(number) => number.to_string(),
+        CoreValue::Text(text) => text.to_string_lossy(),
+        CoreValue::Logical(logical) => logical.to_string(),
+        CoreValue::Error(error) => format!("{error:?}"),
+        CoreValue::Empty => String::new(),
+        CoreValue::Missing => "missing".to_string(),
+        CoreValue::Array(array) => {
+            let shape = array.shape();
+            format!("Array({}x{})", shape.rows, shape.cols)
+        }
+        CoreValue::Reference(reference) => reference.target().to_string(),
     }
 }
 

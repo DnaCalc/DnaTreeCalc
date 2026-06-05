@@ -1,7 +1,7 @@
 mod support;
 
 use dnatreecalc_skin_framework::{
-    CalcRunStateProjection, NodeContentKind, NodeId, NodeValueProjection,
+    CalcRunStateProjection, NodeContentKind, NodeId, NodeValueProjection, WorkspaceRecalcMode,
 };
 
 use support::programmable::{Harness, revision_fingerprint};
@@ -100,6 +100,107 @@ fn programmable_skin_builds_interrelated_tree_and_reads_results() {
 }
 
 #[test]
+fn programmable_skin_projects_array_values_from_oxcalc_calc_values() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    skin.add_node(Some("Root"), "ArrayNode", "=SEQUENCE(3)");
+
+    let state = skin.state();
+    let array_node = state
+        .node(&NodeId::new("Root.ArrayNode"))
+        .expect("array node projects");
+    assert_eq!(
+        array_node.computed_value,
+        NodeValueProjection::Array(vec![
+            vec!["1".to_string()],
+            vec!["2".to_string()],
+            vec!["3".to_string()]
+        ])
+    );
+}
+
+#[test]
+fn programmable_skin_projects_sequence_5_by_5() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    skin.add_node(Some("Root"), "Grid", "=SEQUENCE(5,5)");
+
+    let state = skin.state();
+    let grid = state
+        .node(&NodeId::new("Root.Grid"))
+        .expect("SEQUENCE node projects");
+    let NodeValueProjection::Array(rows) = &grid.computed_value else {
+        panic!(
+            "SEQUENCE should project as an array, got {:?}",
+            grid.computed_value
+        );
+    };
+    assert_eq!(rows.len(), 5);
+    assert!(rows.iter().all(|row| row.len() == 5));
+    assert_eq!(rows[0][0], "1");
+    assert_eq!(rows[4][4], "25");
+}
+
+#[test]
+fn programmable_skin_projects_randarray_with_oxcalc_host_random_provider() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    skin.add_node(Some("Root"), "Random", "=RANDARRAY(5,5)");
+
+    let state = skin.state();
+    let random = state
+        .node(&NodeId::new("Root.Random"))
+        .expect("RANDARRAY node projects");
+    let NodeValueProjection::Array(rows) = &random.computed_value else {
+        panic!(
+            "RANDARRAY should project as an array, got {:?}",
+            random.computed_value
+        );
+    };
+    assert_eq!(rows.len(), 5);
+    assert!(rows.iter().all(|row| row.len() == 5));
+}
+
+#[test]
+fn programmable_skin_manual_recalc_mode_defers_content_recalculation() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    skin.add_node(Some("Root"), "A", "1");
+    skin.add_node(Some("Root"), "B", "=A+1");
+    skin.assert_scalar("Root.B", "2");
+
+    let before_recalc_count = harness.recalc_count();
+    skin.set_recalc_mode(WorkspaceRecalcMode::Manual);
+    skin.edit_deferred("Root.A", "5");
+    skin.set_manual_recalc_pending(true);
+
+    let deferred_state = skin.state();
+    assert_eq!(
+        deferred_state
+            .node(&NodeId::new("Root.A"))
+            .map(|node| node.content_text.as_str()),
+        Some("5")
+    );
+    assert_eq!(skin.scalar("Root.B").as_deref(), Some("2"));
+    assert_eq!(harness.recalc_count(), before_recalc_count);
+    assert_eq!(skin.recalc_mode(), WorkspaceRecalcMode::Manual);
+    assert!(skin.manual_recalc_pending());
+
+    skin.recalc();
+    skin.set_manual_recalc_pending(false);
+    skin.assert_scalar("Root.B", "6");
+    assert!(!skin.manual_recalc_pending());
+}
+
+#[test]
 fn programmable_skin_exercises_structural_edits_from_outside_ir() {
     let harness = Harness::empty();
     let skin = harness.driver.clone();
@@ -124,6 +225,35 @@ fn programmable_skin_exercises_structural_edits_from_outside_ir() {
 
     skin.delete("Root.Z");
     assert!(skin.state().node(&NodeId::new("Root.Z")).is_none());
+}
+
+#[test]
+fn programmable_skin_management_intents_keep_selection_on_surviving_nodes() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    assert_eq!(skin.selected().as_deref(), Some("Root"));
+
+    skin.add_node(Some("Root"), "A", "1");
+    assert_eq!(skin.selected().as_deref(), Some("Root.A"));
+
+    skin.rename("Root.A", "Renamed");
+    assert_eq!(skin.selected().as_deref(), Some("Root.Renamed"));
+
+    skin.add_node(Some("Root"), "B", "2");
+    skin.reorder("Root.B", 0);
+    assert_eq!(skin.selected().as_deref(), Some("Root.B"));
+    skin.assert_children("Root", &["Root.B", "Root.Renamed"]);
+
+    skin.move_node("Root.Renamed", None, None);
+    assert_eq!(skin.selected().as_deref(), Some("Renamed"));
+
+    skin.delete("Root.B");
+    assert_eq!(skin.selected().as_deref(), Some("Root"));
+
+    skin.delete("Renamed");
+    assert_eq!(skin.selected(), None);
 }
 
 #[test]

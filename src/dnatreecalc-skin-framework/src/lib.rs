@@ -27,6 +27,7 @@ pub use skin::{
 };
 pub use state::{
     MigrationError, SharedSkinState, SharedSkinStateHandle, SkinState, SkinStateHandle,
+    WorkspaceRecalcMode,
 };
 pub use workspace::{
     CalcRunProjection, CalcRunStateProjection, DependencyDescriptorProjection,

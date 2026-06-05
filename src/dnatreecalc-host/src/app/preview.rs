@@ -21,6 +21,14 @@ const ACCOUNTS_FIXTURE_JSON: &str =
 /// `WorkspaceFixture` — caught immediately by `cargo test`.
 #[must_use]
 pub fn preview_accounts_workspace_state() -> WorkspaceState {
+    let session = preview_accounts_workspace_session();
+    session
+        .workspace_state()
+        .expect("accounts fixture must project from OxCalc")
+}
+
+#[must_use]
+pub fn preview_accounts_workspace_session() -> TreeWorkspaceSession {
     let fixture: WorkspaceFixture = serde_json::from_str(ACCOUNTS_FIXTURE_JSON)
         .expect("embedded accounts.json must parse as a WorkspaceFixture");
     let model =
@@ -31,8 +39,6 @@ pub fn preview_accounts_workspace_state() -> WorkspaceState {
         .recalculate()
         .expect("accounts fixture must recalculate through OxCalc");
     session
-        .workspace_state()
-        .expect("accounts fixture must project from OxCalc")
 }
 
 #[cfg(test)]

@@ -9,7 +9,7 @@ mod registry;
 mod session;
 
 pub use dispatcher::HostDispatcher;
-pub use preview::preview_accounts_workspace_state;
+pub use preview::{preview_accounts_workspace_session, preview_accounts_workspace_state};
 pub use projection::workspace_state_from_model;
 pub use registry::build_default_registry;
 pub use session::{

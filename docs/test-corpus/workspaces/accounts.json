@@ -17,6 +17,8 @@
     { "node_id": "Accounts.2005.Total", "formula": "=Q1.Net+Q2.Net" },
     { "node_id": "Sheet1", "formula": "" },
     { "node_id": "Sheet1.Foo", "formula": "" },
-    { "node_id": "Sheet1.Foo.Bar", "formula": "1" }
+    { "node_id": "Sheet1.Foo.Bar", "formula": "1" },
+    { "node_id": "Sheet1.Array5x5", "formula": "=SEQUENCE(5,5)" },
+    { "node_id": "Sheet1.RandArray5x5", "formula": "=RANDARRAY(5,5)" }
   ]
 }

@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use dnatreecalc_skin_framework::{
-    Dispatcher, IntentError, IntentReceipt, SelectionState, WorkspaceIntent, WorkspaceState,
+    Dispatcher, IntentError, IntentReceipt, NodeId, SelectionState, WorkspaceIntent, WorkspaceState,
 };
 use leptos::prelude::*;
 use std::cell::RefCell;
@@ -84,69 +84,106 @@ impl Dispatcher for HostDispatcher {
                 IntentReceipt::accepted()
             }
             WorkspaceIntent::EditFormula { node, content } => self
-                .apply_calc_affecting_edit(|session| session.edit_formula(&node, content))
+                .apply_workspace_edit(
+                    |session| session.edit_formula(&node, content),
+                    WorkspaceEditPublication::Recalculate,
+                )
                 .map_or_else(
                     |error| IntentReceipt::rejected(IntentError::Rejected(error)),
                     |_| IntentReceipt::accepted(),
                 ),
             WorkspaceIntent::EditContent { node, content } => self
-                .apply_calc_affecting_edit(|session| session.edit_formula(&node, content))
+                .apply_workspace_edit(
+                    |session| session.edit_formula(&node, content),
+                    WorkspaceEditPublication::Recalculate,
+                )
                 .map_or_else(
                     |error| IntentReceipt::rejected(IntentError::Rejected(error)),
                     |_| IntentReceipt::accepted(),
                 ),
-            WorkspaceIntent::Recalculate => self.apply_calc_affecting_edit(|_| Ok(())).map_or_else(
-                |error| IntentReceipt::rejected(IntentError::Rejected(error)),
-                |_| IntentReceipt::accepted(),
-            ),
+            WorkspaceIntent::EditContentDeferred { node, content } => self
+                .apply_workspace_edit(
+                    |session| session.edit_formula(&node, content),
+                    WorkspaceEditPublication::ProjectOnly,
+                )
+                .map_or_else(
+                    |error| IntentReceipt::rejected(IntentError::Rejected(error)),
+                    |_| IntentReceipt::accepted(),
+                ),
+            WorkspaceIntent::Recalculate => self
+                .apply_workspace_edit(|_| Ok(()), WorkspaceEditPublication::Recalculate)
+                .map_or_else(
+                    |error| IntentReceipt::rejected(IntentError::Rejected(error)),
+                    |_| IntentReceipt::accepted(),
+                ),
             WorkspaceIntent::AddNode {
                 parent,
                 symbol,
                 content,
-            } => self
-                .apply_calc_affecting_edit(|session| {
-                    session
-                        .add_node(parent.as_ref(), symbol, content)
-                        .map(|_| ())
-                })
-                .map_or_else(
-                    |error| IntentReceipt::rejected(IntentError::Rejected(error)),
-                    |_| IntentReceipt::accepted(),
-                ),
-            WorkspaceIntent::RenameNode { node, new_symbol } => self
-                .apply_calc_affecting_edit(|session| {
-                    session.rename_node(&node, new_symbol).map(|_| ())
-                })
-                .map_or_else(
-                    |error| IntentReceipt::rejected(IntentError::Rejected(error)),
-                    |_| IntentReceipt::accepted(),
-                ),
+            } => match self.apply_workspace_edit(
+                |session| session.add_node(parent.as_ref(), symbol, content),
+                WorkspaceEditPublication::Recalculate,
+            ) {
+                Ok(created) => {
+                    self.selection
+                        .set(SelectionState::with_primary(Some(created)));
+                    IntentReceipt::accepted()
+                }
+                Err(error) => IntentReceipt::rejected(IntentError::Rejected(error)),
+            },
+            WorkspaceIntent::RenameNode { node, new_symbol } => match self.apply_workspace_edit(
+                |session| session.rename_node(&node, new_symbol),
+                WorkspaceEditPublication::Recalculate,
+            ) {
+                Ok(renamed) => {
+                    self.selection
+                        .set(SelectionState::with_primary(Some(renamed)));
+                    IntentReceipt::accepted()
+                }
+                Err(error) => IntentReceipt::rejected(IntentError::Rejected(error)),
+            },
             WorkspaceIntent::MoveNode {
                 node,
                 new_parent,
                 new_index,
-            } => self
-                .apply_calc_affecting_edit(|session| {
-                    session
-                        .move_node(&node, new_parent.as_ref(), new_index)
-                        .map(|_| ())
-                })
-                .map_or_else(
-                    |error| IntentReceipt::rejected(IntentError::Rejected(error)),
-                    |_| IntentReceipt::accepted(),
-                ),
+            } => match self.apply_workspace_edit(
+                |session| session.move_node(&node, new_parent.as_ref(), new_index),
+                WorkspaceEditPublication::Recalculate,
+            ) {
+                Ok(moved) => {
+                    self.selection
+                        .set(SelectionState::with_primary(Some(moved)));
+                    IntentReceipt::accepted()
+                }
+                Err(error) => IntentReceipt::rejected(IntentError::Rejected(error)),
+            },
             WorkspaceIntent::ReorderNode { node, new_index } => self
-                .apply_calc_affecting_edit(|session| session.reorder_node(&node, new_index))
+                .apply_workspace_edit(
+                    |session| session.reorder_node(&node, new_index),
+                    WorkspaceEditPublication::Recalculate,
+                )
                 .map_or_else(
                     |error| IntentReceipt::rejected(IntentError::Rejected(error)),
-                    |_| IntentReceipt::accepted(),
+                    |_| {
+                        self.selection.set(SelectionState::with_primary(Some(node)));
+                        IntentReceipt::accepted()
+                    },
                 ),
-            WorkspaceIntent::DeleteNode { node } => self
-                .apply_calc_affecting_edit(|session| session.delete_node(&node))
+            WorkspaceIntent::DeleteNode { node } => {
+                let next_selection = parent_node_id(node.as_str());
+                self.apply_workspace_edit(
+                    |session| session.delete_node(&node),
+                    WorkspaceEditPublication::Recalculate,
+                )
                 .map_or_else(
                     |error| IntentReceipt::rejected(IntentError::Rejected(error)),
-                    |_| IntentReceipt::accepted(),
-                ),
+                    |_| {
+                        self.selection
+                            .set(SelectionState::with_primary(next_selection));
+                        IntentReceipt::accepted()
+                    },
+                )
+            }
             // The framework's WorkspaceIntent is intentionally
             // `#[non_exhaustive]` so adding a variant in a future bead is
             // an additive change. A variant that reaches this branch is
@@ -157,15 +194,22 @@ impl Dispatcher for HostDispatcher {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WorkspaceEditPublication {
+    Recalculate,
+    ProjectOnly,
+}
+
 impl HostDispatcher {
-    fn apply_calc_affecting_edit(
+    fn apply_workspace_edit<T>(
         &self,
         edit: impl FnOnce(
             &mut TreeWorkspaceSession,
-        ) -> Result<(), super::session::TreeWorkspaceSessionError>,
-    ) -> Result<(), String> {
+        ) -> Result<T, super::session::TreeWorkspaceSessionError>,
+        publication: WorkspaceEditPublication,
+    ) -> Result<T, String> {
         let Some(session_id) = self.session_id else {
-            return Ok(());
+            return Err("workspace session handle is not attached".to_string());
         };
         HOST_SESSIONS.with(|sessions| {
             let session = sessions
@@ -176,8 +220,10 @@ impl HostDispatcher {
             let mut session = session
                 .lock()
                 .map_err(|_| "workspace session mutex poisoned".to_string())?;
-            edit(&mut session).map_err(|error| error.to_string())?;
-            session.recalculate().map_err(|error| error.to_string())?;
+            let result = edit(&mut session).map_err(|error| error.to_string())?;
+            if matches!(publication, WorkspaceEditPublication::Recalculate) {
+                session.recalculate().map_err(|error| error.to_string())?;
+            }
             if let Some(workspace) = self.workspace {
                 workspace.set(
                     session
@@ -185,7 +231,12 @@ impl HostDispatcher {
                         .map_err(|error| error.to_string())?,
                 );
             }
-            Ok(())
+            Ok(result)
         })
     }
+}
+
+fn parent_node_id(path: &str) -> Option<NodeId> {
+    path.rsplit_once('.')
+        .map(|(parent, _)| NodeId::new(parent.to_string()))
 }

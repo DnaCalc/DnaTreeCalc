@@ -1,10 +1,11 @@
 use dnatreecalc_skin_framework::{
     NodeId, NodeView, SkinCapabilities, SkinCategory, SkinContext, SkinHandle, SkinId,
-    SkinManifest, SkinState, WorkspaceIntent, WorkspaceSkin,
+    SkinManifest, SkinState, WorkspaceIntent, WorkspaceRecalcMode, WorkspaceSkin,
 };
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::node_management::NodeManagementPanel;
 use crate::value_render::render_value;
 
 /// Stable skin id; used as the meta-namespace path component once
@@ -87,7 +88,11 @@ impl WorkspaceSkin for TripleEditor {
 fn TripleEditorView(cx: SkinContext<TripleEditorState>) -> impl IntoView {
     let workspace = cx.workspace;
     let selection = cx.selection;
+    let shared = cx.shared;
     let dispatch = cx.dispatch.clone();
+    let nav_dispatch = dispatch.clone();
+    let management_dispatch = dispatch.clone();
+    let editor_text = RwSignal::new(String::new());
 
     let rows = Memo::new(move |_| {
         workspace.with(|ws| {
@@ -103,12 +108,21 @@ fn TripleEditorView(cx: SkinContext<TripleEditorState>) -> impl IntoView {
         workspace.with(|ws| selected.as_ref().and_then(|id| ws.node(id).cloned()))
     });
 
+    Effect::new(move |_| {
+        if let Some(node) = selected_snapshot.get() {
+            editor_text.set(node.content_text);
+        }
+    });
+
+    let apply_dispatch = dispatch.clone();
+    let recalc_dispatch = dispatch.clone();
+
     view! {
         <section class="dtc-triple-editor">
             <aside class="dtc-triple-editor__nav" aria-label="Workspace navigation">
                 <div class="dtc-section-label">"Nodes"</div>
                 {move || {
-                    let dispatch = dispatch.clone();
+                    let dispatch = nav_dispatch.clone();
                     rows.with(|rs| {
                         rs.iter()
                             .map(|row| nav_row(row.clone(), selection, dispatch.clone()))
@@ -117,13 +131,61 @@ fn TripleEditorView(cx: SkinContext<TripleEditorState>) -> impl IntoView {
                 }}
             </aside>
             <section class="dtc-triple-editor__editor">
+                <NodeManagementPanel
+                    workspace=workspace
+                    selection=selection
+                    dispatch=management_dispatch.clone()
+                />
                 <div class="dtc-section-label">"Formula"</div>
-                <div class="dtc-formula-display">
-                    {move || selected_snapshot.with(|node| match node {
-                        Some(node) if node.content_text.is_empty() => "(empty)".to_string(),
-                        Some(node) => node.content_text.clone(),
-                        None => "Select a node from the nav rail to view its formula.".to_string(),
-                    })}
+                <textarea
+                    class="dtc-formula-tree__input dtc-triple-editor__input"
+                    prop:value=move || editor_text.get()
+                    on:input=move |ev| editor_text.set(event_target_value(&ev))
+                />
+                <div class="dtc-formula-tree__commands">
+                    <button
+                        type="button"
+                        on:click=move |_| {
+                            if let Some(node) = selected_snapshot.get_untracked() {
+                                let content = editor_text.get_untracked();
+                                match shared.get_untracked().recalc_mode {
+                                    WorkspaceRecalcMode::Auto => {
+                                        apply_dispatch.dispatch(WorkspaceIntent::EditContent {
+                                            node: node.id,
+                                            content,
+                                        });
+                                        shared.update(|state| {
+                                            state.manual_recalc_pending = false;
+                                        });
+                                    }
+                                    WorkspaceRecalcMode::Manual => {
+                                        apply_dispatch.dispatch(
+                                            WorkspaceIntent::EditContentDeferred {
+                                                node: node.id,
+                                                content,
+                                            },
+                                        );
+                                        shared.update(|state| {
+                                            state.manual_recalc_pending = true;
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    >
+                        "Apply"
+                    </button>
+                    <button
+                        type="button"
+                        on:click=move |_| {
+                            recalc_dispatch.dispatch(WorkspaceIntent::Recalculate);
+                            shared.update(|state| {
+                                state.manual_recalc_pending = false;
+                            });
+                        }
+                    >
+                        "Recalculate"
+                    </button>
                 </div>
             </section>
             <section class="dtc-triple-editor__value">

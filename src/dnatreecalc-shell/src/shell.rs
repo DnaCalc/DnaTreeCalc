@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use dnatreecalc_skin_framework::{
     Dispatcher, ErasedSkinContext, SelectionState, SharedSkinStateHandle, SkinId, SkinRegistry,
-    WorkspaceState,
+    WorkspaceIntent, WorkspaceRecalcMode, WorkspaceState,
 };
 use leptos::prelude::*;
 
@@ -93,8 +93,69 @@ pub fn WorkspaceShell(
                 <span>{move || format!("nodes: {}", node_count.get())}</span>
                 <span>{move || format!("selected: {}", selected_label.get())}</span>
                 <span class="dtc-context-strip__spacer"></span>
+                <RecalcModeControl
+                    shared=shared
+                    dispatch=dispatch.clone()
+                />
                 <span>"clean"</span>
             </footer>
+        </div>
+    }
+}
+
+#[component]
+fn RecalcModeControl(
+    shared: SharedSkinStateHandle,
+    dispatch: Arc<dyn Dispatcher>,
+) -> impl IntoView {
+    let shared_signal = shared.signal();
+    let mode = Memo::new(move |_| shared_signal.with(|state| state.recalc_mode));
+    let pending = Memo::new(move |_| shared_signal.with(|state| state.manual_recalc_pending));
+    let auto_shared = shared;
+    let manual_shared = shared;
+    let calculate_shared = shared;
+
+    view! {
+        <div class="dtc-recalc-mode" aria-label="Recalculation mode">
+            <button
+                type="button"
+                class:dtc-recalc-mode__button--active=move || mode.get() == WorkspaceRecalcMode::Auto
+                title="Recalculate content edits immediately"
+                on:click=move |_| {
+                    auto_shared.update(|state| {
+                        state.recalc_mode = WorkspaceRecalcMode::Auto;
+                        state.manual_recalc_pending = false;
+                    });
+                }
+            >
+                "Auto"
+            </button>
+            <button
+                type="button"
+                class:dtc-recalc-mode__button--active=move || mode.get() == WorkspaceRecalcMode::Manual
+                title="Defer content-edit recalculation until Calculate"
+                on:click=move |_| {
+                    manual_shared.update(|state| {
+                        state.recalc_mode = WorkspaceRecalcMode::Manual;
+                    });
+                }
+            >
+                "Manual"
+            </button>
+            <button
+                type="button"
+                class:dtc-recalc-mode__calculate
+                class:dtc-recalc-mode__calculate--pending=move || pending.get()
+                title="Recalculate workspace now"
+                on:click=move |_| {
+                    dispatch.dispatch(WorkspaceIntent::Recalculate);
+                    calculate_shared.update(|state| {
+                        state.manual_recalc_pending = false;
+                    });
+                }
+            >
+                {move || if pending.get() { "Calculate*" } else { "Calculate" }}
+            </button>
         </div>
     }
 }
