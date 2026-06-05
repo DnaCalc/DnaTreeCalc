@@ -28,17 +28,22 @@ use dnatreecalc_skin_framework::{
     Dispatcher, ErasedSkinContext, NodeId, NodeValueProjection, SelectionState, SharedSkinState,
     SharedSkinStateHandle, WorkspaceIntent,
 };
-use dnatreecalc_skins::{OUTLINE_TABLE_ID, TRIPLE_EDITOR_ID};
+use dnatreecalc_skins::{
+    DEPENDENCY_INSPECTOR_ID, FORMULA_TREE_ID, OUTLINE_TABLE_ID, TRIPLE_EDITOR_ID, VALUE_BOARD_ID,
+};
 use leptos::prelude::*;
 
 #[test]
 fn default_registry_ships_triple_editor_and_outline_table() {
     let registry = build_default_registry();
-    assert_eq!(registry.len(), 2);
+    assert_eq!(registry.len(), 5);
 
     let ids = registry.ids();
     assert!(ids.contains(&TRIPLE_EDITOR_ID));
+    assert!(ids.contains(&FORMULA_TREE_ID));
     assert!(ids.contains(&OUTLINE_TABLE_ID));
+    assert!(ids.contains(&VALUE_BOARD_ID));
+    assert!(ids.contains(&DEPENDENCY_INSPECTOR_ID));
 
     let triple = registry
         .get(TRIPLE_EDITOR_ID)
@@ -49,6 +54,37 @@ fn default_registry_ships_triple_editor_and_outline_table() {
         .get(OUTLINE_TABLE_ID)
         .expect("outline-table must be registered");
     assert_eq!(outline.manifest().display_name, "Outline table");
+
+    assert_eq!(
+        registry
+            .get(FORMULA_TREE_ID)
+            .expect("formula-tree must be registered")
+            .manifest()
+            .display_name,
+        "Formula tree"
+    );
+    assert!(
+        registry
+            .get(FORMULA_TREE_ID)
+            .expect("formula-tree must be registered")
+            .capabilities()
+            .supports_inline_formula_edit
+    );
+    assert!(
+        registry
+            .get(VALUE_BOARD_ID)
+            .expect("value-board must be registered")
+            .capabilities()
+            .renders_arrays_inline
+    );
+    assert_eq!(
+        registry
+            .get(DEPENDENCY_INSPECTOR_ID)
+            .expect("dependency-inspector must be registered")
+            .manifest()
+            .category,
+        dnatreecalc_skin_framework::SkinCategory::Inspector
+    );
 }
 
 #[test]
@@ -277,7 +313,13 @@ fn walking_skeleton_click_through_harness_edits_switches_saves_and_reopens() {
 
     let registry = build_default_registry();
     let recalc_before_switch = session.lock().unwrap().recalc_count();
-    for skin_id in [TRIPLE_EDITOR_ID, OUTLINE_TABLE_ID] {
+    for skin_id in [
+        TRIPLE_EDITOR_ID,
+        FORMULA_TREE_ID,
+        OUTLINE_TABLE_ID,
+        VALUE_BOARD_ID,
+        DEPENDENCY_INSPECTOR_ID,
+    ] {
         let cx = ErasedSkinContext {
             workspace: workspace.read_only(),
             selection: selection.read_only(),

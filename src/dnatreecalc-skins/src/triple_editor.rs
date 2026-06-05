@@ -1,9 +1,11 @@
 use dnatreecalc_skin_framework::{
-    NodeId, NodeValueProjection, NodeView, SkinCapabilities, SkinCategory, SkinContext, SkinHandle,
-    SkinId, SkinManifest, SkinState, WorkspaceIntent, WorkspaceSkin,
+    NodeId, NodeView, SkinCapabilities, SkinCategory, SkinContext, SkinHandle, SkinId,
+    SkinManifest, SkinState, WorkspaceIntent, WorkspaceSkin,
 };
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
+
+use crate::value_render::render_value;
 
 /// Stable skin id; used as the meta-namespace path component once
 /// persistence lands (dtc-osq.7).
@@ -175,26 +177,5 @@ fn nav_row(
         >
             <span>{row.label}</span>
         </div>
-    }
-}
-
-fn render_value(value: &NodeValueProjection) -> impl IntoView {
-    match value {
-        NodeValueProjection::Unevaluated => view! {
-            <div class="dtc-value-display">"—"</div>
-        }
-        .into_any(),
-        NodeValueProjection::Pending => view! {
-            <div class="dtc-value-display">"…"</div>
-        }
-        .into_any(),
-        NodeValueProjection::Scalar(text) => view! {
-            <div class="dtc-value-display">{text.clone()}</div>
-        }
-        .into_any(),
-        NodeValueProjection::Error(text) => view! {
-            <div class="dtc-value-display dtc-value-display--error">{text.clone()}</div>
-        }
-        .into_any(),
     }
 }

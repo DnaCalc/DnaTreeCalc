@@ -5,6 +5,8 @@ use dnatreecalc_skin_framework::{
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::value_render::value_text;
+
 pub const OUTLINE_TABLE_ID: SkinId = SkinId::new("outline-table");
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -154,13 +156,5 @@ fn outline_row(
             <td>{row.formula}</td>
             <td class:dtc-value-display--error=row.is_error>{row.value}</td>
         </tr>
-    }
-}
-
-fn value_text(value: &NodeValueProjection) -> String {
-    match value {
-        NodeValueProjection::Unevaluated => "—".to_string(),
-        NodeValueProjection::Pending => "…".to_string(),
-        NodeValueProjection::Scalar(text) | NodeValueProjection::Error(text) => text.clone(),
     }
 }

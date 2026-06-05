@@ -79,6 +79,8 @@ pub enum NodeValueProjection {
     /// A formatted scalar ready for display. Formatting comes from the host's
     /// format resolver (W007); the walking skeleton uses raw debug text.
     Scalar(String),
+    /// A rectangular or ragged array result ready for display.
+    Array(Vec<Vec<String>>),
     /// OxCalc reported a typed diagnostic for this node.
     Error(String),
 }
