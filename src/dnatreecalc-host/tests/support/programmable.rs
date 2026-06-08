@@ -9,9 +9,9 @@ use dnatreecalc_skin_framework::{
     Dispatcher, ErasedSkinContext, FormulaBindPreviewProjection, IntentError, IntentReceipt,
     MutationImpactProjection, NodeId, RecalcPlanMutation, RecalcPlanProjection, RegisteredSkin,
     SelectionState, SharedSkinState, SharedSkinStateHandle, SkinCapabilities, SkinCategory,
-    SkinContext, SkinHandle, SkinId, SkinManifest, SkinState, TableCellInput, TableRowInput,
-    WorkspaceIntent, WorkspaceRecalcMode, WorkspaceRevisionProjection, WorkspaceSkin,
-    WorkspaceState,
+    SkinContext, SkinHandle, SkinId, SkinManifest, SkinState, TableCellInput,
+    TableFormulaBindPreviewProjection, TableRowInput, WorkspaceIntent, WorkspaceRecalcMode,
+    WorkspaceRevisionProjection, WorkspaceSkin, WorkspaceState,
 };
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -845,6 +845,32 @@ impl Harness {
             .lock()
             .unwrap()
             .preview_formula_bind(&NodeId::new(node), content)
+            .unwrap()
+    }
+
+    pub fn preview_table_column_formula_bind(
+        &self,
+        table: &str,
+        column_id: &str,
+        content: &str,
+    ) -> TableFormulaBindPreviewProjection {
+        self.session
+            .lock()
+            .unwrap()
+            .preview_table_column_formula_bind(&NodeId::new(table), column_id, content)
+            .unwrap()
+    }
+
+    pub fn preview_table_totals_formula_bind(
+        &self,
+        table: &str,
+        column_id: &str,
+        content: &str,
+    ) -> TableFormulaBindPreviewProjection {
+        self.session
+            .lock()
+            .unwrap()
+            .preview_table_totals_formula_bind(&NodeId::new(table), column_id, content)
             .unwrap()
     }
 

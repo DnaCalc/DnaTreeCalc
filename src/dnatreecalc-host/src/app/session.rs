@@ -17,18 +17,18 @@ use dnatreecalc_skin_framework::{
     ReferenceResolutionProjection, ReferenceTargetProjection, RuntimeEffectFamilyProjection,
     RuntimeEffectProjection, RuntimeOverlayKindProjection, RuntimeOverlayProjection,
     SourceSpanProjection, TableAnchorProjection, TableCellInput, TableCellProjection,
-    TableCellsProjection, TableColumnBodyProjection, TableColumnProjection,
-    TableDependencyFactBlockerProjection, TableDependencyFactKindProjection,
+    TableCellRegionProjection, TableCellsProjection, TableColumnBodyProjection,
+    TableColumnProjection, TableDependencyFactBlockerProjection, TableDependencyFactKindProjection,
     TableDependencyFactProjection, TableDependencyFactStatusProjection,
-    TableFormulaMetadataProjection, TableProjection, TableRowInput, TableRowProjection,
-    TreeReferenceCollectionFamilyProjection, TreeReferenceCollectionProjection,
-    WorkspaceRevisionProjection, WorkspaceState,
+    TableFormulaBindPreviewProjection, TableFormulaMetadataProjection, TableProjection,
+    TableRowInput, TableRowProjection, TreeReferenceCollectionFamilyProjection,
+    TreeReferenceCollectionProjection, WorkspaceRevisionProjection, WorkspaceState,
 };
 use oxcalc_core::consumer::OxCalcTreeRunState;
 use oxcalc_core::consumer::{
     OxCalcTreeCalculationOutcome, OxCalcTreeContext, OxCalcTreeContextError,
     OxCalcTreeContextOptions, OxCalcTreeDryBindDiagnosticStage, OxCalcTreeDryBindInputKind,
-    OxCalcTreeEdit, OxCalcTreeEditResult, OxCalcTreeEditTransaction,
+    OxCalcTreeDryBindVerdict, OxCalcTreeEdit, OxCalcTreeEditResult, OxCalcTreeEditTransaction,
     OxCalcTreeHostCapabilitySnapshot, OxCalcTreeNodeCreate, OxCalcTreeNodeView,
     OxCalcTreePreviewMutation, OxCalcTreeRuntimePolicy, OxCalcTreeWorkspaceCreate,
     OxCalcTreeWorkspaceId, OxCalcTreeWorkspaceSnapshot, TransactionRecalcPolicy,
@@ -377,45 +377,80 @@ impl TreeWorkspaceSession {
         let verdict =
             self.context
                 .dry_bind_node_formula_text(&self.workspace_id, tree_node_id, content)?;
+        let preview = formula_bind_preview_from_oxcalc_verdict(verdict);
         Ok(FormulaBindPreviewProjection {
             node: node.clone(),
-            node_key: node_key_for_tree_node(verdict.node_id),
-            input_kind: match verdict.input_kind {
-                OxCalcTreeDryBindInputKind::Literal => FormulaBindPreviewInputKind::Literal,
-                OxCalcTreeDryBindInputKind::Formula => FormulaBindPreviewInputKind::Formula,
-            },
-            legal: verdict.legal,
-            diagnostics: verdict
-                .diagnostics
-                .into_iter()
-                .map(|diagnostic| FormulaBindPreviewDiagnosticProjection {
-                    stage: match diagnostic.stage {
-                        OxCalcTreeDryBindDiagnosticStage::Syntax => {
-                            FormulaBindPreviewDiagnosticStage::Syntax
-                        }
-                        OxCalcTreeDryBindDiagnosticStage::Bind => {
-                            FormulaBindPreviewDiagnosticStage::Bind
-                        }
-                    },
-                    message: diagnostic.message,
-                    span: SourceSpanProjection {
-                        start_utf8: diagnostic.span_start_utf8,
-                        end_utf8: diagnostic.span_start_utf8 + diagnostic.span_len_utf8,
-                    },
-                })
-                .collect(),
-            profile_violations: verdict
-                .profile_violations
-                .into_iter()
-                .map(|violation| FormulaBindPreviewProfileViolationProjection {
-                    feature: violation.feature,
-                    message: violation.message,
-                    span: SourceSpanProjection {
-                        start_utf8: violation.span_start_utf8,
-                        end_utf8: violation.span_start_utf8 + violation.span_len_utf8,
-                    },
-                })
-                .collect(),
+            node_key: node_key_for_tree_node(tree_node_id),
+            input_kind: preview.input_kind,
+            legal: preview.legal,
+            diagnostics: preview.diagnostics,
+            profile_violations: preview.profile_violations,
+        })
+    }
+
+    pub fn preview_table_column_formula_bind(
+        &self,
+        table: &NodeId,
+        column_id: &str,
+        content: impl Into<String>,
+    ) -> Result<TableFormulaBindPreviewProjection, TreeWorkspaceSessionError> {
+        let table_node_id = self.tree_node_id(table.as_str())?;
+        let table_view = self
+            .context
+            .table_view(&self.workspace_id, table_node_id)?
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTable {
+                table: table.to_string(),
+            })?;
+        let verdict = self.context.dry_bind_table_column_formula_text(
+            &self.workspace_id,
+            table_node_id,
+            column_id,
+            content,
+        )?;
+        let preview = formula_bind_preview_from_oxcalc_verdict(verdict);
+        Ok(TableFormulaBindPreviewProjection {
+            table: table.clone(),
+            table_key: node_key_for_tree_node(table_node_id),
+            table_id: table_view.table_id,
+            column_id: column_id.to_string(),
+            region: TableCellRegionProjection::Body,
+            input_kind: preview.input_kind,
+            legal: preview.legal,
+            diagnostics: preview.diagnostics,
+            profile_violations: preview.profile_violations,
+        })
+    }
+
+    pub fn preview_table_totals_formula_bind(
+        &self,
+        table: &NodeId,
+        column_id: &str,
+        content: impl Into<String>,
+    ) -> Result<TableFormulaBindPreviewProjection, TreeWorkspaceSessionError> {
+        let table_node_id = self.tree_node_id(table.as_str())?;
+        let table_view = self
+            .context
+            .table_view(&self.workspace_id, table_node_id)?
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTable {
+                table: table.to_string(),
+            })?;
+        let verdict = self.context.dry_bind_table_totals_formula_text(
+            &self.workspace_id,
+            table_node_id,
+            column_id,
+            content,
+        )?;
+        let preview = formula_bind_preview_from_oxcalc_verdict(verdict);
+        Ok(TableFormulaBindPreviewProjection {
+            table: table.clone(),
+            table_key: node_key_for_tree_node(table_node_id),
+            table_id: table_view.table_id,
+            column_id: column_id.to_string(),
+            region: TableCellRegionProjection::Totals,
+            input_kind: preview.input_kind,
+            legal: preview.legal,
+            diagnostics: preview.diagnostics,
+            profile_violations: preview.profile_violations,
         })
     }
 
@@ -2910,6 +2945,56 @@ fn calc_state_projection_for(calc_state: NodeCalcState) -> NodeCalcStateProjecti
 
 fn node_key_for_tree_node(tree_node_id: TreeNodeId) -> NodeKey {
     NodeKey::from_engine_id(tree_node_id.0)
+}
+
+struct FormulaBindPreviewPayload {
+    input_kind: FormulaBindPreviewInputKind,
+    legal: bool,
+    diagnostics: Vec<FormulaBindPreviewDiagnosticProjection>,
+    profile_violations: Vec<FormulaBindPreviewProfileViolationProjection>,
+}
+
+fn formula_bind_preview_from_oxcalc_verdict(
+    verdict: OxCalcTreeDryBindVerdict,
+) -> FormulaBindPreviewPayload {
+    FormulaBindPreviewPayload {
+        input_kind: match verdict.input_kind {
+            OxCalcTreeDryBindInputKind::Literal => FormulaBindPreviewInputKind::Literal,
+            OxCalcTreeDryBindInputKind::Formula => FormulaBindPreviewInputKind::Formula,
+        },
+        legal: verdict.legal,
+        diagnostics: verdict
+            .diagnostics
+            .into_iter()
+            .map(|diagnostic| FormulaBindPreviewDiagnosticProjection {
+                stage: match diagnostic.stage {
+                    OxCalcTreeDryBindDiagnosticStage::Syntax => {
+                        FormulaBindPreviewDiagnosticStage::Syntax
+                    }
+                    OxCalcTreeDryBindDiagnosticStage::Bind => {
+                        FormulaBindPreviewDiagnosticStage::Bind
+                    }
+                },
+                message: diagnostic.message,
+                span: SourceSpanProjection {
+                    start_utf8: diagnostic.span_start_utf8,
+                    end_utf8: diagnostic.span_start_utf8 + diagnostic.span_len_utf8,
+                },
+            })
+            .collect(),
+        profile_violations: verdict
+            .profile_violations
+            .into_iter()
+            .map(|violation| FormulaBindPreviewProfileViolationProjection {
+                feature: violation.feature,
+                message: violation.message,
+                span: SourceSpanProjection {
+                    start_utf8: violation.span_start_utf8,
+                    end_utf8: violation.span_start_utf8 + violation.span_len_utf8,
+                },
+            })
+            .collect(),
+    }
 }
 
 fn mutation_impact_blocked_reason_for_bind(

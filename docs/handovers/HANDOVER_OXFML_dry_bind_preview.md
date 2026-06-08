@@ -50,5 +50,20 @@ First node-formula dry-bind slice is now available across the stack:
 Still open before this handover can be closed:
 
 - typed profile-violation taxonomy and non-empty profile-gating evidence;
-- table/scoped authoring subjects;
+- scoped authoring subjects and table new-column preflight subjects beyond existing body/totals
+  formula edits;
 - broader legality-impact preview coverage for structural, table, scoped, and collision/orphan cases.
+
+## 2026-06-09 Table Subject Update
+
+Existing table body and totals formula edit previews now run through the same dry-bind path:
+
+- OxCalc exposes `OxCalcTreeContext::dry_bind_table_column_formula_text(...)` and
+  `OxCalcTreeContext::dry_bind_table_totals_formula_text(...)`.
+- Those methods reuse the OxCalc table formula context: table descriptor, enclosing table,
+  caller table region, primary locus, function registry, host formula context, and OxFml dry-bind.
+- DnaTreeCalc projects the result as `TableFormulaBindPreviewProjection`, with table node, stable
+  key, engine table id, column id, body/totals region, input kind, typed diagnostics, and profile
+  violations.
+- Programmable Skin IR tests exercise valid body current-row syntax, valid totals syntax, syntax
+  diagnostics, and no workspace mutation.

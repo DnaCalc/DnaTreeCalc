@@ -2,11 +2,12 @@
 
 ## Goal Statement
 
-Execute the DNA TreeCalc stack-requirements roadmap in dependency order, starting from the earliest
-unmet wave item and moving durable semantic truth into the repo that owns it: OxFml for formula
-language, binding, rendering, and single-node semantics; OxCalc for multi-node calculation,
-dependency, invalidation, publication, overlays, revisions, and candidate state; DnaTreeCalc host for
-closed intents and projection; skins for rendering and dispatch only.
+Execute the DNA TreeCalc stack-requirements roadmap in dependency order, using each iteration to move
+one durable capability from roadmap intent to observable product surface. Start from the earliest
+unmet wave item, verify its readiness against real code, then put the truth in the repo that owns it:
+OxFml for formula language, binding, rendering, and single-node semantics; OxCalc for multi-node
+calculation, dependency, invalidation, publication, overlays, revisions, and candidate state;
+DnaTreeCalc host for closed intents and projection; skins for rendering and dispatch only.
 
 The working loop is: verify the roadmap readiness claim against real code, implement or expose the
 capability at its owning layer, thread it through the host projection or closed intent seam, exercise
@@ -26,9 +27,15 @@ roadmap item; it is not the default next move.
 The current working target is the W2 structural-authoring tranche. W0/W1 exposure work has already
 established the stable identity spine, typed engine facts, reference-resolution visibility,
 binding diagnostics, effective formatting, derivation/runtime detail, and per-node published-value
-epochs. The next iterations should therefore advance first-class authoring subjects and typed
-intent receipts, then stop at the `transaction-scope` gate unless OxCalc has a verified spike path
-for atomic accumulate-and-publish-once semantics. Larger time/speculation features stay queued
+epochs. The immediate cursor is W2 `engine-dry-bind` and joined legality/impact preview coverage:
+finish typed dry-bind verdicts for node, table, and scoped subjects; prove the result from Skin IR
+tests; then continue to the next W2 structural-authoring item. Do not drift into incidental skin
+polish while W2 is open.
+
+When a wave item hits one of the real engine gates, stop treating it as projection work. The four
+substrate gates are `transaction-scope`, `revision-graph-retention`, `candidate-overlay-handle`, and
+any remaining value-epoch-dependent shape work. Each gate needs an OxCalc spike or implementation
+before dependent host, Skin IR, or UI work is scheduled. Larger time/speculation features stay queued
 behind the explicit engine workstreams: transaction scope, retained revision graph, and candidate
 overlay handles.
 
@@ -45,6 +52,9 @@ overlay handles.
 4. Thread the result through the host projection or intent receipt before calling it useful.
 5. Exercise it through programmable Skin IR tests or a real skin, not only engine-local tests.
 6. Report product scope, evidence, known exclusions, and the next blocked or unblocked roadmap item.
+7. After each implemented tranche, review the changed repos with fresh eyes for ownership drift,
+   host-side semantic fabrication, missing tests, and roadmap-order mistakes before updating this
+   checklist or committing.
 
 ## Working Checklist
 
@@ -92,8 +102,10 @@ overlay handles.
 - [ ] Add OxFml dry-bind verdicts for uncommitted formula edits; first node-formula edit slice now
       flows OxFml parse/bind verdicts through OxCalc TreeCalc host context into Skin IR without
       mutation or evaluation. First joined node-content legality-impact preview now combines that
-      dry-bind verdict with OxCalc committed-graph invalidation planning in Skin IR. Profile-violation
-      taxonomy plus table/scoped subject coverage remain required before closing the item.
+      dry-bind verdict with OxCalc committed-graph invalidation planning in Skin IR. Table body and
+      totals formula edit previews now dry-bind through OxCalc's table formula context and project as
+      typed table subjects in Skin IR. Profile-violation taxonomy plus broader scoped/new-column and
+      legality-impact preview coverage remain required before closing the item.
 
 ### Gating Engine Workstreams
 

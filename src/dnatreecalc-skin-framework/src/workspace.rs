@@ -712,6 +712,19 @@ pub struct FormulaBindPreviewProjection {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TableFormulaBindPreviewProjection {
+    pub table: NodeId,
+    pub table_key: NodeKey,
+    pub table_id: String,
+    pub column_id: String,
+    pub region: TableCellRegionProjection,
+    pub input_kind: FormulaBindPreviewInputKind,
+    pub legal: bool,
+    pub diagnostics: Vec<FormulaBindPreviewDiagnosticProjection>,
+    pub profile_violations: Vec<FormulaBindPreviewProfileViolationProjection>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MutationImpactIntentProjection {
     EditContent { node: NodeId, content: String },
 }

@@ -237,6 +237,60 @@ fn programmable_skin_previews_formula_bind_from_host_projection() {
 }
 
 #[test]
+fn programmable_skin_previews_table_formula_bind_from_table_subjects() {
+    let harness = Harness::from_repo_fixture("tables");
+    let skin = harness.driver.clone();
+    let before_revision = revision_fingerprint(&skin.state().revision);
+
+    let body = harness.preview_table_column_formula_bind("SalesTable", "col:tax", "=[@Amount]*0.2");
+    assert_eq!(body.table, NodeId::new("SalesTable"));
+    assert_eq!(body.table_id, "tree-table:sales");
+    assert_eq!(body.column_id, "col:tax");
+    assert_eq!(body.region, TableCellRegionProjection::Body);
+    assert_eq!(body.input_kind, FormulaBindPreviewInputKind::Formula);
+    assert!(body.legal, "{body:?}");
+    assert!(body.diagnostics.is_empty(), "{body:?}");
+    assert!(body.profile_violations.is_empty(), "{body:?}");
+
+    let totals =
+        harness.preview_table_totals_formula_bind("SalesTable", "col:amount", "=SUM([Amount])");
+    assert_eq!(totals.table, NodeId::new("SalesTable"));
+    assert_eq!(totals.table_id, "tree-table:sales");
+    assert_eq!(totals.column_id, "col:amount");
+    assert_eq!(totals.region, TableCellRegionProjection::Totals);
+    assert!(totals.legal, "{totals:?}");
+    assert!(totals.diagnostics.is_empty(), "{totals:?}");
+
+    let syntax =
+        harness.preview_table_totals_formula_bind("SalesTable", "col:amount", "=SUM([Amount]) +");
+    assert!(!syntax.legal);
+    assert!(
+        syntax
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.stage == FormulaBindPreviewDiagnosticStage::Syntax)
+    );
+    assert_eq!(
+        revision_fingerprint(&skin.state().revision),
+        before_revision
+    );
+    let after = skin.state();
+    let table = after
+        .tables
+        .get(&NodeId::new("SalesTable"))
+        .expect("SalesTable projects");
+    let tax = table
+        .columns
+        .iter()
+        .find(|column| column.column_id == "col:tax")
+        .expect("tax column projects");
+    let TableColumnBodyProjection::Formula(tax_formula) = &tax.body else {
+        panic!("tax column remains formula-backed");
+    };
+    assert_eq!(tax_formula.formula_text, "=[@Amount] * 0.1");
+}
+
+#[test]
 fn programmable_skin_previews_content_edit_legality_impact_from_host_projection() {
     let harness = Harness::empty();
     let skin = harness.driver.clone();

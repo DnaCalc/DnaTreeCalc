@@ -55,8 +55,8 @@ pub use workspace::{
     TableCellsProjection, TableColumnBodyProjection, TableColumnProjection,
     TableDependencyFactBlockerProjection, TableDependencyFactKindProjection,
     TableDependencyFactProjection, TableDependencyFactStatusProjection,
-    TableFormulaMetadataProjection, TableProjection, TableRowProjection,
-    TreeReferenceCollectionFamilyProjection, TreeReferenceCollectionProjection,
+    TableFormulaBindPreviewProjection, TableFormulaMetadataProjection, TableProjection,
+    TableRowProjection, TreeReferenceCollectionFamilyProjection, TreeReferenceCollectionProjection,
     WorkspaceRevisionProjection, WorkspaceState,
 };
 
