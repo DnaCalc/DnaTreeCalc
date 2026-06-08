@@ -122,6 +122,7 @@ impl WorkspaceState {
             column_name: column.name.clone(),
             column_ordinal: column.ordinal,
             region,
+            formula: active_table_cell_formula(region, column),
             node_key: cell.node_key.clone(),
             value: cell.value.clone(),
         })
@@ -152,6 +153,7 @@ pub struct ActiveTableCellDetailProjection {
     pub column_name: String,
     pub column_ordinal: u32,
     pub region: TableCellRegionProjection,
+    pub formula: Option<TableFormulaMetadataProjection>,
     pub node_key: NodeKey,
     pub value: NodeValueProjection,
 }
@@ -160,6 +162,19 @@ pub struct ActiveTableCellDetailProjection {
 pub enum TableCellRegionProjection {
     Body,
     Totals,
+}
+
+fn active_table_cell_formula(
+    region: TableCellRegionProjection,
+    column: &TableColumnProjection,
+) -> Option<TableFormulaMetadataProjection> {
+    match region {
+        TableCellRegionProjection::Body => match &column.body {
+            TableColumnBodyProjection::Formula(formula) => Some(formula.clone()),
+            TableColumnBodyProjection::ConstantCells => None,
+        },
+        TableCellRegionProjection::Totals => column.totals_formula.clone(),
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

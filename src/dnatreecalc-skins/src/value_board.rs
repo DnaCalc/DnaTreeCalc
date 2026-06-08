@@ -716,12 +716,17 @@ fn render_active_table_cell_summary(
                     .as_deref()
                     .map(str::to_string)
                     .unwrap_or_else(|| "totals".to_string());
+                let formula_text = detail.formula.as_ref().map(|formula| formula.formula_text.clone());
                 view! {
                     <dl class="dtc-table-card__active-cell">
                         <dt>"cell"</dt>
                         <dd>{format!("{} / {}", row, detail.column_name)}</dd>
                         <dt>"region"</dt>
                         <dd>{region}</dd>
+                        {formula_text.map(|formula_text| view! {
+                            <dt>"formula"</dt>
+                            <dd>{formula_text}</dd>
+                        })}
                         <dt>"value"</dt>
                         <dd>{detail.value.display_text()}</dd>
                     </dl>
@@ -1235,7 +1240,7 @@ mod tests {
     use super::*;
     use dnatreecalc_skin_framework::{
         NodeKey, TableAnchorProjection, TableCellProjection, TableCellsProjection,
-        TableColumnProjection, TableRowProjection,
+        TableColumnProjection, TableFormulaMetadataProjection, TableRowProjection,
     };
     use std::collections::BTreeMap;
 
@@ -1319,7 +1324,7 @@ mod tests {
             SelectionState::with_table_cell(dnatreecalc_skin_framework::TableCellSelection {
                 table: NodeId::new("SalesTable"),
                 row_id: Some("row:east".to_string()),
-                column_id: "col:amount".to_string(),
+                column_id: "col:tax".to_string(),
             });
 
         let detail = active_table_cell_detail_for_table(&workspace, &selection, "SalesTable")
@@ -1328,11 +1333,16 @@ mod tests {
         assert_eq!(detail.table_name, "SalesTable");
         assert_eq!(detail.row_id.as_deref(), Some("row:east"));
         assert_eq!(detail.row_ordinal, Some(2));
-        assert_eq!(detail.column_name, "Amount");
-        assert_eq!(detail.column_ordinal, 2);
+        assert_eq!(detail.column_name, "Tax");
+        assert_eq!(detail.column_ordinal, 3);
         assert_eq!(detail.region, TableCellRegionProjection::Body);
-        assert_eq!(detail.node_key, NodeKey::new("cell:east:amount"));
-        assert_eq!(detail.value.display_text(), "20");
+        let formula = detail
+            .formula
+            .as_ref()
+            .expect("formula column metadata projects through active detail");
+        assert_eq!(formula.formula_text, "=[@Amount] * 0.1");
+        assert_eq!(detail.node_key, NodeKey::new("cell:east:tax"));
+        assert_eq!(detail.value.display_text(), "2");
         assert!(active_table_cell_detail_for_table(&workspace, &selection, "OtherTable").is_none());
     }
 
@@ -1356,18 +1366,23 @@ mod tests {
                     ordinal: 2,
                 }],
                 columns: vec![TableColumnProjection {
-                    column_id: "col:amount".to_string(),
-                    name: "Amount".to_string(),
-                    ordinal: 2,
-                    body: TableColumnBodyProjection::ConstantCells,
+                    column_id: "col:tax".to_string(),
+                    name: "Tax".to_string(),
+                    ordinal: 3,
+                    body: TableColumnBodyProjection::Formula(TableFormulaMetadataProjection {
+                        formula_artifact_id: "formula:SalesTable.Columns.Tax".to_string(),
+                        bind_artifact_id: Some("bind:SalesTable.Columns.Tax".to_string()),
+                        formula_text_version: "formula-text:v1".to_string(),
+                        formula_text: "=[@Amount] * 0.1".to_string(),
+                    }),
                     totals_formula: None,
                 }],
                 cells: Some(TableCellsProjection {
                     body_rows: vec![vec![Some(TableCellProjection {
                         row_id: Some("row:east".to_string()),
-                        column_id: "col:amount".to_string(),
-                        node_key: NodeKey::new("cell:east:amount"),
-                        value: NodeValueProjection::Scalar("20".to_string()),
+                        column_id: "col:tax".to_string(),
+                        node_key: NodeKey::new("cell:east:tax"),
+                        value: NodeValueProjection::Scalar("2".to_string()),
                     })]],
                     totals_row: vec![],
                 }),

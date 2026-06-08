@@ -171,6 +171,7 @@ fn programmable_skin_selects_table_cells_without_recalculating() {
     assert_eq!(body_detail.column_name, "Amount");
     assert_eq!(body_detail.column_ordinal, 2);
     assert_eq!(body_detail.region, TableCellRegionProjection::Body);
+    assert!(body_detail.formula.is_none());
     let body_state = skin.state();
     let body_table = body_state
         .tables
@@ -198,6 +199,32 @@ fn programmable_skin_selects_table_cells_without_recalculating() {
     assert_eq!(body_detail.node_key, body_cell.node_key);
     assert_eq!(body_detail.value.display_text(), "20");
 
+    let formula_select = skin.try_select_table_cell("SalesTable", Some("row:east"), "col:tax");
+    assert!(formula_select.accepted, "{:?}", formula_select.error);
+    let formula_detail = skin
+        .active_table_cell_detail()
+        .expect("formula body table cell has active detail");
+    assert_eq!(formula_detail.table, NodeId::new("SalesTable"));
+    assert_eq!(formula_detail.row_id.as_deref(), Some("row:east"));
+    assert_eq!(formula_detail.column_id, "col:tax");
+    assert_eq!(formula_detail.column_name, "Tax");
+    assert_eq!(formula_detail.column_ordinal, 3);
+    assert_eq!(formula_detail.region, TableCellRegionProjection::Body);
+    let formula = formula_detail
+        .formula
+        .as_ref()
+        .expect("Tax body cells carry column formula metadata");
+    assert_eq!(
+        formula.formula_artifact_id,
+        "formula:SalesTable.Columns.Tax"
+    );
+    assert_eq!(
+        formula.bind_artifact_id.as_deref(),
+        Some("bind:SalesTable.Columns.Tax")
+    );
+    assert_eq!(formula.formula_text, "=[@Amount] * 0.1");
+    assert_eq!(formula_detail.value.display_text(), "2");
+
     let totals_select = skin.try_select_table_cell("SalesTable", None, "col:amount");
     assert!(totals_select.accepted, "{:?}", totals_select.error);
     assert_eq!(
@@ -216,6 +243,15 @@ fn programmable_skin_selects_table_cells_without_recalculating() {
     assert_eq!(totals_detail.column_name, "Amount");
     assert_eq!(totals_detail.column_ordinal, 2);
     assert_eq!(totals_detail.region, TableCellRegionProjection::Totals);
+    let totals_formula = totals_detail
+        .formula
+        .as_ref()
+        .expect("Amount totals cell carries totals formula metadata");
+    assert_eq!(
+        totals_formula.formula_artifact_id,
+        "formula:SalesTable.Totals.Amount"
+    );
+    assert_eq!(totals_formula.formula_text, "=SUM(SalesTable[Amount])");
     let totals_state = skin.state();
     let totals_table = totals_state
         .tables
