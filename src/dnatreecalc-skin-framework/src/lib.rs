@@ -39,8 +39,10 @@ pub use workspace::{
     NodeContentKind, NodeInvalidationProjection, NodeValueProjection, NodeView, PhaseKeyProjection,
     ReferenceResolutionProjection, ReferenceTargetProjection, RuntimeEffectFamilyProjection,
     RuntimeEffectProjection, RuntimeOverlayKindProjection, RuntimeOverlayProjection,
-    SourceSpanProjection, TableProjection, TreeReferenceCollectionFamilyProjection,
-    TreeReferenceCollectionProjection, WorkspaceRevisionProjection, WorkspaceState,
+    SourceSpanProjection, TableColumnBodyProjection, TableColumnProjection,
+    TableFormulaMetadataProjection, TableProjection, TableRowProjection,
+    TreeReferenceCollectionFamilyProjection, TreeReferenceCollectionProjection,
+    WorkspaceRevisionProjection, WorkspaceState,
 };
 
 #[cfg(test)]

@@ -608,6 +608,8 @@ pub struct TableProjection {
     pub table_name: String,
     pub display_path: String,
     pub canonical_path: String,
+    pub rows: Vec<TableRowProjection>,
+    pub columns: Vec<TableColumnProjection>,
     pub row_count: usize,
     pub column_count: usize,
     pub header_row_present: bool,
@@ -617,4 +619,32 @@ pub struct TableProjection {
     pub row_order_version: String,
     pub column_identity_version: String,
     pub dependency_inventory_summary: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TableRowProjection {
+    pub row_id: String,
+    pub ordinal: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TableColumnProjection {
+    pub column_id: String,
+    pub name: String,
+    pub ordinal: u32,
+    pub body: TableColumnBodyProjection,
+    pub totals_formula: Option<TableFormulaMetadataProjection>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TableColumnBodyProjection {
+    ConstantCells,
+    Formula(TableFormulaMetadataProjection),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TableFormulaMetadataProjection {
+    pub formula_artifact_id: String,
+    pub bind_artifact_id: Option<String>,
+    pub formula_text_version: String,
 }

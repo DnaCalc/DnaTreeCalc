@@ -3,7 +3,7 @@ mod support;
 use dnatreecalc_skin_framework::{
     CalcRunStateProjection, NodeContentKind, NodeId, NodeValueProjection,
     ReferenceTargetProjection, RuntimeEffectFamilyProjection, RuntimeOverlayKindProjection,
-    TreeReferenceCollectionFamilyProjection, WorkspaceRecalcMode,
+    TableColumnBodyProjection, TreeReferenceCollectionFamilyProjection, WorkspaceRecalcMode,
 };
 
 use support::programmable::{Harness, revision_fingerprint};
@@ -510,6 +510,44 @@ fn programmable_skin_reads_table_and_dependency_ir_from_fixture() {
     assert_eq!(table.row_count, 3);
     assert_eq!(table.column_count, 3);
     assert!(table.header_row_present);
+    assert_eq!(
+        table
+            .rows
+            .iter()
+            .map(|row| row.row_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["row:west", "row:east", "row:north"]
+    );
+    assert_eq!(
+        table
+            .columns
+            .iter()
+            .map(|column| column.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["Region", "Amount", "Tax"]
+    );
+    assert!(matches!(
+        table.columns[0].body,
+        TableColumnBodyProjection::ConstantCells
+    ));
+    let TableColumnBodyProjection::Formula(tax_formula) = &table.columns[2].body else {
+        panic!("Tax column should project formula metadata");
+    };
+    assert_eq!(
+        tax_formula.formula_artifact_id,
+        "formula:SalesTable.Columns.Tax"
+    );
+    assert_eq!(
+        tax_formula.bind_artifact_id.as_deref(),
+        Some("bind:SalesTable.Columns.Tax")
+    );
+    assert_eq!(
+        table.columns[1]
+            .totals_formula
+            .as_ref()
+            .map(|formula| formula.formula_artifact_id.as_str()),
+        Some("formula:SalesTable.Totals.Amount")
+    );
     assert!(!table.dependency_inventory_summary.is_empty());
 }
 

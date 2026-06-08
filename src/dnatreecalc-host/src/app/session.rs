@@ -10,7 +10,8 @@ use dnatreecalc_skin_framework::{
     NodeContentKind as FrameworkContentKind, NodeId, NodeInvalidationProjection, NodeKey,
     NodeValueProjection, NodeView, PhaseKeyProjection, ReferenceResolutionProjection,
     ReferenceTargetProjection, RuntimeEffectFamilyProjection, RuntimeEffectProjection,
-    RuntimeOverlayKindProjection, RuntimeOverlayProjection, TableProjection,
+    RuntimeOverlayKindProjection, RuntimeOverlayProjection, TableColumnBodyProjection,
+    TableColumnProjection, TableFormulaMetadataProjection, TableProjection, TableRowProjection,
     TreeReferenceCollectionFamilyProjection, TreeReferenceCollectionProjection,
     WorkspaceRevisionProjection, WorkspaceState,
 };
@@ -1548,6 +1549,22 @@ fn table_projection_for(view: &oxcalc_core::consumer::OxCalcTreeTableView) -> Ta
         table_name: view.table_name.clone(),
         display_path: view.display_path.clone(),
         canonical_path: view.canonical_path.clone(),
+        rows: view
+            .snapshot
+            .rows
+            .iter()
+            .enumerate()
+            .map(|(index, row)| TableRowProjection {
+                row_id: row.0.clone(),
+                ordinal: index + 1,
+            })
+            .collect(),
+        columns: view
+            .snapshot
+            .columns
+            .iter()
+            .map(table_column_projection)
+            .collect(),
         row_count: view.snapshot.rows.len(),
         column_count: view.snapshot.columns.len(),
         header_row_present: view.snapshot.header_row_present,
@@ -1562,6 +1579,36 @@ fn table_projection_for(view: &oxcalc_core::consumer::OxCalcTreeTableView) -> Ta
             .iter()
             .map(|fact| format!("{:?}", fact.kind))
             .collect(),
+    }
+}
+
+fn table_column_projection(column: &TreeCalcTableColumnSnapshot) -> TableColumnProjection {
+    TableColumnProjection {
+        column_id: column.column_id.clone(),
+        name: column.column_name.clone(),
+        ordinal: column.ordinal,
+        body: match &column.body_metadata {
+            TreeCalcTableColumnBodyMetadata::ConstantCells => {
+                TableColumnBodyProjection::ConstantCells
+            }
+            TreeCalcTableColumnBodyMetadata::Formula(formula) => {
+                TableColumnBodyProjection::Formula(table_formula_projection(formula))
+            }
+        },
+        totals_formula: column
+            .totals_metadata
+            .as_ref()
+            .map(table_formula_projection),
+    }
+}
+
+fn table_formula_projection(
+    formula: &TreeCalcTableFormulaMetadata,
+) -> TableFormulaMetadataProjection {
+    TableFormulaMetadataProjection {
+        formula_artifact_id: formula.formula_artifact_id.clone(),
+        bind_artifact_id: formula.bind_artifact_id.clone(),
+        formula_text_version: formula.formula_text_version.clone(),
     }
 }
 
