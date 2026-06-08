@@ -3285,6 +3285,21 @@ mod tests {
     }
 
     #[test]
+    fn calc_value_projection_preserves_reference_values() {
+        let reference = oxfunc_core::value::ReferenceLike::new(
+            oxfunc_core::value::ReferenceKind::A1,
+            "Tree!A1".to_string(),
+        );
+
+        assert_eq!(
+            calc_value_projection(&CalcValue::reference(reference)),
+            NodeValueProjection::Reference {
+                target: "Tree!A1".to_string()
+            }
+        );
+    }
+
+    #[test]
     fn session_snapshot_roundtrip_preserves_oxcalc_identity() {
         let fixture = WorkspaceFixture::from_repo_fixture("tables").unwrap();
         let model = WorkspaceModel::try_from(fixture).unwrap();

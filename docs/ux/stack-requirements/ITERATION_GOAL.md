@@ -46,8 +46,8 @@ reported against the roadmap with concrete evidence and explicit remaining gaps.
 - [x] Complete host cutover from path-keyed semantic maps to `NodeKey`-keyed node and dependency
       maps; retain path maps only as transition/display compatibility.
 - [x] Preserve richer scalar/error value variants through Skin IR, not only arrays and display text.
-- [ ] Prove or expose reference-valued `CalcValue` node results through Skin IR when OxCalc/OxFml
-      has an ordinary producer for them.
+- [x] Prove Skin IR projection for reference-valued `CalcValue`; ordinary TreeCalc node-result
+      producer remains upstream in OxCalc/OxFml, so no host-side producer is fabricated.
 - [x] Add the reference-resolution map: token/source handle to target plus reverse index.
 - [x] Audit and complete published-run derivation trace payloads for prepared-call tree, hole
       bindings, typed root result, typed child-call results, and typed prepared argument values.
