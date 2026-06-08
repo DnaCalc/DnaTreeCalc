@@ -489,6 +489,81 @@ pub const SHELL_CSS: &str = r#"
     margin: 0;
 }
 
+.dtc-table-card {
+    margin-top: 0.75rem;
+    display: grid;
+    gap: 0.5rem;
+}
+
+.dtc-table-card__grid {
+    display: grid;
+    gap: 1px;
+    overflow-x: auto;
+    border: 1px solid #d8dee8;
+    border-radius: 6px;
+    background: #d8dee8;
+}
+
+.dtc-table-card__row {
+    display: grid;
+    grid-template-columns: repeat(var(--dtc-table-cols, 3), minmax(5rem, 1fr));
+    gap: 1px;
+}
+
+.dtc-table-card__header-cell,
+.dtc-table-card__formula-cell,
+.dtc-table-card__cell-input {
+    min-width: 0;
+    min-height: 2rem;
+    border: 0;
+    border-radius: 0;
+    padding: 0.375rem 0.5rem;
+    background: #ffffff;
+    font: 0.8125rem ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: #1f2937;
+}
+
+.dtc-table-card__header-cell {
+    background: #f3f6f9;
+    font-weight: 700;
+    color: #475569;
+}
+
+.dtc-table-card__row--totals .dtc-table-card__formula-cell {
+    background: #f8fafc;
+    font-weight: 700;
+}
+
+.dtc-table-card__cell-input:focus {
+    outline: 2px solid #2563eb;
+    outline-offset: -2px;
+}
+
+.dtc-table-card__add-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+    align-items: center;
+}
+
+.dtc-table-card__add-row input {
+    flex: 1 1 7rem;
+    min-width: 0;
+    border: 1px solid #d8dee8;
+    border-radius: 4px;
+    padding: 0.375rem 0.5rem;
+    font: 0.8125rem ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.dtc-table-card__add-row button {
+    border: 1px solid #bfdbfe;
+    border-radius: 4px;
+    padding: 0.375rem 0.625rem;
+    background: #eff6ff;
+    color: #1d4ed8;
+    font-weight: 700;
+}
+
 .dtc-dependency-inspector {
     display: grid;
     grid-template-columns: minmax(260px, 360px) minmax(320px, 1fr);

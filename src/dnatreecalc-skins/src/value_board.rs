@@ -1,9 +1,11 @@
 use dnatreecalc_skin_framework::{
-    NodeValueProjection, SkinCapabilities, SkinCategory, SkinContext, SkinHandle, SkinId,
-    SkinManifest, SkinState, WorkspaceSkin,
+    Dispatcher, NodeId, NodeValueProjection, SkinCapabilities, SkinCategory, SkinContext,
+    SkinHandle, SkinId, SkinManifest, SkinState, TableCellInput, TableColumnBodyProjection,
+    TableProjection, WorkspaceIntent, WorkspaceSkin,
 };
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 use crate::value_render::{render_value, value_text};
 
@@ -64,6 +66,7 @@ impl WorkspaceSkin for ValueBoard {
 #[component]
 fn ValueBoardView(cx: SkinContext<ValueBoardState>) -> impl IntoView {
     let workspace = cx.workspace;
+    let dispatch = cx.dispatch.clone();
 
     let cards = Memo::new(move |_| {
         workspace.with(|ws| {
@@ -93,6 +96,7 @@ fn ValueBoardView(cx: SkinContext<ValueBoardState>) -> impl IntoView {
     view! {
         <section class="dtc-value-board">
             {move || cards.with(|cards| {
+                let dispatch = dispatch.clone();
                 cards.iter().map(|(path, name, content, value, table)| {
                     view! {
                         <article class="dtc-value-card">
@@ -103,18 +107,248 @@ fn ValueBoardView(cx: SkinContext<ValueBoardState>) -> impl IntoView {
                             <div class="dtc-value-card__formula">{content.clone()}</div>
                             <div title=value_text(value)>{render_value(value)}</div>
                             {table.as_ref().map(|table| {
-                                view! {
-                                    <dl class="dtc-table-summary">
-                                        <dt>"table"</dt><dd>{table.table_name.clone()}</dd>
-                                        <dt>"rows"</dt><dd>{table.row_count}</dd>
-                                        <dt>"columns"</dt><dd>{table.column_count}</dd>
-                                    </dl>
-                                }
+                                render_table_card(path.clone(), table.clone(), dispatch.clone())
                             })}
                         </article>
                     }
                 }).collect::<Vec<_>>()
             })}
         </section>
+    }
+}
+
+fn render_table_card(
+    table_node: String,
+    table: TableProjection,
+    dispatch: Arc<dyn Dispatcher>,
+) -> AnyView {
+    let constant_columns = table
+        .columns
+        .iter()
+        .filter(|column| matches!(column.body, TableColumnBodyProjection::ConstantCells))
+        .map(|column| {
+            (
+                column.column_id.clone(),
+                column.name.clone(),
+                RwSignal::new(String::new()),
+            )
+        })
+        .collect::<Vec<_>>();
+    let next_row_id = RwSignal::new(format!("row:new{}", table.row_count + 1));
+    let table_node_for_add = table_node.clone();
+    let add_dispatch = dispatch.clone();
+    let add_inputs = constant_columns.clone();
+
+    view! {
+        <section class="dtc-table-card">
+            <dl class="dtc-table-summary">
+                <dt>"table"</dt><dd>{table.table_name.clone()}</dd>
+                <dt>"rows"</dt><dd>{table.row_count}</dd>
+                <dt>"columns"</dt><dd>{table.column_count}</dd>
+            </dl>
+            {render_table_grid(&table_node, &table, dispatch)}
+            <div class="dtc-table-card__add-row">
+                <input
+                    class="dtc-table-card__row-id"
+                    aria-label="New row id"
+                    prop:value=move || next_row_id.get()
+                    on:input=move |ev| next_row_id.set(event_target_value(&ev))
+                />
+                {constant_columns.iter().map(|(column_id, name, value)| {
+                    let label = format!("{name} value");
+                    let value_signal = *value;
+                    view! {
+                        <input
+                            class="dtc-table-card__cell-input"
+                            aria-label=label
+                            title=column_id.clone()
+                            placeholder=name.clone()
+                            prop:value=move || value_signal.get()
+                            on:input=move |ev| value_signal.set(event_target_value(&ev))
+                        />
+                    }
+                }).collect::<Vec<_>>()}
+                <button
+                    type="button"
+                    on:click=move |_| {
+                        let row_id = next_row_id.get_untracked();
+                        let values = add_inputs
+                            .iter()
+                            .map(|(column_id, _, value)| TableCellInput {
+                                column_id: column_id.clone(),
+                                content: value.get_untracked(),
+                            })
+                            .collect::<Vec<_>>();
+                        let receipt = add_dispatch.dispatch(table_row_add_intent(
+                            &table_node_for_add,
+                            row_id,
+                            values,
+                        ));
+                        if receipt.accepted {
+                            for (_, _, value) in &add_inputs {
+                                value.set(String::new());
+                            }
+                        }
+                    }
+                >
+                    "Add row"
+                </button>
+            </div>
+        </section>
+    }
+    .into_any()
+}
+
+fn render_table_grid(
+    table_node: &str,
+    table: &TableProjection,
+    dispatch: Arc<dyn Dispatcher>,
+) -> AnyView {
+    let Some(cells) = table.cells.as_ref() else {
+        return view! { <div class="dtc-table-card__empty">"No cell values"</div> }.into_any();
+    };
+    let grid_style = format!("--dtc-table-cols: {};", table.column_count.max(1));
+
+    view! {
+        <div class="dtc-table-card__grid" role="table" style=grid_style>
+            <div class="dtc-table-card__row dtc-table-card__row--header" role="row">
+                {table.columns.iter().map(|column| {
+                    view! {
+                        <span class="dtc-table-card__header-cell" role="columnheader">
+                            {column.name.clone()}
+                        </span>
+                    }
+                }).collect::<Vec<_>>()}
+            </div>
+            {cells.body_rows.iter().enumerate().map(|(row_index, row)| {
+                let fallback_row_id = table.rows.get(row_index).map(|row| row.row_id.clone());
+                view! {
+                    <div class="dtc-table-card__row" role="row">
+                        {row.iter().enumerate().map(|(column_index, cell)| {
+                            let Some(column) = table.columns.get(column_index) else {
+                                return view! {
+                                    <span class="dtc-table-card__formula-cell" role="cell"></span>
+                                }
+                                .into_any();
+                            };
+                            let value = cell
+                                .as_ref()
+                                .map(|cell| cell.value.display_text())
+                                .unwrap_or_default();
+                            let row_id = cell
+                                .as_ref()
+                                .and_then(|cell| cell.row_id.clone())
+                                .or_else(|| fallback_row_id.clone())
+                                .unwrap_or_default();
+                            let table_node = table_node.to_string();
+                            let column_id = column.column_id.clone();
+                            let edit_dispatch = dispatch.clone();
+                            if matches!(column.body, TableColumnBodyProjection::ConstantCells) {
+                                view! {
+                                    <input
+                                        class="dtc-table-card__cell-input"
+                                        aria-label=format!("{} {}", row_id, column.name)
+                                        prop:value=value
+                                        on:change=move |ev| {
+                                            edit_dispatch.dispatch(table_cell_edit_intent(
+                                                &table_node,
+                                                &row_id,
+                                                &column_id,
+                                                event_target_value(&ev),
+                                            ));
+                                        }
+                                    />
+                                }
+                                .into_any()
+                            } else {
+                                view! {
+                                    <span class="dtc-table-card__formula-cell" role="cell">
+                                        {value}
+                                    </span>
+                                }
+                                .into_any()
+                            }
+                        }).collect::<Vec<_>>()}
+                    </div>
+                }
+            }).collect::<Vec<_>>()}
+            {if table.totals_row_present {
+                view! {
+                    <div class="dtc-table-card__row dtc-table-card__row--totals" role="row">
+                        {cells.totals_row.iter().map(|cell| {
+                            view! {
+                                <span class="dtc-table-card__formula-cell" role="cell">
+                                    {cell.as_ref().map(|cell| cell.value.display_text()).unwrap_or_default()}
+                                </span>
+                            }
+                        }).collect::<Vec<_>>()}
+                    </div>
+                }
+                .into_any()
+            } else {
+                view! { <span></span> }.into_any()
+            }}
+        </div>
+    }
+    .into_any()
+}
+
+fn table_cell_edit_intent(
+    table: &str,
+    row_id: &str,
+    column_id: &str,
+    content: String,
+) -> WorkspaceIntent {
+    WorkspaceIntent::EditTableCell {
+        table: NodeId::new(table),
+        row_id: row_id.to_string(),
+        column_id: column_id.to_string(),
+        content,
+    }
+}
+
+fn table_row_add_intent(
+    table: &str,
+    row_id: String,
+    values: Vec<TableCellInput>,
+) -> WorkspaceIntent {
+    WorkspaceIntent::AddTableRow {
+        table: NodeId::new(table),
+        row_id,
+        values,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn value_board_table_cell_edit_uses_skin_ir_intent() {
+        assert_eq!(
+            table_cell_edit_intent("SalesTable", "row:east", "col:amount", "25".to_string()),
+            WorkspaceIntent::EditTableCell {
+                table: NodeId::new("SalesTable"),
+                row_id: "row:east".to_string(),
+                column_id: "col:amount".to_string(),
+                content: "25".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn value_board_table_row_add_uses_skin_ir_intent() {
+        let values = vec![TableCellInput {
+            column_id: "col:amount".to_string(),
+            content: "40".to_string(),
+        }];
+        assert_eq!(
+            table_row_add_intent("SalesTable", "row:south".to_string(), values.clone()),
+            WorkspaceIntent::AddTableRow {
+                table: NodeId::new("SalesTable"),
+                row_id: "row:south".to_string(),
+                values,
+            }
+        );
     }
 }
