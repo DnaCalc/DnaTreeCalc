@@ -1,9 +1,9 @@
 use dnatreecalc_skin_framework::{
     ActiveSelectionDetailProjection, ActiveTableCellDetailProjection, Dispatcher, NodeId,
-    NodeValueProjection, SelectionState, SkinCapabilities, SkinCategory, SkinContext, SkinHandle,
-    SkinId, SkinManifest, SkinState, TableCellEditabilityProjection, TableCellInput,
-    TableColumnBodyProjection, TableProjection, TableRowInput, WorkspaceIntent, WorkspaceSkin,
-    WorkspaceState,
+    NodeValueProjection, ReferenceResolutionProjection, SelectionState, SkinCapabilities,
+    SkinCategory, SkinContext, SkinHandle, SkinId, SkinManifest, SkinState,
+    TableCellEditabilityProjection, TableCellInput, TableColumnBodyProjection, TableProjection,
+    TableRowInput, WorkspaceIntent, WorkspaceSkin, WorkspaceState,
 };
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -207,26 +207,35 @@ fn active_selection_detail_rows(
     let active_selection = workspace.active_selection_detail(selection)?;
     let focus = active_selection.stable_id().to_string();
     match active_selection {
-        ActiveSelectionDetailProjection::Node(detail) => Some(vec![
-            ("focus", focus),
-            ("name", detail.display_name),
-            ("key", detail.node_key.to_string()),
-            ("kind", detail.content_kind.stable_id().to_string()),
-            (
-                "state",
-                detail
-                    .calc_state
-                    .map(|state| state.stable_id().to_string())
-                    .unwrap_or_else(|| "unknown".to_string()),
-            ),
-            ("input", detail.content_text),
-            ("value", detail.value.display_text()),
-            ("refs out", detail.outgoing_references.len().to_string()),
-            (
-                "refs in",
-                detail.incoming_reference_handles.len().to_string(),
-            ),
-        ]),
+        ActiveSelectionDetailProjection::Node(detail) => {
+            let mut rows = vec![
+                ("focus", focus),
+                ("name", detail.display_name),
+                ("key", detail.node_key.to_string()),
+                ("kind", detail.content_kind.stable_id().to_string()),
+                (
+                    "state",
+                    detail
+                        .calc_state
+                        .map(|state| state.stable_id().to_string())
+                        .unwrap_or_else(|| "unknown".to_string()),
+                ),
+                ("input", detail.content_text),
+                ("value", detail.value.display_text()),
+                ("refs out", detail.outgoing_references.len().to_string()),
+                (
+                    "refs in",
+                    detail.incoming_reference_handles.len().to_string(),
+                ),
+            ];
+            if let Some(handles) = outgoing_reference_summary(&detail.outgoing_references) {
+                rows.push(("out handles", handles));
+            }
+            if let Some(handles) = handle_summary(detail.incoming_reference_handles) {
+                rows.push(("in handles", handles));
+            }
+            Some(rows)
+        }
         ActiveSelectionDetailProjection::TableCell(detail) => {
             let row = detail
                 .row_id
@@ -255,9 +264,39 @@ fn active_selection_detail_rows(
                     detail.incoming_reference_handles.len().to_string(),
                 ),
             ]);
+            if let Some(handles) = outgoing_reference_summary(&detail.outgoing_references) {
+                rows.push(("out handles", handles));
+            }
+            if let Some(handles) = handle_summary(detail.incoming_reference_handles) {
+                rows.push(("in handles", handles));
+            }
             Some(rows)
         }
     }
+}
+
+fn outgoing_reference_summary(references: &[ReferenceResolutionProjection]) -> Option<String> {
+    handle_summary(references.iter().map(|reference| {
+        format!(
+            "{} ({})",
+            reference.source_reference_handle,
+            reference.primary_kind.stable_id()
+        )
+    }))
+}
+
+fn handle_summary(handles: impl IntoIterator<Item = String>) -> Option<String> {
+    const LIMIT: usize = 4;
+    let handles = handles.into_iter().collect::<Vec<_>>();
+    if handles.is_empty() {
+        return None;
+    }
+
+    let mut visible = handles.iter().take(LIMIT).cloned().collect::<Vec<_>>();
+    if handles.len() > LIMIT {
+        visible.push(format!("+{} more", handles.len() - LIMIT));
+    }
+    Some(visible.join(", "))
 }
 
 fn render_table_card(
@@ -1596,6 +1635,7 @@ mod tests {
                 ("value", "3".to_string()),
                 ("refs out", "0".to_string()),
                 ("refs in", "1".to_string()),
+                ("in handles", "ref:Root.B:A".to_string()),
             ])
         );
 
@@ -1620,6 +1660,7 @@ mod tests {
                 ("value", "4".to_string()),
                 ("refs out", "1".to_string()),
                 ("refs in", "0".to_string()),
+                ("out handles", "ref:Root.B:A (static_direct)".to_string()),
             ])
         );
     }
@@ -1656,6 +1697,23 @@ mod tests {
                 ("refs out", "0".to_string()),
                 ("refs in", "0".to_string()),
             ])
+        );
+    }
+
+    #[test]
+    fn value_board_active_detail_handle_summary_is_bounded() {
+        assert_eq!(handle_summary(Vec::<String>::new()), None);
+        assert_eq!(
+            handle_summary(["a", "b", "c", "d"].into_iter().map(str::to_string)),
+            Some("a, b, c, d".to_string())
+        );
+        assert_eq!(
+            handle_summary(
+                ["a", "b", "c", "d", "e", "f"]
+                    .into_iter()
+                    .map(str::to_string)
+            ),
+            Some("a, b, c, d, +2 more".to_string())
         );
     }
 
