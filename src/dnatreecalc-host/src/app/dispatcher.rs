@@ -228,6 +228,33 @@ impl Dispatcher for HostDispatcher {
                     },
                 )
             }
+            WorkspaceIntent::EditTableCell {
+                table,
+                row_id,
+                column_id,
+                content,
+            } => self
+                .apply_workspace_edit(
+                    |session| session.edit_table_cell(&table, &row_id, &column_id, content),
+                    WorkspaceEditPublication::Recalculate,
+                )
+                .map_or_else(
+                    |error| IntentReceipt::rejected(IntentError::Rejected(error)),
+                    receipt_for_publication,
+                ),
+            WorkspaceIntent::AddTableRow {
+                table,
+                row_id,
+                values,
+            } => self
+                .apply_workspace_edit(
+                    |session| session.add_table_row(&table, row_id, values),
+                    WorkspaceEditPublication::Recalculate,
+                )
+                .map_or_else(
+                    |error| IntentReceipt::rejected(IntentError::Rejected(error)),
+                    receipt_for_publication,
+                ),
             WorkspaceIntent::NewWorkspace => self.create_workspace().map_or_else(
                 |error| IntentReceipt::rejected(IntentError::Rejected(error)),
                 receipt_for_publication,

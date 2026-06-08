@@ -718,6 +718,97 @@ fn programmable_skin_reads_table_and_dependency_ir_from_fixture() {
 }
 
 #[test]
+fn programmable_skin_edits_table_cells_and_adds_rows_from_outside_ir() {
+    let harness = Harness::from_repo_fixture("tables");
+    let skin = harness.driver.clone();
+    skin.recalc();
+
+    let before = skin.state();
+    let before_table = before
+        .tables
+        .get(&NodeId::new("SalesTable"))
+        .expect("table projects");
+    let before_revision = revision_fingerprint(&before.revision);
+    assert_eq!(table_body_row(before_table, 1), vec!["East", "20", "2"]);
+    assert_eq!(table_totals_row(before_table), vec!["", "60", ""]);
+
+    let edit = skin.try_edit_table_cell("SalesTable", "row:east", "col:amount", "25");
+    assert!(edit.accepted, "{:?}", edit.error);
+    assert_ne!(
+        revision_fingerprint(&skin.state().revision),
+        before_revision
+    );
+    let edited_state = skin.state();
+    let edited_table = edited_state
+        .tables
+        .get(&NodeId::new("SalesTable"))
+        .expect("table projects after cell edit");
+    assert_eq!(edited_table.row_count, 3);
+    assert_eq!(table_body_row(edited_table, 1), vec!["East", "25", "2.5"]);
+    assert_eq!(table_totals_row(edited_table), vec!["", "65", ""]);
+    assert!(!edited_state.node_order.iter().any(|node| {
+        node.as_str().contains("__table_body_") || node.as_str().contains("row:east")
+    }));
+
+    let formula_edit = skin.try_edit_table_cell("SalesTable", "row:east", "col:tax", "99");
+    assert!(!formula_edit.accepted, "{formula_edit:?}");
+    assert_eq!(
+        table_body_row(
+            skin.state()
+                .tables
+                .get(&NodeId::new("SalesTable"))
+                .expect("table still projects"),
+            1,
+        ),
+        vec!["East", "25", "2.5"]
+    );
+
+    let add = skin.try_add_table_row(
+        "SalesTable",
+        "row:south",
+        &[("col:region", "South"), ("col:amount", "40")],
+    );
+    assert!(add.accepted, "{:?}", add.error);
+    let added_state = skin.state();
+    let added_table = added_state
+        .tables
+        .get(&NodeId::new("SalesTable"))
+        .expect("table projects after row add");
+    assert_eq!(added_table.row_count, 4);
+    assert_eq!(
+        added_table
+            .rows
+            .iter()
+            .map(|row| row.row_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["row:west", "row:east", "row:north", "row:south"]
+    );
+    assert_eq!(table_body_row(added_table, 3), vec!["South", "40", "4"]);
+    assert_eq!(table_totals_row(added_table), vec!["", "105", ""]);
+    assert_ne!(
+        before_table.row_membership_version,
+        added_table.row_membership_version
+    );
+    assert_ne!(
+        before_table.row_order_version,
+        added_table.row_order_version
+    );
+
+    let duplicate = skin.try_add_table_row("SalesTable", "row:south", &[]);
+    assert!(!duplicate.accepted, "{duplicate:?}");
+
+    let formula_input = skin.try_add_table_row("SalesTable", "row:formula", &[("col:tax", "9")]);
+    assert!(!formula_input.accepted, "{formula_input:?}");
+
+    let duplicate_input = skin.try_add_table_row(
+        "SalesTable",
+        "row:duplicate-input",
+        &[("col:amount", "1"), ("col:amount", "2")],
+    );
+    assert!(!duplicate_input.accepted, "{duplicate_input:?}");
+}
+
+#[test]
 fn programmable_skin_projects_errors_and_diagnostics_after_rejected_recalc() {
     let harness = Harness::empty();
     let skin = harness.driver.clone();
@@ -735,4 +826,37 @@ fn programmable_skin_projects_errors_and_diagnostics_after_rejected_recalc() {
         &state.node(&NodeId::new("Root.A")).unwrap().computed_value,
         NodeValueProjection::Error(_)
     ));
+}
+
+fn table_body_row(
+    table: &dnatreecalc_skin_framework::TableProjection,
+    row_index: usize,
+) -> Vec<String> {
+    table
+        .cells
+        .as_ref()
+        .expect("table cell values project")
+        .body_rows[row_index]
+        .iter()
+        .map(|cell| {
+            cell.as_ref()
+                .map(|cell| cell.value.display_text())
+                .unwrap_or_default()
+        })
+        .collect()
+}
+
+fn table_totals_row(table: &dnatreecalc_skin_framework::TableProjection) -> Vec<String> {
+    table
+        .cells
+        .as_ref()
+        .expect("table cell values project")
+        .totals_row
+        .iter()
+        .map(|cell| {
+            cell.as_ref()
+                .map(|cell| cell.value.display_text())
+                .unwrap_or_default()
+        })
+        .collect()
 }

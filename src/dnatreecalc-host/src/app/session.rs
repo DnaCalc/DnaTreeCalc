@@ -10,7 +10,7 @@ use dnatreecalc_skin_framework::{
     NodeContentKind as FrameworkContentKind, NodeId, NodeInvalidationProjection, NodeKey,
     NodeValueProjection, NodeView, PhaseKeyProjection, ReferenceResolutionProjection,
     ReferenceTargetProjection, RuntimeEffectFamilyProjection, RuntimeEffectProjection,
-    RuntimeOverlayKindProjection, RuntimeOverlayProjection, TableCellProjection,
+    RuntimeOverlayKindProjection, RuntimeOverlayProjection, TableCellInput, TableCellProjection,
     TableCellsProjection, TableColumnBodyProjection, TableColumnProjection,
     TableFormulaMetadataProjection, TableProjection, TableRowProjection,
     TreeReferenceCollectionFamilyProjection, TreeReferenceCollectionProjection,
@@ -403,6 +403,162 @@ impl TreeWorkspaceSession {
     pub fn delete_node(&mut self, node: &NodeId) -> Result<(), TreeWorkspaceSessionError> {
         let tree_node_id = self.tree_node_id(node.as_str())?;
         self.context.delete_node(&self.workspace_id, tree_node_id)?;
+        self.refresh_projection_from_context()?;
+        self.last_outcome = None;
+        Ok(())
+    }
+
+    pub fn edit_table_cell(
+        &mut self,
+        table: &NodeId,
+        row_id: &str,
+        column_id: &str,
+        content: impl Into<String>,
+    ) -> Result<(), TreeWorkspaceSessionError> {
+        let table_node_id = self.tree_node_id(table.as_str())?;
+        let table_view = self
+            .context
+            .table_view(&self.workspace_id, table_node_id)?
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTable {
+                table: table.to_string(),
+            })?;
+        let column = table_view
+            .snapshot
+            .columns
+            .iter()
+            .find(|column| column.column_id == column_id)
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTableColumn {
+                table: table.to_string(),
+                column_id: column_id.to_string(),
+            })?;
+        if matches!(
+            column.body_metadata,
+            TreeCalcTableColumnBodyMetadata::Formula(_)
+        ) {
+            return Err(TreeWorkspaceSessionError::FormulaTableCellEdit {
+                table: table.to_string(),
+                column_id: column_id.to_string(),
+            });
+        }
+        let binding = table_view
+            .snapshot
+            .body_cell_nodes
+            .iter()
+            .find(|binding| binding.row_id.0 == row_id && binding.column_id == column_id)
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTableCell {
+                table: table.to_string(),
+                row_id: row_id.to_string(),
+                column_id: column_id.to_string(),
+            })?;
+        self.context
+            .set_node_formula_text(&self.workspace_id, binding.node_id, content.into())?;
+        self.last_outcome = None;
+        Ok(())
+    }
+
+    pub fn add_table_row(
+        &mut self,
+        table: &NodeId,
+        row_id: impl Into<String>,
+        values: Vec<TableCellInput>,
+    ) -> Result<(), TreeWorkspaceSessionError> {
+        let row_id = row_id.into();
+        let table_node_id = self.tree_node_id(table.as_str())?;
+        let mut table_view = self
+            .context
+            .table_view(&self.workspace_id, table_node_id)?
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTable {
+                table: table.to_string(),
+            })?;
+        if table_view.snapshot.rows.iter().any(|row| row.0 == row_id) {
+            return Err(TreeWorkspaceSessionError::DuplicateTableRow {
+                table: table.to_string(),
+                row_id,
+            });
+        }
+
+        let mut values_by_column = BTreeMap::new();
+        for value in values {
+            if values_by_column
+                .insert(value.column_id.clone(), value.content)
+                .is_some()
+            {
+                return Err(TreeWorkspaceSessionError::DuplicateTableCellInput {
+                    table: table.to_string(),
+                    column_id: value.column_id,
+                });
+            }
+        }
+        for column_id in values_by_column.keys() {
+            let column = table_view
+                .snapshot
+                .columns
+                .iter()
+                .find(|column| column.column_id == *column_id)
+                .ok_or_else(|| TreeWorkspaceSessionError::UnknownTableColumn {
+                    table: table.to_string(),
+                    column_id: column_id.clone(),
+                })?;
+            if matches!(
+                column.body_metadata,
+                TreeCalcTableColumnBodyMetadata::Formula(_)
+            ) {
+                return Err(TreeWorkspaceSessionError::FormulaTableCellEdit {
+                    table: table.to_string(),
+                    column_id: column_id.clone(),
+                });
+            }
+        }
+
+        let row_ordinal = u32::try_from(table_view.snapshot.rows.len() + 1).unwrap_or(u32::MAX);
+        table_view
+            .snapshot
+            .rows
+            .push(TreeCalcTableRowId(row_id.clone()));
+
+        let mut columns = table_view.snapshot.columns.clone();
+        columns.sort_by_key(|column| column.ordinal);
+        for column in columns {
+            if !matches!(
+                column.body_metadata,
+                TreeCalcTableColumnBodyMetadata::ConstantCells
+            ) {
+                continue;
+            }
+            let content = values_by_column
+                .get(&column.column_id)
+                .cloned()
+                .unwrap_or_default();
+            let symbol = table_body_cell_symbol(row_ordinal, column.ordinal);
+            let generated_node = NodeId::new(format!("{}.{}", table.as_str(), symbol));
+            if self.node_ids.contains_key(&generated_node) {
+                return Err(TreeWorkspaceSessionError::DuplicateNodePath {
+                    node: generated_node.to_string(),
+                });
+            }
+            let node_id = self.context.add_node(
+                &self.workspace_id,
+                OxCalcTreeNodeCreate::new(symbol.clone(), content)
+                    .with_meta(true)
+                    .under(table_node_id),
+            )?;
+            self.register_generated_node(table, &symbol, node_id);
+            table_view
+                .snapshot
+                .body_cell_nodes
+                .push(TreeCalcTableBodyCellNodeBinding {
+                    row_id: TreeCalcTableRowId(row_id.clone()),
+                    column_id: column.column_id,
+                    node_id,
+                });
+        }
+
+        table_view.snapshot.row_membership_version =
+            bumped_table_version(&table_view.snapshot.row_membership_version, "row", &row_id);
+        table_view.snapshot.row_order_version =
+            bumped_table_version(&table_view.snapshot.row_order_version, "row", &row_id);
+        self.context
+            .set_node_table(&self.workspace_id, table_node_id, table_view.snapshot)?;
         self.refresh_projection_from_context()?;
         self.last_outcome = None;
         Ok(())
@@ -1136,6 +1292,10 @@ fn table_body_cell_symbol(row_ordinal: u32, column_ordinal: u32) -> String {
     format!("__table_body_r{row_ordinal}_c{column_ordinal}")
 }
 
+fn bumped_table_version(current: &str, kind: &str, id: &str) -> String {
+    format!("{current};{kind}+={id}")
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum TreeWorkspaceSessionError {
     #[error(transparent)]
@@ -1146,6 +1306,24 @@ pub enum TreeWorkspaceSessionError {
     UnknownNodePath { node: String },
     #[error("duplicate DnaTreeCalc node path {node}")]
     DuplicateNodePath { node: String },
+    #[error("unknown table {table}")]
+    UnknownTable { table: String },
+    #[error("duplicate row {row_id} in table {table}")]
+    DuplicateTableRow { table: String, row_id: String },
+    #[error("unknown column {column_id} in table {table}")]
+    UnknownTableColumn { table: String, column_id: String },
+    #[error("duplicate input for column {column_id} in table {table}")]
+    DuplicateTableCellInput { table: String, column_id: String },
+    #[error("unknown cell {row_id}/{column_id} in table {table}")]
+    UnknownTableCell {
+        table: String,
+        row_id: String,
+        column_id: String,
+    },
+    #[error(
+        "table formula column {column_id} in table {table} is calculated, not directly editable"
+    )]
+    FormulaTableCellEdit { table: String, column_id: String },
     #[error("OxCalc context projection is out of sync for {node}")]
     ProjectionOutOfSync { node: String },
 }

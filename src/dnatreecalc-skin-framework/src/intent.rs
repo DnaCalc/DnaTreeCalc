@@ -62,10 +62,27 @@ pub enum WorkspaceIntent {
     DeleteNode {
         node: NodeId,
     },
+    EditTableCell {
+        table: NodeId,
+        row_id: String,
+        column_id: String,
+        content: String,
+    },
+    AddTableRow {
+        table: NodeId,
+        row_id: String,
+        values: Vec<TableCellInput>,
+    },
     NewWorkspace,
     SwitchWorkspace {
         workspace_id: String,
     },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TableCellInput {
+    pub column_id: String,
+    pub content: String,
 }
 
 /// Outcome of dispatching a single intent.
@@ -242,6 +259,8 @@ impl Dispatcher for InMemoryDispatcher {
             | WorkspaceIntent::MoveNode { .. }
             | WorkspaceIntent::ReorderNode { .. }
             | WorkspaceIntent::DeleteNode { .. }
+            | WorkspaceIntent::EditTableCell { .. }
+            | WorkspaceIntent::AddTableRow { .. }
             | WorkspaceIntent::NewWorkspace
             | WorkspaceIntent::SwitchWorkspace { .. } => IntentReceipt::accepted(),
         }
