@@ -1346,6 +1346,7 @@ fn table_lifecycle_snapshot_state(
                     formula_artifact_id: "formula:SalesTable.Columns.Tax".to_string(),
                     bind_artifact_id: Some("bind:SalesTable.Columns.Tax:v2".to_string()),
                     formula_text_version: "v2".to_string(),
+                    formula_text: "=[@Amount]*0.2".to_string(),
                 });
             Some(snapshot)
         }
@@ -1416,6 +1417,7 @@ fn table_lifecycle_snapshot_state(
                 formula_artifact_id: "formula:SalesTable.Totals.Amount".to_string(),
                 bind_artifact_id: Some("bind:SalesTable.Totals.Amount:v2".to_string()),
                 formula_text_version: "v2".to_string(),
+                formula_text: "=SUM([Amount])".to_string(),
             });
             Some(snapshot)
         }
@@ -1582,6 +1584,7 @@ fn table_formula_metadata(formula: &TableFormulaFixture) -> TreeCalcTableFormula
         formula_artifact_id: formula.formula_stable_id.clone(),
         bind_artifact_id: formula.bind_artifact_id.clone(),
         formula_text_version: formula.formula_text_version.clone(),
+        formula_text: formula.formula_text.clone(),
     }
 }
 

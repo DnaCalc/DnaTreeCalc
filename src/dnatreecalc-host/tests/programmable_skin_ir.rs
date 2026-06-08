@@ -652,12 +652,20 @@ fn programmable_skin_reads_table_and_dependency_ir_from_fixture() {
         tax_formula.bind_artifact_id.as_deref(),
         Some("bind:SalesTable.Columns.Tax")
     );
+    assert_eq!(tax_formula.formula_text, "=[@Amount] * 0.1");
     assert_eq!(
         table.columns[1]
             .totals_formula
             .as_ref()
             .map(|formula| formula.formula_artifact_id.as_str()),
         Some("formula:SalesTable.Totals.Amount")
+    );
+    assert_eq!(
+        table.columns[1]
+            .totals_formula
+            .as_ref()
+            .map(|formula| formula.formula_text.as_str()),
+        Some("=SUM(SalesTable[Amount])")
     );
     let cells = table.cells.as_ref().expect("table cell values project");
     assert_eq!(cells.body_rows.len(), 3);

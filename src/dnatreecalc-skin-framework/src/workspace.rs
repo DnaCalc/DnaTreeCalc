@@ -708,4 +708,5 @@ pub struct TableFormulaMetadataProjection {
     pub formula_artifact_id: String,
     pub bind_artifact_id: Option<String>,
     pub formula_text_version: String,
+    pub formula_text: String,
 }
