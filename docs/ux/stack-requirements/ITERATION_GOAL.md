@@ -48,7 +48,8 @@ reported against the roadmap with concrete evidence and explicit remaining gaps.
 - [ ] Prove or expose reference-valued `CalcValue` node results through Skin IR when OxCalc/OxFml
       has an ordinary producer for them.
 - [x] Add the reference-resolution map: token/source handle to target plus reverse index.
-- [ ] Audit derivation trace payloads against the full prepared-call tree and hole-binding requirement.
+- [x] Audit and complete published-run derivation trace payloads for prepared-call tree, hole
+      bindings, typed root result, typed child-call results, and typed prepared argument values.
 - [ ] Add typed binding diagnostics intake where OxFml exposes them.
 - [ ] Add per-node effective format and OxFml-backed render entrypoint plumbing.
 - [ ] Confirm or implement per-node published-value epochs; keep delta work decoupled until then.

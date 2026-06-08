@@ -1858,6 +1858,10 @@ impl TreeWorkspaceSession {
                 .map(derivation_invocation_projection)
                 .collect(),
             kernel_returned_value: trace.kernel_returned_value.clone(),
+            kernel_returned_value_typed: trace
+                .kernel_returned_calc_value
+                .as_ref()
+                .map(calc_value_projection),
             oxfml_trace_events: trace
                 .oxfml_trace_events
                 .iter()
@@ -2295,6 +2299,10 @@ fn derivation_invocation_projection(
             .map(derivation_prepared_argument_projection)
             .collect(),
         kernel_returned_value: invocation.kernel_returned_value.clone(),
+        kernel_returned_value_typed: invocation
+            .kernel_returned_calc_value
+            .as_ref()
+            .map(calc_value_projection),
         children: invocation
             .children
             .iter()
@@ -2316,6 +2324,10 @@ fn derivation_prepared_argument_projection(
         reference_target: argument.reference_target.clone(),
         opaque_reason: argument.opaque_reason.clone(),
         resolved_value: argument.resolved_value.clone(),
+        resolved_value_typed: argument
+            .resolved_calc_value
+            .as_ref()
+            .map(calc_value_projection),
     }
 }
 

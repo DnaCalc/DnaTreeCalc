@@ -534,6 +534,7 @@ pub struct DerivationTraceProjection {
     pub hole_bindings: Vec<DerivationHoleBindingProjection>,
     pub sub_invocation_tree: Vec<DerivationInvocationProjection>,
     pub kernel_returned_value: String,
+    pub kernel_returned_value_typed: Option<NodeValueProjection>,
     pub oxfml_trace_events: Vec<DerivationOxfmlTraceEventProjection>,
 }
 
@@ -569,6 +570,7 @@ pub struct DerivationInvocationProjection {
     pub arg_preparation_profile: Option<String>,
     pub prepared_arguments: Vec<DerivationPreparedArgumentProjection>,
     pub kernel_returned_value: Option<String>,
+    pub kernel_returned_value_typed: Option<NodeValueProjection>,
     pub children: Vec<DerivationInvocationProjection>,
 }
 
@@ -583,6 +585,7 @@ pub struct DerivationPreparedArgumentProjection {
     pub reference_target: Option<String>,
     pub opaque_reason: Option<String>,
     pub resolved_value: Option<String>,
+    pub resolved_value_typed: Option<NodeValueProjection>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

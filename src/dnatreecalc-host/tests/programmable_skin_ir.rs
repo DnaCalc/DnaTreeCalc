@@ -457,6 +457,10 @@ fn programmable_skin_projects_full_derivation_trace_payload() {
     );
     assert_eq!(trace.trace_mode, "PreparedCalls");
     assert_eq!(trace.kernel_returned_value, "7");
+    assert!(matches!(
+        &trace.kernel_returned_value_typed,
+        Some(NodeValueProjection::Number { display, .. }) if display == "7"
+    ));
     assert!(!trace.formula_stable_id.is_empty());
     assert!(!trace.template_selection.plan_template_key.is_empty());
     assert!(!trace.hole_bindings.is_empty());
@@ -465,6 +469,24 @@ fn programmable_skin_projects_full_derivation_trace_payload() {
     assert!(!root_call.function_id.is_empty());
     assert!(!root_call.function_name.is_empty());
     assert_eq!(root_call.kernel_returned_value.as_deref(), Some("7"));
+    assert!(matches!(
+        &root_call.kernel_returned_value_typed,
+        Some(NodeValueProjection::Number { display, .. }) if display == "7"
+    ));
+    assert!(root_call.children.iter().any(|child| {
+        matches!(
+            &child.kernel_returned_value_typed,
+            Some(NodeValueProjection::Number { display, .. }) if display == "7"
+        )
+    }));
+    assert!(root_call.children.iter().any(|child| {
+        child.prepared_arguments.iter().any(|argument| {
+            matches!(
+                &argument.resolved_value_typed,
+                Some(NodeValueProjection::Number { display, .. }) if display == "3"
+            )
+        })
+    }));
 }
 
 #[test]
