@@ -187,6 +187,48 @@ impl ProgrammableDriver {
         })
     }
 
+    pub fn rename_table_row(&self, table: &str, row_id: &str, new_row_id: &str) {
+        self.accept(WorkspaceIntent::RenameTableRow {
+            table: NodeId::new(table),
+            row_id: row_id.to_string(),
+            new_row_id: new_row_id.to_string(),
+        });
+    }
+
+    pub fn try_rename_table_row(
+        &self,
+        table: &str,
+        row_id: &str,
+        new_row_id: &str,
+    ) -> IntentReceipt {
+        self.dispatch.dispatch(WorkspaceIntent::RenameTableRow {
+            table: NodeId::new(table),
+            row_id: row_id.to_string(),
+            new_row_id: new_row_id.to_string(),
+        })
+    }
+
+    pub fn reorder_table_row(&self, table: &str, row_id: &str, new_index: usize) {
+        self.accept(WorkspaceIntent::ReorderTableRow {
+            table: NodeId::new(table),
+            row_id: row_id.to_string(),
+            new_index,
+        });
+    }
+
+    pub fn try_reorder_table_row(
+        &self,
+        table: &str,
+        row_id: &str,
+        new_index: usize,
+    ) -> IntentReceipt {
+        self.dispatch.dispatch(WorkspaceIntent::ReorderTableRow {
+            table: NodeId::new(table),
+            row_id: row_id.to_string(),
+            new_index,
+        })
+    }
+
     pub fn add_table_column(
         &self,
         table: &str,

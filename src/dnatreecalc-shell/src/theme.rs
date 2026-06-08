@@ -558,6 +558,7 @@ pub const SHELL_CSS: &str = r#"
 }
 
 .dtc-table-card__add-row,
+.dtc-table-card__row-reorder,
 .dtc-table-card__add-column,
 .dtc-table-card__add-formula-column,
 .dtc-table-card__column-reorder,
@@ -569,6 +570,8 @@ pub const SHELL_CSS: &str = r#"
 }
 
 .dtc-table-card__add-row input,
+.dtc-table-card__row-reorder input,
+.dtc-table-card__row-reorder select,
 .dtc-table-card__add-column input,
 .dtc-table-card__add-formula-column input,
 .dtc-table-card__column-reorder input,
@@ -583,6 +586,7 @@ pub const SHELL_CSS: &str = r#"
 }
 
 .dtc-table-card__add-row button,
+.dtc-table-card__row-metadata button,
 .dtc-table-card__add-column button,
 .dtc-table-card__add-formula-column button,
 .dtc-table-card__column-metadata button,
@@ -609,6 +613,28 @@ pub const SHELL_CSS: &str = r#"
 .dtc-table-card__column-metadata {
     display: grid;
     gap: 0.375rem;
+}
+
+.dtc-table-card__row-metadata {
+    display: grid;
+    gap: 0.375rem;
+}
+
+.dtc-table-card__row-rename {
+    display: grid;
+    grid-template-columns: minmax(7rem, 10rem) minmax(10rem, 1fr) auto;
+    gap: 0.375rem;
+    align-items: center;
+    font-size: 0.8125rem;
+    color: #475569;
+}
+
+.dtc-table-card__row-rename input {
+    min-width: 0;
+    border: 1px solid #d8dee8;
+    border-radius: 4px;
+    padding: 0.375rem 0.5rem;
+    font: 0.8125rem ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 .dtc-table-card__column-rename {

@@ -166,9 +166,27 @@ fn render_table_card(
         })
         .collect::<Vec<_>>();
     let next_row_id = RwSignal::new(format!("row:new{}", table.row_count + 1));
+    let editable_rows = table
+        .rows
+        .iter()
+        .map(|row| (row.row_id.clone(), RwSignal::new(row.row_id.clone())))
+        .collect::<Vec<_>>();
     let table_node_for_add = table_node.clone();
     let add_dispatch = dispatch.clone();
     let add_inputs = constant_columns.clone();
+    let rename_rows = editable_rows.clone();
+    let rename_row_dispatch = dispatch.clone();
+    let table_node_for_row_rename = table_node.clone();
+    let reorder_row_id = RwSignal::new(
+        table
+            .rows
+            .first()
+            .map(|row| row.row_id.clone())
+            .unwrap_or_default(),
+    );
+    let reorder_row_index = RwSignal::new(String::from("0"));
+    let reorder_row_dispatch = dispatch.clone();
+    let table_node_for_row_reorder = table_node.clone();
     let next_column_id = RwSignal::new(format!("col:new{}", table.column_count + 1));
     let next_column_name = RwSignal::new(format!("New {}", table.column_count + 1));
     let column_values = table
@@ -261,6 +279,73 @@ fn render_table_card(
                 >
                     "Add row"
                 </button>
+            </div>
+            <div class="dtc-table-card__row-metadata">
+                {editable_rows.iter().map(|(row_id, value)| {
+                    let value_signal = *value;
+                    let table_node = table_node_for_row_rename.clone();
+                    let row_id_for_rename = row_id.clone();
+                    let rename_dispatch = rename_row_dispatch.clone();
+                    view! {
+                        <label class="dtc-table-card__row-rename">
+                            <span>{row_id.clone()}</span>
+                            <input
+                                class="dtc-table-card__row-id"
+                                aria-label=format!("{row_id} row id")
+                                prop:value=move || value_signal.get()
+                                on:input=move |ev| value_signal.set(event_target_value(&ev))
+                            />
+                            <button
+                                type="button"
+                                on:click=move |_| {
+                                    rename_dispatch.dispatch(table_row_rename_intent(
+                                        &table_node,
+                                        &row_id_for_rename,
+                                        value_signal.get_untracked(),
+                                    ));
+                                }
+                            >
+                                "Rename row"
+                            </button>
+                        </label>
+                    }
+                }).collect::<Vec<_>>()}
+                <div class="dtc-table-card__row-reorder">
+                    <select
+                        aria-label="Move row"
+                        prop:value=move || reorder_row_id.get()
+                        on:change=move |ev| reorder_row_id.set(event_target_value(&ev))
+                    >
+                        {rename_rows.iter().map(|(row_id, _)| {
+                            view! {
+                                <option value=row_id.clone()>{row_id.clone()}</option>
+                            }
+                        }).collect::<Vec<_>>()}
+                    </select>
+                    <input
+                        class="dtc-table-card__row-index"
+                        aria-label="Row index"
+                        prop:value=move || reorder_row_index.get()
+                        on:input=move |ev| reorder_row_index.set(event_target_value(&ev))
+                    />
+                    <button
+                        type="button"
+                        disabled=rename_rows.is_empty()
+                        on:click=move |_| {
+                            let new_index = reorder_row_index
+                                .get_untracked()
+                                .parse::<usize>()
+                                .unwrap_or(0);
+                            reorder_row_dispatch.dispatch(table_row_reorder_intent(
+                                &table_node_for_row_reorder,
+                                &reorder_row_id.get_untracked(),
+                                new_index,
+                            ));
+                        }
+                    >
+                        "Move row"
+                    </button>
+                </div>
             </div>
             <div class="dtc-table-card__add-column">
                 <input
@@ -622,6 +707,22 @@ fn table_row_delete_intent(table: &str, row_id: &str) -> WorkspaceIntent {
     }
 }
 
+fn table_row_rename_intent(table: &str, row_id: &str, new_row_id: String) -> WorkspaceIntent {
+    WorkspaceIntent::RenameTableRow {
+        table: NodeId::new(table),
+        row_id: row_id.to_string(),
+        new_row_id,
+    }
+}
+
+fn table_row_reorder_intent(table: &str, row_id: &str, new_index: usize) -> WorkspaceIntent {
+    WorkspaceIntent::ReorderTableRow {
+        table: NodeId::new(table),
+        row_id: row_id.to_string(),
+        new_index,
+    }
+}
+
 fn table_column_add_intent(
     table: &str,
     column_id: String,
@@ -725,6 +826,30 @@ mod tests {
             WorkspaceIntent::DeleteTableRow {
                 table: NodeId::new("SalesTable"),
                 row_id: "row:east".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn value_board_table_row_rename_uses_skin_ir_intent() {
+        assert_eq!(
+            table_row_rename_intent("SalesTable", "row:east", "row:central".to_string()),
+            WorkspaceIntent::RenameTableRow {
+                table: NodeId::new("SalesTable"),
+                row_id: "row:east".to_string(),
+                new_row_id: "row:central".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn value_board_table_row_reorder_uses_skin_ir_intent() {
+        assert_eq!(
+            table_row_reorder_intent("SalesTable", "row:north", 0),
+            WorkspaceIntent::ReorderTableRow {
+                table: NodeId::new("SalesTable"),
+                row_id: "row:north".to_string(),
+                new_index: 0,
             }
         );
     }

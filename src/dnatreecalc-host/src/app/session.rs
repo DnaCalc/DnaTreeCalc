@@ -619,6 +619,97 @@ impl TreeWorkspaceSession {
         Ok(())
     }
 
+    pub fn rename_table_row(
+        &mut self,
+        table: &NodeId,
+        row_id: &str,
+        new_row_id: impl Into<String>,
+    ) -> Result<(), TreeWorkspaceSessionError> {
+        let new_row_id = new_row_id.into();
+        let table_node_id = self.tree_node_id(table.as_str())?;
+        let mut table_view = self
+            .context
+            .table_view(&self.workspace_id, table_node_id)?
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTable {
+                table: table.to_string(),
+            })?;
+        let row_index = table_view
+            .snapshot
+            .rows
+            .iter()
+            .position(|row| row.0 == row_id)
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTableRow {
+                table: table.to_string(),
+                row_id: row_id.to_string(),
+            })?;
+        if row_id != new_row_id
+            && table_view
+                .snapshot
+                .rows
+                .iter()
+                .any(|row| row.0 == new_row_id)
+        {
+            return Err(TreeWorkspaceSessionError::DuplicateTableRow {
+                table: table.to_string(),
+                row_id: new_row_id,
+            });
+        }
+
+        table_view.snapshot.rows[row_index] = TreeCalcTableRowId(new_row_id.clone());
+        for binding in &mut table_view.snapshot.body_cell_nodes {
+            if binding.row_id.0 == row_id {
+                binding.row_id = TreeCalcTableRowId(new_row_id.clone());
+            }
+        }
+        table_view.snapshot.row_membership_version = bumped_table_version(
+            &table_view.snapshot.row_membership_version,
+            "row-renamed",
+            row_id,
+        );
+        self.context
+            .set_node_table(&self.workspace_id, table_node_id, table_view.snapshot)?;
+        self.refresh_projection_from_context()?;
+        self.last_outcome = None;
+        Ok(())
+    }
+
+    pub fn reorder_table_row(
+        &mut self,
+        table: &NodeId,
+        row_id: &str,
+        new_index: usize,
+    ) -> Result<(), TreeWorkspaceSessionError> {
+        let table_node_id = self.tree_node_id(table.as_str())?;
+        let mut table_view = self
+            .context
+            .table_view(&self.workspace_id, table_node_id)?
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTable {
+                table: table.to_string(),
+            })?;
+        let row_index = table_view
+            .snapshot
+            .rows
+            .iter()
+            .position(|row| row.0 == row_id)
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTableRow {
+                table: table.to_string(),
+                row_id: row_id.to_string(),
+            })?;
+        let row = table_view.snapshot.rows.remove(row_index);
+        let bounded_index = new_index.min(table_view.snapshot.rows.len());
+        table_view.snapshot.rows.insert(bounded_index, row);
+        table_view.snapshot.row_order_version = bumped_table_version(
+            &table_view.snapshot.row_order_version,
+            "row-reordered",
+            row_id,
+        );
+        self.context
+            .set_node_table(&self.workspace_id, table_node_id, table_view.snapshot)?;
+        self.refresh_projection_from_context()?;
+        self.last_outcome = None;
+        Ok(())
+    }
+
     pub fn add_table_column(
         &mut self,
         table: &NodeId,

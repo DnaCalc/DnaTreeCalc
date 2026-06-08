@@ -264,6 +264,32 @@ impl Dispatcher for HostDispatcher {
                     |error| IntentReceipt::rejected(IntentError::Rejected(error)),
                     receipt_for_publication,
                 ),
+            WorkspaceIntent::RenameTableRow {
+                table,
+                row_id,
+                new_row_id,
+            } => self
+                .apply_workspace_edit(
+                    |session| session.rename_table_row(&table, &row_id, new_row_id),
+                    WorkspaceEditPublication::Recalculate,
+                )
+                .map_or_else(
+                    |error| IntentReceipt::rejected(IntentError::Rejected(error)),
+                    receipt_for_publication,
+                ),
+            WorkspaceIntent::ReorderTableRow {
+                table,
+                row_id,
+                new_index,
+            } => self
+                .apply_workspace_edit(
+                    |session| session.reorder_table_row(&table, &row_id, new_index),
+                    WorkspaceEditPublication::Recalculate,
+                )
+                .map_or_else(
+                    |error| IntentReceipt::rejected(IntentError::Rejected(error)),
+                    receipt_for_publication,
+                ),
             WorkspaceIntent::AddTableColumn {
                 table,
                 column_id,

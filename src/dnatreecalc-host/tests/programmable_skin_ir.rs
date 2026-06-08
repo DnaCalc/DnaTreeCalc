@@ -836,6 +836,113 @@ fn programmable_skin_edits_table_cells_and_adds_rows_from_outside_ir() {
 }
 
 #[test]
+fn programmable_skin_renames_and_reorders_table_rows_from_outside_ir() {
+    let harness = Harness::from_repo_fixture("tables");
+    let skin = harness.driver.clone();
+    skin.recalc();
+
+    let before = skin.state();
+    let before_table = before
+        .tables
+        .get(&NodeId::new("SalesTable"))
+        .expect("table projects");
+    let before_membership_version = before_table.row_membership_version.clone();
+    let before_order_version = before_table.row_order_version.clone();
+    assert_eq!(
+        before_table
+            .rows
+            .iter()
+            .map(|row| (row.row_id.as_str(), row.ordinal))
+            .collect::<Vec<_>>(),
+        vec![("row:west", 1), ("row:east", 2), ("row:north", 3)]
+    );
+
+    let rename = skin.try_rename_table_row("SalesTable", "row:east", "row:central");
+    assert!(rename.accepted, "{:?}", rename.error);
+    let renamed_state = skin.state();
+    let renamed_table = renamed_state
+        .tables
+        .get(&NodeId::new("SalesTable"))
+        .expect("table projects after row rename");
+    assert_eq!(
+        renamed_table
+            .rows
+            .iter()
+            .map(|row| (row.row_id.as_str(), row.ordinal))
+            .collect::<Vec<_>>(),
+        vec![("row:west", 1), ("row:central", 2), ("row:north", 3)]
+    );
+    assert_eq!(table_body_row(renamed_table, 1), vec!["East", "20", "2"]);
+    assert_ne!(
+        before_membership_version,
+        renamed_table.row_membership_version
+    );
+    assert_eq!(before_order_version, renamed_table.row_order_version);
+
+    let old_id_edit = skin.try_edit_table_cell("SalesTable", "row:east", "col:amount", "25");
+    assert!(!old_id_edit.accepted, "{old_id_edit:?}");
+    let new_id_edit = skin.try_edit_table_cell("SalesTable", "row:central", "col:amount", "25");
+    assert!(new_id_edit.accepted, "{:?}", new_id_edit.error);
+    let edited_state = skin.state();
+    let edited_table = edited_state
+        .tables
+        .get(&NodeId::new("SalesTable"))
+        .expect("table projects after renamed row edit");
+    assert_eq!(table_body_row(edited_table, 1), vec!["East", "25", "2.5"]);
+    assert_eq!(table_totals_row(edited_table), vec!["", "65", ""]);
+
+    let duplicate = skin.try_rename_table_row("SalesTable", "row:central", "row:west");
+    assert!(!duplicate.accepted, "{duplicate:?}");
+    let missing_rename = skin.try_rename_table_row("SalesTable", "row:missing", "row:new");
+    assert!(!missing_rename.accepted, "{missing_rename:?}");
+
+    let reorder = skin.try_reorder_table_row("SalesTable", "row:north", 0);
+    assert!(reorder.accepted, "{:?}", reorder.error);
+    let reordered_state = skin.state();
+    let reordered_table = reordered_state
+        .tables
+        .get(&NodeId::new("SalesTable"))
+        .expect("table projects after row reorder");
+    assert_eq!(
+        reordered_table
+            .rows
+            .iter()
+            .map(|row| (row.row_id.as_str(), row.ordinal))
+            .collect::<Vec<_>>(),
+        vec![("row:north", 1), ("row:west", 2), ("row:central", 3)]
+    );
+    assert_eq!(table_body_row(reordered_table, 0), vec!["North", "30", "3"]);
+    assert_eq!(
+        table_body_row(reordered_table, 2),
+        vec!["East", "25", "2.5"]
+    );
+    assert_ne!(
+        edited_table.row_order_version,
+        reordered_table.row_order_version
+    );
+
+    let bounded_reorder = skin.try_reorder_table_row("SalesTable", "row:north", usize::MAX);
+    assert!(bounded_reorder.accepted, "{:?}", bounded_reorder.error);
+    let bounded_state = skin.state();
+    let bounded_table = bounded_state
+        .tables
+        .get(&NodeId::new("SalesTable"))
+        .expect("table projects after bounded row reorder");
+    assert_eq!(
+        bounded_table
+            .rows
+            .iter()
+            .map(|row| row.row_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["row:west", "row:central", "row:north"]
+    );
+    assert_eq!(table_body_row(bounded_table, 2), vec!["North", "30", "3"]);
+
+    let missing_reorder = skin.try_reorder_table_row("SalesTable", "row:missing", 0);
+    assert!(!missing_reorder.accepted, "{missing_reorder:?}");
+}
+
+#[test]
 fn programmable_skin_adds_edits_and_deletes_constant_table_columns_from_outside_ir() {
     let harness = Harness::from_repo_fixture("tables");
     let skin = harness.driver.clone();
