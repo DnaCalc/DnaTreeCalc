@@ -67,6 +67,10 @@ pub fn workspace_state_from_model(model: &WorkspaceModel) -> WorkspaceState {
             .iter()
             .map(|p| NodeKey::new(format!("model-path:{p}")))
             .collect(),
+        paths_by_key: nodes
+            .iter()
+            .map(|(node_id, view)| (view.key.clone(), node_id.clone()))
+            .collect(),
         root_paths: model
             .root_paths
             .iter()
@@ -110,5 +114,14 @@ mod tests {
         assert_eq!(income.depth, 3);
         assert_eq!(income.content_kind, FrameworkContentKind::Formula);
         assert_eq!(income.content_text, "=Sales*Margin");
+        let income_key = income.key.clone();
+        assert_eq!(
+            state.node_id_for_key(&income_key),
+            Some(&NodeId::new("Accounts.2005.Q1.Income"))
+        );
+        assert_eq!(
+            state.node_by_key(&income_key).map(|node| &node.id),
+            Some(&NodeId::new("Accounts.2005.Q1.Income"))
+        );
     }
 }

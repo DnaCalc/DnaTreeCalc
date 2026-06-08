@@ -1345,6 +1345,10 @@ impl TreeWorkspaceSession {
                         .map(node_key_for_tree_node)
                 })
                 .collect::<Result<Vec<_>, _>>()?,
+            paths_by_key: nodes
+                .iter()
+                .map(|(node_id, view)| (view.key.clone(), node_id.clone()))
+                .collect(),
             root_paths,
             nodes,
             dependencies,
@@ -3181,6 +3185,10 @@ mod tests {
         let before = session.workspace_state().unwrap();
         let original_b_key = before.node(&NodeId::new("Root.B")).unwrap().key.clone();
         assert_eq!(
+            before.node_id_for_key(&original_b_key),
+            Some(&NodeId::new("Root.B"))
+        );
+        assert_eq!(
             before.dependencies.descriptors_by_owner[&NodeId::new("Root.B")][0].kind,
             DependencyKindProjection::StaticDirect
         );
@@ -3210,6 +3218,11 @@ mod tests {
         );
         assert_ne!(moved.as_str(), "Root.B");
         assert!(after.key_order.contains(&original_b_key));
+        assert_eq!(after.node_id_for_key(&original_b_key), Some(&moved));
+        assert_eq!(
+            after.node_by_key(&original_b_key).map(|node| &node.id),
+            Some(&moved)
+        );
     }
 
     #[test]

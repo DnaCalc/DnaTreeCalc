@@ -42,6 +42,7 @@ reported against the roadmap with concrete evidence and explicit remaining gaps.
 - [x] Project typed phase-timing keys.
 - [x] Surface runtime effects and runtime overlays in active skin detail.
 - [x] Surface current derivation trace records in active skin detail.
+- [x] Add a `NodeKey` to display-path lookup index on `WorkspaceState` for the cutover transition.
 - [ ] Complete host cutover from path-keyed maps to `NodeKey`-keyed maps.
 - [x] Preserve richer scalar/error value variants through Skin IR, not only arrays and display text.
 - [ ] Prove or expose reference-valued `CalcValue` node results through Skin IR when OxCalc/OxFml

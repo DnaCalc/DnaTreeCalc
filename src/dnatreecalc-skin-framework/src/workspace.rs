@@ -22,6 +22,7 @@ pub struct WorkspaceState {
     pub last_run: Option<CalcRunProjection>,
     pub node_order: Vec<NodeId>,
     pub key_order: Vec<NodeKey>,
+    pub paths_by_key: BTreeMap<NodeKey, NodeId>,
     pub root_paths: Vec<NodeId>,
     pub nodes: BTreeMap<NodeId, NodeView>,
     pub dependencies: DependencyGraphProjection,
@@ -33,6 +34,16 @@ impl WorkspaceState {
     #[must_use]
     pub fn node(&self, id: &NodeId) -> Option<&NodeView> {
         self.nodes.get(id)
+    }
+
+    #[must_use]
+    pub fn node_id_for_key(&self, key: &NodeKey) -> Option<&NodeId> {
+        self.paths_by_key.get(key)
+    }
+
+    #[must_use]
+    pub fn node_by_key(&self, key: &NodeKey) -> Option<&NodeView> {
+        self.node(self.node_id_for_key(key)?)
     }
 
     #[must_use]
