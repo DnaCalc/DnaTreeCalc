@@ -489,6 +489,29 @@ pub const SHELL_CSS: &str = r#"
     margin: 0;
 }
 
+.dtc-table-card__active-cell {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem 0.75rem;
+    align-items: center;
+    margin: 0;
+    padding: 0.5rem 0.625rem;
+    border: 1px solid #c7d2fe;
+    border-radius: 6px;
+    background: #eef2ff;
+    font-size: 0.75rem;
+}
+
+.dtc-table-card__active-cell dt {
+    color: #475569;
+}
+
+.dtc-table-card__active-cell dd {
+    margin: 0;
+    font-weight: 700;
+    color: #312e81;
+}
+
 .dtc-table-card {
     margin-top: 0.75rem;
     display: grid;

@@ -1,7 +1,8 @@
 use dnatreecalc_skin_framework::{
-    Dispatcher, NodeId, NodeValueProjection, SelectionState, SkinCapabilities, SkinCategory,
-    SkinContext, SkinHandle, SkinId, SkinManifest, SkinState, TableCellInput,
-    TableColumnBodyProjection, TableProjection, TableRowInput, WorkspaceIntent, WorkspaceSkin,
+    ActiveTableCellDetailProjection, Dispatcher, NodeId, NodeValueProjection, SelectionState,
+    SkinCapabilities, SkinCategory, SkinContext, SkinHandle, SkinId, SkinManifest, SkinState,
+    TableCellInput, TableCellRegionProjection, TableColumnBodyProjection, TableProjection,
+    TableRowInput, WorkspaceIntent, WorkspaceSkin, WorkspaceState,
 };
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -108,7 +109,7 @@ fn ValueBoardView(cx: SkinContext<ValueBoardState>) -> impl IntoView {
                             <div class="dtc-value-card__formula">{content.clone()}</div>
                             <div title=value_text(value)>{render_value(value)}</div>
                             {table.as_ref().map(|table| {
-                                render_table_card(path.clone(), table.clone(), selection, dispatch.clone())
+                                render_table_card(path.clone(), table.clone(), workspace, selection, dispatch.clone())
                             })}
                         </article>
                     }
@@ -121,6 +122,7 @@ fn ValueBoardView(cx: SkinContext<ValueBoardState>) -> impl IntoView {
 fn render_table_card(
     table_node: String,
     table: TableProjection,
+    workspace: ReadSignal<WorkspaceState>,
     selection: ReadSignal<SelectionState>,
     dispatch: Arc<dyn Dispatcher>,
 ) -> AnyView {
@@ -319,6 +321,7 @@ fn render_table_card(
                 />
                 <span>"Totals row"</span>
             </label>
+            {render_active_table_cell_summary(workspace, selection, table_node.clone())}
             {render_table_grid(&table_node, &table, selection, dispatch)}
             <div class="dtc-table-card__add-row">
                 <input
@@ -692,6 +695,57 @@ fn render_table_card(
         </section>
     }
     .into_any()
+}
+
+fn render_active_table_cell_summary(
+    workspace: ReadSignal<WorkspaceState>,
+    selection: ReadSignal<SelectionState>,
+    table_node: String,
+) -> AnyView {
+    view! {
+        {move || {
+            workspace.with(|workspace| {
+                selection.with(|selection| {
+                    active_table_cell_detail_for_table(workspace, selection, &table_node)
+                })
+            })
+            .map(|detail| {
+                let region = table_cell_region_label(detail.region);
+                let row = detail
+                    .row_id
+                    .as_deref()
+                    .map(str::to_string)
+                    .unwrap_or_else(|| "totals".to_string());
+                view! {
+                    <dl class="dtc-table-card__active-cell">
+                        <dt>"cell"</dt>
+                        <dd>{format!("{} / {}", row, detail.column_name)}</dd>
+                        <dt>"region"</dt>
+                        <dd>{region}</dd>
+                        <dt>"value"</dt>
+                        <dd>{detail.value.display_text()}</dd>
+                    </dl>
+                }
+            })
+        }}
+    }
+    .into_any()
+}
+
+fn active_table_cell_detail_for_table(
+    workspace: &WorkspaceState,
+    selection: &SelectionState,
+    table_node: &str,
+) -> Option<ActiveTableCellDetailProjection> {
+    let detail = workspace.active_table_cell_detail(selection)?;
+    (detail.table.as_str() == table_node).then_some(detail)
+}
+
+fn table_cell_region_label(region: TableCellRegionProjection) -> &'static str {
+    match region {
+        TableCellRegionProjection::Body => "body",
+        TableCellRegionProjection::Totals => "totals",
+    }
 }
 
 fn render_table_grid(
@@ -1179,6 +1233,11 @@ fn table_totals_row_visible_intent(table: &str, visible: bool) -> WorkspaceInten
 #[cfg(test)]
 mod tests {
     use super::*;
+    use dnatreecalc_skin_framework::{
+        NodeKey, TableAnchorProjection, TableCellProjection, TableCellsProjection,
+        TableColumnProjection, TableRowProjection,
+    };
+    use std::collections::BTreeMap;
 
     #[test]
     fn value_board_table_cell_edit_uses_skin_ir_intent() {
@@ -1251,6 +1310,83 @@ mod tests {
             ),
             None
         );
+    }
+
+    #[test]
+    fn value_board_active_table_cell_summary_reads_skin_ir_projection() {
+        let workspace = workspace_with_single_table_cell();
+        let selection =
+            SelectionState::with_table_cell(dnatreecalc_skin_framework::TableCellSelection {
+                table: NodeId::new("SalesTable"),
+                row_id: Some("row:east".to_string()),
+                column_id: "col:amount".to_string(),
+            });
+
+        let detail = active_table_cell_detail_for_table(&workspace, &selection, "SalesTable")
+            .expect("selected SalesTable cell projects");
+        assert_eq!(detail.table_id, "tree-table:sales");
+        assert_eq!(detail.table_name, "SalesTable");
+        assert_eq!(detail.row_id.as_deref(), Some("row:east"));
+        assert_eq!(detail.row_ordinal, Some(2));
+        assert_eq!(detail.column_name, "Amount");
+        assert_eq!(detail.column_ordinal, 2);
+        assert_eq!(detail.region, TableCellRegionProjection::Body);
+        assert_eq!(detail.node_key, NodeKey::new("cell:east:amount"));
+        assert_eq!(detail.value.display_text(), "20");
+        assert!(active_table_cell_detail_for_table(&workspace, &selection, "OtherTable").is_none());
+    }
+
+    fn workspace_with_single_table_cell() -> WorkspaceState {
+        let mut tables = BTreeMap::new();
+        tables.insert(
+            NodeId::new("SalesTable"),
+            TableProjection {
+                table_id: "tree-table:sales".to_string(),
+                table_name: "SalesTable".to_string(),
+                display_path: "SalesTable".to_string(),
+                canonical_path: "SalesTable".to_string(),
+                virtual_anchor: TableAnchorProjection {
+                    workbook_scope_ref: "SalesTable".to_string(),
+                    sheet_scope_ref: "SalesTable".to_string(),
+                    start_row: 1,
+                    start_col: 1,
+                },
+                rows: vec![TableRowProjection {
+                    row_id: "row:east".to_string(),
+                    ordinal: 2,
+                }],
+                columns: vec![TableColumnProjection {
+                    column_id: "col:amount".to_string(),
+                    name: "Amount".to_string(),
+                    ordinal: 2,
+                    body: TableColumnBodyProjection::ConstantCells,
+                    totals_formula: None,
+                }],
+                cells: Some(TableCellsProjection {
+                    body_rows: vec![vec![Some(TableCellProjection {
+                        row_id: Some("row:east".to_string()),
+                        column_id: "col:amount".to_string(),
+                        node_key: NodeKey::new("cell:east:amount"),
+                        value: NodeValueProjection::Scalar("20".to_string()),
+                    })]],
+                    totals_row: vec![],
+                }),
+                row_count: 1,
+                column_count: 1,
+                header_row_present: true,
+                totals_row_present: false,
+                table_namespace_version: "table-namespace:v1".to_string(),
+                row_membership_version: "rows:v1".to_string(),
+                row_order_version: "row-order:v1".to_string(),
+                column_identity_version: "columns:v1".to_string(),
+                dependency_inventory: vec![],
+            },
+        );
+
+        WorkspaceState {
+            tables,
+            ..WorkspaceState::default()
+        }
     }
 
     #[test]

@@ -91,9 +91,10 @@ The remainder of this section spells out each role with concrete typed interface
 The live framework now exposes the same boundary in code:
 
 - `WorkspaceIntent` covers selection, recalculation, content edits, and structural edits (`AddNode`, `RenameNode`, `MoveNode`, `ReorderNode`, `DeleteNode`).
-- `WorkspaceState` carries the skin-facing projection for tree nodes, values, calc state, last run status, diagnostics, dependency graph summaries, invalidation summaries, and table identity/lifecycle summaries.
+- `WorkspaceState` carries the skin-facing projection for tree nodes, values, calc state, last run status, diagnostics, dependency graph summaries, invalidation summaries, table identity/lifecycle summaries, and active table-cell detail readback for body/totals cells.
 - `HostDispatcher` routes accepted calc-affecting intents through `TreeWorkspaceSession`, which calls `OxCalcTreeContext` and republishes the typed projection. Selection and shared skin state remain facade state and do not call OxCalc.
 - `src/dnatreecalc-host/tests/programmable_skin_ir.rs` mounts a test-only programmable skin and drives the IR from the outside with a compact Rust DSL. Product behavior tests should prefer that harness over direct session calls when the skin contract is the behavior under test.
+- `ValueBoard` consumes that projection directly for table highlighting, keyboard table-cell navigation, and selected-cell summaries. It does not derive table semantics from formula text or re-resolve structured references.
 
 ## 2.1 The `WorkspaceSkin` trait
 
