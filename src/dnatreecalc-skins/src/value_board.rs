@@ -149,9 +149,11 @@ fn active_selection_summary_rows(
     workspace: &WorkspaceState,
     selection: &SelectionState,
 ) -> Option<Vec<(&'static str, String)>> {
-    match workspace.active_selection_detail(selection)? {
+    let active_selection = workspace.active_selection_detail(selection)?;
+    let focus = active_selection.stable_id().to_string();
+    match active_selection {
         ActiveSelectionDetailProjection::Node(detail) => Some(vec![
-            ("focus", "node".to_string()),
+            ("focus", focus),
             ("name", detail.display_name),
             ("value", detail.value.display_text()),
         ]),
@@ -162,7 +164,7 @@ fn active_selection_summary_rows(
                 .map(str::to_string)
                 .unwrap_or_else(|| "totals".to_string());
             Some(vec![
-                ("focus", "table_cell".to_string()),
+                ("focus", focus),
                 ("table", detail.table_name),
                 ("cell", format!("{} / {}", row, detail.column_name)),
                 (
@@ -1418,6 +1420,11 @@ mod tests {
     #[test]
     fn value_board_active_selection_summary_reads_unified_skin_ir_projection() {
         let node_workspace = workspace_with_single_node();
+        assert_eq!(
+            active_selection_summary_rows(&node_workspace, &SelectionState::default()),
+            None
+        );
+
         let node_selection = SelectionState::with_primary(Some(NodeId::new("Root.A")));
         assert_eq!(
             active_selection_summary_rows(&node_workspace, &node_selection),
