@@ -670,7 +670,7 @@ fn programmable_skin_reads_table_and_dependency_ir_from_fixture() {
                     .unwrap_or_default()
             })
             .collect::<Vec<_>>(),
-        vec!["West", "10", ""]
+        vec!["West", "10", "1"]
     );
     assert_eq!(
         cells.body_rows[1]
@@ -681,7 +681,7 @@ fn programmable_skin_reads_table_and_dependency_ir_from_fixture() {
                     .unwrap_or_default()
             })
             .collect::<Vec<_>>(),
-        vec!["East", "20", ""]
+        vec!["East", "20", "2"]
     );
     assert_eq!(
         cells.body_rows[2]
@@ -692,7 +692,7 @@ fn programmable_skin_reads_table_and_dependency_ir_from_fixture() {
                     .unwrap_or_default()
             })
             .collect::<Vec<_>>(),
-        vec!["North", "30", ""]
+        vec!["North", "30", "3"]
     );
     assert_eq!(
         cells
@@ -704,7 +704,7 @@ fn programmable_skin_reads_table_and_dependency_ir_from_fixture() {
                     .unwrap_or_default()
             })
             .collect::<Vec<_>>(),
-        vec!["", "", ""]
+        vec!["", "60", ""]
     );
     assert!(!table.dependency_inventory_summary.is_empty());
 }

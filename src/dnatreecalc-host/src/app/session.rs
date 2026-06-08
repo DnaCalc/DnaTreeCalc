@@ -33,15 +33,18 @@ use oxcalc_core::recalc::{OverlayEntry, OverlayKind};
 use oxcalc_core::structural::TreeNodeId;
 use oxcalc_core::structured_table::{
     TreeCalcDynamicTableRebindReport, TreeCalcDynamicTableRebindRequest,
-    TreeCalcTableBodyCellNodeBinding, TreeCalcTableColumnBodyMetadata, TreeCalcTableColumnSnapshot,
-    TreeCalcTableFormulaMetadata, TreeCalcTableNodeSnapshot, TreeCalcTableRowId,
-    TreeCalcTableTotalsCellNodeBinding, TreeCalcTableVirtualAnchor,
+    TreeCalcTableBodyCellNodeBinding, TreeCalcTableColumnBodyMetadata,
+    TreeCalcTableColumnFormulaRuntimeRequest, TreeCalcTableColumnSnapshot,
+    TreeCalcTableFormulaMetadata, TreeCalcTableFormulaRuntimeContext,
+    TreeCalcTableFormulaRuntimeReport, TreeCalcTableNodeSnapshot, TreeCalcTableRowId,
+    TreeCalcTableSparseValue, TreeCalcTableTotalsCellNodeBinding, TreeCalcTableVirtualAnchor,
+    evaluate_treecalc_table_column_formula_rows, evaluate_treecalc_table_totals_formula,
 };
 use oxcalc_core::treecalc::{
     DerivationInvocationTraceNode, DerivationPreparedArgumentTrace, DerivationTraceRecord,
     LocalTreeCalcPhaseKey,
 };
-use oxfunc_core::value::{CalcValue, CoreValue};
+use oxfunc_core::value::{CalcValue, CoreValue, ExcelText};
 use serde::{Deserialize, Serialize};
 
 use crate::model::{
@@ -79,6 +82,8 @@ pub struct TreeWorkspaceSession {
     node_ids: BTreeMap<NodeId, TreeNodeId>,
     node_paths_by_tree_id: BTreeMap<TreeNodeId, NodeId>,
     display_order: Vec<NodeId>,
+    table_body_formula_texts: BTreeMap<(TreeNodeId, String), String>,
+    table_totals_formula_texts: BTreeMap<(TreeNodeId, String), String>,
     recalc_count: usize,
     last_outcome: Option<OxCalcTreeCalculationOutcome>,
 }
@@ -99,6 +104,8 @@ impl TreeWorkspaceSession {
             node_ids: BTreeMap::new(),
             node_paths_by_tree_id: BTreeMap::new(),
             display_order: Vec::new(),
+            table_body_formula_texts: BTreeMap::new(),
+            table_totals_formula_texts: BTreeMap::new(),
             recalc_count: 0,
             last_outcome: None,
         };
@@ -125,6 +132,7 @@ impl TreeWorkspaceSession {
             session.display_order.push(node_id.clone());
 
             if let Some(table) = &node.table {
+                session.register_table_formula_texts(tree_node_id, table);
                 let (body_cell_nodes, totals_cell_nodes) =
                     session.create_table_cell_nodes_from_fixture(&node_id, tree_node_id, table)?;
                 let snapshot = table_snapshot_from_fixture(
@@ -160,6 +168,8 @@ impl TreeWorkspaceSession {
             node_ids: BTreeMap::new(),
             node_paths_by_tree_id: BTreeMap::new(),
             display_order: Vec::new(),
+            table_body_formula_texts: BTreeMap::new(),
+            table_totals_formula_texts: BTreeMap::new(),
             recalc_count: 0,
             last_outcome: None,
         };
@@ -243,6 +253,27 @@ impl TreeWorkspaceSession {
         }
 
         Ok((body_cell_nodes, Vec::new()))
+    }
+
+    fn register_table_formula_texts(
+        &mut self,
+        table_node_id: TreeNodeId,
+        table: &TableNodeFixture,
+    ) {
+        for column in &table.columns {
+            if let Some(formula) = column.body.formula.as_ref() {
+                self.table_body_formula_texts.insert(
+                    (table_node_id, column.column_id.clone()),
+                    formula.formula_text.clone(),
+                );
+            }
+            if let Some(formula) = column.totals_formula.as_ref() {
+                self.table_totals_formula_texts.insert(
+                    (table_node_id, column.column_id.clone()),
+                    formula.formula_text.clone(),
+                );
+            }
+        }
     }
 
     fn register_generated_node(
@@ -439,6 +470,8 @@ impl TreeWorkspaceSession {
                         self.last_outcome
                             .as_ref()
                             .map(|outcome| &outcome.published_calc_values),
+                        &self.table_body_formula_texts,
+                        &self.table_totals_formula_texts,
                     ),
                 )
             })
@@ -1646,6 +1679,8 @@ fn table_projection_for(
     view: &oxcalc_core::consumer::OxCalcTreeTableView,
     node_views: &BTreeMap<TreeNodeId, OxCalcTreeNodeView>,
     published_calc_values: Option<&BTreeMap<TreeNodeId, CalcValue>>,
+    body_formula_texts: &BTreeMap<(TreeNodeId, String), String>,
+    totals_formula_texts: &BTreeMap<(TreeNodeId, String), String>,
 ) -> TableProjection {
     TableProjection {
         table_id: view.table_id.clone(),
@@ -1668,7 +1703,13 @@ fn table_projection_for(
             .iter()
             .map(table_column_projection)
             .collect(),
-        cells: table_cells_projection_for(view, node_views, published_calc_values),
+        cells: table_cells_projection_for(
+            view,
+            node_views,
+            published_calc_values,
+            body_formula_texts,
+            totals_formula_texts,
+        ),
         row_count: view.snapshot.rows.len(),
         column_count: view.snapshot.columns.len(),
         header_row_present: view.snapshot.header_row_present,
@@ -1690,8 +1731,23 @@ fn table_cells_projection_for(
     view: &oxcalc_core::consumer::OxCalcTreeTableView,
     node_views: &BTreeMap<TreeNodeId, OxCalcTreeNodeView>,
     published_calc_values: Option<&BTreeMap<TreeNodeId, CalcValue>>,
+    body_formula_texts: &BTreeMap<(TreeNodeId, String), String>,
+    totals_formula_texts: &BTreeMap<(TreeNodeId, String), String>,
 ) -> Option<TableCellsProjection> {
-    if view.snapshot.body_cell_nodes.is_empty() && view.snapshot.totals_cell_nodes.is_empty() {
+    let formula_reports =
+        table_body_formula_reports(view, node_views, published_calc_values, body_formula_texts);
+    let totals_values = table_totals_formula_values(
+        view,
+        node_views,
+        published_calc_values,
+        totals_formula_texts,
+        &formula_reports,
+    );
+    if view.snapshot.body_cell_nodes.is_empty()
+        && view.snapshot.totals_cell_nodes.is_empty()
+        && formula_reports.is_empty()
+        && totals_values.is_empty()
+    {
         return None;
     }
 
@@ -1700,6 +1756,16 @@ fn table_cells_projection_for(
         .body_cell_nodes
         .iter()
         .map(|cell| ((cell.row_id.clone(), cell.column_id.clone()), cell.node_id))
+        .collect::<BTreeMap<_, _>>();
+    let formula_values = formula_reports
+        .iter()
+        .flat_map(|(column_id, report)| {
+            report.cell_results.iter().filter_map(|cell| {
+                cell.row_id
+                    .as_ref()
+                    .map(|row_id| ((row_id.clone(), column_id.clone()), cell.value.clone()))
+            })
+        })
         .collect::<BTreeMap<_, _>>();
     let totals_bindings = view
         .snapshot
@@ -1728,6 +1794,19 @@ fn table_cells_projection_for(
                                 published_calc_values,
                             )
                         })
+                        .or_else(|| {
+                            formula_values
+                                .get(&(row.clone(), column.column_id.clone()))
+                                .map(|value| TableCellProjection {
+                                    row_id: Some(row.0.clone()),
+                                    column_id: column.column_id.clone(),
+                                    node_key: NodeKey::new(format!(
+                                        "table-formula-cell:{}:{}:{}",
+                                        view.table_id, row.0, column.column_id
+                                    )),
+                                    value: value_projection_from_calc_value(value),
+                                })
+                        })
                 })
                 .collect::<Vec<_>>()
         })
@@ -1737,15 +1816,30 @@ fn table_cells_projection_for(
         .columns
         .iter()
         .map(|column| {
-            totals_bindings.get(&column.column_id).and_then(|node_id| {
-                table_cell_projection(
-                    None,
-                    column.column_id.clone(),
-                    *node_id,
-                    node_views,
-                    published_calc_values,
-                )
-            })
+            totals_bindings
+                .get(&column.column_id)
+                .and_then(|node_id| {
+                    table_cell_projection(
+                        None,
+                        column.column_id.clone(),
+                        *node_id,
+                        node_views,
+                        published_calc_values,
+                    )
+                })
+                .or_else(|| {
+                    totals_values
+                        .get(&column.column_id)
+                        .map(|value| TableCellProjection {
+                            row_id: None,
+                            column_id: column.column_id.clone(),
+                            node_key: NodeKey::new(format!(
+                                "table-totals-cell:{}:{}",
+                                view.table_id, column.column_id
+                            )),
+                            value: value_projection_from_calc_value(value),
+                        })
+                })
         })
         .collect();
 
@@ -1753,6 +1847,143 @@ fn table_cells_projection_for(
         body_rows,
         totals_row,
     })
+}
+
+fn table_body_formula_reports(
+    view: &oxcalc_core::consumer::OxCalcTreeTableView,
+    node_views: &BTreeMap<TreeNodeId, OxCalcTreeNodeView>,
+    published_calc_values: Option<&BTreeMap<TreeNodeId, CalcValue>>,
+    body_formula_texts: &BTreeMap<(TreeNodeId, String), String>,
+) -> BTreeMap<String, TreeCalcTableFormulaRuntimeReport> {
+    let values = table_sparse_values_from_bound_cells(view, node_views, published_calc_values);
+    view.snapshot
+        .columns
+        .iter()
+        .filter_map(|column| {
+            let TreeCalcTableColumnBodyMetadata::Formula(formula) = &column.body_metadata else {
+                return None;
+            };
+            let formula_text =
+                body_formula_texts.get(&(view.table_node_id, column.column_id.clone()))?;
+            let request = TreeCalcTableColumnFormulaRuntimeRequest {
+                target_column_id: column.column_id.clone(),
+                formula_stable_id: formula.formula_artifact_id.clone(),
+                formula_text_version: parse_formula_text_version(&formula.formula_text_version),
+                formula_text: formula_text.clone(),
+                values: values.clone(),
+                runtime_context: TreeCalcTableFormulaRuntimeContext::default(),
+            };
+            evaluate_treecalc_table_column_formula_rows(&view.snapshot, &view.projection, &request)
+                .ok()
+                .map(|report| (column.column_id.clone(), report))
+        })
+        .collect()
+}
+
+fn table_totals_formula_values(
+    view: &oxcalc_core::consumer::OxCalcTreeTableView,
+    node_views: &BTreeMap<TreeNodeId, OxCalcTreeNodeView>,
+    published_calc_values: Option<&BTreeMap<TreeNodeId, CalcValue>>,
+    totals_formula_texts: &BTreeMap<(TreeNodeId, String), String>,
+    body_formula_reports: &BTreeMap<String, TreeCalcTableFormulaRuntimeReport>,
+) -> BTreeMap<String, CalcValue> {
+    let values = table_sparse_values_with_formula_reports(
+        view,
+        node_views,
+        published_calc_values,
+        body_formula_reports,
+    );
+    view.snapshot
+        .columns
+        .iter()
+        .filter_map(|column| {
+            let formula = column.totals_metadata.as_ref()?;
+            let formula_text =
+                totals_formula_texts.get(&(view.table_node_id, column.column_id.clone()))?;
+            let request = TreeCalcTableColumnFormulaRuntimeRequest {
+                target_column_id: column.column_id.clone(),
+                formula_stable_id: formula.formula_artifact_id.clone(),
+                formula_text_version: parse_formula_text_version(&formula.formula_text_version),
+                formula_text: formula_text.clone(),
+                values: values.clone(),
+                runtime_context: TreeCalcTableFormulaRuntimeContext::default(),
+            };
+            evaluate_treecalc_table_totals_formula(&view.snapshot, &view.projection, &request)
+                .ok()
+                .map(|cell| (column.column_id.clone(), cell.value))
+        })
+        .collect()
+}
+
+fn table_sparse_values_with_formula_reports(
+    view: &oxcalc_core::consumer::OxCalcTreeTableView,
+    node_views: &BTreeMap<TreeNodeId, OxCalcTreeNodeView>,
+    published_calc_values: Option<&BTreeMap<TreeNodeId, CalcValue>>,
+    body_formula_reports: &BTreeMap<String, TreeCalcTableFormulaRuntimeReport>,
+) -> Vec<TreeCalcTableSparseValue> {
+    let mut values = table_sparse_values_from_bound_cells(view, node_views, published_calc_values);
+    values.extend(body_formula_reports.iter().flat_map(|(column_id, report)| {
+        report.cell_results.iter().filter_map(|cell| {
+            cell.row_id.as_ref().map(|row_id| {
+                TreeCalcTableSparseValue::data(
+                    row_id.0.clone(),
+                    column_id.clone(),
+                    cell.value.clone(),
+                )
+            })
+        })
+    }));
+    values
+}
+
+fn table_sparse_values_from_bound_cells(
+    view: &oxcalc_core::consumer::OxCalcTreeTableView,
+    node_views: &BTreeMap<TreeNodeId, OxCalcTreeNodeView>,
+    published_calc_values: Option<&BTreeMap<TreeNodeId, CalcValue>>,
+) -> Vec<TreeCalcTableSparseValue> {
+    view.snapshot
+        .body_cell_nodes
+        .iter()
+        .filter_map(|cell| {
+            table_cell_calc_value(cell.node_id, node_views, published_calc_values).map(|value| {
+                TreeCalcTableSparseValue::data(cell.row_id.0.clone(), cell.column_id.clone(), value)
+            })
+        })
+        .collect()
+}
+
+fn table_cell_calc_value(
+    node_id: TreeNodeId,
+    node_views: &BTreeMap<TreeNodeId, OxCalcTreeNodeView>,
+    published_calc_values: Option<&BTreeMap<TreeNodeId, CalcValue>>,
+) -> Option<CalcValue> {
+    published_calc_values
+        .and_then(|values| values.get(&node_id).cloned())
+        .or_else(|| {
+            node_views
+                .get(&node_id)
+                .and_then(|view| view.value_text.as_deref())
+                .map(calc_value_from_display_text)
+        })
+}
+
+fn value_projection_from_calc_value(value: &CalcValue) -> NodeValueProjection {
+    calc_value_projection(value)
+}
+
+fn calc_value_from_display_text(value: &str) -> CalcValue {
+    value
+        .parse::<f64>()
+        .map(CalcValue::number)
+        .unwrap_or_else(|_| CalcValue::text(ExcelText::from_interop_assignment(value)))
+}
+
+fn parse_formula_text_version(version: &str) -> u64 {
+    version
+        .strip_prefix('v')
+        .unwrap_or(version)
+        .parse::<u64>()
+        .unwrap_or(1)
 }
 
 fn table_cell_projection(
