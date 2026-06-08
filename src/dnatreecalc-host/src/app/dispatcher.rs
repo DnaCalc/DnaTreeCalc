@@ -333,6 +333,28 @@ impl Dispatcher for HostDispatcher {
                     |error| IntentReceipt::rejected(IntentError::Rejected(error)),
                     receipt_for_publication,
                 ),
+            WorkspaceIntent::SetTableTotalsFormula {
+                table,
+                column_id,
+                formula_text,
+            } => self
+                .apply_workspace_edit(
+                    |session| session.set_table_totals_formula(&table, &column_id, formula_text),
+                    WorkspaceEditPublication::Recalculate,
+                )
+                .map_or_else(
+                    |error| IntentReceipt::rejected(IntentError::Rejected(error)),
+                    receipt_for_publication,
+                ),
+            WorkspaceIntent::ClearTableTotalsFormula { table, column_id } => self
+                .apply_workspace_edit(
+                    |session| session.clear_table_totals_formula(&table, &column_id),
+                    WorkspaceEditPublication::Recalculate,
+                )
+                .map_or_else(
+                    |error| IntentReceipt::rejected(IntentError::Rejected(error)),
+                    receipt_for_publication,
+                ),
             WorkspaceIntent::RenameTableColumn {
                 table,
                 column_id,

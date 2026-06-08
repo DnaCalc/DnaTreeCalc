@@ -165,6 +165,23 @@ fn render_table_card(
             )
         })
         .collect::<Vec<_>>();
+    let totals_columns = table
+        .columns
+        .iter()
+        .map(|column| {
+            (
+                column.column_id.clone(),
+                column.name.clone(),
+                RwSignal::new(
+                    column
+                        .totals_formula
+                        .as_ref()
+                        .map(|formula| formula.formula_text.clone())
+                        .unwrap_or_default(),
+                ),
+            )
+        })
+        .collect::<Vec<_>>();
     let next_row_id = RwSignal::new(format!("row:new{}", table.row_count + 1));
     let editable_rows = table
         .rows
@@ -212,6 +229,11 @@ fn render_table_card(
     let table_node_for_formula_column_add = table_node.clone();
     let formula_edit_dispatch = dispatch.clone();
     let table_node_for_formula_edit = table_node.clone();
+    let totals_formula_columns = totals_columns.clone();
+    let totals_set_dispatch = dispatch.clone();
+    let totals_clear_dispatch = dispatch.clone();
+    let table_node_for_totals_set = table_node.clone();
+    let table_node_for_totals_clear = table_node.clone();
     let rename_columns = editable_columns.clone();
     let rename_dispatch = dispatch.clone();
     let table_node_for_rename = table_node.clone();
@@ -465,6 +487,51 @@ fn render_table_card(
                     </div>
                 }.into_any()
             }}
+            <div class="dtc-table-card__totals-formulas">
+                {totals_formula_columns.iter().map(|(column_id, name, value)| {
+                    let value_signal = *value;
+                    let set_table_node = table_node_for_totals_set.clone();
+                    let clear_table_node = table_node_for_totals_clear.clone();
+                    let column_id_for_set = column_id.clone();
+                    let column_id_for_clear = column_id.clone();
+                    let set_dispatch = totals_set_dispatch.clone();
+                    let clear_dispatch = totals_clear_dispatch.clone();
+                    view! {
+                        <label class="dtc-table-card__totals-formula">
+                            <span>{name.clone()}</span>
+                            <input
+                                class="dtc-table-card__formula-input"
+                                aria-label=format!("{name} totals formula")
+                                prop:value=move || value_signal.get()
+                                on:input=move |ev| value_signal.set(event_target_value(&ev))
+                            />
+                            <button
+                                type="button"
+                                on:click=move |_| {
+                                    set_dispatch.dispatch(table_totals_formula_set_intent(
+                                        &set_table_node,
+                                        &column_id_for_set,
+                                        value_signal.get_untracked(),
+                                    ));
+                                }
+                            >
+                                "Set total"
+                            </button>
+                            <button
+                                type="button"
+                                on:click=move |_| {
+                                    clear_dispatch.dispatch(table_totals_formula_clear_intent(
+                                        &clear_table_node,
+                                        &column_id_for_clear,
+                                    ));
+                                }
+                            >
+                                "Clear"
+                            </button>
+                        </label>
+                    }
+                }).collect::<Vec<_>>()}
+            </div>
             <div class="dtc-table-card__column-metadata">
                 {editable_columns.iter().map(|(column_id, name, value)| {
                     let value_signal = *value;
@@ -786,6 +853,25 @@ fn table_formula_column_edit_intent(
     }
 }
 
+fn table_totals_formula_set_intent(
+    table: &str,
+    column_id: &str,
+    formula_text: String,
+) -> WorkspaceIntent {
+    WorkspaceIntent::SetTableTotalsFormula {
+        table: NodeId::new(table),
+        column_id: column_id.to_string(),
+        formula_text,
+    }
+}
+
+fn table_totals_formula_clear_intent(table: &str, column_id: &str) -> WorkspaceIntent {
+    WorkspaceIntent::ClearTableTotalsFormula {
+        table: NodeId::new(table),
+        column_id: column_id.to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -941,6 +1027,33 @@ mod tests {
                 table: NodeId::new("SalesTable"),
                 column_id: "col:tax".to_string(),
                 formula_text: "=[@Amount] * 0.2".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn value_board_table_totals_formula_set_uses_skin_ir_intent() {
+        assert_eq!(
+            table_totals_formula_set_intent(
+                "SalesTable",
+                "col:amount",
+                "=SUM([Amount])".to_string()
+            ),
+            WorkspaceIntent::SetTableTotalsFormula {
+                table: NodeId::new("SalesTable"),
+                column_id: "col:amount".to_string(),
+                formula_text: "=SUM([Amount])".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn value_board_table_totals_formula_clear_uses_skin_ir_intent() {
+        assert_eq!(
+            table_totals_formula_clear_intent("SalesTable", "col:amount"),
+            WorkspaceIntent::ClearTableTotalsFormula {
+                table: NodeId::new("SalesTable"),
+                column_id: "col:amount".to_string(),
             }
         );
     }

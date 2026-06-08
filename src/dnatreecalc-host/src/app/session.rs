@@ -926,6 +926,81 @@ impl TreeWorkspaceSession {
         Ok(())
     }
 
+    pub fn set_table_totals_formula(
+        &mut self,
+        table: &NodeId,
+        column_id: &str,
+        formula_text: impl Into<String>,
+    ) -> Result<(), TreeWorkspaceSessionError> {
+        let formula_text = formula_text.into();
+        let table_node_id = self.tree_node_id(table.as_str())?;
+        let mut table_view = self
+            .context
+            .table_view(&self.workspace_id, table_node_id)?
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTable {
+                table: table.to_string(),
+            })?;
+        let column = table_view
+            .snapshot
+            .columns
+            .iter_mut()
+            .find(|column| column.column_id == column_id)
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTableColumn {
+                table: table.to_string(),
+                column_id: column_id.to_string(),
+            })?;
+        match &mut column.totals_metadata {
+            Some(formula) => {
+                formula.formula_text = formula_text;
+                formula.formula_text_version =
+                    bumped_formula_text_version(&formula.formula_text_version);
+            }
+            None => {
+                column.totals_metadata = Some(table_formula_metadata_for_totals(
+                    table.as_str(),
+                    column_id,
+                    formula_text,
+                ));
+            }
+        }
+
+        self.context
+            .set_node_table(&self.workspace_id, table_node_id, table_view.snapshot)?;
+        self.refresh_projection_from_context()?;
+        self.last_outcome = None;
+        Ok(())
+    }
+
+    pub fn clear_table_totals_formula(
+        &mut self,
+        table: &NodeId,
+        column_id: &str,
+    ) -> Result<(), TreeWorkspaceSessionError> {
+        let table_node_id = self.tree_node_id(table.as_str())?;
+        let mut table_view = self
+            .context
+            .table_view(&self.workspace_id, table_node_id)?
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTable {
+                table: table.to_string(),
+            })?;
+        let column = table_view
+            .snapshot
+            .columns
+            .iter_mut()
+            .find(|column| column.column_id == column_id)
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTableColumn {
+                table: table.to_string(),
+                column_id: column_id.to_string(),
+            })?;
+        column.totals_metadata = None;
+
+        self.context
+            .set_node_table(&self.workspace_id, table_node_id, table_view.snapshot)?;
+        self.refresh_projection_from_context()?;
+        self.last_outcome = None;
+        Ok(())
+    }
+
     pub fn rename_table_column(
         &mut self,
         table: &NodeId,
@@ -1796,6 +1871,24 @@ fn table_formula_metadata_for_column(
 ) -> TreeCalcTableFormulaMetadata {
     let identity = format!(
         "{}.Columns.{}",
+        table_formula_identity_segment(table_path),
+        table_formula_identity_segment(column_id)
+    );
+    TreeCalcTableFormulaMetadata {
+        formula_artifact_id: format!("formula:{identity}"),
+        bind_artifact_id: Some(format!("bind:{identity}")),
+        formula_text_version: "v1".to_string(),
+        formula_text,
+    }
+}
+
+fn table_formula_metadata_for_totals(
+    table_path: &str,
+    column_id: &str,
+    formula_text: String,
+) -> TreeCalcTableFormulaMetadata {
+    let identity = format!(
+        "{}.Totals.{}",
         table_formula_identity_segment(table_path),
         table_formula_identity_segment(column_id)
     );

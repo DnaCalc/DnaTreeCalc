@@ -303,6 +303,43 @@ impl ProgrammableDriver {
             })
     }
 
+    pub fn set_table_totals_formula(&self, table: &str, column_id: &str, formula_text: &str) {
+        self.accept(WorkspaceIntent::SetTableTotalsFormula {
+            table: NodeId::new(table),
+            column_id: column_id.to_string(),
+            formula_text: formula_text.to_string(),
+        });
+    }
+
+    pub fn try_set_table_totals_formula(
+        &self,
+        table: &str,
+        column_id: &str,
+        formula_text: &str,
+    ) -> IntentReceipt {
+        self.dispatch
+            .dispatch(WorkspaceIntent::SetTableTotalsFormula {
+                table: NodeId::new(table),
+                column_id: column_id.to_string(),
+                formula_text: formula_text.to_string(),
+            })
+    }
+
+    pub fn clear_table_totals_formula(&self, table: &str, column_id: &str) {
+        self.accept(WorkspaceIntent::ClearTableTotalsFormula {
+            table: NodeId::new(table),
+            column_id: column_id.to_string(),
+        });
+    }
+
+    pub fn try_clear_table_totals_formula(&self, table: &str, column_id: &str) -> IntentReceipt {
+        self.dispatch
+            .dispatch(WorkspaceIntent::ClearTableTotalsFormula {
+                table: NodeId::new(table),
+                column_id: column_id.to_string(),
+            })
+    }
+
     pub fn rename_table_column(&self, table: &str, column_id: &str, name: &str) {
         self.accept(WorkspaceIntent::RenameTableColumn {
             table: NodeId::new(table),

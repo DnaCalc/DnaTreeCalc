@@ -590,6 +590,7 @@ pub const SHELL_CSS: &str = r#"
 .dtc-table-card__add-column button,
 .dtc-table-card__add-formula-column button,
 .dtc-table-card__column-metadata button,
+.dtc-table-card__totals-formulas button,
 .dtc-table-card__delete-column button {
     border: 1px solid #bfdbfe;
     border-radius: 4px;
@@ -606,6 +607,11 @@ pub const SHELL_CSS: &str = r#"
 }
 
 .dtc-table-card__formula-edits {
+    display: grid;
+    gap: 0.375rem;
+}
+
+.dtc-table-card__totals-formulas {
     display: grid;
     gap: 0.375rem;
 }
@@ -657,6 +663,15 @@ pub const SHELL_CSS: &str = r#"
 .dtc-table-card__formula-edit {
     display: grid;
     grid-template-columns: minmax(5rem, 8rem) minmax(12rem, 1fr);
+    gap: 0.375rem;
+    align-items: center;
+    font-size: 0.8125rem;
+    color: #475569;
+}
+
+.dtc-table-card__totals-formula {
+    display: grid;
+    grid-template-columns: minmax(5rem, 8rem) minmax(12rem, 1fr) auto auto;
     gap: 0.375rem;
     align-items: center;
     font-size: 0.8125rem;

@@ -1180,6 +1180,90 @@ fn programmable_skin_authors_formula_table_columns_from_outside_ir() {
 }
 
 #[test]
+fn programmable_skin_authors_table_totals_formulas_from_outside_ir() {
+    let harness = Harness::from_repo_fixture("tables");
+    let skin = harness.driver.clone();
+    skin.recalc();
+
+    let before = skin.state();
+    let before_table = before
+        .tables
+        .get(&NodeId::new("SalesTable"))
+        .expect("table projects");
+    assert_eq!(table_totals_row(before_table), vec!["", "60", ""]);
+    assert!(before_table.columns[0].totals_formula.is_none());
+    assert!(before_table.columns[2].totals_formula.is_none());
+
+    let tax_totals =
+        skin.try_set_table_totals_formula("SalesTable", "col:tax", "=SUM(SalesTable[Tax])");
+    assert!(tax_totals.accepted, "{:?}", tax_totals.error);
+    let tax_state = skin.state();
+    let tax_table = tax_state
+        .tables
+        .get(&NodeId::new("SalesTable"))
+        .expect("table projects after totals formula add");
+    assert_eq!(table_totals_row(tax_table), vec!["", "60", "6"]);
+    let tax_formula = tax_table.columns[2]
+        .totals_formula
+        .as_ref()
+        .expect("tax totals formula projects");
+    assert_eq!(tax_formula.formula_text, "=SUM(SalesTable[Tax])");
+    assert_eq!(tax_formula.formula_text_version, "v1");
+    assert_eq!(
+        tax_formula.formula_artifact_id,
+        "formula:SalesTable.Totals.col_tax"
+    );
+    assert_eq!(
+        tax_formula.bind_artifact_id.as_deref(),
+        Some("bind:SalesTable.Totals.col_tax")
+    );
+
+    let amount_edit =
+        skin.try_set_table_totals_formula("SalesTable", "col:amount", "=SUM([Amount])");
+    assert!(amount_edit.accepted, "{:?}", amount_edit.error);
+    let edited_state = skin.state();
+    let edited_table = edited_state
+        .tables
+        .get(&NodeId::new("SalesTable"))
+        .expect("table projects after totals formula edit");
+    assert_eq!(table_totals_row(edited_table), vec!["", "60", "6"]);
+    let amount_formula = edited_table.columns[1]
+        .totals_formula
+        .as_ref()
+        .expect("amount totals formula projects");
+    assert_eq!(amount_formula.formula_text, "=SUM([Amount])");
+    assert_eq!(amount_formula.formula_text_version, "v2");
+    assert_eq!(
+        amount_formula.formula_artifact_id,
+        "formula:SalesTable.Totals.Amount"
+    );
+
+    skin.edit_table_cell("SalesTable", "row:east", "col:amount", "25");
+    let recalced_state = skin.state();
+    let recalced_table = recalced_state
+        .tables
+        .get(&NodeId::new("SalesTable"))
+        .expect("table projects after totals-driving body edit");
+    assert_eq!(table_totals_row(recalced_table), vec!["", "65", "6.5"]);
+
+    let clear_amount = skin.try_clear_table_totals_formula("SalesTable", "col:amount");
+    assert!(clear_amount.accepted, "{:?}", clear_amount.error);
+    let cleared_state = skin.state();
+    let cleared_table = cleared_state
+        .tables
+        .get(&NodeId::new("SalesTable"))
+        .expect("table projects after totals formula clear");
+    assert_eq!(table_totals_row(cleared_table), vec!["", "", "6.5"]);
+    assert!(cleared_table.columns[1].totals_formula.is_none());
+
+    let missing_set =
+        skin.try_set_table_totals_formula("SalesTable", "col:missing", "=SUM([Missing])");
+    assert!(!missing_set.accepted, "{missing_set:?}");
+    let missing_clear = skin.try_clear_table_totals_formula("SalesTable", "col:missing");
+    assert!(!missing_clear.accepted, "{missing_clear:?}");
+}
+
+#[test]
 fn programmable_skin_renames_and_reorders_table_columns_from_outside_ir() {
     let harness = Harness::from_repo_fixture("tables");
     let skin = harness.driver.clone();

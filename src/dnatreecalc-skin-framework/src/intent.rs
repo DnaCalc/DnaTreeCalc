@@ -104,6 +104,15 @@ pub enum WorkspaceIntent {
         column_id: String,
         formula_text: String,
     },
+    SetTableTotalsFormula {
+        table: NodeId,
+        column_id: String,
+        formula_text: String,
+    },
+    ClearTableTotalsFormula {
+        table: NodeId,
+        column_id: String,
+    },
     RenameTableColumn {
         table: NodeId,
         column_id: String,
@@ -318,6 +327,8 @@ impl Dispatcher for InMemoryDispatcher {
             | WorkspaceIntent::AddTableColumn { .. }
             | WorkspaceIntent::AddTableFormulaColumn { .. }
             | WorkspaceIntent::EditTableColumnFormula { .. }
+            | WorkspaceIntent::SetTableTotalsFormula { .. }
+            | WorkspaceIntent::ClearTableTotalsFormula { .. }
             | WorkspaceIntent::RenameTableColumn { .. }
             | WorkspaceIntent::ReorderTableColumn { .. }
             | WorkspaceIntent::DeleteTableColumn { .. }
