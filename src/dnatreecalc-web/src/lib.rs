@@ -55,7 +55,12 @@ pub fn mount_dnatreecalc(element_id: &str) -> Result<(), JsValue> {
     ))));
     let shared = SharedSkinStateHandle::new(SharedSkinState::default());
 
-    let dispatcher = Arc::new(HostDispatcher::with_session(selection, workspace, session));
+    let dispatcher = Arc::new(HostDispatcher::with_session_and_shared(
+        selection,
+        workspace,
+        session,
+        Some(shared),
+    ));
     let dispatch: Arc<dyn Dispatcher> = dispatcher;
 
     let registry = Arc::new(build_default_registry());

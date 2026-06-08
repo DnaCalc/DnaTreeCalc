@@ -278,6 +278,81 @@ fn edit_formula_intent_recalculates_direct_context_and_updates_workspace_signal(
 }
 
 #[test]
+fn workspace_management_intents_create_and_switch_projected_sessions() {
+    let _owner = Owner::new();
+
+    let fixture = WorkspaceFixture::from_repo_fixture("accounts").unwrap();
+    let model = WorkspaceModel::try_from(fixture).unwrap();
+    let mut initial_session = TreeWorkspaceSession::from_model(&model).unwrap();
+    initial_session.recalculate().unwrap();
+    let workspace_state = initial_session.workspace_state().unwrap();
+    let session = Arc::new(std::sync::Mutex::new(initial_session));
+
+    let workspace = RwSignal::new(workspace_state);
+    let selection = RwSignal::new(SelectionState::with_primary(Some(NodeId::new(
+        "Accounts.2005.Q1.Income",
+    ))));
+    let shared = SharedSkinStateHandle::new(SharedSkinState::default());
+    let dispatcher =
+        HostDispatcher::with_session_and_shared(selection, workspace, session, Some(shared));
+
+    assert_eq!(
+        shared.get_untracked().active_workspace_id.as_deref(),
+        Some("accounts")
+    );
+    assert_eq!(
+        shared.get_untracked().workspace_ids,
+        vec!["accounts".to_string()]
+    );
+
+    let receipt = dispatcher.dispatch(WorkspaceIntent::NewWorkspace);
+    assert!(receipt.accepted, "{:?}", receipt.error);
+    assert_eq!(workspace.get_untracked().workspace_id, "Workspace 1");
+    assert_eq!(workspace.get_untracked().len(), 0);
+    assert_eq!(selection.get_untracked().primary, None);
+    assert_eq!(
+        shared.get_untracked().active_workspace_id.as_deref(),
+        Some("Workspace 1")
+    );
+    assert_eq!(
+        shared.get_untracked().workspace_ids,
+        vec!["Workspace 1".to_string(), "accounts".to_string()]
+    );
+
+    let add_receipt = dispatcher.dispatch(WorkspaceIntent::AddNode {
+        parent: None,
+        symbol: "Root".to_string(),
+        content: "1".to_string(),
+    });
+    assert!(add_receipt.accepted, "{:?}", add_receipt.error);
+    assert_eq!(workspace.get_untracked().len(), 1);
+
+    let switch_receipt = dispatcher.dispatch(WorkspaceIntent::SwitchWorkspace {
+        workspace_id: "accounts".to_string(),
+    });
+    assert!(switch_receipt.accepted, "{:?}", switch_receipt.error);
+    assert_eq!(workspace.get_untracked().workspace_id, "accounts");
+    assert!(workspace.get_untracked().len() > 1);
+    assert_eq!(selection.get_untracked().primary, None);
+    assert_eq!(
+        shared.get_untracked().active_workspace_id.as_deref(),
+        Some("accounts")
+    );
+
+    let switch_back = dispatcher.dispatch(WorkspaceIntent::SwitchWorkspace {
+        workspace_id: "Workspace 1".to_string(),
+    });
+    assert!(switch_back.accepted, "{:?}", switch_back.error);
+    assert_eq!(workspace.get_untracked().workspace_id, "Workspace 1");
+    assert!(
+        workspace
+            .get_untracked()
+            .node(&NodeId::new("Root"))
+            .is_some()
+    );
+}
+
+#[test]
 fn walking_skeleton_click_through_harness_edits_switches_saves_and_reopens() {
     let _owner = Owner::new();
 

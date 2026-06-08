@@ -61,6 +61,10 @@ pub enum WorkspaceIntent {
     DeleteNode {
         node: NodeId,
     },
+    NewWorkspace,
+    SwitchWorkspace {
+        workspace_id: String,
+    },
 }
 
 /// Outcome of dispatching a single intent.
@@ -168,7 +172,9 @@ impl Dispatcher for InMemoryDispatcher {
             | WorkspaceIntent::RenameNode { .. }
             | WorkspaceIntent::MoveNode { .. }
             | WorkspaceIntent::ReorderNode { .. }
-            | WorkspaceIntent::DeleteNode { .. } => IntentReceipt::accepted(),
+            | WorkspaceIntent::DeleteNode { .. }
+            | WorkspaceIntent::NewWorkspace
+            | WorkspaceIntent::SwitchWorkspace { .. } => IntentReceipt::accepted(),
         }
     }
 }

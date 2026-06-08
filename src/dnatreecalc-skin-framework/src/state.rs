@@ -124,6 +124,8 @@ pub struct SharedSkinState {
     pub pinned: Vec<NodeId>,
     pub recalc_mode: WorkspaceRecalcMode,
     pub manual_recalc_pending: bool,
+    pub workspace_ids: Vec<String>,
+    pub active_workspace_id: Option<String>,
 }
 
 /// Reactive handle to the shared meta-namespace state, mirrored from
