@@ -92,12 +92,49 @@ fn programmable_skin_builds_interrelated_tree_and_reads_results() {
     skin.assert_scalar("Root.C", "10");
 
     let state = skin.state();
-    let run = state.last_run.expect("recalc projects last run");
+    let run = state.last_run.as_ref().expect("recalc projects last run");
     assert!(matches!(
         run.run_state,
         CalcRunStateProjection::Published | CalcRunStateProjection::VerifiedClean
     ));
     assert!(!run.evaluation_order.is_empty());
+}
+
+#[test]
+fn programmable_skin_projects_full_derivation_trace_payload() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    skin.add_node(Some("Root"), "A", "3");
+    skin.add_node(Some("Root"), "B", "=A+4");
+
+    let state = skin.state();
+    let run = state.last_run.as_ref().expect("recalc projects last run");
+    assert_eq!(run.derivation_trace_count, run.derivation_traces.len());
+    let trace = run
+        .derivation_traces
+        .iter()
+        .find(|trace| trace.owner.as_str() == "Root.B")
+        .expect("formula node projects derivation trace");
+    assert_eq!(
+        trace.owner_key,
+        state.node(&NodeId::new("Root.B")).unwrap().key
+    );
+    assert_eq!(
+        trace.trace_schema_id,
+        "oxcalc.derivation_trace.invoke_outcome.v1"
+    );
+    assert_eq!(trace.trace_mode, "PreparedCalls");
+    assert_eq!(trace.kernel_returned_value, "7");
+    assert!(!trace.formula_stable_id.is_empty());
+    assert!(!trace.template_selection.plan_template_key.is_empty());
+    assert!(!trace.hole_bindings.is_empty());
+    assert!(!trace.sub_invocation_tree.is_empty());
+    let root_call = &trace.sub_invocation_tree[0];
+    assert!(!root_call.function_id.is_empty());
+    assert!(!root_call.function_name.is_empty());
+    assert_eq!(root_call.kernel_returned_value.as_deref(), Some("7"));
 }
 
 #[test]

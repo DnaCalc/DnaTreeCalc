@@ -32,8 +32,11 @@ pub use state::{
 pub use workspace::{
     CalcRunProjection, CalcRunStateProjection, DependencyDescriptorProjection,
     DependencyEdgeProjection, DependencyGraphProjection, DependencyKindProjection,
-    InvalidationReasonProjection, NodeCalcStateProjection, NodeContentKind,
-    NodeInvalidationProjection, NodeValueProjection, NodeView, PhaseKeyProjection,
+    DerivationHoleBindingProjection, DerivationInvocationProjection,
+    DerivationOxfmlTraceEventProjection, DerivationPreparedArgumentProjection,
+    DerivationTemplateHoleProjection, DerivationTemplateSelectionProjection,
+    DerivationTraceProjection, InvalidationReasonProjection, NodeCalcStateProjection,
+    NodeContentKind, NodeInvalidationProjection, NodeValueProjection, NodeView, PhaseKeyProjection,
     ReferenceResolutionProjection, ReferenceTargetProjection, SourceSpanProjection,
     TableProjection, TreeReferenceCollectionFamilyProjection, TreeReferenceCollectionProjection,
     WorkspaceRevisionProjection, WorkspaceState,

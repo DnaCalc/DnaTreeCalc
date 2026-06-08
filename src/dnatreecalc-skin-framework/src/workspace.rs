@@ -170,9 +170,85 @@ pub struct CalcRunProjection {
     pub runtime_effect_count: usize,
     pub runtime_overlay_count: usize,
     pub derivation_trace_count: usize,
+    pub derivation_traces: Vec<DerivationTraceProjection>,
     pub invalidated_nodes: Vec<NodeInvalidationProjection>,
     pub phase_timings_micros: BTreeMap<PhaseKeyProjection, u128>,
     pub diagnostics: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DerivationTraceProjection {
+    pub trace_schema_id: String,
+    pub owner: NodeId,
+    pub owner_key: NodeKey,
+    pub formula_artifact_id: String,
+    pub bind_artifact_id: Option<String>,
+    pub formula_stable_id: String,
+    pub trace_mode: String,
+    pub template_selection: DerivationTemplateSelectionProjection,
+    pub hole_bindings: Vec<DerivationHoleBindingProjection>,
+    pub sub_invocation_tree: Vec<DerivationInvocationProjection>,
+    pub kernel_returned_value: String,
+    pub oxfml_trace_events: Vec<DerivationOxfmlTraceEventProjection>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DerivationTemplateSelectionProjection {
+    pub prepared_formula_key: String,
+    pub shape_key: String,
+    pub dispatch_skeleton_key: String,
+    pub plan_template_key: String,
+    pub template_holes: Vec<DerivationTemplateHoleProjection>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DerivationTemplateHoleProjection {
+    pub hole_id: String,
+    pub ordinal: usize,
+    pub path: String,
+    pub kind: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DerivationHoleBindingProjection {
+    pub hole_id: String,
+    pub payload: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DerivationInvocationProjection {
+    pub invocation_ordinal: usize,
+    pub invocation_kind: String,
+    pub function_name: String,
+    pub function_id: String,
+    pub arg_preparation_profile: Option<String>,
+    pub prepared_arguments: Vec<DerivationPreparedArgumentProjection>,
+    pub kernel_returned_value: Option<String>,
+    pub children: Vec<DerivationInvocationProjection>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DerivationPreparedArgumentProjection {
+    pub ordinal: usize,
+    pub structure_class: String,
+    pub source_class: String,
+    pub evaluation_mode: String,
+    pub blankness_class: String,
+    pub caller_context_sensitive: bool,
+    pub reference_target: Option<String>,
+    pub opaque_reason: Option<String>,
+    pub resolved_value: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DerivationOxfmlTraceEventProjection {
+    pub trace_schema_id: String,
+    pub event_kind: String,
+    pub formula_stable_id: String,
+    pub session_id: Option<String>,
+    pub candidate_result_id: Option<String>,
+    pub commit_attempt_id: Option<String>,
+    pub event_order_key: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -3,17 +3,21 @@ use std::collections::{BTreeMap, BTreeSet};
 use dnatreecalc_skin_framework::{
     CalcRunProjection, CalcRunStateProjection, DependencyDescriptorProjection,
     DependencyEdgeProjection, DependencyGraphProjection, DependencyKindProjection,
-    InvalidationReasonProjection, NodeCalcStateProjection, NodeContentKind as FrameworkContentKind,
-    NodeId, NodeInvalidationProjection, NodeKey, NodeValueProjection, NodeView, PhaseKeyProjection,
-    ReferenceResolutionProjection, ReferenceTargetProjection, TableProjection,
-    TreeReferenceCollectionFamilyProjection, TreeReferenceCollectionProjection,
-    WorkspaceRevisionProjection, WorkspaceState,
+    DerivationHoleBindingProjection, DerivationInvocationProjection,
+    DerivationOxfmlTraceEventProjection, DerivationPreparedArgumentProjection,
+    DerivationTemplateHoleProjection, DerivationTemplateSelectionProjection,
+    DerivationTraceProjection, InvalidationReasonProjection, NodeCalcStateProjection,
+    NodeContentKind as FrameworkContentKind, NodeId, NodeInvalidationProjection, NodeKey,
+    NodeValueProjection, NodeView, PhaseKeyProjection, ReferenceResolutionProjection,
+    ReferenceTargetProjection, TableProjection, TreeReferenceCollectionFamilyProjection,
+    TreeReferenceCollectionProjection, WorkspaceRevisionProjection, WorkspaceState,
 };
 use oxcalc_core::consumer::OxCalcTreeRunState;
 use oxcalc_core::consumer::{
     OxCalcTreeCalculationOutcome, OxCalcTreeContext, OxCalcTreeContextError,
     OxCalcTreeContextOptions, OxCalcTreeHostCapabilitySnapshot, OxCalcTreeNodeCreate,
-    OxCalcTreeWorkspaceCreate, OxCalcTreeWorkspaceId, OxCalcTreeWorkspaceSnapshot,
+    OxCalcTreeRuntimePolicy, OxCalcTreeWorkspaceCreate, OxCalcTreeWorkspaceId,
+    OxCalcTreeWorkspaceSnapshot,
 };
 use oxcalc_core::dependency::{
     DependencyDescriptor, DependencyDescriptorKind, InvalidationReasonKind,
@@ -26,7 +30,10 @@ use oxcalc_core::structured_table::{
     TreeCalcTableColumnBodyMetadata, TreeCalcTableColumnSnapshot, TreeCalcTableFormulaMetadata,
     TreeCalcTableNodeSnapshot, TreeCalcTableRowId, TreeCalcTableVirtualAnchor,
 };
-use oxcalc_core::treecalc::LocalTreeCalcPhaseKey;
+use oxcalc_core::treecalc::{
+    DerivationInvocationTraceNode, DerivationPreparedArgumentTrace, DerivationTraceRecord,
+    LocalTreeCalcPhaseKey,
+};
 use oxfunc_core::value::{CalcValue, CoreValue};
 use serde::{Deserialize, Serialize};
 
@@ -887,6 +894,11 @@ impl TreeWorkspaceSession {
             runtime_effect_count: outcome.runtime_effects.len(),
             runtime_overlay_count: outcome.runtime_effect_overlays.len(),
             derivation_trace_count: outcome.derivation_traces.len(),
+            derivation_traces: outcome
+                .derivation_traces
+                .iter()
+                .map(|trace| self.derivation_trace_projection(trace))
+                .collect::<Result<Vec<_>, _>>()?,
             invalidated_nodes,
             phase_timings_micros: outcome
                 .phase_timings_micros
@@ -894,6 +906,65 @@ impl TreeWorkspaceSession {
                 .map(|(phase, micros)| (phase_key_projection_for(phase), *micros))
                 .collect(),
             diagnostics: outcome.diagnostics.clone(),
+        })
+    }
+
+    fn derivation_trace_projection(
+        &self,
+        trace: &DerivationTraceRecord,
+    ) -> Result<DerivationTraceProjection, TreeWorkspaceSessionError> {
+        Ok(DerivationTraceProjection {
+            trace_schema_id: trace.trace_schema_id.clone(),
+            owner: self.node_id_for_tree_node(trace.owner_node_id)?,
+            owner_key: node_key_for_tree_node(trace.owner_node_id),
+            formula_artifact_id: trace.formula_artifact_id.clone(),
+            bind_artifact_id: trace.bind_artifact_id.clone(),
+            formula_stable_id: trace.formula_stable_id.clone(),
+            trace_mode: trace.trace_mode.clone(),
+            template_selection: DerivationTemplateSelectionProjection {
+                prepared_formula_key: trace.template_selection.prepared_formula_key.clone(),
+                shape_key: trace.template_selection.shape_key.clone(),
+                dispatch_skeleton_key: trace.template_selection.dispatch_skeleton_key.clone(),
+                plan_template_key: trace.template_selection.plan_template_key.clone(),
+                template_holes: trace
+                    .template_selection
+                    .template_holes
+                    .iter()
+                    .map(|hole| DerivationTemplateHoleProjection {
+                        hole_id: hole.hole_id.clone(),
+                        ordinal: hole.ordinal,
+                        path: hole.path.clone(),
+                        kind: hole.kind.clone(),
+                    })
+                    .collect(),
+            },
+            hole_bindings: trace
+                .hole_bindings
+                .iter()
+                .map(|binding| DerivationHoleBindingProjection {
+                    hole_id: binding.hole_id.clone(),
+                    payload: binding.payload.clone(),
+                })
+                .collect(),
+            sub_invocation_tree: trace
+                .sub_invocation_tree
+                .iter()
+                .map(derivation_invocation_projection)
+                .collect(),
+            kernel_returned_value: trace.kernel_returned_value.clone(),
+            oxfml_trace_events: trace
+                .oxfml_trace_events
+                .iter()
+                .map(|event| DerivationOxfmlTraceEventProjection {
+                    trace_schema_id: event.trace_schema_id.clone(),
+                    event_kind: event.event_kind.clone(),
+                    formula_stable_id: event.formula_stable_id.clone(),
+                    session_id: event.session_id.clone(),
+                    candidate_result_id: event.candidate_result_id.clone(),
+                    commit_attempt_id: event.commit_attempt_id.clone(),
+                    event_order_key: event.event_order_key,
+                })
+                .collect(),
         })
     }
 }
@@ -907,15 +978,22 @@ fn context_for_profile_id(profile: &str) -> OxCalcTreeContext {
         "strict-excel" => "host-capabilities:strict-excel",
         _ => "host-capabilities:treecalc-v1",
     };
-    OxCalcTreeContext::new(OxCalcTreeContextOptions::new().with_host_capabilities(
-        OxCalcTreeHostCapabilitySnapshot {
-            capability_profile_id: capability_profile_id.to_string(),
-            dynamic_dependency_effects: true,
-            execution_restriction_effects: true,
-            capability_sensitive_effects: true,
-            shape_topology_effects: true,
-        },
-    ))
+    let runtime_policy = OxCalcTreeRuntimePolicy {
+        policy_id: "runtime-policy:dnatreecalc-skin-ir-trace".to_string(),
+        derivation_trace_enabled: true,
+        ..OxCalcTreeRuntimePolicy::default()
+    };
+    OxCalcTreeContext::new(
+        OxCalcTreeContextOptions::new()
+            .with_runtime_policy(runtime_policy)
+            .with_host_capabilities(OxCalcTreeHostCapabilitySnapshot {
+                capability_profile_id: capability_profile_id.to_string(),
+                dynamic_dependency_effects: true,
+                execution_restriction_effects: true,
+                capability_sensitive_effects: true,
+                shape_topology_effects: true,
+            }),
+    )
 }
 
 fn leaked_profile(profile: String) -> &'static str {
@@ -1172,6 +1250,45 @@ fn reference_target_keys(target: &ReferenceTargetProjection) -> Vec<NodeKey> {
         ReferenceTargetProjection::External { .. } | ReferenceTargetProjection::Unresolved => {
             Vec::new()
         }
+    }
+}
+
+fn derivation_invocation_projection(
+    invocation: &DerivationInvocationTraceNode,
+) -> DerivationInvocationProjection {
+    DerivationInvocationProjection {
+        invocation_ordinal: invocation.invocation_ordinal,
+        invocation_kind: invocation.invocation_kind.clone(),
+        function_name: invocation.function_name.clone(),
+        function_id: invocation.function_id.clone(),
+        arg_preparation_profile: invocation.arg_preparation_profile.clone(),
+        prepared_arguments: invocation
+            .prepared_arguments
+            .iter()
+            .map(derivation_prepared_argument_projection)
+            .collect(),
+        kernel_returned_value: invocation.kernel_returned_value.clone(),
+        children: invocation
+            .children
+            .iter()
+            .map(derivation_invocation_projection)
+            .collect(),
+    }
+}
+
+fn derivation_prepared_argument_projection(
+    argument: &DerivationPreparedArgumentTrace,
+) -> DerivationPreparedArgumentProjection {
+    DerivationPreparedArgumentProjection {
+        ordinal: argument.ordinal,
+        structure_class: argument.structure_class.clone(),
+        source_class: argument.source_class.clone(),
+        evaluation_mode: argument.evaluation_mode.clone(),
+        blankness_class: argument.blankness_class.clone(),
+        caller_context_sensitive: argument.caller_context_sensitive,
+        reference_target: argument.reference_target.clone(),
+        opaque_reason: argument.opaque_reason.clone(),
+        resolved_value: argument.resolved_value.clone(),
     }
 }
 
