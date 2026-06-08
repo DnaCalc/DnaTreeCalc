@@ -234,6 +234,9 @@ fn active_selection_detail_rows(
             if let Some(targets) = outgoing_target_summary(&detail.outgoing_references) {
                 rows.push(("out targets", targets));
             }
+            if let Some(spans) = outgoing_source_span_summary(&detail.outgoing_references) {
+                rows.push(("out spans", spans));
+            }
             if let Some(handles) = handle_summary(detail.incoming_reference_handles) {
                 rows.push(("in handles", handles));
             }
@@ -273,6 +276,9 @@ fn active_selection_detail_rows(
             if let Some(targets) = outgoing_target_summary(&detail.outgoing_references) {
                 rows.push(("out targets", targets));
             }
+            if let Some(spans) = outgoing_source_span_summary(&detail.outgoing_references) {
+                rows.push(("out spans", spans));
+            }
             if let Some(handles) = handle_summary(detail.incoming_reference_handles) {
                 rows.push(("in handles", handles));
             }
@@ -298,6 +304,17 @@ fn outgoing_target_summary(references: &[ReferenceResolutionProjection]) -> Opti
             reference.source_reference_handle,
             reference_target_label(&reference.target)
         )
+    }))
+}
+
+fn outgoing_source_span_summary(references: &[ReferenceResolutionProjection]) -> Option<String> {
+    handle_summary(references.iter().filter_map(|reference| {
+        reference.token_span.map(|span| {
+            format!(
+                "{} {}..{}",
+                reference.source_reference_handle, span.start_utf8, span.end_utf8
+            )
+        })
     }))
 }
 
@@ -1460,9 +1477,9 @@ mod tests {
     use dnatreecalc_skin_framework::{
         DependencyGraphProjection, DependencyKindProjection, NodeCalcStateProjection,
         NodeContentKind, NodeKey, NodeView, ReferenceResolutionProjection,
-        ReferenceTargetProjection, TableAnchorProjection, TableCellProjection,
-        TableCellRegionProjection, TableCellsProjection, TableColumnProjection,
-        TableFormulaMetadataProjection, TableRowProjection,
+        ReferenceTargetProjection, SourceSpanProjection, TableAnchorProjection,
+        TableCellProjection, TableCellRegionProjection, TableCellsProjection,
+        TableColumnProjection, TableFormulaMetadataProjection, TableRowProjection,
         TreeReferenceCollectionFamilyProjection, TreeReferenceCollectionProjection,
     };
     use std::collections::BTreeMap;
@@ -1700,6 +1717,7 @@ mod tests {
                     "out targets",
                     "ref:Root.B:A -> node Root.A [node:root:a]".to_string(),
                 ),
+                ("out spans", "ref:Root.B:A 1..2".to_string()),
             ])
         );
     }
@@ -1868,7 +1886,10 @@ mod tests {
                 owner: b_id,
                 owner_key: b_key,
                 descriptor_ids: vec!["descriptor:Root.B:A".to_string()],
-                token_span: None,
+                token_span: Some(SourceSpanProjection {
+                    start_utf8: 1,
+                    end_utf8: 2,
+                }),
                 target: ReferenceTargetProjection::Node {
                     node: a_id,
                     key: a_key.clone(),
