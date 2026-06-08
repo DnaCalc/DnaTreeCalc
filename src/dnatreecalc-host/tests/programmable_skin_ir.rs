@@ -144,6 +144,7 @@ fn programmable_skin_receipts_carry_projection_deltas() {
     assert_eq!(add_root.delta.from_seq, 0);
     assert_eq!(add_root.delta.to_seq, 1);
     assert!(add_root.produced_revision.is_some());
+    assert_eq!(add_root.transaction_id, None);
     assert!(add_root
         .delta
         .changes
@@ -155,6 +156,14 @@ fn programmable_skin_receipts_carry_projection_deltas() {
     skin.add_node(Some("Root"), "B", "=A+1");
     let edit = skin.try_edit("Root.A", "4");
     assert!(edit.accepted, "{:?}", edit.error);
+    let edit_transaction_id = edit
+        .transaction_id
+        .as_deref()
+        .expect("node edit receipts carry OxCalc transaction ids");
+    assert!(
+        edit_transaction_id.starts_with("transaction:programmable-skin-ir:"),
+        "{edit_transaction_id}"
+    );
     assert_eq!(edit.delta.from_seq + 1, edit.delta.to_seq);
     assert!(edit.delta.changes.iter().any(
         |change| matches!(change, WorkspaceDeltaChange::ValuesChanged(values) if values
@@ -170,12 +179,14 @@ fn programmable_skin_receipts_carry_projection_deltas() {
     let before_select_seq = skin.state().projection_seq;
     let select = skin.try_select(Some("Root.B"));
     assert!(select.accepted, "{:?}", select.error);
+    assert_eq!(select.transaction_id, None);
     assert_eq!(select.delta.from_seq, before_select_seq);
     assert_eq!(select.delta.to_seq, before_select_seq);
     assert!(select.delta.changes.is_empty());
 
     let new_workspace = skin.try_new_workspace();
     assert!(new_workspace.accepted, "{:?}", new_workspace.error);
+    assert_eq!(new_workspace.transaction_id, None);
     assert!(
         new_workspace
             .delta
@@ -187,6 +198,7 @@ fn programmable_skin_receipts_carry_projection_deltas() {
 
     let switch_back = skin.try_switch_workspace("programmable-skin-ir");
     assert!(switch_back.accepted, "{:?}", switch_back.error);
+    assert_eq!(switch_back.transaction_id, None);
     assert!(
         switch_back
             .delta
@@ -797,19 +809,51 @@ fn programmable_skin_exercises_structural_edits_from_outside_ir() {
     skin.add_node(Some("Root"), "Z", "3");
     skin.assert_children("Root", &["Root.X", "Root.Y", "Root.Z"]);
 
-    skin.reorder("Root.Z", 0);
+    let reorder = skin.try_reorder("Root.Z", 0);
+    assert!(reorder.accepted, "{:?}", reorder.error);
+    assert!(
+        reorder
+            .transaction_id
+            .as_deref()
+            .is_some_and(|id| id.starts_with("transaction:programmable-skin-ir:")),
+        "{reorder:?}"
+    );
     skin.assert_children("Root", &["Root.Z", "Root.X", "Root.Y"]);
 
-    skin.rename("Root.X", "Renamed");
+    let rename = skin.try_rename("Root.X", "Renamed");
+    assert!(rename.accepted, "{:?}", rename.error);
+    assert!(
+        rename
+            .transaction_id
+            .as_deref()
+            .is_some_and(|id| id.starts_with("transaction:programmable-skin-ir:")),
+        "{rename:?}"
+    );
     assert!(skin.state().node(&NodeId::new("Root.Renamed")).is_some());
     skin.assert_children("Root", &["Root.Z", "Root.Renamed", "Root.Y"]);
 
-    skin.move_node("Root.Y", None, None);
+    let moved = skin.try_move_node("Root.Y", None, None);
+    assert!(moved.accepted, "{:?}", moved.error);
+    assert!(
+        moved
+            .transaction_id
+            .as_deref()
+            .is_some_and(|id| id.starts_with("transaction:programmable-skin-ir:")),
+        "{moved:?}"
+    );
     let state = skin.state();
     assert!(state.node(&NodeId::new("Y")).is_some());
     assert!(state.root_paths.iter().any(|node| node.as_str() == "Y"));
 
-    skin.delete("Root.Z");
+    let delete = skin.try_delete("Root.Z");
+    assert!(delete.accepted, "{:?}", delete.error);
+    assert!(
+        delete
+            .transaction_id
+            .as_deref()
+            .is_some_and(|id| id.starts_with("transaction:programmable-skin-ir:")),
+        "{delete:?}"
+    );
     assert!(skin.state().node(&NodeId::new("Root.Z")).is_none());
 }
 

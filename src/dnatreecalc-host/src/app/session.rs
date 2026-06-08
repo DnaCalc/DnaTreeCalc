@@ -22,9 +22,10 @@ use dnatreecalc_skin_framework::{
 use oxcalc_core::consumer::OxCalcTreeRunState;
 use oxcalc_core::consumer::{
     OxCalcTreeCalculationOutcome, OxCalcTreeContext, OxCalcTreeContextError,
-    OxCalcTreeContextOptions, OxCalcTreeHostCapabilitySnapshot, OxCalcTreeNodeCreate,
-    OxCalcTreeNodeView, OxCalcTreeRuntimePolicy, OxCalcTreeWorkspaceCreate, OxCalcTreeWorkspaceId,
-    OxCalcTreeWorkspaceSnapshot,
+    OxCalcTreeContextOptions, OxCalcTreeEdit, OxCalcTreeEditTransaction,
+    OxCalcTreeHostCapabilitySnapshot, OxCalcTreeNodeCreate, OxCalcTreeNodeView,
+    OxCalcTreeRuntimePolicy, OxCalcTreeWorkspaceCreate, OxCalcTreeWorkspaceId,
+    OxCalcTreeWorkspaceSnapshot, TransactionRecalcPolicy,
 };
 use oxcalc_core::coordinator::{RuntimeEffect, RuntimeEffectFamily};
 use oxcalc_core::dependency::{
@@ -91,6 +92,12 @@ pub struct TreeWorkspaceSession {
     display_order: Vec<NodeId>,
     recalc_count: usize,
     last_outcome: Option<OxCalcTreeCalculationOutcome>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TreeWorkspaceTransactionEdit<T> {
+    pub result: T,
+    pub transaction_id: String,
 }
 
 impl TreeWorkspaceSession {
@@ -295,6 +302,25 @@ impl TreeWorkspaceSession {
         Ok(outcome)
     }
 
+    fn apply_single_edit_transaction(
+        &mut self,
+        edit: OxCalcTreeEdit,
+        recalc_policy: TransactionRecalcPolicy,
+    ) -> Result<String, TreeWorkspaceSessionError> {
+        let outcome = self.context.apply_edit_transaction(
+            OxCalcTreeEditTransaction::new(self.workspace_id.clone())
+                .with_edit(edit)
+                .with_recalc_policy(recalc_policy),
+        )?;
+        if let Some(calculation) = outcome.calculation {
+            self.recalc_count += 1;
+            self.last_outcome = Some(calculation);
+        } else {
+            self.last_outcome = None;
+        }
+        Ok(outcome.transaction_id.to_string())
+    }
+
     #[must_use]
     pub fn recalc_count(&self) -> usize {
         self.recalc_count
@@ -319,6 +345,26 @@ impl TreeWorkspaceSession {
             .set_node_formula_text(&self.workspace_id, tree_node_id, content)?;
         self.last_outcome = None;
         Ok(())
+    }
+
+    pub fn edit_formula_transaction(
+        &mut self,
+        node: &NodeId,
+        content: impl Into<String>,
+        recalc_policy: TransactionRecalcPolicy,
+    ) -> Result<TreeWorkspaceTransactionEdit<()>, TreeWorkspaceSessionError> {
+        let tree_node_id = self.tree_node_id(node.as_str())?;
+        let transaction_id = self.apply_single_edit_transaction(
+            OxCalcTreeEdit::SetNodeFormulaText {
+                node_id: tree_node_id,
+                formula_text: content.into(),
+            },
+            recalc_policy,
+        )?;
+        Ok(TreeWorkspaceTransactionEdit {
+            result: (),
+            transaction_id,
+        })
     }
 
     pub fn add_node(
@@ -367,6 +413,27 @@ impl TreeWorkspaceSession {
         self.node_id_for_tree_node(tree_node_id)
     }
 
+    pub fn rename_node_transaction(
+        &mut self,
+        node: &NodeId,
+        new_symbol: impl Into<String>,
+    ) -> Result<TreeWorkspaceTransactionEdit<NodeId>, TreeWorkspaceSessionError> {
+        let tree_node_id = self.tree_node_id(node.as_str())?;
+        let transaction_id = self.apply_single_edit_transaction(
+            OxCalcTreeEdit::RenameNode {
+                node_id: tree_node_id,
+                new_symbol: new_symbol.into(),
+            },
+            TransactionRecalcPolicy::RecalculateAndPublishOnce,
+        )?;
+        self.refresh_projection_from_context()?;
+        let result = self.node_id_for_tree_node(tree_node_id)?;
+        Ok(TreeWorkspaceTransactionEdit {
+            result,
+            transaction_id,
+        })
+    }
+
     pub fn move_node(
         &mut self,
         node: &NodeId,
@@ -383,6 +450,33 @@ impl TreeWorkspaceSession {
         self.refresh_projection_from_context()?;
         self.last_outcome = None;
         self.node_id_for_tree_node(tree_node_id)
+    }
+
+    pub fn move_node_transaction(
+        &mut self,
+        node: &NodeId,
+        new_parent: Option<&NodeId>,
+        new_index: Option<usize>,
+    ) -> Result<TreeWorkspaceTransactionEdit<NodeId>, TreeWorkspaceSessionError> {
+        let tree_node_id = self.tree_node_id(node.as_str())?;
+        let new_parent_id = match new_parent {
+            Some(parent) => self.tree_node_id(parent.as_str())?,
+            None => self.engine_root_id,
+        };
+        let transaction_id = self.apply_single_edit_transaction(
+            OxCalcTreeEdit::MoveNode {
+                node_id: tree_node_id,
+                new_parent_id,
+                new_index,
+            },
+            TransactionRecalcPolicy::RecalculateAndPublishOnce,
+        )?;
+        self.refresh_projection_from_context()?;
+        let result = self.node_id_for_tree_node(tree_node_id)?;
+        Ok(TreeWorkspaceTransactionEdit {
+            result,
+            transaction_id,
+        })
     }
 
     pub fn reorder_node(
@@ -407,12 +501,59 @@ impl TreeWorkspaceSession {
         Ok(())
     }
 
+    pub fn reorder_node_transaction(
+        &mut self,
+        node: &NodeId,
+        new_index: usize,
+    ) -> Result<TreeWorkspaceTransactionEdit<()>, TreeWorkspaceSessionError> {
+        let tree_node_id = self.tree_node_id(node.as_str())?;
+        let transaction_id = self.apply_single_edit_transaction(
+            OxCalcTreeEdit::ReorderNode {
+                node_id: tree_node_id,
+                new_index,
+            },
+            TransactionRecalcPolicy::RecalculateAndPublishOnce,
+        )?;
+        if let Some(parent) = parent_path(node.as_str()) {
+            reorder_child(
+                &mut self.display_order,
+                &NodeId::new(parent),
+                node,
+                new_index,
+            );
+        } else {
+            reorder_root(&mut self.display_order, node, new_index);
+        }
+        Ok(TreeWorkspaceTransactionEdit {
+            result: (),
+            transaction_id,
+        })
+    }
+
     pub fn delete_node(&mut self, node: &NodeId) -> Result<(), TreeWorkspaceSessionError> {
         let tree_node_id = self.tree_node_id(node.as_str())?;
         self.context.delete_node(&self.workspace_id, tree_node_id)?;
         self.refresh_projection_from_context()?;
         self.last_outcome = None;
         Ok(())
+    }
+
+    pub fn delete_node_transaction(
+        &mut self,
+        node: &NodeId,
+    ) -> Result<TreeWorkspaceTransactionEdit<()>, TreeWorkspaceSessionError> {
+        let tree_node_id = self.tree_node_id(node.as_str())?;
+        let transaction_id = self.apply_single_edit_transaction(
+            OxCalcTreeEdit::DeleteNode {
+                node_id: tree_node_id,
+            },
+            TransactionRecalcPolicy::RecalculateAndPublishOnce,
+        )?;
+        self.refresh_projection_from_context()?;
+        Ok(TreeWorkspaceTransactionEdit {
+            result: (),
+            transaction_id,
+        })
     }
 
     pub fn edit_table_cell(

@@ -7,6 +7,7 @@ use dnatreecalc_skin_framework::{
     WorkspaceIntent, WorkspaceState,
 };
 use leptos::prelude::*;
+use oxcalc_core::consumer::TransactionRecalcPolicy;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -149,22 +150,31 @@ impl Dispatcher for HostDispatcher {
                     .with_delta(WorkspaceDelta::unchanged(self.current_projection_seq()))
             }
             WorkspaceIntent::EditFormula { node, content } => self
-                .apply_workspace_edit(
-                    |session| session.edit_formula(&node, content),
-                    WorkspaceEditPublication::Recalculate,
-                )
+                .apply_workspace_transaction_edit(|session| {
+                    session.edit_formula_transaction(
+                        &node,
+                        content,
+                        TransactionRecalcPolicy::RecalculateAndPublishOnce,
+                    )
+                })
                 .map_or_else(IntentReceipt::rejected, receipt_for_publication),
             WorkspaceIntent::EditContent { node, content } => self
-                .apply_workspace_edit(
-                    |session| session.edit_formula(&node, content),
-                    WorkspaceEditPublication::Recalculate,
-                )
+                .apply_workspace_transaction_edit(|session| {
+                    session.edit_formula_transaction(
+                        &node,
+                        content,
+                        TransactionRecalcPolicy::RecalculateAndPublishOnce,
+                    )
+                })
                 .map_or_else(IntentReceipt::rejected, receipt_for_publication),
             WorkspaceIntent::EditContentDeferred { node, content } => self
-                .apply_workspace_edit(
-                    |session| session.edit_formula(&node, content),
-                    WorkspaceEditPublication::ProjectOnly,
-                )
+                .apply_workspace_transaction_edit(|session| {
+                    session.edit_formula_transaction(
+                        &node,
+                        content,
+                        TransactionRecalcPolicy::ApplyOnly,
+                    )
+                })
                 .map_or_else(IntentReceipt::rejected, receipt_for_publication),
             WorkspaceIntent::Recalculate => self
                 .apply_workspace_edit(|_| Ok(()), WorkspaceEditPublication::Recalculate)
@@ -185,10 +195,10 @@ impl Dispatcher for HostDispatcher {
                 }
                 Err(error) => IntentReceipt::rejected(error),
             },
-            WorkspaceIntent::RenameNode { node, new_symbol } => match self.apply_workspace_edit(
-                |session| session.rename_node(&node, new_symbol),
-                WorkspaceEditPublication::Recalculate,
-            ) {
+            WorkspaceIntent::RenameNode { node, new_symbol } => match self
+                .apply_workspace_transaction_edit(|session| {
+                    session.rename_node_transaction(&node, new_symbol)
+                }) {
                 Ok(publication) => {
                     let renamed = publication.result.clone();
                     self.selection
@@ -201,10 +211,9 @@ impl Dispatcher for HostDispatcher {
                 node,
                 new_parent,
                 new_index,
-            } => match self.apply_workspace_edit(
-                |session| session.move_node(&node, new_parent.as_ref(), new_index),
-                WorkspaceEditPublication::Recalculate,
-            ) {
+            } => match self.apply_workspace_transaction_edit(|session| {
+                session.move_node_transaction(&node, new_parent.as_ref(), new_index)
+            }) {
                 Ok(publication) => {
                     let moved = publication.result.clone();
                     self.selection
@@ -214,20 +223,18 @@ impl Dispatcher for HostDispatcher {
                 Err(error) => IntentReceipt::rejected(error),
             },
             WorkspaceIntent::ReorderNode { node, new_index } => self
-                .apply_workspace_edit(
-                    |session| session.reorder_node(&node, new_index),
-                    WorkspaceEditPublication::Recalculate,
-                )
+                .apply_workspace_transaction_edit(|session| {
+                    session.reorder_node_transaction(&node, new_index)
+                })
                 .map_or_else(IntentReceipt::rejected, |publication| {
                     self.selection.set(SelectionState::with_primary(Some(node)));
                     receipt_for_publication(publication)
                 }),
             WorkspaceIntent::DeleteNode { node } => {
                 let next_selection = parent_node_id(node.as_str());
-                self.apply_workspace_edit(
-                    |session| session.delete_node(&node),
-                    WorkspaceEditPublication::Recalculate,
-                )
+                self.apply_workspace_transaction_edit(|session| {
+                    session.delete_node_transaction(&node)
+                })
                 .map_or_else(IntentReceipt::rejected, |publication| {
                     self.selection
                         .set(SelectionState::with_primary(next_selection));
@@ -419,7 +426,6 @@ fn table_cell_exists(workspace: &WorkspaceState, selection: &TableCellSelection)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum WorkspaceEditPublication {
     Recalculate,
-    ProjectOnly,
 }
 
 #[derive(Debug, Clone)]
@@ -427,6 +433,7 @@ struct PublishedWorkspaceEdit<T> {
     result: T,
     delta: WorkspaceDelta,
     produced_revision: Option<String>,
+    transaction_id: Option<String>,
 }
 
 impl<T> PublishedWorkspaceEdit<T> {
@@ -435,6 +442,7 @@ impl<T> PublishedWorkspaceEdit<T> {
             result,
             delta: self.delta,
             produced_revision: self.produced_revision,
+            transaction_id: self.transaction_id,
         }
     }
 }
@@ -443,6 +451,7 @@ fn receipt_for_publication<T>(publication: PublishedWorkspaceEdit<T>) -> IntentR
     IntentReceipt::accepted()
         .with_delta(publication.delta)
         .with_produced_revision(publication.produced_revision)
+        .with_transaction_id(publication.transaction_id)
 }
 
 impl HostDispatcher {
@@ -481,6 +490,46 @@ impl HostDispatcher {
                 result,
                 delta,
                 produced_revision,
+                transaction_id: None,
+            })
+        })
+    }
+
+    fn apply_workspace_transaction_edit<T>(
+        &self,
+        edit: impl FnOnce(
+            &mut TreeWorkspaceSession,
+        ) -> Result<
+            super::session::TreeWorkspaceTransactionEdit<T>,
+            TreeWorkspaceSessionError,
+        >,
+    ) -> Result<PublishedWorkspaceEdit<T>, IntentError> {
+        let session_id = self.active_session_id()?;
+        HOST_SESSIONS.with(|sessions| {
+            let session = sessions
+                .borrow()
+                .get(&session_id)
+                .cloned()
+                .ok_or_else(|| host_failure("workspace session handle is not available"))?;
+            let mut session = session
+                .lock()
+                .map_err(|_| host_failure("workspace session mutex poisoned"))?;
+            let before = self.workspace.map(|workspace| workspace.get_untracked());
+            let transaction = edit(&mut session).map_err(intent_error_from_session)?;
+            let mut after = session
+                .workspace_state()
+                .map_err(intent_error_from_session)?;
+            after.projection_seq = self.next_projection_seq.fetch_add(1, Ordering::Relaxed);
+            let delta = workspace_delta(before.as_ref(), &after, false);
+            let produced_revision = after.revision.workspace_revision_id.clone();
+            if let Some(workspace) = self.workspace {
+                workspace.set(after);
+            }
+            Ok(PublishedWorkspaceEdit {
+                result: transaction.result,
+                delta,
+                produced_revision,
+                transaction_id: Some(transaction.transaction_id),
             })
         })
     }
@@ -580,6 +629,7 @@ impl HostDispatcher {
             result: (),
             delta,
             produced_revision,
+            transaction_id: None,
         })
     }
 }

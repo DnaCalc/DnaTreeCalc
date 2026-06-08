@@ -229,6 +229,12 @@ impl IntentReceipt {
         self.produced_revision = produced_revision;
         self
     }
+
+    #[must_use]
+    pub fn with_transaction_id(mut self, transaction_id: Option<String>) -> Self {
+        self.transaction_id = transaction_id;
+        self
+    }
 }
 
 #[derive(Debug, Clone, thiserror::Error)]
