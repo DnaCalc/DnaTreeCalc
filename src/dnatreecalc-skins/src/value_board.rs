@@ -155,6 +155,7 @@ fn active_selection_summary_rows(
         ActiveSelectionDetailProjection::Node(detail) => Some(vec![
             ("focus", focus),
             ("name", detail.display_name),
+            ("key", detail.node_key.to_string()),
             ("kind", detail.content_kind.stable_id().to_string()),
             (
                 "state",
@@ -181,6 +182,7 @@ fn active_selection_summary_rows(
                 ("focus", focus),
                 ("table", detail.table_name),
                 ("cell", format!("{} / {}", row, detail.column_name)),
+                ("key", detail.node_key.to_string()),
                 (
                     "edit",
                     table_cell_editability_label(detail.editability).to_string(),
@@ -1458,6 +1460,7 @@ mod tests {
             Some(vec![
                 ("focus", "node".to_string()),
                 ("name", "A".to_string()),
+                ("key", "node:root:a".to_string()),
                 ("kind", "constant".to_string()),
                 ("state", "verified_clean".to_string()),
                 ("input", "3".to_string()),
@@ -1480,6 +1483,7 @@ mod tests {
                 ("focus", "table_cell".to_string()),
                 ("table", "SalesTable".to_string()),
                 ("cell", "row:east / Tax".to_string()),
+                ("key", "cell:east:tax".to_string()),
                 ("edit", "formula".to_string()),
                 ("formula", "=[@Amount] * 0.1".to_string()),
                 ("value", "2".to_string()),
@@ -1499,6 +1503,7 @@ mod tests {
             Some(vec![
                 ("focus", "node".to_string()),
                 ("name", "A".to_string()),
+                ("key", "node:root:a".to_string()),
                 ("kind", "constant".to_string()),
                 ("state", "verified_clean".to_string()),
                 ("input", "3".to_string()),
@@ -1514,6 +1519,7 @@ mod tests {
             Some(vec![
                 ("focus", "node".to_string()),
                 ("name", "B".to_string()),
+                ("key", "node:root:b".to_string()),
                 ("kind", "formula".to_string()),
                 ("state", "verified_clean".to_string()),
                 ("input", "=A+1".to_string()),
