@@ -155,6 +155,15 @@ fn active_selection_summary_rows(
         ActiveSelectionDetailProjection::Node(detail) => Some(vec![
             ("focus", focus),
             ("name", detail.display_name),
+            ("kind", detail.content_kind.stable_id().to_string()),
+            (
+                "state",
+                detail
+                    .calc_state
+                    .map(|state| state.stable_id().to_string())
+                    .unwrap_or_else(|| "unknown".to_string()),
+            ),
+            ("input", detail.content_text),
             ("value", detail.value.display_text()),
             ("refs out", detail.outgoing_references.len().to_string()),
             (
@@ -168,7 +177,7 @@ fn active_selection_summary_rows(
                 .as_deref()
                 .map(str::to_string)
                 .unwrap_or_else(|| "totals".to_string());
-            Some(vec![
+            let mut rows = vec![
                 ("focus", focus),
                 ("table", detail.table_name),
                 ("cell", format!("{} / {}", row, detail.column_name)),
@@ -176,13 +185,19 @@ fn active_selection_summary_rows(
                     "edit",
                     table_cell_editability_label(detail.editability).to_string(),
                 ),
+            ];
+            if let Some(formula) = detail.formula {
+                rows.push(("formula", formula.formula_text));
+            }
+            rows.extend([
                 ("value", detail.value.display_text()),
                 ("refs out", detail.outgoing_references.len().to_string()),
                 (
                     "refs in",
                     detail.incoming_reference_handles.len().to_string(),
                 ),
-            ])
+            ]);
+            Some(rows)
         }
     }
 }
@@ -1312,7 +1327,9 @@ fn table_totals_row_visible_intent(table: &str, visible: bool) -> WorkspaceInten
 mod tests {
     use super::*;
     use dnatreecalc_skin_framework::{
-        NodeContentKind, NodeKey, NodeView, TableAnchorProjection, TableCellProjection,
+        DependencyGraphProjection, DependencyKindProjection, NodeCalcStateProjection,
+        NodeContentKind, NodeKey, NodeView, ReferenceResolutionProjection,
+        ReferenceTargetProjection, TableAnchorProjection, TableCellProjection,
         TableCellRegionProjection, TableCellsProjection, TableColumnProjection,
         TableFormulaMetadataProjection, TableRowProjection,
     };
@@ -1441,6 +1458,9 @@ mod tests {
             Some(vec![
                 ("focus", "node".to_string()),
                 ("name", "A".to_string()),
+                ("kind", "constant".to_string()),
+                ("state", "verified_clean".to_string()),
+                ("input", "3".to_string()),
                 ("value", "3".to_string()),
                 ("refs out", "0".to_string()),
                 ("refs in", "0".to_string()),
@@ -1461,8 +1481,44 @@ mod tests {
                 ("table", "SalesTable".to_string()),
                 ("cell", "row:east / Tax".to_string()),
                 ("edit", "formula".to_string()),
+                ("formula", "=[@Amount] * 0.1".to_string()),
                 ("value", "2".to_string()),
                 ("refs out", "0".to_string()),
+                ("refs in", "0".to_string()),
+            ])
+        );
+    }
+
+    #[test]
+    fn value_board_active_selection_summary_counts_real_node_dependencies() {
+        let workspace = workspace_with_formula_dependencies();
+
+        let precedent_selection = SelectionState::with_primary(Some(NodeId::new("Root.A")));
+        assert_eq!(
+            active_selection_summary_rows(&workspace, &precedent_selection),
+            Some(vec![
+                ("focus", "node".to_string()),
+                ("name", "A".to_string()),
+                ("kind", "constant".to_string()),
+                ("state", "verified_clean".to_string()),
+                ("input", "3".to_string()),
+                ("value", "3".to_string()),
+                ("refs out", "0".to_string()),
+                ("refs in", "1".to_string()),
+            ])
+        );
+
+        let formula_selection = SelectionState::with_primary(Some(NodeId::new("Root.B")));
+        assert_eq!(
+            active_selection_summary_rows(&workspace, &formula_selection),
+            Some(vec![
+                ("focus", "node".to_string()),
+                ("name", "B".to_string()),
+                ("kind", "formula".to_string()),
+                ("state", "verified_clean".to_string()),
+                ("input", "=A+1".to_string()),
+                ("value", "4".to_string()),
+                ("refs out", "1".to_string()),
                 ("refs in", "0".to_string()),
             ])
         );
@@ -1482,7 +1538,7 @@ mod tests {
                 content_kind: NodeContentKind::Constant,
                 content_text: "3".to_string(),
                 computed_value: NodeValueProjection::Scalar("3".to_string()),
-                calc_state: None,
+                calc_state: Some(NodeCalcStateProjection::VerifiedClean),
                 is_meta: false,
                 table: None,
             },
@@ -1490,6 +1546,81 @@ mod tests {
 
         WorkspaceState {
             nodes,
+            ..WorkspaceState::default()
+        }
+    }
+
+    fn workspace_with_formula_dependencies() -> WorkspaceState {
+        let a_key = NodeKey::new("node:root:a");
+        let b_key = NodeKey::new("node:root:b");
+        let a_id = NodeId::new("Root.A");
+        let b_id = NodeId::new("Root.B");
+        let reference_handle = "ref:Root.B:A".to_string();
+
+        let mut nodes = BTreeMap::new();
+        nodes.insert(
+            a_id.clone(),
+            NodeView {
+                key: a_key.clone(),
+                id: a_id.clone(),
+                display_name: "A".to_string(),
+                parent: Some(NodeId::new("Root")),
+                children: vec![],
+                depth: 1,
+                content_kind: NodeContentKind::Constant,
+                content_text: "3".to_string(),
+                computed_value: NodeValueProjection::Scalar("3".to_string()),
+                calc_state: Some(NodeCalcStateProjection::VerifiedClean),
+                is_meta: false,
+                table: None,
+            },
+        );
+        nodes.insert(
+            b_id.clone(),
+            NodeView {
+                key: b_key.clone(),
+                id: b_id.clone(),
+                display_name: "B".to_string(),
+                parent: Some(NodeId::new("Root")),
+                children: vec![],
+                depth: 1,
+                content_kind: NodeContentKind::Formula,
+                content_text: "=A+1".to_string(),
+                computed_value: NodeValueProjection::Scalar("4".to_string()),
+                calc_state: Some(NodeCalcStateProjection::VerifiedClean),
+                is_meta: false,
+                table: None,
+            },
+        );
+
+        let mut reference_resolutions = BTreeMap::new();
+        reference_resolutions.insert(
+            reference_handle.clone(),
+            ReferenceResolutionProjection {
+                source_reference_handle: reference_handle.clone(),
+                owner: b_id,
+                owner_key: b_key,
+                descriptor_ids: vec!["descriptor:Root.B:A".to_string()],
+                token_span: None,
+                target: ReferenceTargetProjection::Node {
+                    node: a_id,
+                    key: a_key.clone(),
+                },
+                primary_kind: DependencyKindProjection::StaticDirect,
+                requires_rebind_on_structural_change: false,
+            },
+        );
+
+        let mut reverse_references = BTreeMap::new();
+        reverse_references.insert(a_key, vec![reference_handle]);
+
+        WorkspaceState {
+            nodes,
+            dependencies: DependencyGraphProjection {
+                reference_resolutions,
+                reverse_references,
+                ..DependencyGraphProjection::default()
+            },
             ..WorkspaceState::default()
         }
     }

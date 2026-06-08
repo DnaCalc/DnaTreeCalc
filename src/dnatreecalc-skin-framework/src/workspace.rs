@@ -306,6 +306,23 @@ pub enum NodeContentKind {
     Formula,
 }
 
+impl NodeContentKind {
+    #[must_use]
+    pub const fn stable_id(self) -> &'static str {
+        match self {
+            Self::Empty => "empty",
+            Self::Constant => "constant",
+            Self::Formula => "formula",
+        }
+    }
+}
+
+impl fmt::Display for NodeContentKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.stable_id())
+    }
+}
+
 /// What the skin should render for a node's value cell.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum NodeValueProjection {
@@ -540,6 +557,28 @@ pub enum NodeCalcStateProjection {
     PublishReady,
     RejectedPendingRepair,
     CycleBlocked,
+}
+
+impl NodeCalcStateProjection {
+    #[must_use]
+    pub const fn stable_id(self) -> &'static str {
+        match self {
+            Self::Clean => "clean",
+            Self::DirtyPending => "dirty_pending",
+            Self::Needed => "needed",
+            Self::Evaluating => "evaluating",
+            Self::VerifiedClean => "verified_clean",
+            Self::PublishReady => "publish_ready",
+            Self::RejectedPendingRepair => "rejected_pending_repair",
+            Self::CycleBlocked => "cycle_blocked",
+        }
+    }
+}
+
+impl fmt::Display for NodeCalcStateProjection {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.stable_id())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
