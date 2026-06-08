@@ -1,8 +1,9 @@
 use dnatreecalc_skin_framework::{
-    ActiveTableCellDetailProjection, Dispatcher, NodeId, NodeValueProjection, SelectionState,
-    SkinCapabilities, SkinCategory, SkinContext, SkinHandle, SkinId, SkinManifest, SkinState,
-    TableCellEditabilityProjection, TableCellInput, TableColumnBodyProjection, TableProjection,
-    TableRowInput, WorkspaceIntent, WorkspaceSkin, WorkspaceState,
+    ActiveSelectionDetailProjection, ActiveTableCellDetailProjection, Dispatcher, NodeId,
+    NodeValueProjection, SelectionState, SkinCapabilities, SkinCategory, SkinContext, SkinHandle,
+    SkinId, SkinManifest, SkinState, TableCellEditabilityProjection, TableCellInput,
+    TableColumnBodyProjection, TableProjection, TableRowInput, WorkspaceIntent, WorkspaceSkin,
+    WorkspaceState,
 };
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -97,6 +98,7 @@ fn ValueBoardView(cx: SkinContext<ValueBoardState>) -> impl IntoView {
 
     view! {
         <section class="dtc-value-board">
+            {render_active_selection_summary(workspace, selection)}
             {move || cards.with(|cards| {
                 let dispatch = dispatch.clone();
                 cards.iter().map(|(path, name, content, value, table)| {
@@ -116,6 +118,60 @@ fn ValueBoardView(cx: SkinContext<ValueBoardState>) -> impl IntoView {
                 }).collect::<Vec<_>>()
             })}
         </section>
+    }
+}
+
+fn render_active_selection_summary(
+    workspace: ReadSignal<WorkspaceState>,
+    selection: ReadSignal<SelectionState>,
+) -> AnyView {
+    view! {
+        {move || {
+            workspace.with(|workspace| {
+                selection.with(|selection| active_selection_summary_rows(workspace, selection))
+            })
+            .map(|rows| {
+                view! {
+                    <dl class="dtc-value-board__active-selection">
+                        {rows.into_iter().map(|(label, value)| view! {
+                            <dt>{label}</dt>
+                            <dd>{value}</dd>
+                        }).collect::<Vec<_>>()}
+                    </dl>
+                }
+            })
+        }}
+    }
+    .into_any()
+}
+
+fn active_selection_summary_rows(
+    workspace: &WorkspaceState,
+    selection: &SelectionState,
+) -> Option<Vec<(&'static str, String)>> {
+    match workspace.active_selection_detail(selection)? {
+        ActiveSelectionDetailProjection::Node(detail) => Some(vec![
+            ("focus", "node".to_string()),
+            ("name", detail.display_name),
+            ("value", detail.value.display_text()),
+        ]),
+        ActiveSelectionDetailProjection::TableCell(detail) => {
+            let row = detail
+                .row_id
+                .as_deref()
+                .map(str::to_string)
+                .unwrap_or_else(|| "totals".to_string());
+            Some(vec![
+                ("focus", "table_cell".to_string()),
+                ("table", detail.table_name),
+                ("cell", format!("{} / {}", row, detail.column_name)),
+                (
+                    "edit",
+                    table_cell_editability_label(detail.editability).to_string(),
+                ),
+                ("value", detail.value.display_text()),
+            ])
+        }
     }
 }
 
@@ -1244,9 +1300,9 @@ fn table_totals_row_visible_intent(table: &str, visible: bool) -> WorkspaceInten
 mod tests {
     use super::*;
     use dnatreecalc_skin_framework::{
-        NodeKey, TableAnchorProjection, TableCellProjection, TableCellRegionProjection,
-        TableCellsProjection, TableColumnProjection, TableFormulaMetadataProjection,
-        TableRowProjection,
+        NodeContentKind, NodeKey, NodeView, TableAnchorProjection, TableCellProjection,
+        TableCellRegionProjection, TableCellsProjection, TableColumnProjection,
+        TableFormulaMetadataProjection, TableRowProjection,
     };
     use std::collections::BTreeMap;
 
@@ -1357,6 +1413,64 @@ mod tests {
         assert_eq!(detail.node_key, NodeKey::new("cell:east:tax"));
         assert_eq!(detail.value.display_text(), "2");
         assert!(active_table_cell_detail_for_table(&workspace, &selection, "OtherTable").is_none());
+    }
+
+    #[test]
+    fn value_board_active_selection_summary_reads_unified_skin_ir_projection() {
+        let node_workspace = workspace_with_single_node();
+        let node_selection = SelectionState::with_primary(Some(NodeId::new("Root.A")));
+        assert_eq!(
+            active_selection_summary_rows(&node_workspace, &node_selection),
+            Some(vec![
+                ("focus", "node".to_string()),
+                ("name", "A".to_string()),
+                ("value", "3".to_string()),
+            ])
+        );
+
+        let table_workspace = workspace_with_single_table_cell();
+        let table_selection =
+            SelectionState::with_table_cell(dnatreecalc_skin_framework::TableCellSelection {
+                table: NodeId::new("SalesTable"),
+                row_id: Some("row:east".to_string()),
+                column_id: "col:tax".to_string(),
+            });
+        assert_eq!(
+            active_selection_summary_rows(&table_workspace, &table_selection),
+            Some(vec![
+                ("focus", "table_cell".to_string()),
+                ("table", "SalesTable".to_string()),
+                ("cell", "row:east / Tax".to_string()),
+                ("edit", "formula".to_string()),
+                ("value", "2".to_string()),
+            ])
+        );
+    }
+
+    fn workspace_with_single_node() -> WorkspaceState {
+        let mut nodes = BTreeMap::new();
+        nodes.insert(
+            NodeId::new("Root.A"),
+            NodeView {
+                key: NodeKey::new("node:root:a"),
+                id: NodeId::new("Root.A"),
+                display_name: "A".to_string(),
+                parent: Some(NodeId::new("Root")),
+                children: vec![],
+                depth: 1,
+                content_kind: NodeContentKind::Constant,
+                content_text: "3".to_string(),
+                computed_value: NodeValueProjection::Scalar("3".to_string()),
+                calc_state: None,
+                is_meta: false,
+                table: None,
+            },
+        );
+
+        WorkspaceState {
+            nodes,
+            ..WorkspaceState::default()
+        }
     }
 
     fn workspace_with_single_table_cell() -> WorkspaceState {

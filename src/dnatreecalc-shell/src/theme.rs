@@ -445,6 +445,30 @@ pub const SHELL_CSS: &str = r#"
     padding: 0.75rem;
 }
 
+.dtc-value-board__active-selection {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem 0.75rem;
+    align-items: center;
+    margin: 0;
+    padding: 0.625rem 0.75rem;
+    border: 1px solid #bae6fd;
+    border-radius: 6px;
+    background: #f0f9ff;
+    font-size: 0.8125rem;
+}
+
+.dtc-value-board__active-selection dt {
+    color: #475569;
+}
+
+.dtc-value-board__active-selection dd {
+    margin: 0;
+    font-weight: 700;
+    color: #075985;
+}
+
 .dtc-value-card {
     border: 1px solid #e2e8ef;
     border-radius: 8px;
