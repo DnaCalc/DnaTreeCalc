@@ -420,6 +420,56 @@ fn programmable_skin_previews_content_edit_legality_impact_from_host_projection(
 }
 
 #[test]
+fn programmable_skin_previews_scoped_content_edit_legality_impact_from_projection() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    skin.add_node(Some("Root"), "A", "1");
+    skin.add_node(Some("Root"), "B", "=A+1");
+    skin.add_node(Some("Root"), "C", "=B+1");
+    skin.add_node(Some("Root"), "D", "=C+1");
+    let before_revision = revision_fingerprint(&skin.state().revision);
+    let state = skin.state();
+    let b_key = state
+        .node(&NodeId::new("Root.B"))
+        .expect("B projects")
+        .key
+        .clone();
+    let c_key = state
+        .node(&NodeId::new("Root.C"))
+        .expect("C projects")
+        .key
+        .clone();
+
+    let scope = AuthoringScope::Nodes(vec![b_key.clone(), c_key.clone()]);
+    let impact = harness.preview_scoped_content_edit_impact(scope, "=A+2");
+
+    assert!(impact.legal, "{impact:?}");
+    assert!(impact.blocked_reason.is_none());
+    assert!(impact.bind_diagnostics.is_empty());
+    assert!(impact.profile_violations.is_empty());
+    assert!(impact.requires_rebind.contains(&NodeId::new("Root.B")));
+    assert!(impact.requires_rebind.contains(&NodeId::new("Root.C")));
+    assert_eq!(impact.affected_refs, vec![NodeId::new("Root.D")]);
+    assert_eq!(impact.invalidation_plan.estimated_node_count, 3);
+    let MutationImpactIntentProjection::EditScopedContent { scope, content } = &impact.intent
+    else {
+        panic!("expected scoped content impact intent");
+    };
+    assert_eq!(content, "=A+2");
+    assert_eq!(
+        scope,
+        &AuthoringScope::Nodes(vec![b_key.clone(), c_key.clone()])
+    );
+    assert_eq!(
+        revision_fingerprint(&skin.state().revision),
+        before_revision
+    );
+    skin.assert_scalar("Root.D", "4");
+}
+
+#[test]
 fn programmable_skin_receipts_carry_projection_deltas() {
     let harness = Harness::empty();
     let skin = harness.driver.clone();

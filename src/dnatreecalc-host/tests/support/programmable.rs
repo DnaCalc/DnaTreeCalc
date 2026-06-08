@@ -6,10 +6,10 @@ use dnatreecalc_host::app::{HostDispatcher, TreeWorkspaceSession};
 use dnatreecalc_host::model::{WorkspaceFixture, WorkspaceModel};
 use dnatreecalc_skin_framework::{
     ActiveNodeDetailProjection, ActiveSelectionDetailProjection, ActiveTableCellDetailProjection,
-    Dispatcher, ErasedSkinContext, FormulaBindPreviewProjection, IntentError, IntentReceipt,
-    MutationImpactProjection, NodeId, RecalcPlanMutation, RecalcPlanProjection, RegisteredSkin,
-    SelectionState, SharedSkinState, SharedSkinStateHandle, SkinCapabilities, SkinCategory,
-    SkinContext, SkinHandle, SkinId, SkinManifest, SkinState, TableCellInput,
+    AuthoringScope, Dispatcher, ErasedSkinContext, FormulaBindPreviewProjection, IntentError,
+    IntentReceipt, MutationImpactProjection, NodeId, RecalcPlanMutation, RecalcPlanProjection,
+    RegisteredSkin, SelectionState, SharedSkinState, SharedSkinStateHandle, SkinCapabilities,
+    SkinCategory, SkinContext, SkinHandle, SkinId, SkinManifest, SkinState, TableCellInput,
     TableFormulaBindPreviewProjection, TableRowInput, WorkspaceIntent, WorkspaceRecalcMode,
     WorkspaceRevisionProjection, WorkspaceSkin, WorkspaceState,
 };
@@ -902,6 +902,18 @@ impl Harness {
             .lock()
             .unwrap()
             .preview_content_edit_impact(&NodeId::new(node), content)
+            .unwrap()
+    }
+
+    pub fn preview_scoped_content_edit_impact(
+        &self,
+        scope: AuthoringScope,
+        content: &str,
+    ) -> MutationImpactProjection {
+        self.session
+            .lock()
+            .unwrap()
+            .preview_scoped_content_edit_impact(scope, content)
             .unwrap()
     }
 

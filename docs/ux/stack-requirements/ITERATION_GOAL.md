@@ -103,7 +103,10 @@ supports the active roadmap item; it is not the default next move while W2 is op
       projects through Skin IR without mutating the table shape. OxCalc table snapshot preview
       planning now classifies formula-column insertion through its structured-table update impact
       taxonomy and carries typed table invalidation/dependent seeds into Skin IR legality-impact
-      preview. Broader scoped coverage remains required before closing the item.
+      preview. Scoped content-edit legality-impact preview now expands `AuthoringScope` through
+      projected host state, dry-binds each target through OxCalc/OxFml, and plans the combined
+      invalidation through OxCalc without mutating state. Broader structural/drop/collision scoped
+      coverage remains required before closing the item.
 
 ### Gating Engine Workstreams
 

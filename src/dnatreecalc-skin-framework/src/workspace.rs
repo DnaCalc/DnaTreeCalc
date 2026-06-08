@@ -608,6 +608,10 @@ pub enum RecalcPlanMutation {
         node: NodeId,
         content: String,
     },
+    EditScopedContent {
+        scope: AuthoringScope,
+        content: String,
+    },
     AddTableFormulaColumn {
         table: NodeId,
         column_id: String,
@@ -746,6 +750,10 @@ pub enum MutationImpactIntentProjection {
         node: NodeId,
         content: String,
     },
+    EditScopedContent {
+        scope: AuthoringScope,
+        content: String,
+    },
     AddTableFormulaColumn {
         table: NodeId,
         column_id: String,
@@ -759,6 +767,7 @@ impl MutationImpactIntentProjection {
     pub const fn stable_id(&self) -> &'static str {
         match self {
             Self::EditContent { .. } => "edit_content",
+            Self::EditScopedContent { .. } => "edit_scoped_content",
             Self::AddTableFormulaColumn { .. } => "add_table_formula_column",
         }
     }

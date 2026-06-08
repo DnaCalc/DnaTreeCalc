@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use dnatreecalc_skin_framework::{
-    BindingDiagnosticProjection, CalcRunProjection, CalcRunStateProjection,
+    AuthoringScope, BindingDiagnosticProjection, CalcRunProjection, CalcRunStateProjection,
     DependencyDescriptorProjection, DependencyEdgeProjection, DependencyGraphProjection,
     DependencyKindProjection, DerivationHoleBindingProjection, DerivationInvocationProjection,
     DerivationOxfmlTraceEventProjection, DerivationPreparedArgumentProjection,
@@ -315,10 +315,10 @@ impl TreeWorkspaceSession {
         &self,
         mutations: &[RecalcPlanMutation],
     ) -> Result<RecalcPlanProjection, TreeWorkspaceSessionError> {
-        let engine_mutations = mutations
-            .iter()
-            .map(|mutation| self.engine_preview_mutation(mutation))
-            .collect::<Result<Vec<_>, _>>()?;
+        let mut engine_mutations = Vec::new();
+        for mutation in mutations {
+            engine_mutations.extend(self.engine_preview_mutations(mutation)?);
+        }
         let plan = self
             .context
             .plan_invalidation(&self.workspace_id, &engine_mutations)?;
@@ -518,6 +518,68 @@ impl TreeWorkspaceSession {
                 .invalidated_nodes
                 .iter()
                 .filter(|entry| entry.node != *node)
+                .map(|entry| entry.node.clone())
+                .collect(),
+            orphaned_dependents: Vec::new(),
+            collisions: Vec::new(),
+            invalidation_plan,
+        })
+    }
+
+    pub fn preview_scoped_content_edit_impact(
+        &self,
+        scope: AuthoringScope,
+        content: impl Into<String>,
+    ) -> Result<MutationImpactProjection, TreeWorkspaceSessionError> {
+        let content = content.into();
+        let state = self.workspace_state()?;
+        let target_keys = state.expand_authoring_scope(&scope).map_err(|error| {
+            TreeWorkspaceSessionError::ProjectionOutOfSync {
+                node: error.to_string(),
+            }
+        })?;
+        let target_nodes = target_keys
+            .iter()
+            .map(|key| {
+                state
+                    .node_by_key(key)
+                    .map(|node| node.id.clone())
+                    .ok_or_else(|| TreeWorkspaceSessionError::ProjectionOutOfSync {
+                        node: format!("node key {key}"),
+                    })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let bind_previews = target_nodes
+            .iter()
+            .map(|node| self.preview_formula_bind(node, content.clone()))
+            .collect::<Result<Vec<_>, _>>()?;
+        let invalidation_mutations = target_nodes
+            .iter()
+            .map(|node| RecalcPlanMutation::EditContent {
+                node: node.clone(),
+                content: content.clone(),
+            })
+            .collect::<Vec<_>>();
+        let invalidation_plan = self.preview_recalc_plan(&invalidation_mutations)?;
+        let blocked_reason = mutation_impact_blocked_reason_for_binds(&bind_previews);
+        let target_node_set = target_nodes.iter().cloned().collect::<BTreeSet<_>>();
+        Ok(MutationImpactProjection {
+            intent: MutationImpactIntentProjection::EditScopedContent { scope, content },
+            legal: blocked_reason.is_none(),
+            blocked_reason,
+            profile_violations: bind_previews
+                .iter()
+                .flat_map(|bind| bind.profile_violations.clone())
+                .collect(),
+            bind_diagnostics: bind_previews
+                .iter()
+                .flat_map(|bind| bind.diagnostics.clone())
+                .collect(),
+            requires_rebind: invalidation_plan.requires_rebind.clone(),
+            affected_refs: invalidation_plan
+                .invalidated_nodes
+                .iter()
+                .filter(|entry| !target_node_set.contains(&entry.node))
                 .map(|entry| entry.node.clone())
                 .collect(),
             orphaned_dependents: Vec::new(),
@@ -2049,21 +2111,43 @@ impl TreeWorkspaceSession {
             })
     }
 
-    fn engine_preview_mutation(
+    fn engine_preview_mutations(
         &self,
         mutation: &RecalcPlanMutation,
-    ) -> Result<OxCalcTreePreviewMutation, TreeWorkspaceSessionError> {
+    ) -> Result<Vec<OxCalcTreePreviewMutation>, TreeWorkspaceSessionError> {
         match mutation {
             RecalcPlanMutation::SetNodeInput { node } => {
-                Ok(OxCalcTreePreviewMutation::SetNodeInput {
+                Ok(vec![OxCalcTreePreviewMutation::SetNodeInput {
                     node_id: self.tree_node_id(node.as_str())?,
-                })
+                }])
             }
             RecalcPlanMutation::EditContent { node, content } => {
-                Ok(OxCalcTreePreviewMutation::SetNodeFormulaText {
+                Ok(vec![OxCalcTreePreviewMutation::SetNodeFormulaText {
                     node_id: self.tree_node_id(node.as_str())?,
                     formula_text: content.clone(),
-                })
+                }])
+            }
+            RecalcPlanMutation::EditScopedContent { scope, content } => {
+                let state = self.workspace_state()?;
+                let target_keys = state.expand_authoring_scope(scope).map_err(|error| {
+                    TreeWorkspaceSessionError::ProjectionOutOfSync {
+                        node: error.to_string(),
+                    }
+                })?;
+                target_keys
+                    .iter()
+                    .map(|key| {
+                        let node = state.node_by_key(key).ok_or_else(|| {
+                            TreeWorkspaceSessionError::ProjectionOutOfSync {
+                                node: format!("node key {key}"),
+                            }
+                        })?;
+                        Ok(OxCalcTreePreviewMutation::SetNodeFormulaText {
+                            node_id: self.tree_node_id(node.id.as_str())?,
+                            formula_text: content.clone(),
+                        })
+                    })
+                    .collect()
             }
             RecalcPlanMutation::AddTableFormulaColumn {
                 table,
@@ -2072,7 +2156,7 @@ impl TreeWorkspaceSession {
                 formula_text,
             } => {
                 let table_node_id = self.tree_node_id(table.as_str())?;
-                Ok(OxCalcTreePreviewMutation::SetNodeTable {
+                Ok(vec![OxCalcTreePreviewMutation::SetNodeTable {
                     node_id: table_node_id,
                     snapshot: self.preview_formula_column_table_snapshot(
                         table,
@@ -2082,27 +2166,33 @@ impl TreeWorkspaceSession {
                         formula_text.clone(),
                     )?,
                     scenario: TreeCalcTableUpdateScenarioKind::ColumnInsert,
-                })
+                }])
             }
-            RecalcPlanMutation::RenameNode { node } => Ok(OxCalcTreePreviewMutation::RenameNode {
-                node_id: self.tree_node_id(node.as_str())?,
-            }),
-            RecalcPlanMutation::MoveNode { node } => Ok(OxCalcTreePreviewMutation::MoveNode {
-                node_id: self.tree_node_id(node.as_str())?,
-            }),
-            RecalcPlanMutation::ReorderNode { node } => {
-                Ok(OxCalcTreePreviewMutation::ReorderNode {
+            RecalcPlanMutation::RenameNode { node } => {
+                Ok(vec![OxCalcTreePreviewMutation::RenameNode {
                     node_id: self.tree_node_id(node.as_str())?,
-                })
+                }])
             }
-            RecalcPlanMutation::DeleteNode { node } => Ok(OxCalcTreePreviewMutation::DeleteNode {
-                node_id: self.tree_node_id(node.as_str())?,
-            }),
+            RecalcPlanMutation::MoveNode { node } => {
+                Ok(vec![OxCalcTreePreviewMutation::MoveNode {
+                    node_id: self.tree_node_id(node.as_str())?,
+                }])
+            }
+            RecalcPlanMutation::ReorderNode { node } => {
+                Ok(vec![OxCalcTreePreviewMutation::ReorderNode {
+                    node_id: self.tree_node_id(node.as_str())?,
+                }])
+            }
+            RecalcPlanMutation::DeleteNode { node } => {
+                Ok(vec![OxCalcTreePreviewMutation::DeleteNode {
+                    node_id: self.tree_node_id(node.as_str())?,
+                }])
+            }
             RecalcPlanMutation::InvalidateNode { node, reason } => {
-                Ok(OxCalcTreePreviewMutation::InvalidateNode {
+                Ok(vec![OxCalcTreePreviewMutation::InvalidateNode {
                     node_id: self.tree_node_id(node.as_str())?,
                     reason: invalidation_reason_kind_for_projection(*reason),
-                })
+                }])
             }
         }
     }
@@ -3149,6 +3239,29 @@ fn mutation_impact_blocked_reason_for_bind(
         .iter()
         .any(|diagnostic| diagnostic.stage == FormulaBindPreviewDiagnosticStage::Bind)
     {
+        return Some(MutationImpactBlockedReasonProjection::BindDiagnostics);
+    }
+    None
+}
+
+fn mutation_impact_blocked_reason_for_binds(
+    binds: &[FormulaBindPreviewProjection],
+) -> Option<MutationImpactBlockedReasonProjection> {
+    if binds.iter().any(|bind| !bind.profile_violations.is_empty()) {
+        return Some(MutationImpactBlockedReasonProjection::ProfileViolation);
+    }
+    if binds.iter().any(|bind| {
+        bind.diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.stage == FormulaBindPreviewDiagnosticStage::Syntax)
+    }) {
+        return Some(MutationImpactBlockedReasonProjection::SyntaxDiagnostics);
+    }
+    if binds.iter().any(|bind| {
+        bind.diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.stage == FormulaBindPreviewDiagnosticStage::Bind)
+    }) {
         return Some(MutationImpactBlockedReasonProjection::BindDiagnostics);
     }
     None
