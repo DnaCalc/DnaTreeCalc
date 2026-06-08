@@ -712,6 +712,65 @@ pub struct FormulaBindPreviewProjection {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MutationImpactIntentProjection {
+    EditContent { node: NodeId, content: String },
+}
+
+impl MutationImpactIntentProjection {
+    #[must_use]
+    pub const fn stable_id(&self) -> &'static str {
+        match self {
+            Self::EditContent { .. } => "edit_content",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MutationImpactBlockedReasonProjection {
+    SyntaxDiagnostics,
+    BindDiagnostics,
+    ProfileViolation,
+}
+
+impl MutationImpactBlockedReasonProjection {
+    #[must_use]
+    pub const fn stable_id(self) -> &'static str {
+        match self {
+            Self::SyntaxDiagnostics => "syntax_diagnostics",
+            Self::BindDiagnostics => "bind_diagnostics",
+            Self::ProfileViolation => "profile_violation",
+        }
+    }
+}
+
+impl fmt::Display for MutationImpactBlockedReasonProjection {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.stable_id())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NameCollisionProjection {
+    pub attempted: String,
+    pub existing: NodeId,
+    pub existing_key: NodeKey,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MutationImpactProjection {
+    pub intent: MutationImpactIntentProjection,
+    pub legal: bool,
+    pub blocked_reason: Option<MutationImpactBlockedReasonProjection>,
+    pub profile_violations: Vec<FormulaBindPreviewProfileViolationProjection>,
+    pub bind_diagnostics: Vec<FormulaBindPreviewDiagnosticProjection>,
+    pub invalidation_plan: RecalcPlanProjection,
+    pub requires_rebind: Vec<NodeId>,
+    pub affected_refs: Vec<NodeId>,
+    pub orphaned_dependents: Vec<NodeId>,
+    pub collisions: Vec<NameCollisionProjection>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuntimeEffectProjection {
     pub kind: String,
     pub family: RuntimeEffectFamilyProjection,

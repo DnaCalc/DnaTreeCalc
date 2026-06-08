@@ -43,10 +43,12 @@ First node-formula dry-bind slice is now available across the stack:
 - OxCalc `OxCalcTreeContext::dry_bind_node_formula_text(...)` runs that verdict through the TreeCalc
   host-reference syntax, host-name resolver, and table context owned by OxCalc.
 - DnaTreeCalc `TreeWorkspaceSession::preview_formula_bind(...)` projects the verdict into Skin IR.
+- DnaTreeCalc `TreeWorkspaceSession::preview_content_edit_impact(...)` joins the node-content dry-bind
+  verdict with OxCalc committed-graph invalidation planning for the first legality-impact preview
+  slice.
 
 Still open before this handover can be closed:
 
 - typed profile-violation taxonomy and non-empty profile-gating evidence;
 - table/scoped authoring subjects;
-- the joined legality-impact preview that combines this dry-bind verdict with OxCalc invalidation
-  planning and host-owned collision/scope facts.
+- broader legality-impact preview coverage for structural, table, scoped, and collision/orphan cases.

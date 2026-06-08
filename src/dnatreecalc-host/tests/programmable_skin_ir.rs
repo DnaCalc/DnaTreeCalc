@@ -3,11 +3,13 @@ mod support;
 use dnatreecalc_skin_framework::{
     ActiveSelectionDetailProjection, AuthoringScope, CalcRunStateProjection,
     FormulaBindPreviewDiagnosticStage, FormulaBindPreviewInputKind, IntentError,
-    InvalidationReasonProjection, NodeContentKind, NodeId, NodeValueProjection, RecalcPlanMutation,
-    ReferenceTargetProjection, RuntimeEffectFamilyProjection, RuntimeOverlayKindProjection,
-    TableCellEditabilityProjection, TableCellRegionProjection, TableColumnBodyProjection,
-    TableDependencyFactKindProjection, TableDependencyFactStatusProjection,
-    TreeReferenceCollectionFamilyProjection, WorkspaceDeltaChange, WorkspaceRecalcMode,
+    InvalidationReasonProjection, MutationImpactBlockedReasonProjection,
+    MutationImpactIntentProjection, NodeContentKind, NodeId, NodeValueProjection,
+    RecalcPlanMutation, ReferenceTargetProjection, RuntimeEffectFamilyProjection,
+    RuntimeOverlayKindProjection, TableCellEditabilityProjection, TableCellRegionProjection,
+    TableColumnBodyProjection, TableDependencyFactKindProjection,
+    TableDependencyFactStatusProjection, TreeReferenceCollectionFamilyProjection,
+    WorkspaceDeltaChange, WorkspaceRecalcMode,
 };
 
 use support::programmable::{Harness, revision_fingerprint};
@@ -232,6 +234,61 @@ fn programmable_skin_previews_formula_bind_from_host_projection() {
     assert_eq!(literal.input_kind, FormulaBindPreviewInputKind::Literal);
     assert!(literal.legal);
     assert!(literal.diagnostics.is_empty());
+}
+
+#[test]
+fn programmable_skin_previews_content_edit_legality_impact_from_host_projection() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    skin.add_node(Some("Root"), "A", "1");
+    skin.add_node(Some("Root"), "B", "=A+1");
+    skin.add_node(Some("Root"), "C", "=B+1");
+    let before_revision = revision_fingerprint(&skin.state().revision);
+
+    let impact = harness.preview_content_edit_impact("Root.B", "=A+2");
+    assert!(impact.legal, "{impact:?}");
+    assert!(impact.blocked_reason.is_none());
+    assert!(impact.bind_diagnostics.is_empty());
+    assert!(impact.profile_violations.is_empty());
+    assert_eq!(impact.requires_rebind, vec![NodeId::new("Root.B")]);
+    assert_eq!(impact.affected_refs, vec![NodeId::new("Root.C")]);
+    assert!(impact.orphaned_dependents.is_empty());
+    assert!(impact.collisions.is_empty());
+    assert_eq!(impact.invalidation_plan.estimated_node_count, 2);
+    let MutationImpactIntentProjection::EditContent { node, content } = &impact.intent;
+    assert_eq!(node, &NodeId::new("Root.B"));
+    assert_eq!(content, "=A+2");
+    assert_eq!(
+        revision_fingerprint(&skin.state().revision),
+        before_revision
+    );
+    skin.assert_scalar("Root.C", "3");
+
+    let syntax = harness.preview_content_edit_impact("Root.B", "=1+");
+    assert!(!syntax.legal);
+    assert_eq!(
+        syntax.blocked_reason,
+        Some(MutationImpactBlockedReasonProjection::SyntaxDiagnostics)
+    );
+    assert!(
+        syntax
+            .bind_diagnostics
+            .iter()
+            .any(|diagnostic| { diagnostic.stage == FormulaBindPreviewDiagnosticStage::Syntax })
+    );
+
+    let bind = harness.preview_content_edit_impact("Root.B", "=LAMBDA(x,x,x)");
+    assert!(!bind.legal);
+    assert_eq!(
+        bind.blocked_reason,
+        Some(MutationImpactBlockedReasonProjection::BindDiagnostics)
+    );
+    assert!(bind.bind_diagnostics.iter().any(|diagnostic| {
+        diagnostic.stage == FormulaBindPreviewDiagnosticStage::Bind
+            && diagnostic.message == "duplicate LAMBDA parameter name 'x'"
+    }));
 }
 
 #[test]

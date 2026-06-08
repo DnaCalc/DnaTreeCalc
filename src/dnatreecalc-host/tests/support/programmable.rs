@@ -7,10 +7,11 @@ use dnatreecalc_host::model::{WorkspaceFixture, WorkspaceModel};
 use dnatreecalc_skin_framework::{
     ActiveNodeDetailProjection, ActiveSelectionDetailProjection, ActiveTableCellDetailProjection,
     Dispatcher, ErasedSkinContext, FormulaBindPreviewProjection, IntentError, IntentReceipt,
-    NodeId, RecalcPlanMutation, RecalcPlanProjection, RegisteredSkin, SelectionState,
-    SharedSkinState, SharedSkinStateHandle, SkinCapabilities, SkinCategory, SkinContext,
-    SkinHandle, SkinId, SkinManifest, SkinState, TableCellInput, TableRowInput, WorkspaceIntent,
-    WorkspaceRecalcMode, WorkspaceRevisionProjection, WorkspaceSkin, WorkspaceState,
+    MutationImpactProjection, NodeId, RecalcPlanMutation, RecalcPlanProjection, RegisteredSkin,
+    SelectionState, SharedSkinState, SharedSkinStateHandle, SkinCapabilities, SkinCategory,
+    SkinContext, SkinHandle, SkinId, SkinManifest, SkinState, TableCellInput, TableRowInput,
+    WorkspaceIntent, WorkspaceRecalcMode, WorkspaceRevisionProjection, WorkspaceSkin,
+    WorkspaceState,
 };
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -844,6 +845,18 @@ impl Harness {
             .lock()
             .unwrap()
             .preview_formula_bind(&NodeId::new(node), content)
+            .unwrap()
+    }
+
+    pub fn preview_content_edit_impact(
+        &self,
+        node: &str,
+        content: &str,
+    ) -> MutationImpactProjection {
+        self.session
+            .lock()
+            .unwrap()
+            .preview_content_edit_impact(&NodeId::new(node), content)
             .unwrap()
     }
 }

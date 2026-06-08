@@ -9,18 +9,20 @@ use dnatreecalc_skin_framework::{
     DerivationTraceProjection, EffectiveFormatProjection, FormatSourceProjection,
     FormulaBindPreviewDiagnosticProjection, FormulaBindPreviewDiagnosticStage,
     FormulaBindPreviewInputKind, FormulaBindPreviewProfileViolationProjection,
-    FormulaBindPreviewProjection, InvalidationReasonProjection, NodeCalcStateProjection,
-    NodeContentKind as FrameworkContentKind, NodeId, NodeInvalidationProjection, NodeKey,
-    NodeValueProjection, NodeView, PhaseKeyProjection, RecalcPlanInvalidationProjection,
-    RecalcPlanMutation, RecalcPlanProjection, ReferenceResolutionProjection,
-    ReferenceTargetProjection, RuntimeEffectFamilyProjection, RuntimeEffectProjection,
-    RuntimeOverlayKindProjection, RuntimeOverlayProjection, SourceSpanProjection,
-    TableAnchorProjection, TableCellInput, TableCellProjection, TableCellsProjection,
-    TableColumnBodyProjection, TableColumnProjection, TableDependencyFactBlockerProjection,
-    TableDependencyFactKindProjection, TableDependencyFactProjection,
-    TableDependencyFactStatusProjection, TableFormulaMetadataProjection, TableProjection,
-    TableRowInput, TableRowProjection, TreeReferenceCollectionFamilyProjection,
-    TreeReferenceCollectionProjection, WorkspaceRevisionProjection, WorkspaceState,
+    FormulaBindPreviewProjection, InvalidationReasonProjection,
+    MutationImpactBlockedReasonProjection, MutationImpactIntentProjection,
+    MutationImpactProjection, NodeCalcStateProjection, NodeContentKind as FrameworkContentKind,
+    NodeId, NodeInvalidationProjection, NodeKey, NodeValueProjection, NodeView, PhaseKeyProjection,
+    RecalcPlanInvalidationProjection, RecalcPlanMutation, RecalcPlanProjection,
+    ReferenceResolutionProjection, ReferenceTargetProjection, RuntimeEffectFamilyProjection,
+    RuntimeEffectProjection, RuntimeOverlayKindProjection, RuntimeOverlayProjection,
+    SourceSpanProjection, TableAnchorProjection, TableCellInput, TableCellProjection,
+    TableCellsProjection, TableColumnBodyProjection, TableColumnProjection,
+    TableDependencyFactBlockerProjection, TableDependencyFactKindProjection,
+    TableDependencyFactProjection, TableDependencyFactStatusProjection,
+    TableFormulaMetadataProjection, TableProjection, TableRowInput, TableRowProjection,
+    TreeReferenceCollectionFamilyProjection, TreeReferenceCollectionProjection,
+    WorkspaceRevisionProjection, WorkspaceState,
 };
 use oxcalc_core::consumer::OxCalcTreeRunState;
 use oxcalc_core::consumer::{
@@ -414,6 +416,40 @@ impl TreeWorkspaceSession {
                     },
                 })
                 .collect(),
+        })
+    }
+
+    pub fn preview_content_edit_impact(
+        &self,
+        node: &NodeId,
+        content: impl Into<String>,
+    ) -> Result<MutationImpactProjection, TreeWorkspaceSessionError> {
+        let content = content.into();
+        let bind = self.preview_formula_bind(node, content.clone())?;
+        let invalidation_plan = self.preview_recalc_plan(&[RecalcPlanMutation::EditContent {
+            node: node.clone(),
+            content: content.clone(),
+        }])?;
+        let blocked_reason = mutation_impact_blocked_reason_for_bind(&bind);
+        Ok(MutationImpactProjection {
+            intent: MutationImpactIntentProjection::EditContent {
+                node: node.clone(),
+                content,
+            },
+            legal: blocked_reason.is_none(),
+            blocked_reason,
+            profile_violations: bind.profile_violations,
+            bind_diagnostics: bind.diagnostics,
+            requires_rebind: invalidation_plan.requires_rebind.clone(),
+            affected_refs: invalidation_plan
+                .invalidated_nodes
+                .iter()
+                .filter(|entry| entry.node != *node)
+                .map(|entry| entry.node.clone())
+                .collect(),
+            orphaned_dependents: Vec::new(),
+            collisions: Vec::new(),
+            invalidation_plan,
         })
     }
 
@@ -2874,6 +2910,29 @@ fn calc_state_projection_for(calc_state: NodeCalcState) -> NodeCalcStateProjecti
 
 fn node_key_for_tree_node(tree_node_id: TreeNodeId) -> NodeKey {
     NodeKey::from_engine_id(tree_node_id.0)
+}
+
+fn mutation_impact_blocked_reason_for_bind(
+    bind: &FormulaBindPreviewProjection,
+) -> Option<MutationImpactBlockedReasonProjection> {
+    if !bind.profile_violations.is_empty() {
+        return Some(MutationImpactBlockedReasonProjection::ProfileViolation);
+    }
+    if bind
+        .diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.stage == FormulaBindPreviewDiagnosticStage::Syntax)
+    {
+        return Some(MutationImpactBlockedReasonProjection::SyntaxDiagnostics);
+    }
+    if bind
+        .diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.stage == FormulaBindPreviewDiagnosticStage::Bind)
+    {
+        return Some(MutationImpactBlockedReasonProjection::BindDiagnostics);
+    }
+    None
 }
 
 fn should_replace_reference_target(

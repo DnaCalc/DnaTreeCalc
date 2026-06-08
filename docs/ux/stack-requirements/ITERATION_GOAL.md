@@ -91,8 +91,9 @@ overlay handles.
       through host/Skin IR tests without evaluation, candidate creation, publication, or mutation.
 - [ ] Add OxFml dry-bind verdicts for uncommitted formula edits; first node-formula edit slice now
       flows OxFml parse/bind verdicts through OxCalc TreeCalc host context into Skin IR without
-      mutation or evaluation. Profile-violation taxonomy plus table/scoped subject coverage remain
-      required before closing the item.
+      mutation or evaluation. First joined node-content legality-impact preview now combines that
+      dry-bind verdict with OxCalc committed-graph invalidation planning in Skin IR. Profile-violation
+      taxonomy plus table/scoped subject coverage remain required before closing the item.
 
 ### Gating Engine Workstreams
 
