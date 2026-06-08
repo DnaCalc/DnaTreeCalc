@@ -113,6 +113,10 @@ pub enum WorkspaceIntent {
         table: NodeId,
         column_id: String,
     },
+    SetTableHeaderRowVisible {
+        table: NodeId,
+        visible: bool,
+    },
     SetTableTotalsRowVisible {
         table: NodeId,
         visible: bool,
@@ -333,6 +337,7 @@ impl Dispatcher for InMemoryDispatcher {
             | WorkspaceIntent::EditTableColumnFormula { .. }
             | WorkspaceIntent::SetTableTotalsFormula { .. }
             | WorkspaceIntent::ClearTableTotalsFormula { .. }
+            | WorkspaceIntent::SetTableHeaderRowVisible { .. }
             | WorkspaceIntent::SetTableTotalsRowVisible { .. }
             | WorkspaceIntent::RenameTableColumn { .. }
             | WorkspaceIntent::ReorderTableColumn { .. }

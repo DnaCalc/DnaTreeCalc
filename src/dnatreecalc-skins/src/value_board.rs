@@ -234,6 +234,8 @@ fn render_table_card(
     let totals_clear_dispatch = dispatch.clone();
     let table_node_for_totals_set = table_node.clone();
     let table_node_for_totals_clear = table_node.clone();
+    let header_visibility_dispatch = dispatch.clone();
+    let table_node_for_header_visibility = table_node.clone();
     let totals_visibility_dispatch = dispatch.clone();
     let table_node_for_totals_visibility = table_node.clone();
     let rename_columns = editable_columns.clone();
@@ -256,6 +258,20 @@ fn render_table_card(
                 <dt>"rows"</dt><dd>{table.row_count}</dd>
                 <dt>"columns"</dt><dd>{table.column_count}</dd>
             </dl>
+            <label class="dtc-table-card__header-toggle">
+                <input
+                    type="checkbox"
+                    aria-label="Show header row"
+                    prop:checked=table.header_row_present
+                    on:change=move |ev| {
+                        header_visibility_dispatch.dispatch(table_header_row_visible_intent(
+                            &table_node_for_header_visibility,
+                            event_target_checked(&ev),
+                        ));
+                    }
+                />
+                <span>"Header row"</span>
+            </label>
             <label class="dtc-table-card__totals-toggle">
                 <input
                     type="checkbox"
@@ -657,16 +673,18 @@ fn render_table_grid(
 
     view! {
         <div class="dtc-table-card__grid" role="table" style=grid_style>
-            <div class="dtc-table-card__row dtc-table-card__row--header" role="row">
-                {table.columns.iter().map(|column| {
-                    view! {
-                        <span class="dtc-table-card__header-cell" role="columnheader">
-                            {column.name.clone()}
-                        </span>
-                    }
-                }).collect::<Vec<_>>()}
-                <span class="dtc-table-card__header-cell" role="columnheader"></span>
-            </div>
+            {table.header_row_present.then(|| view! {
+                <div class="dtc-table-card__row dtc-table-card__row--header" role="row">
+                    {table.columns.iter().map(|column| {
+                        view! {
+                            <span class="dtc-table-card__header-cell" role="columnheader">
+                                {column.name.clone()}
+                            </span>
+                        }
+                    }).collect::<Vec<_>>()}
+                    <span class="dtc-table-card__header-cell" role="columnheader"></span>
+                </div>
+            })}
             {cells.body_rows.iter().enumerate().map(|(row_index, row)| {
                 let fallback_row_id = table.rows.get(row_index).map(|row| row.row_id.clone());
                 let row_id_for_delete = fallback_row_id.clone().unwrap_or_default();
@@ -735,23 +753,18 @@ fn render_table_grid(
                     </div>
                 }
             }).collect::<Vec<_>>()}
-            {if table.totals_row_present {
-                view! {
-                    <div class="dtc-table-card__row dtc-table-card__row--totals" role="row">
-                        {cells.totals_row.iter().map(|cell| {
-                            view! {
-                                <span class="dtc-table-card__formula-cell" role="cell">
-                                    {cell.as_ref().map(|cell| cell.value.display_text()).unwrap_or_default()}
-                                </span>
-                            }
-                        }).collect::<Vec<_>>()}
-                        <span class="dtc-table-card__formula-cell" role="cell"></span>
-                    </div>
-                }
-                .into_any()
-            } else {
-                view! { <span></span> }.into_any()
-            }}
+            {table.totals_row_present.then(|| view! {
+                <div class="dtc-table-card__row dtc-table-card__row--totals" role="row">
+                    {cells.totals_row.iter().map(|cell| {
+                        view! {
+                            <span class="dtc-table-card__formula-cell" role="cell">
+                                {cell.as_ref().map(|cell| cell.value.display_text()).unwrap_or_default()}
+                            </span>
+                        }
+                    }).collect::<Vec<_>>()}
+                    <span class="dtc-table-card__formula-cell" role="cell"></span>
+                </div>
+            })}
         </div>
     }
     .into_any()
@@ -885,6 +898,13 @@ fn table_totals_formula_clear_intent(table: &str, column_id: &str) -> WorkspaceI
     WorkspaceIntent::ClearTableTotalsFormula {
         table: NodeId::new(table),
         column_id: column_id.to_string(),
+    }
+}
+
+fn table_header_row_visible_intent(table: &str, visible: bool) -> WorkspaceIntent {
+    WorkspaceIntent::SetTableHeaderRowVisible {
+        table: NodeId::new(table),
+        visible,
     }
 }
 
@@ -1077,6 +1097,17 @@ mod tests {
             WorkspaceIntent::ClearTableTotalsFormula {
                 table: NodeId::new("SalesTable"),
                 column_id: "col:amount".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn value_board_table_header_row_visible_uses_skin_ir_intent() {
+        assert_eq!(
+            table_header_row_visible_intent("SalesTable", false),
+            WorkspaceIntent::SetTableHeaderRowVisible {
+                table: NodeId::new("SalesTable"),
+                visible: false,
             }
         );
     }

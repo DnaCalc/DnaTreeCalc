@@ -1309,6 +1309,53 @@ fn programmable_skin_toggles_table_totals_row_from_outside_ir() {
 }
 
 #[test]
+fn programmable_skin_toggles_table_header_row_from_outside_ir() {
+    let harness = Harness::from_repo_fixture("tables");
+    let skin = harness.driver.clone();
+    skin.recalc();
+
+    let before = skin.state();
+    let before_table = before
+        .tables
+        .get(&NodeId::new("SalesTable"))
+        .expect("table projects");
+    assert!(before_table.header_row_present);
+    assert_eq!(before_table.rows.len(), 3);
+    assert_eq!(before_table.columns.len(), 3);
+    let first_body_row = table_body_row(before_table, 0);
+
+    let hide = skin.try_set_table_header_row_visible("SalesTable", false);
+    assert!(hide.accepted, "{:?}", hide.error);
+    let hidden_state = skin.state();
+    let hidden_table = hidden_state
+        .tables
+        .get(&NodeId::new("SalesTable"))
+        .expect("table projects after header row hide");
+    assert!(!hidden_table.header_row_present);
+    assert_eq!(
+        hidden_table
+            .columns
+            .iter()
+            .map(|column| column.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["Region", "Amount", "Tax"]
+    );
+    assert_eq!(table_body_row(hidden_table, 0), first_body_row);
+
+    skin.set_table_header_row_visible("SalesTable", true);
+    let shown_state = skin.state();
+    let shown_table = shown_state
+        .tables
+        .get(&NodeId::new("SalesTable"))
+        .expect("table projects after header row show");
+    assert!(shown_table.header_row_present);
+    assert_eq!(table_body_row(shown_table, 0), first_body_row);
+
+    let missing = skin.try_set_table_header_row_visible("MissingTable", false);
+    assert!(!missing.accepted, "{missing:?}");
+}
+
+#[test]
 fn programmable_skin_renames_and_reorders_table_columns_from_outside_ir() {
     let harness = Harness::from_repo_fixture("tables");
     let skin = harness.driver.clone();

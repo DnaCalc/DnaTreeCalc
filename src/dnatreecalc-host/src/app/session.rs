@@ -1001,6 +1001,27 @@ impl TreeWorkspaceSession {
         Ok(())
     }
 
+    pub fn set_table_header_row_visible(
+        &mut self,
+        table: &NodeId,
+        visible: bool,
+    ) -> Result<(), TreeWorkspaceSessionError> {
+        let table_node_id = self.tree_node_id(table.as_str())?;
+        let mut table_view = self
+            .context
+            .table_view(&self.workspace_id, table_node_id)?
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTable {
+                table: table.to_string(),
+            })?;
+        table_view.snapshot.header_row_present = visible;
+
+        self.context
+            .set_node_table(&self.workspace_id, table_node_id, table_view.snapshot)?;
+        self.refresh_projection_from_context()?;
+        self.last_outcome = None;
+        Ok(())
+    }
+
     pub fn set_table_totals_row_visible(
         &mut self,
         table: &NodeId,

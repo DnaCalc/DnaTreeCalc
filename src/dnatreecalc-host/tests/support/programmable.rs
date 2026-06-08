@@ -340,6 +340,21 @@ impl ProgrammableDriver {
             })
     }
 
+    pub fn set_table_header_row_visible(&self, table: &str, visible: bool) {
+        self.accept(WorkspaceIntent::SetTableHeaderRowVisible {
+            table: NodeId::new(table),
+            visible,
+        });
+    }
+
+    pub fn try_set_table_header_row_visible(&self, table: &str, visible: bool) -> IntentReceipt {
+        self.dispatch
+            .dispatch(WorkspaceIntent::SetTableHeaderRowVisible {
+                table: NodeId::new(table),
+                visible,
+            })
+    }
+
     pub fn set_table_totals_row_visible(&self, table: &str, visible: bool) {
         self.accept(WorkspaceIntent::SetTableTotalsRowVisible {
             table: NodeId::new(table),

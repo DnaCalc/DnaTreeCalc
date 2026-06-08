@@ -495,6 +495,15 @@ pub const SHELL_CSS: &str = r#"
     gap: 0.5rem;
 }
 
+.dtc-table-card__header-toggle,
+.dtc-table-card__totals-toggle {
+    display: inline-flex;
+    gap: 0.375rem;
+    align-items: center;
+    font-size: 0.75rem;
+    color: #475569;
+}
+
 .dtc-table-card__grid {
     display: grid;
     gap: 1px;
