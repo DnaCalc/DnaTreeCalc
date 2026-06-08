@@ -929,6 +929,20 @@ impl Harness {
             .unwrap()
     }
 
+    pub fn preview_move_node_impact(
+        &self,
+        node: &str,
+        new_parent: Option<&str>,
+        new_index: Option<usize>,
+    ) -> MutationImpactProjection {
+        let new_parent = new_parent.map(NodeId::new);
+        self.session
+            .lock()
+            .unwrap()
+            .preview_move_node_impact(&NodeId::new(node), new_parent.as_ref(), new_index)
+            .unwrap()
+    }
+
     pub fn preview_new_table_column_formula_impact(
         &self,
         table: &str,

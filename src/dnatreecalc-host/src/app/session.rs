@@ -623,6 +623,52 @@ impl TreeWorkspaceSession {
         })
     }
 
+    pub fn preview_move_node_impact(
+        &self,
+        node: &NodeId,
+        new_parent: Option<&NodeId>,
+        new_index: Option<usize>,
+    ) -> Result<MutationImpactProjection, TreeWorkspaceSessionError> {
+        self.tree_node_id(node.as_str())?;
+        if let Some(parent) = new_parent {
+            self.tree_node_id(parent.as_str())?;
+        }
+        let state = self.workspace_state()?;
+        let invalid_drop = self.move_would_target_self_or_descendant(&state, node, new_parent)?;
+        let attempted = moved_node_path(node, new_parent);
+        let collisions = self.name_collisions_for_attempt(node, &attempted);
+        let invalidation_plan =
+            self.preview_recalc_plan(&[RecalcPlanMutation::MoveNode { node: node.clone() }])?;
+        let blocked_reason = if invalid_drop {
+            Some(MutationImpactBlockedReasonProjection::InvalidDrop)
+        } else if !collisions.is_empty() {
+            Some(MutationImpactBlockedReasonProjection::NameCollision)
+        } else {
+            None
+        };
+        Ok(MutationImpactProjection {
+            intent: MutationImpactIntentProjection::MoveNode {
+                node: node.clone(),
+                new_parent: new_parent.cloned(),
+                new_index,
+            },
+            legal: blocked_reason.is_none(),
+            blocked_reason,
+            profile_violations: Vec::new(),
+            bind_diagnostics: Vec::new(),
+            requires_rebind: invalidation_plan.requires_rebind.clone(),
+            affected_refs: invalidation_plan
+                .invalidated_nodes
+                .iter()
+                .filter(|entry| entry.node != *node)
+                .map(|entry| entry.node.clone())
+                .collect(),
+            orphaned_dependents: Vec::new(),
+            collisions,
+            invalidation_plan,
+        })
+    }
+
     pub fn preview_new_table_column_formula_impact(
         &self,
         table: &NodeId,
@@ -2164,6 +2210,38 @@ impl TreeWorkspaceSession {
             .unwrap_or_default()
     }
 
+    fn move_would_target_self_or_descendant(
+        &self,
+        state: &WorkspaceState,
+        node: &NodeId,
+        new_parent: Option<&NodeId>,
+    ) -> Result<bool, TreeWorkspaceSessionError> {
+        let Some(new_parent) = new_parent else {
+            return Ok(false);
+        };
+        if new_parent == node {
+            return Ok(true);
+        }
+        let node_key = state
+            .node(node)
+            .map(|node| node.key.clone())
+            .ok_or_else(|| TreeWorkspaceSessionError::ProjectionOutOfSync {
+                node: node.to_string(),
+            })?;
+        let new_parent_key = state
+            .node(new_parent)
+            .map(|node| node.key.clone())
+            .ok_or_else(|| TreeWorkspaceSessionError::ProjectionOutOfSync {
+                node: new_parent.to_string(),
+            })?;
+        let subtree = state
+            .expand_authoring_scope(&AuthoringScope::Subtree(node_key))
+            .map_err(|error| TreeWorkspaceSessionError::ProjectionOutOfSync {
+                node: error.to_string(),
+            })?;
+        Ok(subtree.contains(&new_parent_key))
+    }
+
     fn engine_preview_mutations(
         &self,
         mutation: &RecalcPlanMutation,
@@ -3080,6 +3158,18 @@ fn renamed_node_path(node: &NodeId, new_symbol: &str) -> NodeId {
         Some(parent) => NodeId::new(format!("{parent}.{new_symbol}")),
         None => NodeId::new(new_symbol.to_string()),
     }
+}
+
+fn moved_node_path(node: &NodeId, new_parent: Option<&NodeId>) -> NodeId {
+    let symbol = node_symbol(node.as_str());
+    match new_parent {
+        Some(parent) => NodeId::new(format!("{}.{}", parent.as_str(), symbol)),
+        None => NodeId::new(symbol.to_string()),
+    }
+}
+
+fn node_symbol(path: &str) -> &str {
+    path.rsplit_once('.').map_or(path, |(_, symbol)| symbol)
 }
 
 fn depth_of(path: &str) -> u32 {

@@ -521,6 +521,70 @@ fn programmable_skin_previews_rename_legality_impact_and_collisions() {
 }
 
 #[test]
+fn programmable_skin_previews_move_drop_legality_impact_and_collisions() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    skin.add_node(Some("Root"), "A", "1");
+    skin.add_node(Some("Root"), "B", "=A+1");
+    skin.add_node(Some("Root"), "C", "=B+1");
+    skin.add_node(Some("Root"), "Group", "");
+    skin.add_node(Some("Root"), "Existing", "8");
+    skin.add_node(Some("Root.Group"), "Existing", "9");
+    skin.add_node(Some("Root.Group"), "Child", "");
+    let before_revision = revision_fingerprint(&skin.state().revision);
+
+    let impact = harness.preview_move_node_impact("Root.B", Some("Root.Group"), Some(0));
+    assert!(impact.legal, "{impact:?}");
+    assert!(impact.blocked_reason.is_none());
+    assert!(impact.collisions.is_empty());
+    assert!(impact.requires_rebind.contains(&NodeId::new("Root.B")));
+    assert_eq!(impact.affected_refs, vec![NodeId::new("Root.C")]);
+    let MutationImpactIntentProjection::MoveNode {
+        node,
+        new_parent,
+        new_index,
+    } = &impact.intent
+    else {
+        panic!("expected move impact intent");
+    };
+    assert_eq!(node, &NodeId::new("Root.B"));
+    assert_eq!(new_parent, &Some(NodeId::new("Root.Group")));
+    assert_eq!(new_index, &Some(0));
+    assert_eq!(
+        revision_fingerprint(&skin.state().revision),
+        before_revision
+    );
+    assert!(skin.state().node(&NodeId::new("Root.B")).is_some());
+    assert!(skin.state().node(&NodeId::new("Root.Group.B")).is_none());
+
+    let collision = harness.preview_move_node_impact("Root.Existing", Some("Root.Group"), None);
+    assert!(!collision.legal);
+    assert_eq!(
+        collision.blocked_reason,
+        Some(MutationImpactBlockedReasonProjection::NameCollision)
+    );
+    assert_eq!(collision.collisions.len(), 1);
+    assert_eq!(collision.collisions[0].attempted, "Root.Group.Existing");
+    assert_eq!(
+        collision.collisions[0].existing,
+        NodeId::new("Root.Group.Existing")
+    );
+
+    let invalid = harness.preview_move_node_impact("Root.Group", Some("Root.Group.Child"), None);
+    assert!(!invalid.legal);
+    assert_eq!(
+        invalid.blocked_reason,
+        Some(MutationImpactBlockedReasonProjection::InvalidDrop)
+    );
+    assert_eq!(
+        revision_fingerprint(&skin.state().revision),
+        before_revision
+    );
+}
+
+#[test]
 fn programmable_skin_receipts_carry_projection_deltas() {
     let harness = Harness::empty();
     let skin = harness.driver.clone();

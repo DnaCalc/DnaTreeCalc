@@ -107,8 +107,10 @@ supports the active roadmap item; it is not the default next move while W2 is op
       projected host state, dry-binds each target through OxCalc/OxFml, and plans the combined
       invalidation through OxCalc without mutating state. Rename legality-impact preview now joins
       host-owned same-parent name collision detection with OxCalc structural invalidation planning
-      and projects typed `NameCollision` blockers through Skin IR. Broader structural/drop scoped
-      coverage remains required before closing the item.
+      and projects typed `NameCollision` blockers through Skin IR. Move/drop legality-impact preview
+      now joins host-owned drop validity and destination collision checks with OxCalc structural
+      invalidation planning. Delete/orphan-style structural preview coverage remains required before
+      closing the item.
 
 ### Gating Engine Workstreams
 

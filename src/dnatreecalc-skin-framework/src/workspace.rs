@@ -758,6 +758,11 @@ pub enum MutationImpactIntentProjection {
         node: NodeId,
         new_symbol: String,
     },
+    MoveNode {
+        node: NodeId,
+        new_parent: Option<NodeId>,
+        new_index: Option<usize>,
+    },
     AddTableFormulaColumn {
         table: NodeId,
         column_id: String,
@@ -773,6 +778,7 @@ impl MutationImpactIntentProjection {
             Self::EditContent { .. } => "edit_content",
             Self::EditScopedContent { .. } => "edit_scoped_content",
             Self::RenameNode { .. } => "rename_node",
+            Self::MoveNode { .. } => "move_node",
             Self::AddTableFormulaColumn { .. } => "add_table_formula_column",
         }
     }
@@ -784,6 +790,7 @@ pub enum MutationImpactBlockedReasonProjection {
     BindDiagnostics,
     ProfileViolation,
     NameCollision,
+    InvalidDrop,
 }
 
 impl MutationImpactBlockedReasonProjection {
@@ -794,6 +801,7 @@ impl MutationImpactBlockedReasonProjection {
             Self::BindDiagnostics => "bind_diagnostics",
             Self::ProfileViolation => "profile_violation",
             Self::NameCollision => "name_collision",
+            Self::InvalidDrop => "invalid_drop",
         }
     }
 }
