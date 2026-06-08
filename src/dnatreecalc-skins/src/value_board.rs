@@ -1,10 +1,10 @@
 use dnatreecalc_skin_framework::{
     ActiveSelectionDetailProjection, ActiveTableCellDetailProjection, CalcRunStateProjection,
-    Dispatcher, NodeId, NodeKey, NodeValueProjection, ReferenceResolutionProjection,
-    ReferenceTargetProjection, SelectionState, SkinCapabilities, SkinCategory, SkinContext,
-    SkinHandle, SkinId, SkinManifest, SkinState, TableCellEditabilityProjection, TableCellInput,
-    TableColumnBodyProjection, TableProjection, TableRowInput, WorkspaceIntent, WorkspaceSkin,
-    WorkspaceState,
+    Dispatcher, NodeId, NodeKey, NodeValueProjection, PhaseKeyProjection,
+    ReferenceResolutionProjection, ReferenceTargetProjection, SelectionState, SkinCapabilities,
+    SkinCategory, SkinContext, SkinHandle, SkinId, SkinManifest, SkinState,
+    TableCellEditabilityProjection, TableCellInput, TableColumnBodyProjection, TableProjection,
+    TableRowInput, WorkspaceIntent, WorkspaceSkin, WorkspaceState,
 };
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -314,6 +314,13 @@ fn append_run_context_rows(
     }
     rows.push(("run overlays", last_run.runtime_overlay_count.to_string()));
     rows.push(("run diagnostics", last_run.diagnostics.len().to_string()));
+    rows.push((
+        "phase count",
+        last_run.phase_timings_micros.len().to_string(),
+    ));
+    if let Some(phases) = phase_timing_summary(&last_run.phase_timings_micros) {
+        rows.push(("slow phases", phases));
+    }
     if let Some(invalidation) = last_run
         .invalidated_nodes
         .iter()
@@ -362,6 +369,32 @@ fn append_run_context_rows(
     ) {
         rows.push(("overlay payloads", payloads));
     }
+}
+
+fn phase_timing_summary(
+    phase_timings_micros: &std::collections::BTreeMap<PhaseKeyProjection, u128>,
+) -> Option<String> {
+    const LIMIT: usize = 4;
+    let mut timings = phase_timings_micros.iter().collect::<Vec<_>>();
+    if timings.is_empty() {
+        return None;
+    }
+
+    timings.sort_by(|(left_phase, left_micros), (right_phase, right_micros)| {
+        right_micros
+            .cmp(left_micros)
+            .then_with(|| left_phase.stable_id().cmp(right_phase.stable_id()))
+    });
+
+    let mut visible = timings
+        .iter()
+        .take(LIMIT)
+        .map(|(phase, micros)| format!("{} {}us", phase.stable_id(), micros))
+        .collect::<Vec<_>>();
+    if timings.len() > LIMIT {
+        visible.push(format!("+{} more", timings.len() - LIMIT));
+    }
+    Some(visible.join(", "))
 }
 
 fn calc_run_state_label(state: CalcRunStateProjection) -> &'static str {
@@ -1563,13 +1596,13 @@ mod tests {
         CalcRunProjection, CalcRunStateProjection, DependencyGraphProjection,
         DependencyKindProjection, DerivationTemplateSelectionProjection, DerivationTraceProjection,
         InvalidationReasonProjection, NodeCalcStateProjection, NodeContentKind,
-        NodeInvalidationProjection, NodeKey, NodeView, ReferenceResolutionProjection,
-        ReferenceTargetProjection, RuntimeEffectFamilyProjection, RuntimeEffectProjection,
-        RuntimeOverlayKindProjection, RuntimeOverlayProjection, SourceSpanProjection,
-        TableAnchorProjection, TableCellProjection, TableCellRegionProjection,
-        TableCellsProjection, TableColumnProjection, TableFormulaMetadataProjection,
-        TableRowProjection, TreeReferenceCollectionFamilyProjection,
-        TreeReferenceCollectionProjection,
+        NodeInvalidationProjection, NodeKey, NodeView, PhaseKeyProjection,
+        ReferenceResolutionProjection, ReferenceTargetProjection, RuntimeEffectFamilyProjection,
+        RuntimeEffectProjection, RuntimeOverlayKindProjection, RuntimeOverlayProjection,
+        SourceSpanProjection, TableAnchorProjection, TableCellProjection,
+        TableCellRegionProjection, TableCellsProjection, TableColumnProjection,
+        TableFormulaMetadataProjection, TableRowProjection,
+        TreeReferenceCollectionFamilyProjection, TreeReferenceCollectionProjection,
     };
     use std::collections::BTreeMap;
 
@@ -1785,6 +1818,11 @@ mod tests {
                 ),
                 ("run overlays", "1".to_string()),
                 ("run diagnostics", "1".to_string()),
+                ("phase count", "3".to_string()),
+                (
+                    "slow phases",
+                    "oxfml_formula_evaluation 120us, dependency_graph_build_and_cycle_scan 80us, candidate_publication 30us".to_string(),
+                ),
                 ("last invalidated", "false".to_string()),
                 ("trace count", "0".to_string()),
                 ("overlay count", "0".to_string()),
@@ -1826,6 +1864,11 @@ mod tests {
                 ),
                 ("run overlays", "1".to_string()),
                 ("run diagnostics", "1".to_string()),
+                ("phase count", "3".to_string()),
+                (
+                    "slow phases",
+                    "oxfml_formula_evaluation 120us, dependency_graph_build_and_cycle_scan 80us, candidate_publication 30us".to_string(),
+                ),
                 ("last invalidated", "true".to_string()),
                 ("last state", "verified_clean".to_string()),
                 ("last rebind", "false".to_string()),
@@ -1947,6 +1990,26 @@ mod tests {
         assert_eq!(
             RuntimeEffectFamilyProjection::ExecutionRestriction.to_string(),
             "execution_restriction"
+        );
+    }
+
+    #[test]
+    fn value_board_active_detail_phase_timing_summary_is_sorted_and_bounded() {
+        let mut timings = BTreeMap::new();
+        assert_eq!(phase_timing_summary(&timings), None);
+
+        timings.insert(PhaseKeyProjection::RuntimeSetup, 10);
+        timings.insert(PhaseKeyProjection::OxfmlFormulaEvaluation, 50);
+        timings.insert(PhaseKeyProjection::CandidatePublication, 20);
+        timings.insert(PhaseKeyProjection::DependencyGraphBuildAndCycleScan, 30);
+        timings.insert(PhaseKeyProjection::DiagnosticSeedCollection, 40);
+
+        assert_eq!(
+            phase_timing_summary(&timings),
+            Some(
+                "oxfml_formula_evaluation 50us, diagnostic_seed_collection 40us, dependency_graph_build_and_cycle_scan 30us, candidate_publication 20us, +1 more"
+                    .to_string()
+            )
         );
     }
 
@@ -2101,7 +2164,11 @@ mod tests {
                     requires_rebind: false,
                     reasons: vec![InvalidationReasonProjection::DependencyAdded],
                 }],
-                phase_timings_micros: BTreeMap::new(),
+                phase_timings_micros: BTreeMap::from([
+                    (PhaseKeyProjection::OxfmlFormulaEvaluation, 120),
+                    (PhaseKeyProjection::DependencyGraphBuildAndCycleScan, 80),
+                    (PhaseKeyProjection::CandidatePublication, 30),
+                ]),
                 diagnostics: vec!["diagnostic:sample".to_string()],
             }),
             dependencies: DependencyGraphProjection {
