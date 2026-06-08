@@ -156,6 +156,11 @@ fn active_selection_summary_rows(
             ("focus", focus),
             ("name", detail.display_name),
             ("value", detail.value.display_text()),
+            ("refs out", detail.outgoing_references.len().to_string()),
+            (
+                "refs in",
+                detail.incoming_reference_handles.len().to_string(),
+            ),
         ]),
         ActiveSelectionDetailProjection::TableCell(detail) => {
             let row = detail
@@ -172,6 +177,11 @@ fn active_selection_summary_rows(
                     table_cell_editability_label(detail.editability).to_string(),
                 ),
                 ("value", detail.value.display_text()),
+                ("refs out", detail.outgoing_references.len().to_string()),
+                (
+                    "refs in",
+                    detail.incoming_reference_handles.len().to_string(),
+                ),
             ])
         }
     }
@@ -1432,6 +1442,8 @@ mod tests {
                 ("focus", "node".to_string()),
                 ("name", "A".to_string()),
                 ("value", "3".to_string()),
+                ("refs out", "0".to_string()),
+                ("refs in", "0".to_string()),
             ])
         );
 
@@ -1450,6 +1462,8 @@ mod tests {
                 ("cell", "row:east / Tax".to_string()),
                 ("edit", "formula".to_string()),
                 ("value", "2".to_string()),
+                ("refs out", "0".to_string()),
+                ("refs in", "0".to_string()),
             ])
         );
     }
