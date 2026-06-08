@@ -10,8 +10,8 @@ use dnatreecalc_skin_framework::{
     NodeContentKind as FrameworkContentKind, NodeId, NodeInvalidationProjection, NodeKey,
     NodeValueProjection, NodeView, PhaseKeyProjection, ReferenceResolutionProjection,
     ReferenceTargetProjection, RuntimeEffectFamilyProjection, RuntimeEffectProjection,
-    RuntimeOverlayKindProjection, RuntimeOverlayProjection, TableCellInput, TableCellProjection,
-    TableCellsProjection, TableColumnBodyProjection, TableColumnProjection,
+    RuntimeOverlayKindProjection, RuntimeOverlayProjection, TableAnchorProjection, TableCellInput,
+    TableCellProjection, TableCellsProjection, TableColumnBodyProjection, TableColumnProjection,
     TableFormulaMetadataProjection, TableProjection, TableRowInput, TableRowProjection,
     TreeReferenceCollectionFamilyProjection, TreeReferenceCollectionProjection,
     WorkspaceRevisionProjection, WorkspaceState,
@@ -2539,6 +2539,12 @@ fn table_projection_for(
         table_name: view.table_name.clone(),
         display_path: view.display_path.clone(),
         canonical_path: view.canonical_path.clone(),
+        virtual_anchor: TableAnchorProjection {
+            workbook_scope_ref: view.snapshot.virtual_anchor.workbook_scope_ref.clone(),
+            sheet_scope_ref: view.snapshot.virtual_anchor.sheet_scope_ref.clone(),
+            start_row: view.snapshot.virtual_anchor.start_row,
+            start_col: view.snapshot.virtual_anchor.start_col,
+        },
         rows: view
             .snapshot
             .rows

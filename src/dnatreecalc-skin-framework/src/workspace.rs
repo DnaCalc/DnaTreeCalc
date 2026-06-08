@@ -654,6 +654,7 @@ pub struct TableProjection {
     pub table_name: String,
     pub display_path: String,
     pub canonical_path: String,
+    pub virtual_anchor: TableAnchorProjection,
     pub rows: Vec<TableRowProjection>,
     pub columns: Vec<TableColumnProjection>,
     pub cells: Option<TableCellsProjection>,
@@ -666,6 +667,14 @@ pub struct TableProjection {
     pub row_order_version: String,
     pub column_identity_version: String,
     pub dependency_inventory_summary: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TableAnchorProjection {
+    pub workbook_scope_ref: String,
+    pub sheet_scope_ref: String,
+    pub start_row: u32,
+    pub start_col: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -614,6 +614,10 @@ fn programmable_skin_reads_table_and_dependency_ir_from_fixture() {
     assert_eq!(table.table_id, "tree-table:sales");
     assert_eq!(table.row_count, 3);
     assert_eq!(table.column_count, 3);
+    assert_eq!(table.virtual_anchor.workbook_scope_ref, "tables");
+    assert_eq!(table.virtual_anchor.sheet_scope_ref, "SalesTable");
+    assert_eq!(table.virtual_anchor.start_row, 1);
+    assert_eq!(table.virtual_anchor.start_col, 1);
     assert!(
         !state
             .node_order

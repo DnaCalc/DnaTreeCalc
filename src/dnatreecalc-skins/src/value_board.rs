@@ -260,6 +260,13 @@ fn render_table_card(
                 <dt>"table"</dt><dd>{table.table_name.clone()}</dd>
                 <dt>"rows"</dt><dd>{table.row_count}</dd>
                 <dt>"columns"</dt><dd>{table.column_count}</dd>
+                <dt>"anchor"</dt>
+                <dd>{format!(
+                    "{}!R{}C{}",
+                    table.virtual_anchor.sheet_scope_ref,
+                    table.virtual_anchor.start_row,
+                    table.virtual_anchor.start_col,
+                )}</dd>
             </dl>
             <label class="dtc-table-card__table-rename">
                 <span>"Table name"</span>
