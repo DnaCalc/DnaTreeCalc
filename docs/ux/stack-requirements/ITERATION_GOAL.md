@@ -61,7 +61,8 @@ roadmap item; it is not the default next move.
       `NodeView`, `CalcRunProjection`, and active-node detail.
 - [x] Add per-node effective number-format projection from `Format.NumberFormat` meta nodes and
       OxFml-backed numeric display rendering through `NodeView` and active-node detail.
-- [ ] Confirm or implement per-node published-value epochs; keep delta work decoupled until then.
+- [x] Implement OxCalc per-node published-value epochs distinct from input epochs and project them
+      through `NodeView.value_epoch` and active-node detail; keep delta work decoupled.
 
 ### W2 Structural Authoring Tranche
 
@@ -77,7 +78,7 @@ roadmap item; it is not the default next move.
 - [ ] `transaction-scope`: design spike, then engine implementation if go.
 - [ ] `revision-graph-retention`: retained parent-linked revision store and cursor; no inverse replay.
 - [ ] `candidate-overlay-handle`: addressable, layerable, non-publishing candidate contexts.
-- [ ] `value-epoch-keying`: per-node published-value epoch distinct from input epoch.
+- [x] `value-epoch-keying`: per-node published-value epoch distinct from input epoch.
 
 ## Status Template
 

@@ -43,6 +43,7 @@ pub fn workspace_state_from_model(model: &WorkspaceModel) -> WorkspaceState {
             content_kind,
             content_text,
             computed_value: NodeValueProjection::Unevaluated,
+            value_epoch: None,
             calc_state: None,
             effective_format: None,
             binding_diagnostics: Vec::new(),

@@ -1313,6 +1313,7 @@ impl TreeWorkspaceSession {
                     content_kind,
                     content_text: tree_view.formula_text.clone(),
                     computed_value,
+                    value_epoch: tree_view.published_value_epoch,
                     calc_state: tree_view.calc_state.map(calc_state_projection_for),
                     effective_format,
                     binding_diagnostics,

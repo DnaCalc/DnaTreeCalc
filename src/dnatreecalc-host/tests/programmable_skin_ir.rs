@@ -75,6 +75,66 @@ fn programmable_skin_projection_refreshes_after_each_calc_affecting_intent() {
 }
 
 #[test]
+fn programmable_skin_projects_per_node_published_value_epochs() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    skin.add_node(Some("Root"), "A", "=2");
+    skin.add_node(Some("Root"), "B", "=A+1");
+    skin.add_node(Some("Root"), "C", "=100");
+
+    let initial = skin.state();
+    let initial_a_epoch = initial.node(&NodeId::new("Root.A")).unwrap().value_epoch;
+    let initial_b_epoch = initial.node(&NodeId::new("Root.B")).unwrap().value_epoch;
+    let initial_c_epoch = initial.node(&NodeId::new("Root.C")).unwrap().value_epoch;
+    assert!(initial_a_epoch.is_some());
+    assert!(initial_b_epoch.is_some());
+    assert!(initial_c_epoch.is_some());
+
+    skin.edit("Root.A", "=3");
+    let edited = skin.state();
+    assert_eq!(
+        edited
+            .node(&NodeId::new("Root.A"))
+            .unwrap()
+            .computed_value
+            .display_text(),
+        "3"
+    );
+    assert_eq!(
+        edited
+            .node(&NodeId::new("Root.B"))
+            .unwrap()
+            .computed_value
+            .display_text(),
+        "4"
+    );
+    assert_ne!(
+        edited.node(&NodeId::new("Root.A")).unwrap().value_epoch,
+        initial_a_epoch
+    );
+    assert_ne!(
+        edited.node(&NodeId::new("Root.B")).unwrap().value_epoch,
+        initial_b_epoch
+    );
+    assert_eq!(
+        edited.node(&NodeId::new("Root.C")).unwrap().value_epoch,
+        initial_c_epoch
+    );
+
+    let detail = edited
+        .active_node_detail(&dnatreecalc_skin_framework::SelectionState::with_primary(
+            Some(NodeId::new("Root.B")),
+        ))
+        .expect("active detail projects selected formula");
+    assert_eq!(
+        detail.value_epoch,
+        edited.node(&NodeId::new("Root.B")).unwrap().value_epoch
+    );
+}
+
+#[test]
 fn programmable_skin_receipts_carry_projection_deltas() {
     let harness = Harness::empty();
     let skin = harness.driver.clone();
