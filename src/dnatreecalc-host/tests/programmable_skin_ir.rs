@@ -3,8 +3,9 @@ mod support;
 use dnatreecalc_skin_framework::{
     CalcRunStateProjection, NodeContentKind, NodeId, NodeValueProjection,
     ReferenceTargetProjection, RuntimeEffectFamilyProjection, RuntimeOverlayKindProjection,
-    TableColumnBodyProjection, TreeReferenceCollectionFamilyProjection, WorkspaceDeltaChange,
-    WorkspaceRecalcMode,
+    TableColumnBodyProjection, TableDependencyFactKindProjection,
+    TableDependencyFactStatusProjection, TreeReferenceCollectionFamilyProjection,
+    WorkspaceDeltaChange, WorkspaceRecalcMode,
 };
 
 use support::programmable::{Harness, revision_fingerprint};
@@ -718,7 +719,17 @@ fn programmable_skin_reads_table_and_dependency_ir_from_fixture() {
             .collect::<Vec<_>>(),
         vec!["", "60", ""]
     );
-    assert!(!table.dependency_inventory_summary.is_empty());
+    assert!(!table.dependency_inventory.is_empty());
+    assert!(table.dependency_inventory.iter().any(|fact| {
+        fact.kind == TableDependencyFactKindProjection::TableIdentity
+            && fact.status == TableDependencyFactStatusProjection::Lowered
+            && fact.table_id.as_deref() == Some("tree-table:sales")
+            && fact.identity.is_some()
+    }));
+    assert!(table.dependency_inventory.iter().any(|fact| {
+        fact.kind == TableDependencyFactKindProjection::DataRegion
+            && fact.status == TableDependencyFactStatusProjection::Lowered
+    }));
 }
 
 #[test]

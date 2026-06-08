@@ -666,7 +666,7 @@ pub struct TableProjection {
     pub row_membership_version: String,
     pub row_order_version: String,
     pub column_identity_version: String,
-    pub dependency_inventory_summary: Vec<String>,
+    pub dependency_inventory: Vec<TableDependencyFactProjection>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -675,6 +675,62 @@ pub struct TableAnchorProjection {
     pub sheet_scope_ref: String,
     pub start_row: u32,
     pub start_col: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TableDependencyFactProjection {
+    pub fact_id: String,
+    pub kind: TableDependencyFactKindProjection,
+    pub status: TableDependencyFactStatusProjection,
+    pub table_id: Option<String>,
+    pub column_id: Option<String>,
+    pub identity: Option<String>,
+    pub blocker: Option<TableDependencyFactBlockerProjection>,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum TableDependencyFactKindProjection {
+    TableIdentity,
+    RowMembership,
+    RowOrder,
+    RowValue,
+    ColumnIdentity,
+    ColumnOrder,
+    HeaderText,
+    HeaderRegion,
+    DataRegion,
+    TotalsRegion,
+    TotalsValue,
+    TotalsFormula,
+    CallerRowContext,
+    OmittedTableNameEnclosingTable,
+    VirtualAnchorRange,
+    WorkspaceAvailability,
+    FunctionRegistrySnapshot,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TableDependencyFactStatusProjection {
+    Lowered,
+    Blocked,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum TableDependencyFactBlockerProjection {
+    MissingTableCatalogEntry,
+    MissingEnclosingTableContext,
+    MissingStableRowMembershipAndOrderPacket,
+    MissingSelectedColumn,
+    MissingHeaderRegionRange,
+    MissingTotalsRegionRange,
+    HeaderRowAbsent,
+    TotalsRowAbsent,
+    MissingCallerTableRegion,
+    CallerTableMismatch,
+    CallerRegionNotData,
+    CallerDataRowOffsetMissing,
+    OmittedTableEnclosingMismatch,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -44,9 +44,11 @@ pub use workspace::{
     ReferenceResolutionProjection, ReferenceTargetProjection, RuntimeEffectFamilyProjection,
     RuntimeEffectProjection, RuntimeOverlayKindProjection, RuntimeOverlayProjection,
     SourceSpanProjection, TableAnchorProjection, TableCellProjection, TableCellsProjection,
-    TableColumnBodyProjection, TableColumnProjection, TableFormulaMetadataProjection,
-    TableProjection, TableRowProjection, TreeReferenceCollectionFamilyProjection,
-    TreeReferenceCollectionProjection, WorkspaceRevisionProjection, WorkspaceState,
+    TableColumnBodyProjection, TableColumnProjection, TableDependencyFactBlockerProjection,
+    TableDependencyFactKindProjection, TableDependencyFactProjection,
+    TableDependencyFactStatusProjection, TableFormulaMetadataProjection, TableProjection,
+    TableRowProjection, TreeReferenceCollectionFamilyProjection, TreeReferenceCollectionProjection,
+    WorkspaceRevisionProjection, WorkspaceState,
 };
 
 #[cfg(test)]

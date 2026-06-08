@@ -260,6 +260,7 @@ fn render_table_card(
                 <dt>"table"</dt><dd>{table.table_name.clone()}</dd>
                 <dt>"rows"</dt><dd>{table.row_count}</dd>
                 <dt>"columns"</dt><dd>{table.column_count}</dd>
+                <dt>"deps"</dt><dd>{table.dependency_inventory.len()}</dd>
                 <dt>"anchor"</dt>
                 <dd>{format!(
                     "{}!R{}C{}",

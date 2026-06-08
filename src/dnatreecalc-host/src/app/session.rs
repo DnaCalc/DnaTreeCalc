@@ -12,6 +12,8 @@ use dnatreecalc_skin_framework::{
     ReferenceTargetProjection, RuntimeEffectFamilyProjection, RuntimeEffectProjection,
     RuntimeOverlayKindProjection, RuntimeOverlayProjection, TableAnchorProjection, TableCellInput,
     TableCellProjection, TableCellsProjection, TableColumnBodyProjection, TableColumnProjection,
+    TableDependencyFactBlockerProjection, TableDependencyFactKindProjection,
+    TableDependencyFactProjection, TableDependencyFactStatusProjection,
     TableFormulaMetadataProjection, TableProjection, TableRowInput, TableRowProjection,
     TreeReferenceCollectionFamilyProjection, TreeReferenceCollectionProjection,
     WorkspaceRevisionProjection, WorkspaceState,
@@ -32,6 +34,8 @@ use oxcalc_core::recalc::NodeCalcState;
 use oxcalc_core::recalc::{OverlayEntry, OverlayKind};
 use oxcalc_core::structural::TreeNodeId;
 use oxcalc_core::structured_table::{
+    StructuredTableDependencyFact, StructuredTableDependencyFactKind,
+    StructuredTableDependencyFactStatus, StructuredTableLoweringBlocker,
     TreeCalcDynamicTableRebindReport, TreeCalcDynamicTableRebindRequest,
     TreeCalcTableBodyCellNodeBinding, TreeCalcTableColumnBodyMetadata,
     TreeCalcTableColumnFormulaRuntimeRequest, TreeCalcTableColumnSnapshot,
@@ -2570,12 +2574,140 @@ fn table_projection_for(
         row_membership_version: view.snapshot.row_membership_version.clone(),
         row_order_version: view.snapshot.row_order_version.clone(),
         column_identity_version: view.snapshot.column_identity_version.clone(),
-        dependency_inventory_summary: view
+        dependency_inventory: view
             .dependency_inventory
             .facts
             .iter()
-            .map(|fact| format!("{:?}", fact.kind))
+            .map(table_dependency_fact_projection)
             .collect(),
+    }
+}
+
+fn table_dependency_fact_projection(
+    fact: &StructuredTableDependencyFact,
+) -> TableDependencyFactProjection {
+    TableDependencyFactProjection {
+        fact_id: fact.fact_id.clone(),
+        kind: table_dependency_fact_kind_projection(fact.kind),
+        status: table_dependency_fact_status_projection(fact.status),
+        table_id: fact.table_id.clone(),
+        column_id: fact.column_id.clone(),
+        identity: fact.identity.clone(),
+        blocker: fact.blocker.map(table_dependency_fact_blocker_projection),
+        detail: fact.detail.clone(),
+    }
+}
+
+fn table_dependency_fact_kind_projection(
+    kind: StructuredTableDependencyFactKind,
+) -> TableDependencyFactKindProjection {
+    match kind {
+        StructuredTableDependencyFactKind::TableIdentity => {
+            TableDependencyFactKindProjection::TableIdentity
+        }
+        StructuredTableDependencyFactKind::RowMembership => {
+            TableDependencyFactKindProjection::RowMembership
+        }
+        StructuredTableDependencyFactKind::RowOrder => TableDependencyFactKindProjection::RowOrder,
+        StructuredTableDependencyFactKind::RowValue => TableDependencyFactKindProjection::RowValue,
+        StructuredTableDependencyFactKind::ColumnIdentity => {
+            TableDependencyFactKindProjection::ColumnIdentity
+        }
+        StructuredTableDependencyFactKind::ColumnOrder => {
+            TableDependencyFactKindProjection::ColumnOrder
+        }
+        StructuredTableDependencyFactKind::HeaderText => {
+            TableDependencyFactKindProjection::HeaderText
+        }
+        StructuredTableDependencyFactKind::HeaderRegion => {
+            TableDependencyFactKindProjection::HeaderRegion
+        }
+        StructuredTableDependencyFactKind::DataRegion => {
+            TableDependencyFactKindProjection::DataRegion
+        }
+        StructuredTableDependencyFactKind::TotalsRegion => {
+            TableDependencyFactKindProjection::TotalsRegion
+        }
+        StructuredTableDependencyFactKind::TotalsValue => {
+            TableDependencyFactKindProjection::TotalsValue
+        }
+        StructuredTableDependencyFactKind::TotalsFormula => {
+            TableDependencyFactKindProjection::TotalsFormula
+        }
+        StructuredTableDependencyFactKind::CallerRowContext => {
+            TableDependencyFactKindProjection::CallerRowContext
+        }
+        StructuredTableDependencyFactKind::OmittedTableNameEnclosingTable => {
+            TableDependencyFactKindProjection::OmittedTableNameEnclosingTable
+        }
+        StructuredTableDependencyFactKind::VirtualAnchorRange => {
+            TableDependencyFactKindProjection::VirtualAnchorRange
+        }
+        StructuredTableDependencyFactKind::WorkspaceAvailability => {
+            TableDependencyFactKindProjection::WorkspaceAvailability
+        }
+        StructuredTableDependencyFactKind::FunctionRegistrySnapshot => {
+            TableDependencyFactKindProjection::FunctionRegistrySnapshot
+        }
+    }
+}
+
+fn table_dependency_fact_status_projection(
+    status: StructuredTableDependencyFactStatus,
+) -> TableDependencyFactStatusProjection {
+    match status {
+        StructuredTableDependencyFactStatus::Lowered => {
+            TableDependencyFactStatusProjection::Lowered
+        }
+        StructuredTableDependencyFactStatus::Blocked => {
+            TableDependencyFactStatusProjection::Blocked
+        }
+    }
+}
+
+fn table_dependency_fact_blocker_projection(
+    blocker: StructuredTableLoweringBlocker,
+) -> TableDependencyFactBlockerProjection {
+    match blocker {
+        StructuredTableLoweringBlocker::MissingTableCatalogEntry => {
+            TableDependencyFactBlockerProjection::MissingTableCatalogEntry
+        }
+        StructuredTableLoweringBlocker::MissingEnclosingTableContext => {
+            TableDependencyFactBlockerProjection::MissingEnclosingTableContext
+        }
+        StructuredTableLoweringBlocker::MissingStableRowMembershipAndOrderPacket => {
+            TableDependencyFactBlockerProjection::MissingStableRowMembershipAndOrderPacket
+        }
+        StructuredTableLoweringBlocker::MissingSelectedColumn => {
+            TableDependencyFactBlockerProjection::MissingSelectedColumn
+        }
+        StructuredTableLoweringBlocker::MissingHeaderRegionRange => {
+            TableDependencyFactBlockerProjection::MissingHeaderRegionRange
+        }
+        StructuredTableLoweringBlocker::MissingTotalsRegionRange => {
+            TableDependencyFactBlockerProjection::MissingTotalsRegionRange
+        }
+        StructuredTableLoweringBlocker::HeaderRowAbsent => {
+            TableDependencyFactBlockerProjection::HeaderRowAbsent
+        }
+        StructuredTableLoweringBlocker::TotalsRowAbsent => {
+            TableDependencyFactBlockerProjection::TotalsRowAbsent
+        }
+        StructuredTableLoweringBlocker::MissingCallerTableRegion => {
+            TableDependencyFactBlockerProjection::MissingCallerTableRegion
+        }
+        StructuredTableLoweringBlocker::CallerTableMismatch => {
+            TableDependencyFactBlockerProjection::CallerTableMismatch
+        }
+        StructuredTableLoweringBlocker::CallerRegionNotData => {
+            TableDependencyFactBlockerProjection::CallerRegionNotData
+        }
+        StructuredTableLoweringBlocker::CallerDataRowOffsetMissing => {
+            TableDependencyFactBlockerProjection::CallerDataRowOffsetMissing
+        }
+        StructuredTableLoweringBlocker::OmittedTableEnclosingMismatch => {
+            TableDependencyFactBlockerProjection::OmittedTableEnclosingMismatch
+        }
     }
 }
 
