@@ -973,22 +973,45 @@ fn calc_value_projection(value: &CalcValue) -> NodeValueProjection {
     match value.core() {
         CoreValue::Array(array) => {
             let shape = array.shape();
-            let rows = (0..shape.rows)
+            let cells = (0..shape.rows)
                 .map(|row| {
                     (0..shape.cols)
                         .map(|col| {
                             array
                                 .get(row, col)
-                                .map(calc_value_display_text)
-                                .unwrap_or_default()
+                                .map(calc_value_projection)
+                                .unwrap_or(NodeValueProjection::Empty)
                         })
                         .collect::<Vec<_>>()
                 })
                 .collect::<Vec<_>>();
-            NodeValueProjection::Array(rows)
+            NodeValueProjection::Array {
+                rows: shape.rows,
+                cols: shape.cols,
+                cells,
+            }
         }
         CoreValue::Error(_) => NodeValueProjection::Error(calc_value_display_text(value)),
-        _ => NodeValueProjection::Scalar(calc_value_display_text(value)),
+        CoreValue::Number(number) => {
+            let display = number.to_string();
+            NodeValueProjection::Number {
+                raw: display.clone(),
+                display,
+            }
+        }
+        CoreValue::Text(text) => NodeValueProjection::Text(text.to_string_lossy()),
+        CoreValue::Logical(logical) => {
+            let display = logical.to_string();
+            NodeValueProjection::Logical {
+                value: *logical,
+                display,
+            }
+        }
+        CoreValue::Empty => NodeValueProjection::Empty,
+        CoreValue::Missing => NodeValueProjection::Missing,
+        CoreValue::Reference(reference) => NodeValueProjection::Reference {
+            target: reference.target().to_string(),
+        },
     }
 }
 
@@ -1273,19 +1296,13 @@ mod tests {
         assert_eq!(
             state
                 .node(&NodeId::new("Accounts.2005.Q1.Income"))
-                .and_then(|node| match &node.computed_value {
-                    NodeValueProjection::Scalar(value) => Some(value.as_str()),
-                    _ => None,
-                }),
+                .and_then(|node| node.computed_value.scalar_display_text()),
             Some("2")
         );
         assert_eq!(
             state
                 .node(&NodeId::new("Accounts.2005.Q1.Net"))
-                .and_then(|node| match &node.computed_value {
-                    NodeValueProjection::Scalar(value) => Some(value.as_str()),
-                    _ => None,
-                }),
+                .and_then(|node| node.computed_value.scalar_display_text()),
             Some("1.6")
         );
     }
@@ -1512,9 +1529,6 @@ mod tests {
     fn scalar_value<'a>(state: &'a WorkspaceState, node_id: &str) -> Option<&'a str> {
         state
             .node(&NodeId::new(node_id))
-            .and_then(|node| match &node.computed_value {
-                NodeValueProjection::Scalar(value) => Some(value.as_str()),
-                _ => None,
-            })
+            .and_then(|node| node.computed_value.scalar_display_text())
     }
 }

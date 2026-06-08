@@ -68,10 +68,6 @@ pub enum NodeContentKind {
 }
 
 /// What the skin should render for a node's value cell.
-///
-/// The walking skeleton renders a small set of value shapes; richer
-/// shape diff / array virtualization / table rendering arrives with
-/// `UX-VA-002`/`UX-VA-003` in W003+W006.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum NodeValueProjection {
     /// The node has never been evaluated by OxCalc.
@@ -80,13 +76,71 @@ pub enum NodeValueProjection {
     /// Evaluation is in flight; previous value (if any) is the responsibility
     /// of the renderer — the projection only records the in-flight state.
     Pending,
-    /// A formatted scalar ready for display. Formatting comes from the host's
-    /// format resolver (W007); the walking skeleton uses raw debug text.
+    /// Legacy text-only fallback used when the host has display text but no typed engine value.
     Scalar(String),
-    /// A rectangular or ragged array result ready for display.
-    Array(Vec<Vec<String>>),
+    /// Numeric scalar with both canonical raw text and rendered display text.
+    Number { raw: String, display: String },
+    /// Text scalar.
+    Text(String),
+    /// Boolean scalar.
+    Logical { value: bool, display: String },
+    /// Empty scalar.
+    Empty,
+    /// Missing argument/value marker.
+    Missing,
+    /// Reference value projected as an engine target string.
+    Reference { target: String },
+    /// A rectangular or ragged array result with typed projected cells.
+    Array {
+        rows: usize,
+        cols: usize,
+        cells: Vec<Vec<NodeValueProjection>>,
+    },
     /// OxCalc reported a typed diagnostic for this node.
     Error(String),
+}
+
+impl NodeValueProjection {
+    #[must_use]
+    pub fn display_text(&self) -> String {
+        match self {
+            Self::Unevaluated => "-".to_string(),
+            Self::Pending => "...".to_string(),
+            Self::Scalar(text)
+            | Self::Number { display: text, .. }
+            | Self::Text(text)
+            | Self::Logical { display: text, .. }
+            | Self::Error(text) => text.clone(),
+            Self::Empty => String::new(),
+            Self::Missing => "missing".to_string(),
+            Self::Reference { target } => target.clone(),
+            Self::Array { cells, .. } => cells
+                .iter()
+                .map(|row| {
+                    row.iter()
+                        .map(Self::display_text)
+                        .collect::<Vec<_>>()
+                        .join(" | ")
+                })
+                .collect::<Vec<_>>()
+                .join("\n"),
+        }
+    }
+
+    #[must_use]
+    pub fn scalar_display_text(&self) -> Option<&str> {
+        match self {
+            Self::Scalar(text)
+            | Self::Number { display: text, .. }
+            | Self::Text(text)
+            | Self::Logical { display: text, .. }
+            | Self::Error(text) => Some(text.as_str()),
+            Self::Empty => Some(""),
+            Self::Missing => Some("missing"),
+            Self::Reference { target } => Some(target.as_str()),
+            Self::Unevaluated | Self::Pending | Self::Array { .. } => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

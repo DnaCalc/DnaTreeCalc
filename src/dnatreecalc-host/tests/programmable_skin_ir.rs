@@ -111,14 +111,16 @@ fn programmable_skin_projects_array_values_from_oxcalc_calc_values() {
     let array_node = state
         .node(&NodeId::new("Root.ArrayNode"))
         .expect("array node projects");
-    assert_eq!(
-        array_node.computed_value,
-        NodeValueProjection::Array(vec![
-            vec!["1".to_string()],
-            vec!["2".to_string()],
-            vec!["3".to_string()]
-        ])
-    );
+    let NodeValueProjection::Array { rows, cols, cells } = &array_node.computed_value else {
+        panic!(
+            "SEQUENCE should project as an array, got {:?}",
+            array_node.computed_value
+        );
+    };
+    assert_eq!((*rows, *cols), (3, 1));
+    assert_eq!(cells[0][0].display_text(), "1");
+    assert_eq!(cells[1][0].display_text(), "2");
+    assert_eq!(cells[2][0].display_text(), "3");
 }
 
 #[test]
@@ -133,16 +135,16 @@ fn programmable_skin_projects_sequence_5_by_5() {
     let grid = state
         .node(&NodeId::new("Root.Grid"))
         .expect("SEQUENCE node projects");
-    let NodeValueProjection::Array(rows) = &grid.computed_value else {
+    let NodeValueProjection::Array { rows, cols, cells } = &grid.computed_value else {
         panic!(
             "SEQUENCE should project as an array, got {:?}",
             grid.computed_value
         );
     };
-    assert_eq!(rows.len(), 5);
-    assert!(rows.iter().all(|row| row.len() == 5));
-    assert_eq!(rows[0][0], "1");
-    assert_eq!(rows[4][4], "25");
+    assert_eq!((*rows, *cols), (5, 5));
+    assert!(cells.iter().all(|row| row.len() == 5));
+    assert_eq!(cells[0][0].display_text(), "1");
+    assert_eq!(cells[4][4].display_text(), "25");
 }
 
 #[test]
@@ -157,14 +159,14 @@ fn programmable_skin_projects_randarray_with_oxcalc_host_random_provider() {
     let random = state
         .node(&NodeId::new("Root.Random"))
         .expect("RANDARRAY node projects");
-    let NodeValueProjection::Array(rows) = &random.computed_value else {
+    let NodeValueProjection::Array { rows, cols, cells } = &random.computed_value else {
         panic!(
             "RANDARRAY should project as an array, got {:?}",
             random.computed_value
         );
     };
-    assert_eq!(rows.len(), 5);
-    assert!(rows.iter().all(|row| row.len() == 5));
+    assert_eq!((*rows, *cols), (5, 5));
+    assert!(cells.iter().all(|row| row.len() == 5));
 }
 
 #[test]

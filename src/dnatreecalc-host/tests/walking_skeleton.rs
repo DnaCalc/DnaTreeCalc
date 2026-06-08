@@ -25,8 +25,8 @@ use dnatreecalc_host::app::{
 };
 use dnatreecalc_host::model::{WorkspaceFixture, WorkspaceModel};
 use dnatreecalc_skin_framework::{
-    Dispatcher, ErasedSkinContext, NodeId, NodeValueProjection, SelectionState, SharedSkinState,
-    SharedSkinStateHandle, WorkspaceIntent,
+    Dispatcher, ErasedSkinContext, NodeId, SelectionState, SharedSkinState, SharedSkinStateHandle,
+    WorkspaceIntent,
 };
 use dnatreecalc_skins::{
     DEPENDENCY_INSPECTOR_ID, FORMULA_TREE_ID, OUTLINE_TABLE_ID, TRIPLE_EDITOR_ID, VALUE_BOARD_ID,
@@ -269,10 +269,7 @@ fn edit_formula_intent_recalculates_direct_context_and_updates_workspace_signal(
     assert_eq!(
         state
             .node(&NodeId::new("Accounts.2005.Q1.Income"))
-            .and_then(|node| match &node.computed_value {
-                NodeValueProjection::Scalar(value) => Some(value.as_str()),
-                _ => None,
-            }),
+            .and_then(|node| node.computed_value.scalar_display_text()),
         Some("4")
     );
 }
@@ -441,8 +438,5 @@ fn scalar_value<'a>(
 ) -> Option<&'a str> {
     state
         .node(&NodeId::new(node_id))
-        .and_then(|node| match &node.computed_value {
-            NodeValueProjection::Scalar(value) => Some(value.as_str()),
-            _ => None,
-        })
+        .and_then(|node| node.computed_value.scalar_display_text())
 }

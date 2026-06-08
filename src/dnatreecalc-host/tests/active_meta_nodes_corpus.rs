@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use dnatreecalc_host::app::TreeWorkspaceSession;
 use dnatreecalc_host::model::{NodeContent, WorkspaceFixture, WorkspaceModel};
-use dnatreecalc_skin_framework::{NodeId, NodeValueProjection, WorkspaceState};
+use dnatreecalc_skin_framework::{NodeId, WorkspaceState};
 use oxcalc_core::consumer::OxCalcTreeRunState;
 use serde::Deserialize;
 
@@ -186,10 +186,7 @@ fn dependency_members(
 fn scalar_value<'a>(state: &'a WorkspaceState, node_id: &str) -> Option<&'a str> {
     state
         .node(&NodeId::new(node_id.to_string()))
-        .and_then(|node| match &node.computed_value {
-            NodeValueProjection::Scalar(value) => Some(value.as_str()),
-            _ => None,
-        })
+        .and_then(|node| node.computed_value.scalar_display_text())
 }
 
 fn load_theme(path: PathBuf) -> CorpusTheme {

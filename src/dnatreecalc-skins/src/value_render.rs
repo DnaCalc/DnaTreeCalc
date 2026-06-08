@@ -5,16 +5,7 @@ const ARRAY_PREVIEW_ROWS: usize = 10;
 const ARRAY_PREVIEW_COLS: usize = 5;
 
 pub(crate) fn value_text(value: &NodeValueProjection) -> String {
-    match value {
-        NodeValueProjection::Unevaluated => "-".to_string(),
-        NodeValueProjection::Pending => "...".to_string(),
-        NodeValueProjection::Scalar(text) | NodeValueProjection::Error(text) => text.clone(),
-        NodeValueProjection::Array(rows) => rows
-            .iter()
-            .map(|row| row.join(" | "))
-            .collect::<Vec<_>>()
-            .join("\n"),
-    }
+    value.display_text()
 }
 
 pub(crate) fn render_value(value: &NodeValueProjection) -> AnyView {
@@ -27,8 +18,23 @@ pub(crate) fn render_value(value: &NodeValueProjection) -> AnyView {
             <div class="dtc-value-display">"..."</div>
         }
         .into_any(),
-        NodeValueProjection::Scalar(text) => view! {
+        NodeValueProjection::Scalar(text)
+        | NodeValueProjection::Number { display: text, .. }
+        | NodeValueProjection::Text(text)
+        | NodeValueProjection::Logical { display: text, .. } => view! {
             <div class="dtc-value-display">{text.clone()}</div>
+        }
+        .into_any(),
+        NodeValueProjection::Empty => view! {
+            <div class="dtc-value-display"></div>
+        }
+        .into_any(),
+        NodeValueProjection::Missing => view! {
+            <div class="dtc-value-display">"missing"</div>
+        }
+        .into_any(),
+        NodeValueProjection::Reference { target } => view! {
+            <div class="dtc-value-display">{target.clone()}</div>
         }
         .into_any(),
         NodeValueProjection::Error(text) => view! {
@@ -37,20 +43,18 @@ pub(crate) fn render_value(value: &NodeValueProjection) -> AnyView {
             </div>
         }
         .into_any(),
-        NodeValueProjection::Array(rows) => {
-            view! { <ArrayValueView rows=rows.clone() /> }.into_any()
+        NodeValueProjection::Array { rows, cols, cells } => {
+            view! { <ArrayValueView rows=*rows cols=*cols cells=cells.clone() /> }.into_any()
         }
     }
 }
 
 #[component]
-fn ArrayValueView(rows: Vec<Vec<String>>) -> impl IntoView {
+fn ArrayValueView(rows: usize, cols: usize, cells: Vec<Vec<NodeValueProjection>>) -> impl IntoView {
     let show_full = RwSignal::new(false);
-    let row_count = rows.len();
-    let col_count = rows.iter().map(Vec::len).max().unwrap_or(0);
-    let is_truncated = row_count > ARRAY_PREVIEW_ROWS || col_count > ARRAY_PREVIEW_COLS;
-    let summary = format!("{row_count}x{col_count} array");
-    let omitted_summary = omitted_summary(row_count, col_count);
+    let is_truncated = rows > ARRAY_PREVIEW_ROWS || cols > ARRAY_PREVIEW_COLS;
+    let summary = format!("{rows}x{cols} array");
+    let omitted_summary = omitted_summary(rows, cols);
 
     view! {
         <div class="dtc-array-value-shell">
@@ -76,9 +80,9 @@ fn ArrayValueView(rows: Vec<Vec<String>>) -> impl IntoView {
             </div>
             {move || {
                 let visible_rows = if show_full.get() {
-                    rows.clone()
+                    cells.clone()
                 } else {
-                    rows.iter()
+                    cells.iter()
                         .take(ARRAY_PREVIEW_ROWS)
                         .map(|row| {
                             row.iter()
@@ -94,7 +98,7 @@ fn ArrayValueView(rows: Vec<Vec<String>>) -> impl IntoView {
     }
 }
 
-fn render_array_grid(rows: &[Vec<String>]) -> AnyView {
+fn render_array_grid(rows: &[Vec<NodeValueProjection>]) -> AnyView {
     view! {
         <div class="dtc-array-value" role="table">
             {rows.iter().map(|row| {
@@ -102,7 +106,7 @@ fn render_array_grid(rows: &[Vec<String>]) -> AnyView {
                     <div class="dtc-array-value__row" role="row">
                         {row.iter().map(|cell| {
                             view! {
-                                <span class="dtc-array-value__cell" role="cell">{cell.clone()}</span>
+                                <span class="dtc-array-value__cell" role="cell">{cell.display_text()}</span>
                             }
                         }).collect::<Vec<_>>()}
                     </div>

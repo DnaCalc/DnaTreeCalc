@@ -5,9 +5,9 @@ use std::sync::{Arc, Mutex};
 use dnatreecalc_host::app::{HostDispatcher, TreeWorkspaceSession};
 use dnatreecalc_host::model::{WorkspaceFixture, WorkspaceModel};
 use dnatreecalc_skin_framework::{
-    Dispatcher, ErasedSkinContext, IntentReceipt, NodeId, NodeValueProjection, RegisteredSkin,
-    SelectionState, SharedSkinState, SharedSkinStateHandle, SkinCapabilities, SkinCategory,
-    SkinContext, SkinHandle, SkinId, SkinManifest, SkinState, WorkspaceIntent, WorkspaceRecalcMode,
+    Dispatcher, ErasedSkinContext, IntentReceipt, NodeId, RegisteredSkin, SelectionState,
+    SharedSkinState, SharedSkinStateHandle, SkinCapabilities, SkinCategory, SkinContext,
+    SkinHandle, SkinId, SkinManifest, SkinState, WorkspaceIntent, WorkspaceRecalcMode,
     WorkspaceRevisionProjection, WorkspaceSkin, WorkspaceState,
 };
 use leptos::prelude::*;
@@ -348,10 +348,7 @@ impl Harness {
 pub fn scalar_value<'a>(state: &'a WorkspaceState, node_id: &str) -> Option<&'a str> {
     state
         .node(&NodeId::new(node_id))
-        .and_then(|node| match &node.computed_value {
-            NodeValueProjection::Scalar(value) => Some(value.as_str()),
-            _ => None,
-        })
+        .and_then(|node| node.computed_value.scalar_display_text())
 }
 
 pub fn revision_fingerprint(revision: &WorkspaceRevisionProjection) -> Vec<Option<String>> {
