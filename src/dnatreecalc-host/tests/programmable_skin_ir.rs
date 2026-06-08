@@ -537,6 +537,31 @@ fn programmable_skin_projects_array_values_from_oxcalc_calc_values() {
 }
 
 #[test]
+fn programmable_skin_projects_scalar_values_as_typed_variants() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    skin.add_node(Some("Root"), "Number", "42");
+    skin.add_node(Some("Root"), "Text", "hello");
+    skin.add_node(Some("Root"), "Logical", "true");
+
+    let state = skin.state();
+    assert!(matches!(
+        &state.node(&NodeId::new("Root.Number")).unwrap().computed_value,
+        NodeValueProjection::Number { raw, display } if raw == "42" && display == "42"
+    ));
+    assert!(matches!(
+        &state.node(&NodeId::new("Root.Text")).unwrap().computed_value,
+        NodeValueProjection::Text(text) if text == "hello"
+    ));
+    assert!(matches!(
+        &state.node(&NodeId::new("Root.Logical")).unwrap().computed_value,
+        NodeValueProjection::Logical { value: true, display } if display == "true"
+    ));
+}
+
+#[test]
 fn programmable_skin_projects_sequence_5_by_5() {
     let harness = Harness::empty();
     let skin = harness.driver.clone();

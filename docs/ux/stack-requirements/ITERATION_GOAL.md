@@ -43,7 +43,9 @@ reported against the roadmap with concrete evidence and explicit remaining gaps.
 - [x] Surface runtime effects and runtime overlays in active skin detail.
 - [x] Surface current derivation trace records in active skin detail.
 - [ ] Complete host cutover from path-keyed maps to `NodeKey`-keyed maps.
-- [ ] Preserve richer scalar/error/reference value variants through Skin IR, not only arrays and display text.
+- [x] Preserve richer scalar/error value variants through Skin IR, not only arrays and display text.
+- [ ] Prove or expose reference-valued `CalcValue` node results through Skin IR when OxCalc/OxFml
+      has an ordinary producer for them.
 - [x] Add the reference-resolution map: token/source handle to target plus reverse index.
 - [ ] Audit derivation trace payloads against the full prepared-call tree and hole-binding requirement.
 - [ ] Add typed binding diagnostics intake where OxFml exposes them.

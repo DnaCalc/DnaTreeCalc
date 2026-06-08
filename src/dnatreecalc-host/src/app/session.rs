@@ -1277,10 +1277,11 @@ impl TreeWorkspaceSession {
                 .map(NodeId::new)
                 .filter(|parent| known_ids.contains(parent));
             let content_kind = content_kind_for_text(&tree_view.formula_text);
-            let calc_value = self
+            let outcome_calc_value = self
                 .last_outcome
                 .as_ref()
                 .and_then(|outcome| outcome.published_calc_values.get(&tree_node_id));
+            let calc_value = tree_view.calc_value.as_ref().or(outcome_calc_value);
             let computed_value = value_projection_for(
                 tree_view.value_text.clone(),
                 tree_view.calc_state,
