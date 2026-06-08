@@ -168,12 +168,52 @@ pub struct CalcRunProjection {
     pub run_state: CalcRunStateProjection,
     pub evaluation_order: Vec<NodeId>,
     pub runtime_effect_count: usize,
+    pub runtime_effects: Vec<RuntimeEffectProjection>,
     pub runtime_overlay_count: usize,
+    pub runtime_overlays: Vec<RuntimeOverlayProjection>,
     pub derivation_trace_count: usize,
     pub derivation_traces: Vec<DerivationTraceProjection>,
     pub invalidated_nodes: Vec<NodeInvalidationProjection>,
     pub phase_timings_micros: BTreeMap<PhaseKeyProjection, u128>,
     pub diagnostics: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RuntimeEffectProjection {
+    pub kind: String,
+    pub family: RuntimeEffectFamilyProjection,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum RuntimeEffectFamilyProjection {
+    DynamicDependency,
+    ExecutionRestriction,
+    CapabilitySensitive,
+    ShapeTopology,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RuntimeOverlayProjection {
+    pub owner: NodeId,
+    pub owner_key: NodeKey,
+    pub kind: RuntimeOverlayKindProjection,
+    pub structural_snapshot_id: String,
+    pub compatibility_basis: String,
+    pub payload_identity: Option<String>,
+    pub is_protected: bool,
+    pub is_eviction_eligible: bool,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum RuntimeOverlayKindProjection {
+    InvalidationExecutionState,
+    DynamicDependency,
+    ExecutionRestriction,
+    ShapeTopology,
+    CapabilityFenceAttachment,
+    ObserverPriorityMetadata,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

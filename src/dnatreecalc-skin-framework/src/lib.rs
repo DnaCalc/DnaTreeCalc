@@ -37,9 +37,10 @@ pub use workspace::{
     DerivationTemplateHoleProjection, DerivationTemplateSelectionProjection,
     DerivationTraceProjection, InvalidationReasonProjection, NodeCalcStateProjection,
     NodeContentKind, NodeInvalidationProjection, NodeValueProjection, NodeView, PhaseKeyProjection,
-    ReferenceResolutionProjection, ReferenceTargetProjection, SourceSpanProjection,
-    TableProjection, TreeReferenceCollectionFamilyProjection, TreeReferenceCollectionProjection,
-    WorkspaceRevisionProjection, WorkspaceState,
+    ReferenceResolutionProjection, ReferenceTargetProjection, RuntimeEffectFamilyProjection,
+    RuntimeEffectProjection, RuntimeOverlayKindProjection, RuntimeOverlayProjection,
+    SourceSpanProjection, TableProjection, TreeReferenceCollectionFamilyProjection,
+    TreeReferenceCollectionProjection, WorkspaceRevisionProjection, WorkspaceState,
 };
 
 #[cfg(test)]

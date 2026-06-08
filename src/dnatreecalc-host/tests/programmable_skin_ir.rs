@@ -2,7 +2,8 @@ mod support;
 
 use dnatreecalc_skin_framework::{
     CalcRunStateProjection, NodeContentKind, NodeId, NodeValueProjection,
-    ReferenceTargetProjection, TreeReferenceCollectionFamilyProjection, WorkspaceRecalcMode,
+    ReferenceTargetProjection, RuntimeEffectFamilyProjection, RuntimeOverlayKindProjection,
+    TreeReferenceCollectionFamilyProjection, WorkspaceRecalcMode,
 };
 
 use support::programmable::{Harness, revision_fingerprint};
@@ -135,6 +136,51 @@ fn programmable_skin_projects_full_derivation_trace_payload() {
     assert!(!root_call.function_id.is_empty());
     assert!(!root_call.function_name.is_empty());
     assert_eq!(root_call.kernel_returned_value.as_deref(), Some("7"));
+}
+
+#[test]
+fn programmable_skin_projects_runtime_effects_and_overlays() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    skin.add_node(Some("Root"), "A", "2");
+    skin.add_node(Some("Root"), "B1", "4");
+    skin.add_node(Some("Root"), "B2", "5");
+    skin.add_node(Some("Root"), "B3", "6");
+    skin.add_node(Some("Root"), "C", "=INDIRECT(\"B\"&A)");
+
+    skin.assert_scalar("Root.C", "5");
+    let state = skin.state();
+    let run = state.last_run.as_ref().expect("recalc projects last run");
+    assert_eq!(run.runtime_effect_count, run.runtime_effects.len());
+    assert_eq!(run.runtime_overlay_count, run.runtime_overlays.len());
+    let effect = run
+        .runtime_effects
+        .iter()
+        .find(|effect| effect.family == RuntimeEffectFamilyProjection::DynamicDependency)
+        .expect("dynamic reference runtime effect projects");
+    assert_eq!(effect.kind, "runtime_effect.dynamic_reference");
+    assert!(effect.detail.contains("owner_node:"));
+    assert!(effect.detail.contains("target_node:"));
+
+    let overlay = run
+        .runtime_overlays
+        .iter()
+        .find(|overlay| overlay.kind == RuntimeOverlayKindProjection::DynamicDependency)
+        .expect("dynamic reference runtime overlay projects");
+    assert_eq!(overlay.owner.as_str(), "Root.C");
+    assert_eq!(
+        overlay.owner_key,
+        state.node(&NodeId::new("Root.C")).unwrap().key
+    );
+    assert!(
+        overlay
+            .payload_identity
+            .as_deref()
+            .is_some_and(|payload| { payload.contains("runtime_effect") })
+    );
+    assert!(overlay.detail.contains("runtime_effect.dynamic_reference"));
 }
 
 #[test]

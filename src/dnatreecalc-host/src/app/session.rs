@@ -9,8 +9,10 @@ use dnatreecalc_skin_framework::{
     DerivationTraceProjection, InvalidationReasonProjection, NodeCalcStateProjection,
     NodeContentKind as FrameworkContentKind, NodeId, NodeInvalidationProjection, NodeKey,
     NodeValueProjection, NodeView, PhaseKeyProjection, ReferenceResolutionProjection,
-    ReferenceTargetProjection, TableProjection, TreeReferenceCollectionFamilyProjection,
-    TreeReferenceCollectionProjection, WorkspaceRevisionProjection, WorkspaceState,
+    ReferenceTargetProjection, RuntimeEffectFamilyProjection, RuntimeEffectProjection,
+    RuntimeOverlayKindProjection, RuntimeOverlayProjection, TableProjection,
+    TreeReferenceCollectionFamilyProjection, TreeReferenceCollectionProjection,
+    WorkspaceRevisionProjection, WorkspaceState,
 };
 use oxcalc_core::consumer::OxCalcTreeRunState;
 use oxcalc_core::consumer::{
@@ -19,11 +21,13 @@ use oxcalc_core::consumer::{
     OxCalcTreeRuntimePolicy, OxCalcTreeWorkspaceCreate, OxCalcTreeWorkspaceId,
     OxCalcTreeWorkspaceSnapshot,
 };
+use oxcalc_core::coordinator::{RuntimeEffect, RuntimeEffectFamily};
 use oxcalc_core::dependency::{
     DependencyDescriptor, DependencyDescriptorKind, InvalidationReasonKind,
     TreeReferenceCollectionDependency, TreeReferenceCollectionFamily,
 };
 use oxcalc_core::recalc::NodeCalcState;
+use oxcalc_core::recalc::{OverlayEntry, OverlayKind};
 use oxcalc_core::structural::TreeNodeId;
 use oxcalc_core::structured_table::{
     TreeCalcDynamicTableRebindReport, TreeCalcDynamicTableRebindRequest,
@@ -892,7 +896,17 @@ impl TreeWorkspaceSession {
                 .map(|node| self.node_id_for_tree_node(*node))
                 .collect::<Result<Vec<_>, _>>()?,
             runtime_effect_count: outcome.runtime_effects.len(),
+            runtime_effects: outcome
+                .runtime_effects
+                .iter()
+                .map(runtime_effect_projection)
+                .collect(),
             runtime_overlay_count: outcome.runtime_effect_overlays.len(),
+            runtime_overlays: outcome
+                .runtime_effect_overlays
+                .iter()
+                .map(|overlay| self.runtime_overlay_projection(overlay))
+                .collect::<Result<Vec<_>, _>>()?,
             derivation_trace_count: outcome.derivation_traces.len(),
             derivation_traces: outcome
                 .derivation_traces
@@ -965,6 +979,23 @@ impl TreeWorkspaceSession {
                     event_order_key: event.event_order_key,
                 })
                 .collect(),
+        })
+    }
+
+    fn runtime_overlay_projection(
+        &self,
+        overlay: &OverlayEntry,
+    ) -> Result<RuntimeOverlayProjection, TreeWorkspaceSessionError> {
+        Ok(RuntimeOverlayProjection {
+            owner: self.node_id_for_tree_node(overlay.key.owner_node_id)?,
+            owner_key: node_key_for_tree_node(overlay.key.owner_node_id),
+            kind: runtime_overlay_kind_projection_for(overlay.key.overlay_kind),
+            structural_snapshot_id: overlay.key.structural_snapshot_id.to_string(),
+            compatibility_basis: overlay.key.compatibility_basis.clone(),
+            payload_identity: overlay.key.payload_identity.clone(),
+            is_protected: overlay.is_protected,
+            is_eviction_eligible: overlay.is_eviction_eligible,
+            detail: overlay.detail.clone(),
         })
     }
 }
@@ -1289,6 +1320,46 @@ fn derivation_prepared_argument_projection(
         reference_target: argument.reference_target.clone(),
         opaque_reason: argument.opaque_reason.clone(),
         resolved_value: argument.resolved_value.clone(),
+    }
+}
+
+fn runtime_effect_projection(effect: &RuntimeEffect) -> RuntimeEffectProjection {
+    RuntimeEffectProjection {
+        kind: effect.kind.clone(),
+        family: runtime_effect_family_projection_for(&effect.family),
+        detail: effect.detail.clone(),
+    }
+}
+
+fn runtime_effect_family_projection_for(
+    family: &RuntimeEffectFamily,
+) -> RuntimeEffectFamilyProjection {
+    match family {
+        RuntimeEffectFamily::DynamicDependency => RuntimeEffectFamilyProjection::DynamicDependency,
+        RuntimeEffectFamily::ExecutionRestriction => {
+            RuntimeEffectFamilyProjection::ExecutionRestriction
+        }
+        RuntimeEffectFamily::CapabilitySensitive => {
+            RuntimeEffectFamilyProjection::CapabilitySensitive
+        }
+        RuntimeEffectFamily::ShapeTopology => RuntimeEffectFamilyProjection::ShapeTopology,
+    }
+}
+
+fn runtime_overlay_kind_projection_for(kind: OverlayKind) -> RuntimeOverlayKindProjection {
+    match kind {
+        OverlayKind::InvalidationExecutionState => {
+            RuntimeOverlayKindProjection::InvalidationExecutionState
+        }
+        OverlayKind::DynamicDependency => RuntimeOverlayKindProjection::DynamicDependency,
+        OverlayKind::ExecutionRestriction => RuntimeOverlayKindProjection::ExecutionRestriction,
+        OverlayKind::ShapeTopology => RuntimeOverlayKindProjection::ShapeTopology,
+        OverlayKind::CapabilityFenceAttachment => {
+            RuntimeOverlayKindProjection::CapabilityFenceAttachment
+        }
+        OverlayKind::ObserverPriorityMetadata => {
+            RuntimeOverlayKindProjection::ObserverPriorityMetadata
+        }
     }
 }
 
