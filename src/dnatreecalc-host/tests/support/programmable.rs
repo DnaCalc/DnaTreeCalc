@@ -261,6 +261,48 @@ impl ProgrammableDriver {
             })
     }
 
+    pub fn rename_table_column(&self, table: &str, column_id: &str, name: &str) {
+        self.accept(WorkspaceIntent::RenameTableColumn {
+            table: NodeId::new(table),
+            column_id: column_id.to_string(),
+            name: name.to_string(),
+        });
+    }
+
+    pub fn try_rename_table_column(
+        &self,
+        table: &str,
+        column_id: &str,
+        name: &str,
+    ) -> IntentReceipt {
+        self.dispatch.dispatch(WorkspaceIntent::RenameTableColumn {
+            table: NodeId::new(table),
+            column_id: column_id.to_string(),
+            name: name.to_string(),
+        })
+    }
+
+    pub fn reorder_table_column(&self, table: &str, column_id: &str, new_index: usize) {
+        self.accept(WorkspaceIntent::ReorderTableColumn {
+            table: NodeId::new(table),
+            column_id: column_id.to_string(),
+            new_index,
+        });
+    }
+
+    pub fn try_reorder_table_column(
+        &self,
+        table: &str,
+        column_id: &str,
+        new_index: usize,
+    ) -> IntentReceipt {
+        self.dispatch.dispatch(WorkspaceIntent::ReorderTableColumn {
+            table: NodeId::new(table),
+            column_id: column_id.to_string(),
+            new_index,
+        })
+    }
+
     pub fn delete_table_column(&self, table: &str, column_id: &str) {
         self.accept(WorkspaceIntent::DeleteTableColumn {
             table: NodeId::new(table),

@@ -154,6 +154,17 @@ fn render_table_card(
         .iter()
         .map(|column| (column.column_id.clone(), column.name.clone()))
         .collect::<Vec<_>>();
+    let editable_columns = table
+        .columns
+        .iter()
+        .map(|column| {
+            (
+                column.column_id.clone(),
+                column.name.clone(),
+                RwSignal::new(column.name.clone()),
+            )
+        })
+        .collect::<Vec<_>>();
     let next_row_id = RwSignal::new(format!("row:new{}", table.row_count + 1));
     let table_node_for_add = table_node.clone();
     let add_dispatch = dispatch.clone();
@@ -183,6 +194,18 @@ fn render_table_card(
     let table_node_for_formula_column_add = table_node.clone();
     let formula_edit_dispatch = dispatch.clone();
     let table_node_for_formula_edit = table_node.clone();
+    let rename_columns = editable_columns.clone();
+    let rename_dispatch = dispatch.clone();
+    let table_node_for_rename = table_node.clone();
+    let reorder_column_id = RwSignal::new(
+        deletable_columns
+            .first()
+            .map(|(column_id, _)| column_id.clone())
+            .unwrap_or_default(),
+    );
+    let reorder_index = RwSignal::new(String::from("0"));
+    let reorder_dispatch = dispatch.clone();
+    let table_node_for_reorder = table_node.clone();
 
     view! {
         <section class="dtc-table-card">
@@ -357,6 +380,73 @@ fn render_table_card(
                     </div>
                 }.into_any()
             }}
+            <div class="dtc-table-card__column-metadata">
+                {editable_columns.iter().map(|(column_id, name, value)| {
+                    let value_signal = *value;
+                    let table_node = table_node_for_rename.clone();
+                    let column_id_for_rename = column_id.clone();
+                    let rename_dispatch = rename_dispatch.clone();
+                    view! {
+                        <label class="dtc-table-card__column-rename">
+                            <span>{name.clone()}</span>
+                            <input
+                                class="dtc-table-card__column-name"
+                                aria-label=format!("{name} column name")
+                                prop:value=move || value_signal.get()
+                                on:input=move |ev| value_signal.set(event_target_value(&ev))
+                            />
+                            <button
+                                type="button"
+                                on:click=move |_| {
+                                    rename_dispatch.dispatch(table_column_rename_intent(
+                                        &table_node,
+                                        &column_id_for_rename,
+                                        value_signal.get_untracked(),
+                                    ));
+                                }
+                            >
+                                "Rename"
+                            </button>
+                        </label>
+                    }
+                }).collect::<Vec<_>>()}
+                <div class="dtc-table-card__column-reorder">
+                    <select
+                        aria-label="Move column"
+                        prop:value=move || reorder_column_id.get()
+                        on:change=move |ev| reorder_column_id.set(event_target_value(&ev))
+                    >
+                        {rename_columns.iter().map(|(column_id, name, _)| {
+                            view! {
+                                <option value=column_id.clone()>{name.clone()}</option>
+                            }
+                        }).collect::<Vec<_>>()}
+                    </select>
+                    <input
+                        class="dtc-table-card__column-index"
+                        aria-label="Column index"
+                        prop:value=move || reorder_index.get()
+                        on:input=move |ev| reorder_index.set(event_target_value(&ev))
+                    />
+                    <button
+                        type="button"
+                        disabled=rename_columns.is_empty()
+                        on:click=move |_| {
+                            let new_index = reorder_index
+                                .get_untracked()
+                                .parse::<usize>()
+                                .unwrap_or(0);
+                            reorder_dispatch.dispatch(table_column_reorder_intent(
+                                &table_node_for_reorder,
+                                &reorder_column_id.get_untracked(),
+                                new_index,
+                            ));
+                        }
+                    >
+                        "Move"
+                    </button>
+                </div>
+            </div>
             <div class="dtc-table-card__delete-column">
                 <select
                     aria-label="Delete column"
@@ -553,6 +643,22 @@ fn table_column_delete_intent(table: &str, column_id: &str) -> WorkspaceIntent {
     }
 }
 
+fn table_column_rename_intent(table: &str, column_id: &str, name: String) -> WorkspaceIntent {
+    WorkspaceIntent::RenameTableColumn {
+        table: NodeId::new(table),
+        column_id: column_id.to_string(),
+        name,
+    }
+}
+
+fn table_column_reorder_intent(table: &str, column_id: &str, new_index: usize) -> WorkspaceIntent {
+    WorkspaceIntent::ReorderTableColumn {
+        table: NodeId::new(table),
+        column_id: column_id.to_string(),
+        new_index,
+    }
+}
+
 fn table_formula_column_add_intent(
     table: &str,
     column_id: String,
@@ -652,6 +758,30 @@ mod tests {
             WorkspaceIntent::DeleteTableColumn {
                 table: NodeId::new("SalesTable"),
                 column_id: "col:discount".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn value_board_table_column_rename_uses_skin_ir_intent() {
+        assert_eq!(
+            table_column_rename_intent("SalesTable", "col:tax", "VAT".to_string()),
+            WorkspaceIntent::RenameTableColumn {
+                table: NodeId::new("SalesTable"),
+                column_id: "col:tax".to_string(),
+                name: "VAT".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn value_board_table_column_reorder_uses_skin_ir_intent() {
+        assert_eq!(
+            table_column_reorder_intent("SalesTable", "col:tax", 0),
+            WorkspaceIntent::ReorderTableColumn {
+                table: NodeId::new("SalesTable"),
+                column_id: "col:tax".to_string(),
+                new_index: 0,
             }
         );
     }

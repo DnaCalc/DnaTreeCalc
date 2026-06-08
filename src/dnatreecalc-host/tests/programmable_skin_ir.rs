@@ -1073,6 +1073,122 @@ fn programmable_skin_authors_formula_table_columns_from_outside_ir() {
 }
 
 #[test]
+fn programmable_skin_renames_and_reorders_table_columns_from_outside_ir() {
+    let harness = Harness::from_repo_fixture("tables");
+    let skin = harness.driver.clone();
+    skin.recalc();
+
+    let before = skin.state();
+    let before_table = before
+        .tables
+        .get(&NodeId::new("SalesTable"))
+        .expect("table projects");
+    let before_column_identity_version = before_table.column_identity_version.clone();
+    assert_eq!(
+        before_table
+            .columns
+            .iter()
+            .map(|column| (
+                column.column_id.as_str(),
+                column.name.as_str(),
+                column.ordinal
+            ))
+            .collect::<Vec<_>>(),
+        vec![
+            ("col:region", "Region", 1),
+            ("col:amount", "Amount", 2),
+            ("col:tax", "Tax", 3)
+        ]
+    );
+
+    let rename = skin.try_rename_table_column("SalesTable", "col:tax", "VAT");
+    assert!(rename.accepted, "{:?}", rename.error);
+    let renamed_state = skin.state();
+    let renamed_table = renamed_state
+        .tables
+        .get(&NodeId::new("SalesTable"))
+        .expect("table projects after rename");
+    assert_eq!(
+        renamed_table
+            .columns
+            .iter()
+            .map(|column| (
+                column.column_id.as_str(),
+                column.name.as_str(),
+                column.ordinal
+            ))
+            .collect::<Vec<_>>(),
+        vec![
+            ("col:region", "Region", 1),
+            ("col:amount", "Amount", 2),
+            ("col:tax", "VAT", 3)
+        ]
+    );
+    assert_eq!(table_body_row(renamed_table, 0), vec!["West", "10", "1"]);
+    assert_ne!(
+        before_column_identity_version,
+        renamed_table.column_identity_version
+    );
+
+    let reorder = skin.try_reorder_table_column("SalesTable", "col:tax", 0);
+    assert!(reorder.accepted, "{:?}", reorder.error);
+    let reordered_state = skin.state();
+    let reordered_table = reordered_state
+        .tables
+        .get(&NodeId::new("SalesTable"))
+        .expect("table projects after reorder");
+    assert_eq!(
+        reordered_table
+            .columns
+            .iter()
+            .map(|column| (
+                column.column_id.as_str(),
+                column.name.as_str(),
+                column.ordinal
+            ))
+            .collect::<Vec<_>>(),
+        vec![
+            ("col:tax", "VAT", 1),
+            ("col:region", "Region", 2),
+            ("col:amount", "Amount", 3)
+        ]
+    );
+    assert_eq!(table_body_row(reordered_table, 0), vec!["1", "West", "10"]);
+    assert_eq!(table_body_row(reordered_table, 1), vec!["2", "East", "20"]);
+    assert_eq!(table_totals_row(reordered_table), vec!["", "", "60"]);
+    let TableColumnBodyProjection::Formula(tax_formula) = &reordered_table.columns[0].body else {
+        panic!("VAT column should stay formula metadata after reorder");
+    };
+    assert_eq!(
+        tax_formula.formula_artifact_id,
+        "formula:SalesTable.Columns.Tax"
+    );
+    assert_eq!(tax_formula.formula_text, "=[@Amount] * 0.1");
+
+    let bounded_reorder = skin.try_reorder_table_column("SalesTable", "col:tax", usize::MAX);
+    assert!(bounded_reorder.accepted, "{:?}", bounded_reorder.error);
+    let bounded_state = skin.state();
+    let bounded_table = bounded_state
+        .tables
+        .get(&NodeId::new("SalesTable"))
+        .expect("table projects after bounded reorder");
+    assert_eq!(
+        bounded_table
+            .columns
+            .iter()
+            .map(|column| column.column_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["col:region", "col:amount", "col:tax"]
+    );
+    assert_eq!(table_body_row(bounded_table, 0), vec!["West", "10", "1"]);
+
+    let missing_rename = skin.try_rename_table_column("SalesTable", "col:missing", "Missing");
+    assert!(!missing_rename.accepted, "{missing_rename:?}");
+    let missing_reorder = skin.try_reorder_table_column("SalesTable", "col:missing", 0);
+    assert!(!missing_reorder.accepted, "{missing_reorder:?}");
+}
+
+#[test]
 fn programmable_skin_projects_errors_and_diagnostics_after_rejected_recalc() {
     let harness = Harness::empty();
     let skin = harness.driver.clone();

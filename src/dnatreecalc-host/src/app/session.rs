@@ -835,6 +835,83 @@ impl TreeWorkspaceSession {
         Ok(())
     }
 
+    pub fn rename_table_column(
+        &mut self,
+        table: &NodeId,
+        column_id: &str,
+        name: impl Into<String>,
+    ) -> Result<(), TreeWorkspaceSessionError> {
+        let table_node_id = self.tree_node_id(table.as_str())?;
+        let mut table_view = self
+            .context
+            .table_view(&self.workspace_id, table_node_id)?
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTable {
+                table: table.to_string(),
+            })?;
+        let column = table_view
+            .snapshot
+            .columns
+            .iter_mut()
+            .find(|column| column.column_id == column_id)
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTableColumn {
+                table: table.to_string(),
+                column_id: column_id.to_string(),
+            })?;
+        column.column_name = name.into();
+
+        table_view.snapshot.column_identity_version = bumped_table_version(
+            &table_view.snapshot.column_identity_version,
+            "column-renamed",
+            column_id,
+        );
+        self.context
+            .set_node_table(&self.workspace_id, table_node_id, table_view.snapshot)?;
+        self.refresh_projection_from_context()?;
+        self.last_outcome = None;
+        Ok(())
+    }
+
+    pub fn reorder_table_column(
+        &mut self,
+        table: &NodeId,
+        column_id: &str,
+        new_index: usize,
+    ) -> Result<(), TreeWorkspaceSessionError> {
+        let table_node_id = self.tree_node_id(table.as_str())?;
+        let mut table_view = self
+            .context
+            .table_view(&self.workspace_id, table_node_id)?
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTable {
+                table: table.to_string(),
+            })?;
+        let mut columns = std::mem::take(&mut table_view.snapshot.columns);
+        columns.sort_by_key(|column| column.ordinal);
+        let current_index = columns
+            .iter()
+            .position(|column| column.column_id == column_id)
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTableColumn {
+                table: table.to_string(),
+                column_id: column_id.to_string(),
+            })?;
+        let column = columns.remove(current_index);
+        let bounded_index = new_index.min(columns.len());
+        columns.insert(bounded_index, column);
+        for (index, column) in columns.iter_mut().enumerate() {
+            column.ordinal = u32::try_from(index + 1).unwrap_or(u32::MAX);
+        }
+        table_view.snapshot.columns = columns;
+        table_view.snapshot.column_identity_version = bumped_table_version(
+            &table_view.snapshot.column_identity_version,
+            "column-reordered",
+            column_id,
+        );
+        self.context
+            .set_node_table(&self.workspace_id, table_node_id, table_view.snapshot)?;
+        self.refresh_projection_from_context()?;
+        self.last_outcome = None;
+        Ok(())
+    }
+
     pub fn delete_table_column(
         &mut self,
         table: &NodeId,

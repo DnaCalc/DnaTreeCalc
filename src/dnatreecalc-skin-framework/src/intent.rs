@@ -94,6 +94,16 @@ pub enum WorkspaceIntent {
         column_id: String,
         formula_text: String,
     },
+    RenameTableColumn {
+        table: NodeId,
+        column_id: String,
+        name: String,
+    },
+    ReorderTableColumn {
+        table: NodeId,
+        column_id: String,
+        new_index: usize,
+    },
     DeleteTableColumn {
         table: NodeId,
         column_id: String,
@@ -296,6 +306,8 @@ impl Dispatcher for InMemoryDispatcher {
             | WorkspaceIntent::AddTableColumn { .. }
             | WorkspaceIntent::AddTableFormulaColumn { .. }
             | WorkspaceIntent::EditTableColumnFormula { .. }
+            | WorkspaceIntent::RenameTableColumn { .. }
+            | WorkspaceIntent::ReorderTableColumn { .. }
             | WorkspaceIntent::DeleteTableColumn { .. }
             | WorkspaceIntent::NewWorkspace
             | WorkspaceIntent::SwitchWorkspace { .. } => IntentReceipt::accepted(),
