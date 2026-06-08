@@ -44,12 +44,12 @@ pub use workspace::{
     NodeContentKind, NodeInvalidationProjection, NodeValueProjection, NodeView, PhaseKeyProjection,
     ReferenceResolutionProjection, ReferenceTargetProjection, RuntimeEffectFamilyProjection,
     RuntimeEffectProjection, RuntimeOverlayKindProjection, RuntimeOverlayProjection,
-    SourceSpanProjection, TableAnchorProjection, TableCellProjection, TableCellRegionProjection,
-    TableCellsProjection, TableColumnBodyProjection, TableColumnProjection,
-    TableDependencyFactBlockerProjection, TableDependencyFactKindProjection,
-    TableDependencyFactProjection, TableDependencyFactStatusProjection,
-    TableFormulaMetadataProjection, TableProjection, TableRowProjection,
-    TreeReferenceCollectionFamilyProjection, TreeReferenceCollectionProjection,
+    SourceSpanProjection, TableAnchorProjection, TableCellEditabilityProjection,
+    TableCellProjection, TableCellRegionProjection, TableCellsProjection,
+    TableColumnBodyProjection, TableColumnProjection, TableDependencyFactBlockerProjection,
+    TableDependencyFactKindProjection, TableDependencyFactProjection,
+    TableDependencyFactStatusProjection, TableFormulaMetadataProjection, TableProjection,
+    TableRowProjection, TreeReferenceCollectionFamilyProjection, TreeReferenceCollectionProjection,
     WorkspaceRevisionProjection, WorkspaceState,
 };
 

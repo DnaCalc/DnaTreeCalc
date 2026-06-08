@@ -3,9 +3,10 @@ mod support;
 use dnatreecalc_skin_framework::{
     ActiveSelectionDetailProjection, CalcRunStateProjection, NodeContentKind, NodeId,
     NodeValueProjection, ReferenceTargetProjection, RuntimeEffectFamilyProjection,
-    RuntimeOverlayKindProjection, TableCellRegionProjection, TableColumnBodyProjection,
-    TableDependencyFactKindProjection, TableDependencyFactStatusProjection,
-    TreeReferenceCollectionFamilyProjection, WorkspaceDeltaChange, WorkspaceRecalcMode,
+    RuntimeOverlayKindProjection, TableCellEditabilityProjection, TableCellRegionProjection,
+    TableColumnBodyProjection, TableDependencyFactKindProjection,
+    TableDependencyFactStatusProjection, TreeReferenceCollectionFamilyProjection,
+    WorkspaceDeltaChange, WorkspaceRecalcMode,
 };
 
 use support::programmable::{Harness, revision_fingerprint};
@@ -171,6 +172,10 @@ fn programmable_skin_selects_table_cells_without_recalculating() {
     assert_eq!(body_detail.column_name, "Amount");
     assert_eq!(body_detail.column_ordinal, 2);
     assert_eq!(body_detail.region, TableCellRegionProjection::Body);
+    assert_eq!(
+        body_detail.editability,
+        TableCellEditabilityProjection::DirectInput
+    );
     assert!(body_detail.formula.is_none());
     let body_state = skin.state();
     let body_table = body_state
@@ -210,6 +215,10 @@ fn programmable_skin_selects_table_cells_without_recalculating() {
     assert_eq!(formula_detail.column_name, "Tax");
     assert_eq!(formula_detail.column_ordinal, 3);
     assert_eq!(formula_detail.region, TableCellRegionProjection::Body);
+    assert_eq!(
+        formula_detail.editability,
+        TableCellEditabilityProjection::FormulaBacked
+    );
     let formula = formula_detail
         .formula
         .as_ref()
@@ -264,6 +273,10 @@ fn programmable_skin_selects_table_cells_without_recalculating() {
     assert_eq!(totals_detail.column_name, "Amount");
     assert_eq!(totals_detail.column_ordinal, 2);
     assert_eq!(totals_detail.region, TableCellRegionProjection::Totals);
+    assert_eq!(
+        totals_detail.editability,
+        TableCellEditabilityProjection::TotalsFormula
+    );
     let totals_formula = totals_detail
         .formula
         .as_ref()

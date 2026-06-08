@@ -1,8 +1,9 @@
 use dnatreecalc_skin_framework::{
     ActiveTableCellDetailProjection, Dispatcher, NodeId, NodeValueProjection, SelectionState,
     SkinCapabilities, SkinCategory, SkinContext, SkinHandle, SkinId, SkinManifest, SkinState,
-    TableCellInput, TableCellRegionProjection, TableColumnBodyProjection, TableProjection,
-    TableRowInput, WorkspaceIntent, WorkspaceSkin, WorkspaceState,
+    TableCellEditabilityProjection, TableCellInput, TableCellRegionProjection,
+    TableColumnBodyProjection, TableProjection, TableRowInput, WorkspaceIntent, WorkspaceSkin,
+    WorkspaceState,
 };
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -716,6 +717,7 @@ fn render_active_table_cell_summary(
                     .as_deref()
                     .map(str::to_string)
                     .unwrap_or_else(|| "totals".to_string());
+                let editability = table_cell_editability_label(detail.editability);
                 let formula_text = detail.formula.as_ref().map(|formula| formula.formula_text.clone());
                 view! {
                     <dl class="dtc-table-card__active-cell">
@@ -723,6 +725,8 @@ fn render_active_table_cell_summary(
                         <dd>{format!("{} / {}", row, detail.column_name)}</dd>
                         <dt>"region"</dt>
                         <dd>{region}</dd>
+                        <dt>"edit"</dt>
+                        <dd>{editability}</dd>
                         {formula_text.map(|formula_text| view! {
                             <dt>"formula"</dt>
                             <dd>{formula_text}</dd>
@@ -750,6 +754,15 @@ fn table_cell_region_label(region: TableCellRegionProjection) -> &'static str {
     match region {
         TableCellRegionProjection::Body => "body",
         TableCellRegionProjection::Totals => "totals",
+    }
+}
+
+fn table_cell_editability_label(editability: TableCellEditabilityProjection) -> &'static str {
+    match editability {
+        TableCellEditabilityProjection::DirectInput => "direct",
+        TableCellEditabilityProjection::FormulaBacked => "formula",
+        TableCellEditabilityProjection::TotalsFormula => "totals formula",
+        TableCellEditabilityProjection::ReadOnly => "read-only",
     }
 }
 
@@ -1336,6 +1349,11 @@ mod tests {
         assert_eq!(detail.column_name, "Tax");
         assert_eq!(detail.column_ordinal, 3);
         assert_eq!(detail.region, TableCellRegionProjection::Body);
+        assert_eq!(
+            detail.editability,
+            TableCellEditabilityProjection::FormulaBacked
+        );
+        assert_eq!(table_cell_editability_label(detail.editability), "formula");
         let formula = detail
             .formula
             .as_ref()

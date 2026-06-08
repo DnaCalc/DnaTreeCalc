@@ -135,6 +135,7 @@ impl WorkspaceState {
             column_ordinal: column.ordinal,
             region,
             formula: active_table_cell_formula(region, column),
+            editability: active_table_cell_editability(region, column),
             node_key: cell.node_key.clone(),
             value: cell.value.clone(),
             outgoing_references: self
@@ -185,6 +186,7 @@ pub struct ActiveTableCellDetailProjection {
     pub column_ordinal: u32,
     pub region: TableCellRegionProjection,
     pub formula: Option<TableFormulaMetadataProjection>,
+    pub editability: TableCellEditabilityProjection,
     pub node_key: NodeKey,
     pub value: NodeValueProjection,
     pub outgoing_references: Vec<ReferenceResolutionProjection>,
@@ -197,6 +199,14 @@ pub enum TableCellRegionProjection {
     Totals,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TableCellEditabilityProjection {
+    DirectInput,
+    FormulaBacked,
+    TotalsFormula,
+    ReadOnly,
+}
+
 fn active_table_cell_formula(
     region: TableCellRegionProjection,
     column: &TableColumnProjection,
@@ -207,6 +217,25 @@ fn active_table_cell_formula(
             TableColumnBodyProjection::ConstantCells => None,
         },
         TableCellRegionProjection::Totals => column.totals_formula.clone(),
+    }
+}
+
+fn active_table_cell_editability(
+    region: TableCellRegionProjection,
+    column: &TableColumnProjection,
+) -> TableCellEditabilityProjection {
+    match region {
+        TableCellRegionProjection::Body => match &column.body {
+            TableColumnBodyProjection::ConstantCells => TableCellEditabilityProjection::DirectInput,
+            TableColumnBodyProjection::Formula(_) => TableCellEditabilityProjection::FormulaBacked,
+        },
+        TableCellRegionProjection::Totals => {
+            if column.totals_formula.is_some() {
+                TableCellEditabilityProjection::TotalsFormula
+            } else {
+                TableCellEditabilityProjection::ReadOnly
+            }
+        }
     }
 }
 
