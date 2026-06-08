@@ -593,11 +593,19 @@ impl ProgrammableDriver {
     }
 
     pub fn outgoing_count(&self, node: &str) -> usize {
-        self.state().dependencies.outgoing_count(&NodeId::new(node))
+        let state = self.state();
+        let node = state
+            .node(&NodeId::new(node))
+            .expect("node must exist for outgoing dependency count");
+        state.dependencies.outgoing_count_by_key(&node.key)
     }
 
     pub fn incoming_count(&self, node: &str) -> usize {
-        self.state().dependencies.incoming_count(&NodeId::new(node))
+        let state = self.state();
+        let node = state
+            .node(&NodeId::new(node))
+            .expect("node must exist for incoming dependency count");
+        state.dependencies.incoming_count_by_key(&node.key)
     }
 
     pub fn assert_scalar(&self, node: &str, expected: &str) {

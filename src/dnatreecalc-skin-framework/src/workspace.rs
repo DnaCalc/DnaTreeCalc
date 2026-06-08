@@ -23,7 +23,9 @@ pub struct WorkspaceState {
     pub node_order: Vec<NodeId>,
     pub key_order: Vec<NodeKey>,
     pub paths_by_key: BTreeMap<NodeKey, NodeId>,
+    pub root_keys: Vec<NodeKey>,
     pub root_paths: Vec<NodeId>,
+    pub nodes_by_key: BTreeMap<NodeKey, NodeView>,
     pub nodes: BTreeMap<NodeId, NodeView>,
     pub dependencies: DependencyGraphProjection,
     pub tables: BTreeMap<NodeId, TableProjection>,
@@ -43,7 +45,7 @@ impl WorkspaceState {
 
     #[must_use]
     pub fn node_by_key(&self, key: &NodeKey) -> Option<&NodeView> {
-        self.node(self.node_id_for_key(key)?)
+        self.nodes_by_key.get(key)
     }
 
     #[must_use]
@@ -704,16 +706,30 @@ pub struct NodeInvalidationProjection {
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DependencyGraphProjection {
+    pub descriptors_by_owner_key: BTreeMap<NodeKey, Vec<DependencyDescriptorProjection>>,
+    pub edges_by_owner_key: BTreeMap<NodeKey, Vec<DependencyEdgeProjection>>,
+    pub reverse_edges_by_key: BTreeMap<NodeKey, Vec<DependencyEdgeProjection>>,
     pub descriptors_by_owner: BTreeMap<NodeId, Vec<DependencyDescriptorProjection>>,
     pub edges_by_owner: BTreeMap<NodeId, Vec<DependencyEdgeProjection>>,
     pub reverse_edges: BTreeMap<NodeId, Vec<DependencyEdgeProjection>>,
     pub reference_resolutions: BTreeMap<String, ReferenceResolutionProjection>,
     pub reverse_references: BTreeMap<NodeKey, Vec<String>>,
+    pub cycle_group_keys: Vec<Vec<NodeKey>>,
     pub cycle_groups: Vec<Vec<NodeId>>,
     pub diagnostics: Vec<String>,
 }
 
 impl DependencyGraphProjection {
+    #[must_use]
+    pub fn outgoing_count_by_key(&self, owner: &NodeKey) -> usize {
+        self.edges_by_owner_key.get(owner).map_or(0, Vec::len)
+    }
+
+    #[must_use]
+    pub fn incoming_count_by_key(&self, target: &NodeKey) -> usize {
+        self.reverse_edges_by_key.get(target).map_or(0, Vec::len)
+    }
+
     #[must_use]
     pub fn outgoing_count(&self, owner: &NodeId) -> usize {
         self.edges_by_owner.get(owner).map_or(0, Vec::len)
@@ -730,6 +746,7 @@ pub struct DependencyDescriptorProjection {
     pub descriptor_id: String,
     pub source_reference_handle: Option<String>,
     pub target: Option<NodeId>,
+    pub target_key: Option<NodeKey>,
     pub workspace_target: Option<String>,
     pub kind: DependencyKindProjection,
     pub carrier_detail: String,
@@ -776,7 +793,9 @@ pub struct DependencyEdgeProjection {
     pub edge_id: String,
     pub descriptor_id: String,
     pub owner: NodeId,
+    pub owner_key: NodeKey,
     pub target: NodeId,
+    pub target_key: NodeKey,
     pub kind: DependencyKindProjection,
 }
 
@@ -785,9 +804,11 @@ pub struct TreeReferenceCollectionProjection {
     pub family: TreeReferenceCollectionFamilyProjection,
     pub source_reference_handle: String,
     pub base_node: Option<NodeId>,
+    pub base_node_key: Option<NodeKey>,
     pub membership_version: String,
     pub order_version: String,
     pub members: Vec<NodeId>,
+    pub member_keys: Vec<NodeKey>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]

@@ -781,8 +781,8 @@ fn dependency_delta(after: &WorkspaceState) -> Vec<DependencyDeltaProjection> {
                 .filter_map(|node| {
                     after
                         .dependencies
-                        .descriptors_by_owner
-                        .get(&node.node)
+                        .descriptors_by_owner_key
+                        .get(&node.node_key)
                         .map(|descriptors| DependencyDeltaProjection {
                             owner: node.node_key.clone(),
                             kinds: descriptors

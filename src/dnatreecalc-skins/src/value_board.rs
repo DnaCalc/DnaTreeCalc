@@ -2073,9 +2073,11 @@ mod tests {
                     family: TreeReferenceCollectionFamilyProjection::Children,
                     source_reference_handle: "ref:children".to_string(),
                     base_node: Some(NodeId::new("Root")),
+                    base_node_key: Some(NodeKey::new("node:root")),
                     membership_version: "membership:v1".to_string(),
                     order_version: "order:v1".to_string(),
                     members: vec![NodeId::new("Root.A"), NodeId::new("Root.B")],
+                    member_keys: vec![NodeKey::new("node:root:a"), NodeKey::new("node:root:b")],
                 },
                 member_keys: vec![NodeKey::new("node:root:a"), NodeKey::new("node:root:b")],
             }),
@@ -2137,6 +2139,31 @@ mod tests {
         );
     }
 
+    fn workspace_state_with_nodes(nodes: BTreeMap<NodeId, NodeView>) -> WorkspaceState {
+        let node_order = nodes.keys().cloned().collect::<Vec<_>>();
+        let key_order = nodes
+            .values()
+            .map(|node| node.key.clone())
+            .collect::<Vec<_>>();
+        let paths_by_key = nodes
+            .iter()
+            .map(|(id, node)| (node.key.clone(), id.clone()))
+            .collect::<BTreeMap<_, _>>();
+        let nodes_by_key = nodes
+            .values()
+            .map(|node| (node.key.clone(), node.clone()))
+            .collect::<BTreeMap<_, _>>();
+
+        WorkspaceState {
+            node_order,
+            key_order,
+            paths_by_key,
+            nodes_by_key,
+            nodes,
+            ..WorkspaceState::default()
+        }
+    }
+
     fn workspace_with_single_node() -> WorkspaceState {
         let mut nodes = BTreeMap::new();
         nodes.insert(
@@ -2157,10 +2184,7 @@ mod tests {
             },
         );
 
-        WorkspaceState {
-            nodes,
-            ..WorkspaceState::default()
-        }
+        workspace_state_with_nodes(nodes)
     }
 
     fn workspace_with_formula_dependencies() -> WorkspaceState {
@@ -2212,7 +2236,7 @@ mod tests {
             ReferenceResolutionProjection {
                 source_reference_handle: reference_handle.clone(),
                 owner: b_id,
-                owner_key: b_key,
+                owner_key: b_key.clone(),
                 descriptor_ids: vec!["descriptor:Root.B:A".to_string()],
                 token_span: Some(SourceSpanProjection {
                     start_utf8: 1,
@@ -2228,100 +2252,100 @@ mod tests {
         );
 
         let mut reverse_references = BTreeMap::new();
-        reverse_references.insert(a_key, vec![reference_handle]);
+        reverse_references.insert(a_key.clone(), vec![reference_handle]);
 
-        WorkspaceState {
-            nodes,
-            last_run: Some(CalcRunProjection {
-                run_state: CalcRunStateProjection::Published,
-                evaluation_order: vec![NodeId::new("Root.A"), NodeId::new("Root.B")],
-                runtime_effect_count: 2,
-                runtime_effects: vec![
-                    RuntimeEffectProjection {
-                        kind: "dynamic-reference".to_string(),
-                        family: RuntimeEffectFamilyProjection::DynamicDependency,
-                        detail: "dynamic dependency observed".to_string(),
-                    },
-                    RuntimeEffectProjection {
-                        kind: "restriction".to_string(),
-                        family: RuntimeEffectFamilyProjection::ExecutionRestriction,
-                        detail: "execution restriction observed".to_string(),
-                    },
-                ],
-                runtime_overlay_count: 1,
-                runtime_overlays: vec![RuntimeOverlayProjection {
-                    owner: NodeId::new("Root.B"),
-                    owner_key: NodeKey::new("node:root:b"),
-                    kind: RuntimeOverlayKindProjection::DynamicDependency,
-                    structural_snapshot_id: "snapshot:structure:v1".to_string(),
-                    compatibility_basis: "compatible:v1".to_string(),
-                    payload_identity: Some("overlay:Root.B:dyn".to_string()),
-                    is_protected: false,
-                    is_eviction_eligible: true,
-                    detail: "dynamic dependency overlay".to_string(),
+        let mut state = workspace_state_with_nodes(nodes);
+        state.last_run = Some(CalcRunProjection {
+            run_state: CalcRunStateProjection::Published,
+            evaluation_order: vec![NodeId::new("Root.A"), NodeId::new("Root.B")],
+            runtime_effect_count: 2,
+            runtime_effects: vec![
+                RuntimeEffectProjection {
+                    kind: "dynamic-reference".to_string(),
+                    family: RuntimeEffectFamilyProjection::DynamicDependency,
+                    detail: "dynamic dependency observed".to_string(),
+                },
+                RuntimeEffectProjection {
+                    kind: "restriction".to_string(),
+                    family: RuntimeEffectFamilyProjection::ExecutionRestriction,
+                    detail: "execution restriction observed".to_string(),
+                },
+            ],
+            runtime_overlay_count: 1,
+            runtime_overlays: vec![RuntimeOverlayProjection {
+                owner: NodeId::new("Root.B"),
+                owner_key: NodeKey::new("node:root:b"),
+                kind: RuntimeOverlayKindProjection::DynamicDependency,
+                structural_snapshot_id: "snapshot:structure:v1".to_string(),
+                compatibility_basis: "compatible:v1".to_string(),
+                payload_identity: Some("overlay:Root.B:dyn".to_string()),
+                is_protected: false,
+                is_eviction_eligible: true,
+                detail: "dynamic dependency overlay".to_string(),
+            }],
+            derivation_trace_count: 1,
+            derivation_traces: vec![DerivationTraceProjection {
+                trace_schema_id: "trace-schema:v1".to_string(),
+                owner: NodeId::new("Root.B"),
+                owner_key: NodeKey::new("node:root:b"),
+                formula_artifact_id: "formula:Root.B".to_string(),
+                bind_artifact_id: Some("bind:Root.B".to_string()),
+                formula_stable_id: "formula:Root.B:v1".to_string(),
+                trace_mode: "standard".to_string(),
+                template_selection: DerivationTemplateSelectionProjection {
+                    prepared_formula_key: "prepared:Root.B".to_string(),
+                    shape_key: "shape:scalar".to_string(),
+                    dispatch_skeleton_key: "dispatch:Root.B".to_string(),
+                    plan_template_key: "plan:Root.B".to_string(),
+                    template_holes: vec![],
+                },
+                hole_bindings: vec![DerivationHoleBindingProjection {
+                    hole_id: "hole:arg0".to_string(),
+                    payload: "Root.A".to_string(),
                 }],
-                derivation_trace_count: 1,
-                derivation_traces: vec![DerivationTraceProjection {
-                    trace_schema_id: "trace-schema:v1".to_string(),
-                    owner: NodeId::new("Root.B"),
-                    owner_key: NodeKey::new("node:root:b"),
-                    formula_artifact_id: "formula:Root.B".to_string(),
-                    bind_artifact_id: Some("bind:Root.B".to_string()),
+                sub_invocation_tree: vec![DerivationInvocationProjection {
+                    invocation_ordinal: 0,
+                    invocation_kind: "function".to_string(),
+                    function_name: "ADD".to_string(),
+                    function_id: "function:add".to_string(),
+                    arg_preparation_profile: Some("scalar".to_string()),
+                    prepared_arguments: vec![],
+                    kernel_returned_value: Some("4".to_string()),
+                    kernel_returned_value_typed: None,
+                    children: vec![],
+                }],
+                kernel_returned_value: "4".to_string(),
+                kernel_returned_value_typed: None,
+                oxfml_trace_events: vec![DerivationOxfmlTraceEventProjection {
+                    trace_schema_id: "oxfml-trace-schema:v1".to_string(),
+                    event_kind: "evaluation".to_string(),
                     formula_stable_id: "formula:Root.B:v1".to_string(),
-                    trace_mode: "standard".to_string(),
-                    template_selection: DerivationTemplateSelectionProjection {
-                        prepared_formula_key: "prepared:Root.B".to_string(),
-                        shape_key: "shape:scalar".to_string(),
-                        dispatch_skeleton_key: "dispatch:Root.B".to_string(),
-                        plan_template_key: "plan:Root.B".to_string(),
-                        template_holes: vec![],
-                    },
-                    hole_bindings: vec![DerivationHoleBindingProjection {
-                        hole_id: "hole:arg0".to_string(),
-                        payload: "Root.A".to_string(),
-                    }],
-                    sub_invocation_tree: vec![DerivationInvocationProjection {
-                        invocation_ordinal: 0,
-                        invocation_kind: "function".to_string(),
-                        function_name: "ADD".to_string(),
-                        function_id: "function:add".to_string(),
-                        arg_preparation_profile: Some("scalar".to_string()),
-                        prepared_arguments: vec![],
-                        kernel_returned_value: Some("4".to_string()),
-                        children: vec![],
-                    }],
-                    kernel_returned_value: "4".to_string(),
-                    oxfml_trace_events: vec![DerivationOxfmlTraceEventProjection {
-                        trace_schema_id: "oxfml-trace-schema:v1".to_string(),
-                        event_kind: "evaluation".to_string(),
-                        formula_stable_id: "formula:Root.B:v1".to_string(),
-                        session_id: Some("session:v1".to_string()),
-                        candidate_result_id: None,
-                        commit_attempt_id: None,
-                        event_order_key: 1,
-                    }],
+                    session_id: Some("session:v1".to_string()),
+                    candidate_result_id: None,
+                    commit_attempt_id: None,
+                    event_order_key: 1,
                 }],
-                invalidated_nodes: vec![NodeInvalidationProjection {
-                    node: NodeId::new("Root.B"),
-                    node_key: NodeKey::new("node:root:b"),
-                    calc_state: NodeCalcStateProjection::VerifiedClean,
-                    requires_rebind: false,
-                    reasons: vec![InvalidationReasonProjection::DependencyAdded],
-                }],
-                phase_timings_micros: BTreeMap::from([
-                    (PhaseKeyProjection::OxfmlFormulaEvaluation, 120),
-                    (PhaseKeyProjection::DependencyGraphBuildAndCycleScan, 80),
-                    (PhaseKeyProjection::CandidatePublication, 30),
-                ]),
-                diagnostics: vec!["diagnostic:sample".to_string()],
-            }),
-            dependencies: DependencyGraphProjection {
-                reference_resolutions,
-                reverse_references,
-                ..DependencyGraphProjection::default()
-            },
-            ..WorkspaceState::default()
-        }
+            }],
+            invalidated_nodes: vec![NodeInvalidationProjection {
+                node: NodeId::new("Root.B"),
+                node_key: NodeKey::new("node:root:b"),
+                calc_state: NodeCalcStateProjection::VerifiedClean,
+                requires_rebind: false,
+                reasons: vec![InvalidationReasonProjection::DependencyAdded],
+            }],
+            phase_timings_micros: BTreeMap::from([
+                (PhaseKeyProjection::OxfmlFormulaEvaluation, 120),
+                (PhaseKeyProjection::DependencyGraphBuildAndCycleScan, 80),
+                (PhaseKeyProjection::CandidatePublication, 30),
+            ]),
+            diagnostics: vec!["diagnostic:sample".to_string()],
+        });
+        state.dependencies = DependencyGraphProjection {
+            reference_resolutions,
+            reverse_references,
+            ..DependencyGraphProjection::default()
+        };
+        state
     }
 
     fn workspace_with_direct_table_cell() -> WorkspaceState {

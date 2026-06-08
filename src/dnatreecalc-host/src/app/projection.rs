@@ -51,6 +51,24 @@ pub fn workspace_state_from_model(model: &WorkspaceModel) -> WorkspaceState {
         nodes.insert(id, view);
     }
 
+    let paths_by_key = nodes
+        .iter()
+        .map(|(node_id, view)| (view.key.clone(), node_id.clone()))
+        .collect::<BTreeMap<_, _>>();
+    let nodes_by_key = nodes
+        .values()
+        .map(|view| (view.key.clone(), view.clone()))
+        .collect::<BTreeMap<_, _>>();
+    let root_keys = model
+        .root_paths
+        .iter()
+        .filter_map(|path| {
+            paths_by_key
+                .iter()
+                .find_map(|(key, node_id)| (node_id.as_str() == path).then(|| key.clone()))
+        })
+        .collect();
+
     WorkspaceState {
         workspace_id: model.workspace_id.clone(),
         profile: model.profile.as_str(),
@@ -67,15 +85,14 @@ pub fn workspace_state_from_model(model: &WorkspaceModel) -> WorkspaceState {
             .iter()
             .map(|p| NodeKey::new(format!("model-path:{p}")))
             .collect(),
-        paths_by_key: nodes
-            .iter()
-            .map(|(node_id, view)| (view.key.clone(), node_id.clone()))
-            .collect(),
+        paths_by_key,
+        root_keys,
         root_paths: model
             .root_paths
             .iter()
             .map(|p| NodeId::new(p.clone()))
             .collect(),
+        nodes_by_key,
         nodes,
         dependencies: DependencyGraphProjection::default(),
         tables: BTreeMap::new(),

@@ -1330,6 +1330,19 @@ impl TreeWorkspaceSession {
             )
             .collect();
 
+        let paths_by_key = nodes
+            .iter()
+            .map(|(node_id, view)| (view.key.clone(), node_id.clone()))
+            .collect::<BTreeMap<_, _>>();
+        let nodes_by_key = nodes
+            .values()
+            .map(|view| (view.key.clone(), view.clone()))
+            .collect::<BTreeMap<_, _>>();
+        let root_keys = root_paths
+            .iter()
+            .filter_map(|root| nodes.get(root).map(|node| node.key.clone()))
+            .collect::<Vec<_>>();
+
         Ok(WorkspaceState {
             workspace_id: self.workspace_id.as_str().to_string(),
             profile: self.profile,
@@ -1345,11 +1358,10 @@ impl TreeWorkspaceSession {
                         .map(node_key_for_tree_node)
                 })
                 .collect::<Result<Vec<_>, _>>()?,
-            paths_by_key: nodes
-                .iter()
-                .map(|(node_id, view)| (view.key.clone(), node_id.clone()))
-                .collect(),
+            paths_by_key,
+            root_keys,
             root_paths,
+            nodes_by_key,
             nodes,
             dependencies,
             tables,
@@ -1506,76 +1518,96 @@ impl TreeWorkspaceSession {
         outcome: &OxCalcTreeCalculationOutcome,
     ) -> Result<DependencyGraphProjection, TreeWorkspaceSessionError> {
         let mut descriptors_by_owner = BTreeMap::new();
+        let mut descriptors_by_owner_key = BTreeMap::new();
         for (owner, descriptors) in &outcome.dependency_graph.descriptors_by_owner {
             if *owner == self.engine_root_id {
                 continue;
             }
-            descriptors_by_owner.insert(
-                self.node_id_for_tree_node(*owner)?,
-                descriptors
-                    .iter()
-                    .map(|descriptor| {
-                        let collection = descriptor
-                            .tree_reference_collection
+            let owner_path = self.node_id_for_tree_node(*owner)?;
+            let owner_key = node_key_for_tree_node(*owner);
+            let projected = descriptors
+                .iter()
+                .map(|descriptor| {
+                    let collection = descriptor
+                        .tree_reference_collection
+                        .as_ref()
+                        .map(|collection| self.tree_reference_collection_projection(collection))
+                        .transpose()?;
+                    let target_node_id = descriptor
+                        .target_node_id
+                        .filter(|target| *target != self.engine_root_id);
+                    Ok(DependencyDescriptorProjection {
+                        descriptor_id: descriptor.descriptor_id.clone(),
+                        source_reference_handle: descriptor.source_reference_handle.clone(),
+                        target: target_node_id
+                            .map(|target| self.node_id_for_tree_node(target))
+                            .transpose()?,
+                        target_key: target_node_id.map(node_key_for_tree_node),
+                        workspace_target: descriptor
+                            .workspace_target
                             .as_ref()
-                            .map(|collection| self.tree_reference_collection_projection(collection))
-                            .transpose()?;
-                        Ok(DependencyDescriptorProjection {
-                            descriptor_id: descriptor.descriptor_id.clone(),
-                            source_reference_handle: descriptor.source_reference_handle.clone(),
-                            target: descriptor
-                                .target_node_id
-                                .filter(|target| *target != self.engine_root_id)
-                                .map(|target| self.node_id_for_tree_node(target))
-                                .transpose()?,
-                            workspace_target: descriptor
-                                .workspace_target
-                                .as_ref()
-                                .map(|target| target.target_node_handle.clone()),
-                            kind: dependency_kind_projection_for(descriptor.kind),
-                            carrier_detail: descriptor.carrier_detail.clone(),
-                            collection,
-                            requires_rebind_on_structural_change: descriptor
-                                .requires_rebind_on_structural_change,
-                        })
+                            .map(|target| target.target_node_handle.clone()),
+                        kind: dependency_kind_projection_for(descriptor.kind),
+                        carrier_detail: descriptor.carrier_detail.clone(),
+                        collection,
+                        requires_rebind_on_structural_change: descriptor
+                            .requires_rebind_on_structural_change,
                     })
-                    .collect::<Result<Vec<_>, TreeWorkspaceSessionError>>()?,
-            );
+                })
+                .collect::<Result<Vec<_>, TreeWorkspaceSessionError>>()?;
+            descriptors_by_owner.insert(owner_path, projected.clone());
+            descriptors_by_owner_key.insert(owner_key, projected);
         }
 
         let mut edges_by_owner = BTreeMap::new();
+        let mut edges_by_owner_key = BTreeMap::new();
         for (owner, edges) in &outcome.dependency_graph.edges_by_owner {
             if *owner == self.engine_root_id {
                 continue;
             }
-            edges_by_owner.insert(
-                self.node_id_for_tree_node(*owner)?,
-                edges
-                    .iter()
-                    .filter(|edge| edge.target_node_id != self.engine_root_id)
-                    .map(|edge| self.dependency_edge_projection(edge))
-                    .collect::<Result<Vec<_>, _>>()?,
-            );
+            let owner_path = self.node_id_for_tree_node(*owner)?;
+            let owner_key = node_key_for_tree_node(*owner);
+            let projected = edges
+                .iter()
+                .filter(|edge| edge.target_node_id != self.engine_root_id)
+                .map(|edge| self.dependency_edge_projection(edge))
+                .collect::<Result<Vec<_>, _>>()?;
+            edges_by_owner.insert(owner_path, projected.clone());
+            edges_by_owner_key.insert(owner_key, projected);
         }
 
         let mut reverse_edges = BTreeMap::new();
+        let mut reverse_edges_by_key = BTreeMap::new();
         for (target, edges) in &outcome.dependency_graph.reverse_edges {
             if *target == self.engine_root_id {
                 continue;
             }
-            reverse_edges.insert(
-                self.node_id_for_tree_node(*target)?,
-                edges
-                    .iter()
-                    .filter(|edge| {
-                        edge.owner_node_id != self.engine_root_id
-                            && edge.target_node_id != self.engine_root_id
-                    })
-                    .map(|edge| self.dependency_edge_projection(edge))
-                    .collect::<Result<Vec<_>, _>>()?,
-            );
+            let target_path = self.node_id_for_tree_node(*target)?;
+            let target_key = node_key_for_tree_node(*target);
+            let projected = edges
+                .iter()
+                .filter(|edge| {
+                    edge.owner_node_id != self.engine_root_id
+                        && edge.target_node_id != self.engine_root_id
+                })
+                .map(|edge| self.dependency_edge_projection(edge))
+                .collect::<Result<Vec<_>, _>>()?;
+            reverse_edges.insert(target_path, projected.clone());
+            reverse_edges_by_key.insert(target_key, projected);
         }
 
+        let cycle_group_keys = outcome
+            .dependency_graph
+            .cycle_groups
+            .iter()
+            .map(|group| {
+                group
+                    .iter()
+                    .filter(|node| **node != self.engine_root_id)
+                    .map(|node| node_key_for_tree_node(*node))
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
         let cycle_groups = outcome
             .dependency_graph
             .cycle_groups
@@ -1592,11 +1624,15 @@ impl TreeWorkspaceSession {
             self.reference_resolution_projection(outcome)?;
 
         Ok(DependencyGraphProjection {
+            descriptors_by_owner_key,
+            edges_by_owner_key,
+            reverse_edges_by_key,
             descriptors_by_owner,
             edges_by_owner,
             reverse_edges,
             reference_resolutions,
             reverse_references,
+            cycle_group_keys,
             cycle_groups,
             diagnostics: outcome
                 .dependency_graph
@@ -1726,6 +1762,8 @@ impl TreeWorkspaceSession {
             } else {
                 Some(self.node_id_for_tree_node(collection.base_node_id)?)
             },
+            base_node_key: (collection.base_node_id != self.engine_root_id)
+                .then(|| node_key_for_tree_node(collection.base_node_id)),
             membership_version: collection.membership_version.clone(),
             order_version: collection.order_version.clone(),
             members: collection
@@ -1734,6 +1772,12 @@ impl TreeWorkspaceSession {
                 .filter(|member| **member != self.engine_root_id)
                 .map(|member| self.node_id_for_tree_node(*member))
                 .collect::<Result<Vec<_>, _>>()?,
+            member_keys: collection
+                .member_node_ids
+                .iter()
+                .filter(|member| **member != self.engine_root_id)
+                .map(|member| node_key_for_tree_node(*member))
+                .collect(),
         })
     }
 
@@ -1745,7 +1789,9 @@ impl TreeWorkspaceSession {
             edge_id: edge.edge_id.clone(),
             descriptor_id: edge.descriptor_id.clone(),
             owner: self.node_id_for_tree_node(edge.owner_node_id)?,
+            owner_key: node_key_for_tree_node(edge.owner_node_id),
             target: self.node_id_for_tree_node(edge.target_node_id)?,
+            target_key: node_key_for_tree_node(edge.target_node_id),
             kind: dependency_kind_projection_for(edge.kind),
         })
     }
@@ -3200,9 +3246,10 @@ mod tests {
             before.node_id_for_key(&original_b_key),
             Some(&NodeId::new("Root.B"))
         );
-        assert_eq!(
-            before.dependencies.descriptors_by_owner[&NodeId::new("Root.B")][0].kind,
-            DependencyKindProjection::StaticDirect
+        assert!(
+            before.dependencies.descriptors_by_owner_key[&original_b_key]
+                .iter()
+                .any(|descriptor| descriptor.kind == DependencyKindProjection::StaticDirect)
         );
         assert!(
             before

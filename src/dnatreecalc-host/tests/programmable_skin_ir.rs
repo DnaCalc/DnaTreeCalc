@@ -422,6 +422,46 @@ fn programmable_skin_builds_interrelated_tree_and_reads_results() {
     skin.assert_scalar("Root.C", "10");
 
     let state = skin.state();
+    let b_key = state.node(&NodeId::new("Root.B")).unwrap().key.clone();
+    let c_key = state.node(&NodeId::new("Root.C")).unwrap().key.clone();
+    assert_eq!(state.node_id_for_key(&c_key), Some(&NodeId::new("Root.C")));
+    assert_eq!(
+        state.nodes_by_key.get(&c_key).map(|node| &node.id),
+        Some(&NodeId::new("Root.C"))
+    );
+    assert_eq!(
+        state
+            .dependencies
+            .edges_by_owner_key
+            .get(&c_key)
+            .map(Vec::len),
+        Some(1)
+    );
+    assert!(
+        state.dependencies.edges_by_owner_key[&c_key]
+            .iter()
+            .any(|edge| edge.owner_key == c_key && edge.target_key == b_key)
+    );
+    assert_eq!(
+        state
+            .dependencies
+            .reverse_edges_by_key
+            .get(&b_key)
+            .map(Vec::len),
+        Some(1)
+    );
+    assert!(
+        state
+            .dependencies
+            .descriptors_by_owner_key
+            .get(&c_key)
+            .is_some_and(|descriptors| {
+                descriptors
+                    .iter()
+                    .any(|descriptor| descriptor.target_key == Some(b_key.clone()))
+            })
+    );
+    assert!(state.dependencies.cycle_group_keys.is_empty());
     let run = state.last_run.as_ref().expect("recalc projects last run");
     assert!(matches!(
         run.run_state,

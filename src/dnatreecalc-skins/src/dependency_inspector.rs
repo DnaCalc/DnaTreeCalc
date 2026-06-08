@@ -72,8 +72,8 @@ fn DependencyInspectorView(cx: SkinContext<DependencyInspectorState>) -> impl In
                 .iter()
                 .filter_map(|id| {
                     let node = ws.node(id)?;
-                    let outgoing = ws.dependencies.outgoing_count(id);
-                    let incoming = ws.dependencies.incoming_count(id);
+                    let outgoing = ws.dependencies.outgoing_count_by_key(&node.key);
+                    let incoming = ws.dependencies.incoming_count_by_key(&node.key);
                     Some((id.clone(), node.display_name.clone(), outgoing, incoming))
                 })
                 .collect::<Vec<_>>()
@@ -107,10 +107,13 @@ fn DependencyInspectorView(cx: SkinContext<DependencyInspectorState>) -> impl In
                         let Some(id) = selected_id.get() else {
                             return view! { <div class="dtc-empty-detail">"Select a node."</div> }.into_any();
                         };
+                        let Some(node) = ws.node(&id) else {
+                            return view! { <div class="dtc-empty-detail">"Select a node."</div> }.into_any();
+                        };
                         let descriptors = ws
                             .dependencies
-                            .descriptors_by_owner
-                            .get(&id)
+                            .descriptors_by_owner_key
+                            .get(&node.key)
                             .cloned()
                             .unwrap_or_default();
                         view! {

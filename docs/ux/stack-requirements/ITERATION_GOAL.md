@@ -43,7 +43,8 @@ reported against the roadmap with concrete evidence and explicit remaining gaps.
 - [x] Surface runtime effects and runtime overlays in active skin detail.
 - [x] Surface current derivation trace records in active skin detail.
 - [x] Add a `NodeKey` to display-path lookup index on `WorkspaceState` for the cutover transition.
-- [ ] Complete host cutover from path-keyed maps to `NodeKey`-keyed maps.
+- [x] Complete host cutover from path-keyed semantic maps to `NodeKey`-keyed node and dependency
+      maps; retain path maps only as transition/display compatibility.
 - [x] Preserve richer scalar/error value variants through Skin IR, not only arrays and display text.
 - [ ] Prove or expose reference-valued `CalcValue` node results through Skin IR when OxCalc/OxFml
       has an ordinary producer for them.

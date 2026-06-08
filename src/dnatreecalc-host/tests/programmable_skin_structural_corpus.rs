@@ -119,10 +119,15 @@ fn programmable_skin_structural_corpus_cases_execute_from_outside_ir() {
                     );
                 }
                 let expected_target = expected_rebind_target(case);
+                let caller_key = state
+                    .node(&NodeId::new(case.caller.clone()))
+                    .expect("caller projects")
+                    .key
+                    .clone();
                 let targets = state
                     .dependencies
-                    .edges_by_owner
-                    .get(&NodeId::new(case.caller.clone()))
+                    .edges_by_owner_key
+                    .get(&caller_key)
                     .into_iter()
                     .flatten()
                     .map(|edge| edge.target.as_str().to_string())
