@@ -99,6 +99,7 @@ fn ValueBoardView(cx: SkinContext<ValueBoardState>) -> impl IntoView {
     view! {
         <section class="dtc-value-board">
             {render_active_selection_summary(workspace, selection)}
+            {render_active_selection_detail_panel(workspace, selection)}
             {move || cards.with(|cards| {
                 let dispatch = dispatch.clone();
                 cards.iter().map(|(path, name, content, value, table)| {
@@ -155,6 +156,60 @@ fn active_selection_summary_rows(
         ActiveSelectionDetailProjection::Node(detail) => Some(vec![
             ("focus", focus),
             ("name", detail.display_name),
+            ("value", detail.value.display_text()),
+        ]),
+        ActiveSelectionDetailProjection::TableCell(detail) => {
+            let row = detail
+                .row_id
+                .as_deref()
+                .map(str::to_string)
+                .unwrap_or_else(|| "totals".to_string());
+            Some(vec![
+                ("focus", focus),
+                ("table", detail.table_name),
+                ("cell", format!("{} / {}", row, detail.column_name)),
+                ("value", detail.value.display_text()),
+            ])
+        }
+    }
+}
+
+fn render_active_selection_detail_panel(
+    workspace: ReadSignal<WorkspaceState>,
+    selection: ReadSignal<SelectionState>,
+) -> AnyView {
+    view! {
+        {move || {
+            workspace.with(|workspace| {
+                selection.with(|selection| active_selection_detail_rows(workspace, selection))
+            })
+            .map(|rows| {
+                view! {
+                    <section class="dtc-value-board__active-detail" aria-label="Active selection detail">
+                        <dl>
+                            {rows.into_iter().map(|(label, value)| view! {
+                                <dt>{label}</dt>
+                                <dd>{value}</dd>
+                            }).collect::<Vec<_>>()}
+                        </dl>
+                    </section>
+                }
+            })
+        }}
+    }
+    .into_any()
+}
+
+fn active_selection_detail_rows(
+    workspace: &WorkspaceState,
+    selection: &SelectionState,
+) -> Option<Vec<(&'static str, String)>> {
+    let active_selection = workspace.active_selection_detail(selection)?;
+    let focus = active_selection.stable_id().to_string();
+    match active_selection {
+        ActiveSelectionDetailProjection::Node(detail) => Some(vec![
+            ("focus", focus),
+            ("name", detail.display_name),
             ("key", detail.node_key.to_string()),
             ("kind", detail.content_kind.stable_id().to_string()),
             (
@@ -183,6 +238,7 @@ fn active_selection_summary_rows(
                 ("table", detail.table_name),
                 ("cell", format!("{} / {}", row, detail.column_name)),
                 ("key", detail.node_key.to_string()),
+                ("region", detail.region.stable_id().to_string()),
                 (
                     "edit",
                     table_cell_editability_label(detail.editability).to_string(),
@@ -1453,10 +1509,22 @@ mod tests {
             active_selection_summary_rows(&node_workspace, &SelectionState::default()),
             None
         );
+        assert_eq!(
+            active_selection_detail_rows(&node_workspace, &SelectionState::default()),
+            None
+        );
 
         let node_selection = SelectionState::with_primary(Some(NodeId::new("Root.A")));
         assert_eq!(
             active_selection_summary_rows(&node_workspace, &node_selection),
+            Some(vec![
+                ("focus", "node".to_string()),
+                ("name", "A".to_string()),
+                ("value", "3".to_string()),
+            ])
+        );
+        assert_eq!(
+            active_selection_detail_rows(&node_workspace, &node_selection),
             Some(vec![
                 ("focus", "node".to_string()),
                 ("name", "A".to_string()),
@@ -1483,7 +1551,17 @@ mod tests {
                 ("focus", "table_cell".to_string()),
                 ("table", "SalesTable".to_string()),
                 ("cell", "row:east / Tax".to_string()),
+                ("value", "2".to_string()),
+            ])
+        );
+        assert_eq!(
+            active_selection_detail_rows(&table_workspace, &table_selection),
+            Some(vec![
+                ("focus", "table_cell".to_string()),
+                ("table", "SalesTable".to_string()),
+                ("cell", "row:east / Tax".to_string()),
                 ("key", "cell:east:tax".to_string()),
+                ("region", "body".to_string()),
                 ("edit", "formula".to_string()),
                 ("formula", "=[@Amount] * 0.1".to_string()),
                 ("value", "2".to_string()),
@@ -1503,6 +1581,14 @@ mod tests {
             Some(vec![
                 ("focus", "node".to_string()),
                 ("name", "A".to_string()),
+                ("value", "3".to_string()),
+            ])
+        );
+        assert_eq!(
+            active_selection_detail_rows(&workspace, &precedent_selection),
+            Some(vec![
+                ("focus", "node".to_string()),
+                ("name", "A".to_string()),
                 ("key", "node:root:a".to_string()),
                 ("kind", "constant".to_string()),
                 ("state", "verified_clean".to_string()),
@@ -1516,6 +1602,14 @@ mod tests {
         let formula_selection = SelectionState::with_primary(Some(NodeId::new("Root.B")));
         assert_eq!(
             active_selection_summary_rows(&workspace, &formula_selection),
+            Some(vec![
+                ("focus", "node".to_string()),
+                ("name", "B".to_string()),
+                ("value", "4".to_string()),
+            ])
+        );
+        assert_eq!(
+            active_selection_detail_rows(&workspace, &formula_selection),
             Some(vec![
                 ("focus", "node".to_string()),
                 ("name", "B".to_string()),
@@ -1546,7 +1640,17 @@ mod tests {
                 ("focus", "table_cell".to_string()),
                 ("table", "SalesTable".to_string()),
                 ("cell", "row:east / Amount".to_string()),
+                ("value", "20".to_string()),
+            ])
+        );
+        assert_eq!(
+            active_selection_detail_rows(&workspace, &selection),
+            Some(vec![
+                ("focus", "table_cell".to_string()),
+                ("table", "SalesTable".to_string()),
+                ("cell", "row:east / Amount".to_string()),
                 ("key", "cell:east:amount".to_string()),
+                ("region", "body".to_string()),
                 ("edit", "direct".to_string()),
                 ("value", "20".to_string()),
                 ("refs out", "0".to_string()),

@@ -469,6 +469,40 @@ pub const SHELL_CSS: &str = r#"
     color: #075985;
 }
 
+.dtc-value-board__active-detail {
+    grid-column: 1 / -1;
+    padding: 0.75rem;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    background: #ffffff;
+}
+
+.dtc-value-board__active-detail dl {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr) max-content minmax(0, 1fr);
+    gap: 0.375rem 0.75rem;
+    margin: 0;
+    font-size: 0.8125rem;
+}
+
+.dtc-value-board__active-detail dt {
+    color: #64748b;
+}
+
+.dtc-value-board__active-detail dd {
+    min-width: 0;
+    margin: 0;
+    color: #0f172a;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 700px) {
+    .dtc-value-board__active-detail dl {
+        grid-template-columns: max-content minmax(0, 1fr);
+    }
+}
+
 .dtc-value-card {
     border: 1px solid #e2e8ef;
     border-radius: 8px;
