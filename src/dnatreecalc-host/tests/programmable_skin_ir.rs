@@ -1948,8 +1948,28 @@ fn programmable_skin_projects_errors_and_diagnostics_after_rejected_recalc() {
         Some(CalcRunStateProjection::Rejected)
     ));
     assert!(!state.diagnostics.is_empty());
+    let formula_node = state.node(&NodeId::new("Root.A")).unwrap();
+    assert!(formula_node.binding_diagnostics.iter().any(|diagnostic| {
+        diagnostic.node == NodeId::new("Root.A")
+            && diagnostic.node_key == formula_node.key
+            && diagnostic.message == "unresolved identifier 'Missing'"
+            && diagnostic.span.start_utf8 == 1
+            && diagnostic.span.end_utf8 == 8
+    }));
+    let run = state.last_run.as_ref().expect("rejected run projects");
+    assert!(run.binding_diagnostics.iter().any(|diagnostic| {
+        diagnostic.node == NodeId::new("Root.A")
+            && diagnostic.node_key == formula_node.key
+            && diagnostic.message == "unresolved identifier 'Missing'"
+    }));
+    let detail = state
+        .active_node_detail(&dnatreecalc_skin_framework::SelectionState::with_primary(
+            Some(NodeId::new("Root.A")),
+        ))
+        .expect("active detail projects selected formula");
+    assert_eq!(detail.binding_diagnostics, formula_node.binding_diagnostics);
     assert!(matches!(
-        &state.node(&NodeId::new("Root.A")).unwrap().computed_value,
+        &formula_node.computed_value,
         NodeValueProjection::Error(_)
     ));
 }

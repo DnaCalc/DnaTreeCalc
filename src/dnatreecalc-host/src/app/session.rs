@@ -1,22 +1,22 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use dnatreecalc_skin_framework::{
-    CalcRunProjection, CalcRunStateProjection, DependencyDescriptorProjection,
-    DependencyEdgeProjection, DependencyGraphProjection, DependencyKindProjection,
-    DerivationHoleBindingProjection, DerivationInvocationProjection,
+    BindingDiagnosticProjection, CalcRunProjection, CalcRunStateProjection,
+    DependencyDescriptorProjection, DependencyEdgeProjection, DependencyGraphProjection,
+    DependencyKindProjection, DerivationHoleBindingProjection, DerivationInvocationProjection,
     DerivationOxfmlTraceEventProjection, DerivationPreparedArgumentProjection,
     DerivationTemplateHoleProjection, DerivationTemplateSelectionProjection,
     DerivationTraceProjection, InvalidationReasonProjection, NodeCalcStateProjection,
     NodeContentKind as FrameworkContentKind, NodeId, NodeInvalidationProjection, NodeKey,
     NodeValueProjection, NodeView, PhaseKeyProjection, ReferenceResolutionProjection,
     ReferenceTargetProjection, RuntimeEffectFamilyProjection, RuntimeEffectProjection,
-    RuntimeOverlayKindProjection, RuntimeOverlayProjection, TableAnchorProjection, TableCellInput,
-    TableCellProjection, TableCellsProjection, TableColumnBodyProjection, TableColumnProjection,
-    TableDependencyFactBlockerProjection, TableDependencyFactKindProjection,
-    TableDependencyFactProjection, TableDependencyFactStatusProjection,
-    TableFormulaMetadataProjection, TableProjection, TableRowInput, TableRowProjection,
-    TreeReferenceCollectionFamilyProjection, TreeReferenceCollectionProjection,
-    WorkspaceRevisionProjection, WorkspaceState,
+    RuntimeOverlayKindProjection, RuntimeOverlayProjection, SourceSpanProjection,
+    TableAnchorProjection, TableCellInput, TableCellProjection, TableCellsProjection,
+    TableColumnBodyProjection, TableColumnProjection, TableDependencyFactBlockerProjection,
+    TableDependencyFactKindProjection, TableDependencyFactProjection,
+    TableDependencyFactStatusProjection, TableFormulaMetadataProjection, TableProjection,
+    TableRowInput, TableRowProjection, TreeReferenceCollectionFamilyProjection,
+    TreeReferenceCollectionProjection, WorkspaceRevisionProjection, WorkspaceState,
 };
 use oxcalc_core::consumer::OxCalcTreeRunState;
 use oxcalc_core::consumer::{
@@ -1250,6 +1250,10 @@ impl TreeWorkspaceSession {
                 )
             })
             .collect::<BTreeMap<_, _>>();
+        let binding_diagnostics_by_tree_id = self.last_outcome.as_ref().map_or_else(
+            || Ok(BTreeMap::<TreeNodeId, Vec<BindingDiagnosticProjection>>::new()),
+            |outcome| self.binding_diagnostics_by_tree_id(outcome),
+        )?;
 
         let known_ids = self.display_order.iter().cloned().collect::<BTreeSet<_>>();
         let mut child_map = BTreeMap::<NodeId, Vec<NodeId>>::new();
@@ -1288,6 +1292,10 @@ impl TreeWorkspaceSession {
                 calc_value,
             );
             let table = table_views_by_tree_id.get(&tree_node_id).cloned();
+            let binding_diagnostics = binding_diagnostics_by_tree_id
+                .get(&tree_node_id)
+                .cloned()
+                .unwrap_or_default();
             nodes.insert(
                 node_id.clone(),
                 NodeView {
@@ -1301,6 +1309,7 @@ impl TreeWorkspaceSession {
                     content_text: tree_view.formula_text.clone(),
                     computed_value,
                     calc_state: tree_view.calc_state.map(calc_state_projection_for),
+                    binding_diagnostics,
                     is_meta: tree_view.is_meta,
                     table,
                 },
@@ -1648,6 +1657,34 @@ impl TreeWorkspaceSession {
         })
     }
 
+    fn binding_diagnostics_by_tree_id(
+        &self,
+        outcome: &OxCalcTreeCalculationOutcome,
+    ) -> Result<BTreeMap<TreeNodeId, Vec<BindingDiagnosticProjection>>, TreeWorkspaceSessionError>
+    {
+        let mut diagnostics = BTreeMap::<TreeNodeId, Vec<BindingDiagnosticProjection>>::new();
+        for diagnostic in &outcome.binding_diagnostics {
+            if diagnostic.owner_node_id == self.engine_root_id {
+                continue;
+            }
+            diagnostics
+                .entry(diagnostic.owner_node_id)
+                .or_default()
+                .push(BindingDiagnosticProjection {
+                    node: self.node_id_for_tree_node(diagnostic.owner_node_id)?,
+                    node_key: node_key_for_tree_node(diagnostic.owner_node_id),
+                    message: diagnostic.message.clone(),
+                    span: SourceSpanProjection {
+                        start_utf8: diagnostic.span_start_utf8,
+                        end_utf8: diagnostic
+                            .span_start_utf8
+                            .saturating_add(diagnostic.span_len_utf8),
+                    },
+                });
+        }
+        Ok(diagnostics)
+    }
+
     fn reference_resolution_projection(
         &self,
         outcome: &OxCalcTreeCalculationOutcome,
@@ -1852,6 +1889,11 @@ impl TreeWorkspaceSession {
                 .map(|trace| self.derivation_trace_projection(trace))
                 .collect::<Result<Vec<_>, _>>()?,
             invalidated_nodes,
+            binding_diagnostics: self
+                .binding_diagnostics_by_tree_id(outcome)?
+                .into_values()
+                .flatten()
+                .collect(),
             phase_timings_micros: outcome
                 .phase_timings_micros
                 .iter()

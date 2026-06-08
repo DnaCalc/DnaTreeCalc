@@ -2,20 +2,26 @@
 
 ## Goal Statement
 
-Drive DNA TreeCalc skinning-stack improvements in roadmap order by pushing durable truth to the
-layer that owns it, then exposing that truth through the host projection and Skin IR without
-skin-side semantics.
+Execute the DNA TreeCalc stack-requirements roadmap in dependency order, starting from the earliest
+unmet wave item and moving durable semantic truth into the repo that owns it: OxFml for formula
+language, binding, rendering, and single-node semantics; OxCalc for multi-node calculation,
+dependency, invalidation, publication, overlays, revisions, and candidate state; DnaTreeCalc host for
+closed intents and projection; skins for rendering and dispatch only.
 
-Each iteration should advance the earliest unmet requirement in `ROADMAP.md` that is not blocked by
-an unbuilt substrate. For W0/W1, that usually means exposing or extending facts OxCalc/OxFml already
-compute: stable node identity, typed invalidation and dependency records, typed values, reference
-resolution, run state, phase timing, runtime effects, overlays, derivation traces, formats, and
-binding diagnostics. For W2 and later, it means first proving the required engine substrate exists
-or deliberately spiking it before adding host or skin affordances.
+The working loop is: verify the roadmap readiness claim against real code, implement or expose the
+capability at its owning layer, thread it through the host projection or closed intent seam, exercise
+it from outside the engine through Skin IR tests or a real skin, then record product scope, evidence,
+known gaps, and the next roadmap item. W0/W1 should burn down high-leverage `expose`/`extend` work:
+stable node identity, typed invalidation/dependency/run/value facts, reference resolution, binding
+diagnostics, derivation/runtime/overlay detail, effective formatting, and per-node value epochs. W2+
+must not fake missing engine substrates: transaction scope, revision graph retention, candidate
+overlay handles, and value-epoch keying require an explicit spike or implementation before dependent
+host or skin affordances are scheduled.
 
-The iteration is successful only when the capability is visible from outside the engine through the
-published `WorkspaceState` or closed `WorkspaceIntent` seam, covered by Skin test plumbing, and
-reported against the roadmap with concrete evidence and explicit remaining gaps.
+An iteration is complete only when downstream consumers can observe the capability through
+`WorkspaceState`, `WorkspaceIntent`, or the published Skin IR surface, and the checklist below marks
+the exact roadmap item advanced. Incidental UI polish is allowed only when it supports the active
+roadmap item; it is not the default next move.
 
 ## Iteration Rule
 
@@ -51,7 +57,8 @@ reported against the roadmap with concrete evidence and explicit remaining gaps.
 - [x] Add the reference-resolution map: token/source handle to target plus reverse index.
 - [x] Audit and complete published-run derivation trace payloads for prepared-call tree, hole
       bindings, typed root result, typed child-call results, and typed prepared argument values.
-- [ ] Add typed binding diagnostics intake where OxFml exposes them.
+- [x] Add typed binding diagnostics intake from OxFml `BindDiagnostic` through OxCalc outcome,
+      `NodeView`, `CalcRunProjection`, and active-node detail.
 - [ ] Add per-node effective format and OxFml-backed render entrypoint plumbing.
 - [ ] Confirm or implement per-node published-value epochs; keep delta work decoupled until then.
 

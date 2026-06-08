@@ -73,6 +73,7 @@ impl WorkspaceState {
             content_text: node.content_text.clone(),
             value: node.computed_value.clone(),
             calc_state: node.calc_state,
+            binding_diagnostics: node.binding_diagnostics.clone(),
             outgoing_references: self
                 .dependencies
                 .reference_resolutions
@@ -177,6 +178,7 @@ pub struct ActiveNodeDetailProjection {
     pub content_text: String,
     pub value: NodeValueProjection,
     pub calc_state: Option<NodeCalcStateProjection>,
+    pub binding_diagnostics: Vec<BindingDiagnosticProjection>,
     pub outgoing_references: Vec<ReferenceResolutionProjection>,
     pub incoming_reference_handles: Vec<String>,
 }
@@ -308,8 +310,17 @@ pub struct NodeView {
     pub content_text: String,
     pub computed_value: NodeValueProjection,
     pub calc_state: Option<NodeCalcStateProjection>,
+    pub binding_diagnostics: Vec<BindingDiagnosticProjection>,
     pub is_meta: bool,
     pub table: Option<TableProjection>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BindingDiagnosticProjection {
+    pub node: NodeId,
+    pub node_key: NodeKey,
+    pub message: String,
+    pub span: SourceSpanProjection,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -443,6 +454,7 @@ pub struct CalcRunProjection {
     pub derivation_trace_count: usize,
     pub derivation_traces: Vec<DerivationTraceProjection>,
     pub invalidated_nodes: Vec<NodeInvalidationProjection>,
+    pub binding_diagnostics: Vec<BindingDiagnosticProjection>,
     pub phase_timings_micros: BTreeMap<PhaseKeyProjection, u128>,
     pub diagnostics: Vec<String>,
 }
