@@ -352,6 +352,19 @@ fn append_run_context_rows(
     {
         rows.push(("trace formulas", trace_ids));
     }
+    if let Some(trace_details) = handle_summary(traces.iter().map(|trace| {
+        format!(
+            "{} mode={} value={} holes={} calls={} events={}",
+            trace.formula_stable_id,
+            trace.trace_mode,
+            trace.kernel_returned_value,
+            trace.hole_bindings.len(),
+            trace.sub_invocation_tree.len(),
+            trace.oxfml_trace_events.len()
+        )
+    })) {
+        rows.push(("trace detail", trace_details));
+    }
 
     let overlays = last_run
         .runtime_overlays
@@ -1594,9 +1607,10 @@ mod tests {
     use super::*;
     use dnatreecalc_skin_framework::{
         CalcRunProjection, CalcRunStateProjection, DependencyGraphProjection,
-        DependencyKindProjection, DerivationTemplateSelectionProjection, DerivationTraceProjection,
-        InvalidationReasonProjection, NodeCalcStateProjection, NodeContentKind,
-        NodeInvalidationProjection, NodeKey, NodeView, PhaseKeyProjection,
+        DependencyKindProjection, DerivationHoleBindingProjection, DerivationInvocationProjection,
+        DerivationOxfmlTraceEventProjection, DerivationTemplateSelectionProjection,
+        DerivationTraceProjection, InvalidationReasonProjection, NodeCalcStateProjection,
+        NodeContentKind, NodeInvalidationProjection, NodeKey, NodeView, PhaseKeyProjection,
         ReferenceResolutionProjection, ReferenceTargetProjection, RuntimeEffectFamilyProjection,
         RuntimeEffectProjection, RuntimeOverlayKindProjection, RuntimeOverlayProjection,
         SourceSpanProjection, TableAnchorProjection, TableCellProjection,
@@ -1875,6 +1889,11 @@ mod tests {
                 ("last reasons", "dependency_added".to_string()),
                 ("trace count", "1".to_string()),
                 ("trace formulas", "formula:Root.B:v1".to_string()),
+                (
+                    "trace detail",
+                    "formula:Root.B:v1 mode=standard value=4 holes=1 calls=1 events=1"
+                        .to_string(),
+                ),
                 ("overlay count", "1".to_string()),
                 ("overlay kinds", "dynamic_dependency".to_string()),
                 ("overlay payloads", "overlay:Root.B:dyn".to_string()),
@@ -2152,10 +2171,30 @@ mod tests {
                         plan_template_key: "plan:Root.B".to_string(),
                         template_holes: vec![],
                     },
-                    hole_bindings: vec![],
-                    sub_invocation_tree: vec![],
+                    hole_bindings: vec![DerivationHoleBindingProjection {
+                        hole_id: "hole:arg0".to_string(),
+                        payload: "Root.A".to_string(),
+                    }],
+                    sub_invocation_tree: vec![DerivationInvocationProjection {
+                        invocation_ordinal: 0,
+                        invocation_kind: "function".to_string(),
+                        function_name: "ADD".to_string(),
+                        function_id: "function:add".to_string(),
+                        arg_preparation_profile: Some("scalar".to_string()),
+                        prepared_arguments: vec![],
+                        kernel_returned_value: Some("4".to_string()),
+                        children: vec![],
+                    }],
                     kernel_returned_value: "4".to_string(),
-                    oxfml_trace_events: vec![],
+                    oxfml_trace_events: vec![DerivationOxfmlTraceEventProjection {
+                        trace_schema_id: "oxfml-trace-schema:v1".to_string(),
+                        event_kind: "evaluation".to_string(),
+                        formula_stable_id: "formula:Root.B:v1".to_string(),
+                        session_id: Some("session:v1".to_string()),
+                        candidate_result_id: None,
+                        commit_attempt_id: None,
+                        event_order_key: 1,
+                    }],
                 }],
                 invalidated_nodes: vec![NodeInvalidationProjection {
                     node: NodeId::new("Root.B"),
