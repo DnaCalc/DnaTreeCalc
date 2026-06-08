@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use dnatreecalc_host::app::{HostDispatcher, TreeWorkspaceSession};
 use dnatreecalc_host::model::{WorkspaceFixture, WorkspaceModel};
 use dnatreecalc_skin_framework::{
-    ActiveNodeDetailProjection, Dispatcher, ErasedSkinContext, IntentReceipt, NodeId,
+    ActiveNodeDetailProjection, Dispatcher, ErasedSkinContext, IntentError, IntentReceipt, NodeId,
     RegisteredSkin, SelectionState, SharedSkinState, SharedSkinStateHandle, SkinCapabilities,
     SkinCategory, SkinContext, SkinHandle, SkinId, SkinManifest, SkinState, TableCellInput,
     TableRowInput, WorkspaceIntent, WorkspaceRecalcMode, WorkspaceRevisionProjection,
@@ -480,6 +480,38 @@ impl ProgrammableDriver {
         })
     }
 
+    pub fn try_move_table_cell_focus(
+        &self,
+        row_delta: isize,
+        column_delta: isize,
+    ) -> IntentReceipt {
+        let selection = self.selection.get_untracked();
+        let Some(cell) = selection.table_cell else {
+            return IntentReceipt::rejected(IntentError::Rejected(
+                "no table cell is focused".to_string(),
+            ));
+        };
+        let state = self.workspace.get_untracked();
+        let Some(table) = state.tables.get(&cell.table) else {
+            return IntentReceipt::rejected(IntentError::Rejected(format!(
+                "unknown focused table {}",
+                cell.table
+            )));
+        };
+        let Some((row_id, column_id)) = moved_table_cell_target(
+            table,
+            cell.row_id.as_deref(),
+            &cell.column_id,
+            row_delta,
+            column_delta,
+        ) else {
+            return IntentReceipt::rejected(IntentError::Rejected(
+                "table cell focus cannot move".to_string(),
+            ));
+        };
+        self.try_select_table_cell(cell.table.as_str(), row_id.as_deref(), &column_id)
+    }
+
     pub fn collapse(&self, node: &str) {
         let node = NodeId::new(node);
         self.shared.update(|state| {
@@ -628,6 +660,45 @@ impl ProgrammableDriver {
         let receipt = self.dispatch.dispatch(intent);
         assert!(receipt.accepted, "{:?}", receipt.error);
     }
+}
+
+fn moved_table_cell_target(
+    table: &dnatreecalc_skin_framework::TableProjection,
+    row_id: Option<&str>,
+    column_id: &str,
+    row_delta: isize,
+    column_delta: isize,
+) -> Option<(Option<String>, String)> {
+    let column_index = table
+        .columns
+        .iter()
+        .position(|column| column.column_id == column_id)?;
+    let row_count = table.rows.len() + usize::from(table.totals_row_present);
+    if row_count == 0 || table.columns.is_empty() {
+        return None;
+    }
+    let row_index = match row_id {
+        Some(row_id) => table.rows.iter().position(|row| row.row_id == row_id)?,
+        None => {
+            if !table.totals_row_present {
+                return None;
+            }
+            table.rows.len()
+        }
+    };
+    let next_row = clamp_index(row_index, row_delta, row_count);
+    let next_column = clamp_index(column_index, column_delta, table.columns.len());
+    let next_row_id = table.rows.get(next_row).map(|row| row.row_id.clone());
+    Some((next_row_id, table.columns[next_column].column_id.clone()))
+}
+
+fn clamp_index(current: usize, delta: isize, len: usize) -> usize {
+    if len == 0 {
+        return 0;
+    }
+    current
+        .saturating_add_signed(delta)
+        .min(len.saturating_sub(1))
 }
 
 #[derive(Clone)]

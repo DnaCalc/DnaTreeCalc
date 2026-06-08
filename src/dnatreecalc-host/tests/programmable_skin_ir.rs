@@ -180,6 +180,69 @@ fn programmable_skin_selects_table_cells_without_recalculating() {
 }
 
 #[test]
+fn programmable_skin_moves_table_cell_focus_from_outside_ir() {
+    let harness = Harness::from_repo_fixture("tables");
+    let skin = harness.driver.clone();
+    skin.recalc();
+
+    let no_focus_move = skin.try_move_table_cell_focus(0, 1);
+    assert!(!no_focus_move.accepted, "{no_focus_move:?}");
+
+    skin.select_table_cell("SalesTable", Some("row:west"), "col:region");
+    let right = skin.try_move_table_cell_focus(0, 1);
+    assert!(right.accepted, "{:?}", right.error);
+    assert_eq!(
+        skin.selected_table_cell(),
+        Some((
+            "SalesTable".to_string(),
+            Some("row:west".to_string()),
+            "col:amount".to_string()
+        ))
+    );
+
+    let down = skin.try_move_table_cell_focus(1, 0);
+    assert!(down.accepted, "{:?}", down.error);
+    assert_eq!(
+        skin.selected_table_cell(),
+        Some((
+            "SalesTable".to_string(),
+            Some("row:east".to_string()),
+            "col:amount".to_string()
+        ))
+    );
+
+    skin.select_table_cell("SalesTable", Some("row:north"), "col:amount");
+    let to_totals = skin.try_move_table_cell_focus(1, 0);
+    assert!(to_totals.accepted, "{:?}", to_totals.error);
+    assert_eq!(
+        skin.selected_table_cell(),
+        Some(("SalesTable".to_string(), None, "col:amount".to_string()))
+    );
+
+    let from_totals = skin.try_move_table_cell_focus(-1, 1);
+    assert!(from_totals.accepted, "{:?}", from_totals.error);
+    assert_eq!(
+        skin.selected_table_cell(),
+        Some((
+            "SalesTable".to_string(),
+            Some("row:north".to_string()),
+            "col:tax".to_string()
+        ))
+    );
+
+    let clamp_right = skin.try_move_table_cell_focus(0, 1);
+    assert!(clamp_right.accepted, "{:?}", clamp_right.error);
+    assert_eq!(
+        skin.selected_table_cell(),
+        Some((
+            "SalesTable".to_string(),
+            Some("row:north".to_string()),
+            "col:tax".to_string()
+        ))
+    );
+}
+
+#[test]
 fn programmable_skin_builds_interrelated_tree_and_reads_results() {
     let harness = Harness::empty();
     let skin = harness.driver.clone();

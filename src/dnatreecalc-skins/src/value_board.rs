@@ -704,6 +704,7 @@ fn render_table_grid(
         return view! { <div class="dtc-table-card__empty">"No cell values"</div> }.into_any();
     };
     let grid_style = format!("--dtc-table-cols: {};", table.column_count.max(1) + 1);
+    let navigation = TableNavigation::from_projection(table);
 
     view! {
         <div class="dtc-table-card__grid" role="table" style=grid_style>
@@ -724,6 +725,7 @@ fn render_table_grid(
                 let row_id_for_delete = fallback_row_id.clone().unwrap_or_default();
                 let table_node_for_delete = table_node.to_string();
                 let delete_dispatch = dispatch.clone();
+                let row_navigation = navigation.clone();
                 view! {
                     <div class="dtc-table-card__row" role="row">
                         {row.iter().enumerate().map(|(column_index, cell)| {
@@ -752,6 +754,11 @@ fn render_table_grid(
                             let selected_table = focus_table.clone();
                             let selected_row = focus_row.clone();
                             let selected_column = focus_column.clone();
+                            let keyboard_dispatch = dispatch.clone();
+                            let keyboard_table = table_node.clone();
+                            let keyboard_row = Some(row_id.clone());
+                            let keyboard_column = column_id.clone();
+                            let keyboard_navigation = row_navigation.clone();
                             if matches!(column.body, TableColumnBodyProjection::ConstantCells) {
                                 view! {
                                     <input
@@ -770,6 +777,18 @@ fn render_table_grid(
                                                 Some(&focus_row),
                                                 &focus_column,
                                             ));
+                                        }
+                                        on:keydown=move |ev| {
+                                            if let Some(intent) = table_keyboard_navigation_intent(
+                                                &keyboard_table,
+                                                keyboard_row.as_deref(),
+                                                &keyboard_column,
+                                                &keyboard_navigation,
+                                                ev.key().as_str(),
+                                            ) {
+                                                ev.prevent_default();
+                                                keyboard_dispatch.dispatch(intent);
+                                            }
                                         }
                                         on:change=move |ev| {
                                             edit_dispatch.dispatch(table_cell_edit_intent(
@@ -800,6 +819,18 @@ fn render_table_grid(
                                                 Some(&focus_row),
                                                 &focus_column,
                                             ));
+                                        }
+                                        on:keydown=move |ev| {
+                                            if let Some(intent) = table_keyboard_navigation_intent(
+                                                &keyboard_table,
+                                                keyboard_row.as_deref(),
+                                                &keyboard_column,
+                                                &keyboard_navigation,
+                                                ev.key().as_str(),
+                                            ) {
+                                                ev.prevent_default();
+                                                keyboard_dispatch.dispatch(intent);
+                                            }
                                         }
                                     >
                                         {value}
@@ -837,6 +868,10 @@ fn render_table_grid(
                         let focus_column = column_id.clone();
                         let selected_table = focus_table.clone();
                         let selected_column = focus_column.clone();
+                        let keyboard_dispatch = dispatch.clone();
+                        let keyboard_table = focus_table.clone();
+                        let keyboard_column = focus_column.clone();
+                        let keyboard_navigation = navigation.clone();
                         view! {
                             <span
                                 class="dtc-table-card__formula-cell"
@@ -855,6 +890,18 @@ fn render_table_grid(
                                         &focus_column,
                                     ));
                                 }
+                                on:keydown=move |ev| {
+                                    if let Some(intent) = table_keyboard_navigation_intent(
+                                        &keyboard_table,
+                                        None,
+                                        &keyboard_column,
+                                        &keyboard_navigation,
+                                        ev.key().as_str(),
+                                    ) {
+                                        ev.prevent_default();
+                                        keyboard_dispatch.dispatch(intent);
+                                    }
+                                }
                             >
                                 {cell.as_ref().map(|cell| cell.value.display_text()).unwrap_or_default()}
                             </span>
@@ -866,6 +913,27 @@ fn render_table_grid(
         </div>
     }
     .into_any()
+}
+
+#[derive(Clone)]
+struct TableNavigation {
+    rows: Vec<String>,
+    columns: Vec<String>,
+    totals_row_present: bool,
+}
+
+impl TableNavigation {
+    fn from_projection(table: &TableProjection) -> Self {
+        Self {
+            rows: table.rows.iter().map(|row| row.row_id.clone()).collect(),
+            columns: table
+                .columns
+                .iter()
+                .map(|column| column.column_id.clone())
+                .collect(),
+            totals_row_present: table.totals_row_present,
+        }
+    }
 }
 
 fn table_cell_selected(
@@ -882,6 +950,70 @@ fn table_cell_selected(
             && cell.row_id.as_deref() == row_id
             && cell.column_id == column_id
     })
+}
+
+fn table_keyboard_navigation_intent(
+    table: &str,
+    row_id: Option<&str>,
+    column_id: &str,
+    navigation: &TableNavigation,
+    key: &str,
+) -> Option<WorkspaceIntent> {
+    let (row_delta, column_delta) = match key {
+        "ArrowUp" => (-1, 0),
+        "ArrowDown" => (1, 0),
+        "ArrowLeft" => (0, -1),
+        "ArrowRight" => (0, 1),
+        _ => return None,
+    };
+    let (row_id, column_id) =
+        table_navigation_target(row_id, column_id, navigation, row_delta, column_delta)?;
+    Some(table_cell_select_intent(
+        table,
+        row_id.as_deref(),
+        &column_id,
+    ))
+}
+
+fn table_navigation_target(
+    row_id: Option<&str>,
+    column_id: &str,
+    navigation: &TableNavigation,
+    row_delta: isize,
+    column_delta: isize,
+) -> Option<(Option<String>, String)> {
+    let column_index = navigation
+        .columns
+        .iter()
+        .position(|candidate| candidate == column_id)?;
+    let row_count = navigation.rows.len() + usize::from(navigation.totals_row_present);
+    if row_count == 0 || navigation.columns.is_empty() {
+        return None;
+    }
+    let row_index = match row_id {
+        Some(row_id) => navigation
+            .rows
+            .iter()
+            .position(|candidate| candidate == row_id)?,
+        None => {
+            if !navigation.totals_row_present {
+                return None;
+            }
+            navigation.rows.len()
+        }
+    };
+    let next_row = clamp_navigation_index(row_index, row_delta, row_count);
+    let next_column = clamp_navigation_index(column_index, column_delta, navigation.columns.len());
+    Some((
+        navigation.rows.get(next_row).cloned(),
+        navigation.columns[next_column].clone(),
+    ))
+}
+
+fn clamp_navigation_index(current: usize, delta: isize, len: usize) -> usize {
+    current
+        .saturating_add_signed(delta)
+        .min(len.saturating_sub(1))
 }
 
 fn table_cell_select_intent(table: &str, row_id: Option<&str>, column_id: &str) -> WorkspaceIntent {
@@ -1078,6 +1210,46 @@ mod tests {
                 row_id: None,
                 column_id: "col:amount".to_string(),
             }
+        );
+    }
+
+    #[test]
+    fn value_board_table_keyboard_navigation_uses_projected_table_shape() {
+        let navigation = TableNavigation {
+            rows: vec![
+                "row:west".to_string(),
+                "row:east".to_string(),
+                "row:north".to_string(),
+            ],
+            columns: vec![
+                "col:region".to_string(),
+                "col:amount".to_string(),
+                "col:tax".to_string(),
+            ],
+            totals_row_present: true,
+        };
+
+        assert_eq!(
+            table_navigation_target(Some("row:west"), "col:region", &navigation, 0, 1),
+            Some((Some("row:west".to_string()), "col:amount".to_string()))
+        );
+        assert_eq!(
+            table_navigation_target(Some("row:north"), "col:amount", &navigation, 1, 0),
+            Some((None, "col:amount".to_string()))
+        );
+        assert_eq!(
+            table_navigation_target(None, "col:amount", &navigation, -1, 1),
+            Some((Some("row:north".to_string()), "col:tax".to_string()))
+        );
+        assert_eq!(
+            table_keyboard_navigation_intent(
+                "SalesTable",
+                Some("row:east"),
+                "col:amount",
+                &navigation,
+                "Escape",
+            ),
+            None
         );
     }
 
