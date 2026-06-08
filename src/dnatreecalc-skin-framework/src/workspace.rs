@@ -77,6 +77,18 @@ impl WorkspaceState {
     }
 
     #[must_use]
+    pub fn active_selection_detail(
+        &self,
+        selection: &SelectionState,
+    ) -> Option<ActiveSelectionDetailProjection> {
+        if let Some(table_cell) = self.active_table_cell_detail(selection) {
+            return Some(ActiveSelectionDetailProjection::TableCell(table_cell));
+        }
+        self.active_node_detail(selection)
+            .map(ActiveSelectionDetailProjection::Node)
+    }
+
+    #[must_use]
     pub fn active_table_cell_detail(
         &self,
         selection: &SelectionState,
@@ -140,6 +152,12 @@ pub struct ActiveNodeDetailProjection {
     pub calc_state: Option<NodeCalcStateProjection>,
     pub outgoing_references: Vec<ReferenceResolutionProjection>,
     pub incoming_reference_handles: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ActiveSelectionDetailProjection {
+    Node(ActiveNodeDetailProjection),
+    TableCell(ActiveTableCellDetailProjection),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

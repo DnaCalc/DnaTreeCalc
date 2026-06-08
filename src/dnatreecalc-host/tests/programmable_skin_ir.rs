@@ -1,11 +1,11 @@
 mod support;
 
 use dnatreecalc_skin_framework::{
-    CalcRunStateProjection, NodeContentKind, NodeId, NodeValueProjection,
-    ReferenceTargetProjection, RuntimeEffectFamilyProjection, RuntimeOverlayKindProjection,
-    TableCellRegionProjection, TableColumnBodyProjection, TableDependencyFactKindProjection,
-    TableDependencyFactStatusProjection, TreeReferenceCollectionFamilyProjection,
-    WorkspaceDeltaChange, WorkspaceRecalcMode,
+    ActiveSelectionDetailProjection, CalcRunStateProjection, NodeContentKind, NodeId,
+    NodeValueProjection, ReferenceTargetProjection, RuntimeEffectFamilyProjection,
+    RuntimeOverlayKindProjection, TableCellRegionProjection, TableColumnBodyProjection,
+    TableDependencyFactKindProjection, TableDependencyFactStatusProjection,
+    TreeReferenceCollectionFamilyProjection, WorkspaceDeltaChange, WorkspaceRecalcMode,
 };
 
 use support::programmable::{Harness, revision_fingerprint};
@@ -768,6 +768,47 @@ fn programmable_skin_reads_active_node_detail_from_workspace_and_selection() {
     skin.select(Some("Root.A"));
     let detail = skin.active_detail().expect("A has active detail");
     assert!(detail.incoming_reference_handles.contains(&outgoing_handle));
+}
+
+#[test]
+fn programmable_skin_reads_unified_active_selection_detail() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    skin.add_node(Some("Root"), "A", "3");
+
+    skin.select(None);
+    assert!(skin.active_selection_detail().is_none());
+
+    skin.select(Some("Root.A"));
+    let Some(ActiveSelectionDetailProjection::Node(node_detail)) = skin.active_selection_detail()
+    else {
+        panic!("node selection should project active node detail");
+    };
+    assert_eq!(node_detail.node, NodeId::new("Root.A"));
+    assert_eq!(node_detail.value.display_text(), "3");
+
+    let table_harness = Harness::from_repo_fixture("tables");
+    let table_skin = table_harness.driver.clone();
+    table_skin.recalc();
+    table_skin.select_table_cell("SalesTable", Some("row:east"), "col:tax");
+    let Some(ActiveSelectionDetailProjection::TableCell(cell_detail)) =
+        table_skin.active_selection_detail()
+    else {
+        panic!("table cell selection should project active table cell detail");
+    };
+    assert_eq!(cell_detail.table, NodeId::new("SalesTable"));
+    assert_eq!(cell_detail.row_id.as_deref(), Some("row:east"));
+    assert_eq!(cell_detail.column_id, "col:tax");
+    assert_eq!(cell_detail.value.display_text(), "2");
+    assert_eq!(
+        cell_detail
+            .formula
+            .as_ref()
+            .map(|formula| formula.formula_text.as_str()),
+        Some("=[@Amount] * 0.1")
+    );
 }
 
 #[test]
