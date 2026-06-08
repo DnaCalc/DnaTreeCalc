@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<!-- Mockup 09: FLOW — "the model that thinks out loud"
+     A modeless, keyboard-first calc surface. A FOCUSED slice of the model is laid out
+     left-to-right in a STABLE host-side topological order (a "sentence" of node-chips),
+     with backward dependency wires. Press F9 and a reading-head sweeps the sentence in the
+     engine's REAL last_run.evaluation_order, rolling each value that actually changed.
+
+     Skin IR basis (everything here is a read over the published WorkspaceState, or one of the
+     existing 12 WorkspaceIntents — nothing invents engine-owned truth):
+       - chip layout axis ....... host topo sort of node_order + dependencies.edges_by_owner (stable, always populated)
+       - reading-head order ..... last_run.evaluation_order (animation ONLY; never the layout axis)
+       - chip pip / tint ........ NodeView.calc_state (Clean/DirtyPending/Needed/Evaluating/VerifiedClean/CycleBlocked/...)
+       - chip value ............. NodeView.computed_value (Scalar verbatim; Array/Error -> tint, no interpolation)
+       - prose formula band ..... NodeView.content_text (name-based: "= Revenue - COGS", not "=B4-B5")
+       - backward wires ......... dependencies.edges_by_owner (precedents) ; ]/[ walk uses reverse_edges too
+       - E-explain stack ........ edges_by_owner[node] joined to nodes[].computed_value/content_text
+       - .* operand drill ....... descriptors_by_owner[].collection.members + membership_version
+       - red knot ............... dependencies.cycle_groups
+       - delta ledger ........... before/after computed_value diff gated on revision.value_epoch
+       - "/" jump / ]/[ / nav ... WorkspaceIntent::SelectNode (routed to selection signal; ZERO recalc)
+       - F9 ..................... WorkspaceIntent::Recalculate (the one synchronous, blocking act)
+       - 1-bit mode ............. SELECTED (bare keys = commands) vs EDITING (every key incl. / ? is verbatim text)
+     Reviewed IR additions this skin would request (each ships-v1-without): SelectNodes (multi-select),
+     ReplicateContent (fill-by-name, reorder-surviving), PreviewEdit (ghost what-if). -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>09 — FLOW (the model that thinks out loud)</title>
+<style>
+  :root {
+    /* Instrument-grade graphite canvas — a deliberate departure from the warm prototypes.
+       calc_state colors are the ONLY saturated thing on screen, so they read as signal. */
+    --bg:            #0E1116;
+    --surface:       #161B22;
+    --surface-2:     #1B2230;
+    --surface-3:     #222B3A;
+    --line:          #2A3340;
+    --line-strong:   #3A4658;
+    --text:          #E6EDF3;
+    --muted:         #8B97A7;
+    --fainter:       #5B6675;
+    /* calc_state signal palette */
+    --clean:         #6B7A8D;
+    --dirty:         #E0A33A;   /* DirtyPending / Needed */
+    --evaluating:    #39D0E6;   /* electric cyan */
+    --verified:      #4ADE80;   /* phosphor green */
+    --error:         #FF4D6D;   /* Error / CycleBlocked */
+    --head:          #FFFFFF;
+    --accent:        #39D0E6;
+    --accent-soft:   #15323a;
+    --radius:        10px;
+    --radius-sm:     6px;
+    --font-ui:  "Inter", "Segoe UI", system-ui, sans-serif;
+    --font-mono:"Cascadia Code", "JetBrains Mono", "Consolas", monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: var(--bg); color: var(--text);
+    font-family: var(--font-ui); font-size: 14px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .shell {
+    display: grid;
+    grid-template-rows: 40px 40px 1fr 30px;
+    height: 100vh;
+  }
+
+  /* ---- Row 1: context strip ---- */
+  .context {
+    display: flex; align-items: center; gap: 14px;
+    padding: 0 16px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--line);
+    font-size: 12.5px;
+  }
+  .context .file { color: var(--accent); font-weight: 600; font-family: var(--font-mono); }
+  .skin-pills { display: flex; gap: 3px; margin-left: 10px; }
+  .pill {
+    font-size: 11.5px; padding: 3px 11px; border-radius: 5px;
+    color: var(--muted); cursor: pointer;
+  }
+  .pill:hover { background: var(--surface-2); color: var(--text); }
+  .pill.active { background: var(--accent); color: #06222a; font-weight: 700; }
+  .spacer { flex: 1; }
+  .profile {
+    font-family: var(--font-mono); font-size: 11px;
+    background: var(--accent-soft); color: var(--accent);
+    padding: 2px 8px; border-radius: 4px;
+  }
+  .recalc-age { color: var(--muted); font-family: var(--font-mono); font-size: 11px; }
+
+  /* ---- Row 2: command + health bar ---- */
+  .cmdbar {
+    display: flex; align-items: center; gap: 14px;
+    padding: 0 16px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--line);
+    font-size: 12px;
+  }
+  .omnibox {
+    display: flex; align-items: center; gap: 8px;
+    font-family: var(--font-mono);
+    background: var(--surface-2);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-sm);
+    padding: 5px 10px; min-width: 320px;
+    color: var(--muted);
+  }
+  .omnibox .slash { color: var(--accent); font-weight: 700; }
+  .omnibox .ghosttype { color: var(--text); }
+  .grammar { display: flex; gap: 12px; color: var(--fainter); font-family: var(--font-mono); font-size: 11px; }
+  .grammar b { color: var(--muted); font-weight: 600; }
+  .health {
+    display: flex; align-items: center; gap: 7px;
+    margin-left: auto;
+    font-family: var(--font-mono); font-size: 11.5px; color: var(--dirty);
+  }
+  .health .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dirty); box-shadow: 0 0 8px var(--dirty); }
+
+  /* ---- Row 3: body = sentence lane + right rail ---- */
+  .body {
+    display: grid;
+    grid-template-columns: 1fr 232px;
+    min-height: 0;
+  }
+  .lane-wrap {
+    position: relative;
+    overflow: hidden;
+    background:
+      radial-gradient(1200px 380px at 42% 6%, #131A24 0%, var(--bg) 70%);
+    padding: 14px 8px;
+  }
+  .lane-label {
+    position: absolute; top: 12px; left: 18px;
+    font-family: var(--font-mono); font-size: 10.5px;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--fainter);
+  }
+  .lane {
+    position: relative;
+    width: 1180px; height: 100%;
+    margin: 0 auto;
+  }
+
+  /* dependency wires (SVG behind chips) */
+  .wires { position: absolute; top: 0; left: 0; width: 1180px; height: 360px; pointer-events: none; z-index: 1; }
+  .wire      { fill: none; stroke: var(--line-strong); stroke-width: 1.4; opacity: 0.55; }
+  .wire-glow { fill: none; stroke: var(--evaluating); stroke-width: 2.2; opacity: 0;
+               filter: drop-shadow(0 0 4px var(--evaluating)); }
+
+  /* reading-head light bar */
+  .head {
+    position: absolute; top: 150px; height: 196px; width: 2px;
+    background: linear-gradient(var(--head), rgba(255,255,255,0));
+    box-shadow: 0 0 14px 2px rgba(255,255,255,0.55);
+    z-index: 4; left: 40px;
+    animation: sweep 6.5s cubic-bezier(.45,0,.1,1) infinite;
+  }
+  .head::after {
+    content: "F9 · evaluation_order"; position: absolute; top: -16px; left: 6px;
+    font-family: var(--font-mono); font-size: 9.5px; color: var(--head); white-space: nowrap; opacity: .8;
+  }
+  @keyframes sweep {
+    0%   { left: 40px;  opacity: 0; }
+    6%   { opacity: 1; }
+    62%  { left: 1090px; opacity: 1; }
+    70%  { left: 1090px; opacity: 0; }
+    100% { left: 1090px; opacity: 0; }
+  }
+
+  /* node chips */
+  .chip {
+    position: absolute; z-index: 2;
+    background: var(--surface-2);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius);
+    padding: 9px 12px 10px;
+    box-shadow: 0 1px 0 rgba(0,0,0,.4);
+  }
+  .chip .nm {
+    font-size: 11px; color: var(--muted); font-weight: 600;
+    display: flex; align-items: center; gap: 6px; margin-bottom: 5px;
+    white-space: nowrap;
+  }
+  .chip .path-seg { color: var(--fainter); font-weight: 400; }
+  .chip .val {
+    font-family: var(--font-mono); font-size: 17px; font-weight: 600;
+    font-variant-numeric: tabular-nums; letter-spacing: -0.01em;
+  }
+  .chip .fanin {
+    position: absolute; bottom: 6px; right: 9px;
+    font-family: var(--font-mono); font-size: 9px; color: var(--fainter);
+  }
+  /* state pip */
+  .pip { position: absolute; top: 9px; right: 9px; width: 9px; height: 9px; border-radius: 50%; }
+  .s-clean     .pip { background: var(--clean); }
+  .s-dirty     .pip { background: var(--dirty);  box-shadow: 0 0 7px var(--dirty); }
+  .s-verified  .pip { background: var(--verified); box-shadow: 0 0 7px var(--verified); }
+  .s-error     .pip { background: var(--error); box-shadow: 0 0 9px var(--error); }
+  .s-clean     .val { color: var(--text); }
+  .s-dirty                { border-color: rgba(224,163,58,.5); }
+  .s-dirty     .val       { color: var(--dirty); }
+  .s-dirty                { animation: amberpulse 2.4s ease-in-out infinite; }
+  @keyframes amberpulse { 0%,100% { box-shadow: 0 0 0 0 rgba(224,163,58,0);} 50% { box-shadow: 0 0 0 4px rgba(224,163,58,.10);} }
+  .s-error     .val       { color: var(--error); }
+  .s-error                { border-color: rgba(255,77,109,.55); }
+
+  /* the enlarged focus chip + prose formula band + explain stack */
+  .chip.focus {
+    transform: scale(1.0);
+    border-color: var(--accent);
+    background: linear-gradient(var(--surface-3), var(--surface-2));
+    box-shadow: 0 0 0 1px var(--accent), 0 6px 26px rgba(57,208,230,.12);
+    padding-bottom: 11px;
+    width: 220px;
+  }
+  .chip.focus.editing { border-color: var(--verified); box-shadow: 0 0 0 1px var(--verified), 0 6px 26px rgba(74,222,128,.16); }
+  .chip.focus .val { font-size: 22px; }
+  .chip.focus .formula {
+    margin-top: 9px; padding-top: 9px; border-top: 1px solid var(--line);
+    font-family: var(--font-mono); font-size: 12.5px; color: var(--text);
+    white-space: nowrap;
+  }
+  .formula .eq { color: var(--accent); }
+  .formula .ref { color: #C6B6FF; }
+  .formula .op  { color: var(--muted); }
+
+  .explain {
+    position: absolute; z-index: 2;
+    left: 560px; top: 300px;
+    display: flex; gap: 10px; align-items: flex-start;
+  }
+  .explain .tag {
+    font-family: var(--font-mono); font-size: 9.5px; color: var(--fainter);
+    writing-mode: vertical-rl; transform: rotate(180deg); margin-top: 4px;
+  }
+  .mini {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius-sm); padding: 6px 10px; min-width: 118px; position: relative;
+  }
+  .mini .nm { font-size: 10px; color: var(--muted); margin-bottom: 3px; }
+  .mini .val { font-family: var(--font-mono); font-size: 13px; font-variant-numeric: tabular-nums; color: var(--text); }
+  .mini .pip { width: 7px; height: 7px; top: 7px; right: 7px; }
+  .explain .more { align-self: center; color: var(--fainter); font-size: 11px; font-family: var(--font-mono); }
+
+  /* wire-ignite choreography keyed to the head's x position */
+  #g1 { animation: ignite 6.5s linear infinite; animation-delay: 0.55s; }
+  #g2 { animation: ignite 6.5s linear infinite; animation-delay: 1.65s; }
+  #g3 { animation: ignite 6.5s linear infinite; animation-delay: 1.85s; }
+  #g4 { animation: ignite 6.5s linear infinite; animation-delay: 2.95s; }
+  #g5 { animation: ignite 6.5s linear infinite; animation-delay: 3.35s; }
+  @keyframes ignite { 0%,100% { opacity: 0; } 3% { opacity: .95; } 16% { opacity: 0; } }
+
+  /* value "just recomputed" pulse + pip resolve, staggered to match the head */
+  .roll { animation: rollpulse 6.5s ease-out infinite; }
+  #r-rev  { animation-delay: 1.55s; }
+  #r-cogs { animation-delay: 1.75s; }
+  #r-marg { animation-delay: 2.85s; }
+  #r-q2   { animation-delay: 3.45s; }
+  #r-fy   { animation-delay: 3.95s; }
+  @keyframes rollpulse {
+    0%, 100% { color: inherit; text-shadow: none; }
+    2%  { transform: translateY(-2px); }
+    5%  { color: var(--verified); text-shadow: 0 0 12px rgba(74,222,128,.6); transform: translateY(0); }
+    22% { color: var(--text); text-shadow: none; }
+  }
+  /* the two downstream amber chips resolve to verified as the head passes them */
+  #chip-q2 { animation: resolve 6.5s steps(1,end) infinite; animation-delay: 3.45s; }
+  #chip-fy { animation: resolve 6.5s steps(1,end) infinite; animation-delay: 3.95s; }
+  @keyframes resolve {
+    0% { border-color: rgba(224,163,58,.5); }
+    1% { border-color: var(--line-strong); }   /* drop amber once swept */
+    100% { border-color: var(--line-strong); }
+  }
+  #pip-q2, #pip-fy { animation: pipresolve 6.5s steps(1,end) infinite; }
+  #pip-q2 { animation-delay: 3.45s; }
+  #pip-fy { animation-delay: 3.95s; }
+  @keyframes pipresolve {
+    0%   { background: var(--dirty); box-shadow: 0 0 7px var(--dirty); }
+    1%   { background: var(--verified); box-shadow: 0 0 7px var(--verified); }
+    100% { background: var(--verified); box-shadow: 0 0 7px var(--verified); }
+  }
+
+  /* ---- right rail: scenarios + delta ledger ---- */
+  .rail {
+    background: var(--surface);
+    border-left: 1px solid var(--line);
+    padding: 12px 12px;
+    display: flex; flex-direction: column; gap: 14px;
+    overflow: auto;
+  }
+  .rail h4 {
+    margin: 0 0 7px; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--fainter); font-weight: 700;
+  }
+  .scn { display: flex; flex-direction: column; gap: 6px; }
+  .scn .chip2 {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius-sm);
+    padding: 7px 9px; cursor: pointer; font-size: 12px;
+  }
+  .scn .chip2 .key { font-family: var(--font-mono); color: var(--fainter); font-size: 11px; }
+  .scn .chip2 .lbl { color: var(--muted); }
+  .scn .chip2 .out { margin-left: auto; font-family: var(--font-mono); font-size: 11.5px; color: var(--text); font-variant-numeric: tabular-nums; }
+  .scn .chip2.active { border-color: var(--accent); background: var(--accent-soft); }
+  .scn .chip2.active .lbl { color: var(--accent); font-weight: 600; }
+
+  .ledger { display: flex; flex-direction: column; gap: 5px; font-size: 11.5px; }
+  .ledger .row { display: flex; align-items: center; gap: 8px; }
+  .ledger .row .n { color: var(--muted); font-family: var(--font-mono); flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ledger .row .d { font-family: var(--font-mono); color: var(--verified); font-variant-numeric: tabular-nums; }
+  .ledger .row .d.dn { color: var(--error); }
+  .ledger .bar { height: 4px; border-radius: 2px; background: var(--verified); opacity: .5; }
+
+  .legend { margin-top: auto; }
+  .legend .l { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+  .legend .l .dot { width: 8px; height: 8px; border-radius: 50%; }
+
+  /* ---- Row 4: status footer (with SELECTED/EDITING badge — Excel's Ready/Edit) ---- */
+  .status {
+    display: flex; align-items: center; gap: 14px;
+    padding: 0 14px;
+    background: var(--surface);
+    border-top: 1px solid var(--line);
+    font-family: var(--font-mono); font-size: 11px; color: var(--muted);
+  }
+  .mode-badge {
+    font-weight: 700; letter-spacing: 0.06em; padding: 2px 8px; border-radius: 4px;
+    background: var(--accent-soft); color: var(--accent); border: 1px solid rgba(57,208,230,.4);
+  }
+  .status .sel { color: var(--text); }
+  .status .cs { color: var(--verified); display: flex; align-items: center; gap: 5px; }
+  .status .cs::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--verified); }
+  .status kbd {
+    font-family: var(--font-mono); background: var(--bg); border: 1px solid var(--line-strong);
+    border-radius: 3px; padding: 1px 5px; font-size: 10px; color: var(--text);
+  }
+  .status .hints { margin-left: auto; display: flex; gap: 10px; }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- context strip -->
+  <div class="context">
+    <span class="file">forecast-2026.dnatree</span>
+    <div class="skin-pills">
+      <span class="pill">Editor</span>
+      <span class="pill">Outline</span>
+      <span class="pill">Cell</span>
+      <span class="pill">Across</span>
+      <span class="pill active">FLOW</span>
+    </div>
+    <span class="spacer"></span>
+    <span class="recalc-age">recalc 12ms ago · 41 nodes · 6 in slice</span>
+    <span class="profile">treecalc-v1</span>
+  </div>
+
+  <!-- command + health bar -->
+  <div class="cmdbar">
+    <div class="omnibox">
+      <span class="slash">/</span><span class="ghosttype">q1&middot;marg</span>
+      <span style="color:var(--fainter)">&rarr; Accounts.2026.Q1.Margin</span>
+    </div>
+    <div class="grammar">
+      <span><b>/</b> jump</span>
+      <span><b>] [</b> trace</span>
+      <span><b>E</b> explain</span>
+      <span><b>Space</b> health/menu</span>
+    </div>
+    <div class="health"><span class="dot"></span> 2 stale &middot; 0 cycles &middot; 0 errors</div>
+  </div>
+
+  <!-- body -->
+  <div class="body">
+
+    <div class="lane-wrap">
+      <div class="lane-label">The Sentence &mdash; focused slice in dependency (topo) order</div>
+      <div class="lane">
+
+        <!-- backward dependency wires (precedent -> dependent), arcing above the row -->
+        <svg class="wires" viewBox="0 0 1180 360">
+          <!-- GrowthRate(105,168) -> Q1.Revenue(280,150) -->
+          <path class="wire"      d="M105,168 C150,96 235,96 280,150"/>
+          <path class="wire-glow" id="g1" d="M105,168 C150,96 235,96 280,150"/>
+          <!-- Q1.Revenue(280,150) -> Q1.Margin(670,128) -->
+          <path class="wire"      d="M280,150 C380,40 570,40 670,128"/>
+          <path class="wire-glow" id="g2" d="M280,150 C380,40 570,40 670,128"/>
+          <!-- Q1.COGS(450,150) -> Q1.Margin(670,128) -->
+          <path class="wire"      d="M450,150 C520,70 600,70 670,128"/>
+          <path class="wire-glow" id="g3" d="M450,150 C520,70 600,70 670,128"/>
+          <!-- Q1.Margin(670,128) -> FY.Margin(1045,150) -->
+          <path class="wire"      d="M670,128 C800,36 945,36 1045,150"/>
+          <path class="wire-glow" id="g4" d="M670,128 C800,36 945,36 1045,150"/>
+          <!-- Q2.Margin(865,150) -> FY.Margin(1045,150) -->
+          <path class="wire"      d="M865,150 C930,92 985,92 1045,150"/>
+          <path class="wire-glow" id="g5" d="M865,150 C930,92 985,92 1045,150"/>
+        </svg>
+
+        <!-- reading-head -->
+        <div class="head"></div>
+
+        <!-- chips, absolutely placed to match wire endpoints; top row at y=150 -->
+        <div class="chip s-clean" style="left:40px; top:150px; width:130px;">
+          <div class="pip"></div>
+          <div class="nm">GrowthRate</div>
+          <div class="val">4.2%</div>
+          <div class="fanin">0&rarr;3</div>
+        </div>
+
+        <div class="chip s-clean" style="left:210px; top:150px; width:140px;">
+          <div class="pip"></div>
+          <div class="nm">Q1.Revenue</div>
+          <div class="val roll" id="r-rev">132,400.00</div>
+          <div class="fanin">1&rarr;2</div>
+        </div>
+
+        <div class="chip s-clean" style="left:380px; top:150px; width:140px;">
+          <div class="pip"></div>
+          <div class="nm">Q1.COGS</div>
+          <div class="val roll" id="r-cogs">22,959.60</div>
+          <div class="fanin">1&rarr;1</div>
+        </div>
+
+        <!-- focus chip -->
+        <div class="chip focus s-verified" style="left:560px; top:128px;">
+          <div class="pip"></div>
+          <div class="nm">Q1.Margin <span class="path-seg">&middot; Accounts.2026</span></div>
+          <div class="val roll" id="r-marg">109,440.40</div>
+          <div class="formula"><span class="eq">=</span> <span class="ref">Revenue</span> <span class="op">&minus;</span> <span class="ref">COGS</span></div>
+          <div class="fanin">2&rarr;1</div>
+        </div>
+
+        <!-- downstream chips: amber (DirtyPending) until the head sweeps them -->
+        <div class="chip s-dirty" id="chip-q2" style="left:790px; top:150px; width:150px;">
+          <div class="pip" id="pip-q2"></div>
+          <div class="nm">Q2.Margin</div>
+          <div class="val roll" id="r-q2">112,300.10</div>
+          <div class="fanin">2&rarr;1</div>
+        </div>
+
+        <div class="chip s-dirty" id="chip-fy" style="left:970px; top:150px; width:150px;">
+          <div class="pip" id="pip-fy"></div>
+          <div class="nm">FY.Margin</div>
+          <div class="val roll" id="r-fy">446,501.40</div>
+          <div class="fanin">4&rarr;0</div>
+        </div>
+
+        <!-- E-explain: focus chip's precedents unfolded in place (recursive, with live values) -->
+        <div class="explain">
+          <span class="tag">E&middot;explain</span>
+          <div class="mini s-clean">
+            <div class="pip"></div>
+            <div class="nm">Revenue</div>
+            <div class="val">132,400.00</div>
+          </div>
+          <div class="mini s-clean">
+            <div class="pip"></div>
+            <div class="nm">COGS</div>
+            <div class="val">22,959.60</div>
+          </div>
+          <span class="more">&hellip; press <b>E</b> again to recurse</span>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- right rail -->
+    <div class="rail">
+      <div>
+        <h4>Scenarios &middot; 1&ndash;9</h4>
+        <div class="scn">
+          <div class="chip2 active"><span class="key">1</span><span class="lbl">Base</span><span class="out">446,501</span></div>
+          <div class="chip2"><span class="key">2</span><span class="lbl">Downside</span><span class="out">392,110</span></div>
+          <div class="chip2"><span class="key">3</span><span class="lbl">Upside</span><span class="out">503,840</span></div>
+          <div class="chip2"><span class="key">+</span><span class="lbl">snapshot&hellip;</span><span class="out">&nbsp;</span></div>
+        </div>
+      </div>
+
+      <div>
+        <h4>Delta ledger &middot; since last F9</h4>
+        <div class="ledger">
+          <div class="row"><span class="n">Q2.Margin</span><span class="d">+5,211</span></div>
+          <div class="bar" style="width:74%"></div>
+          <div class="row"><span class="n">FY.Margin</span><span class="d">+1,240</span></div>
+          <div class="bar" style="width:32%"></div>
+          <div class="row"><span class="n">Q3.Margin</span><span class="d dn">&minus;820</span></div>
+          <div class="bar" style="width:18%; background:var(--error)"></div>
+        </div>
+      </div>
+
+      <div class="legend">
+        <h4>calc_state</h4>
+        <div class="l"><span class="dot" style="background:var(--clean)"></span>Clean</div>
+        <div class="l"><span class="dot" style="background:var(--dirty)"></span>DirtyPending / Needed</div>
+        <div class="l"><span class="dot" style="background:var(--evaluating)"></span>Evaluating</div>
+        <div class="l"><span class="dot" style="background:var(--verified)"></span>VerifiedClean</div>
+        <div class="l"><span class="dot" style="background:var(--error)"></span>Error / CycleBlocked</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- status footer: the 1-bit mode is always visible (Excel's Ready/Edit) -->
+  <div class="status">
+    <span class="mode-badge">SELECTED</span>
+    <span class="sel">Accounts.2026.Q1.Margin</span>
+    <span class="cs">VerifiedClean</span>
+    <span>109,440.40</span>
+    <span class="hints">
+      <span><kbd>F9</kbd> recalc</span>
+      <span><kbd>]</kbd><kbd>[</kbd> trace</span>
+      <span><kbd>/</kbd> jump</span>
+      <span><kbd>E</kbd> explain</span>
+      <span><kbd>Space</kbd> menu</span>
+      <span><kbd>type</kbd> edit</span>
+    </span>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,511 @@
+{
+  "summary": "Design a blow-away keyboard-first TreeCalc skin: 6 concepts -> judge panel -> synthesize winner -> adversarial critique -> finalize",
+  "agentCount": 29,
+  "logs": [],
+  "result": {
+    "design": {
+      "skin_name": "FLOW — the model that thinks out loud",
+      "tagline": "Arrow to a number, press F9, and watch your model think — laid out in dependency order, animated in the exact order the engine actually solved it.",
+      "elevator_pitch": "FLOW is a modeless, keyboard-first calc surface that lays a FOCUSED slice of your model out as a left-to-right \"sentence\" in stable dependency (topo) order — so causality becomes one legible reading motion you can arrow through. You arrow to a node and just type to edit it (no modes, no \"press i\"); you hit F9 and a reading-head sweeps the sentence in the engine's REAL last_run.evaluation_order, rolling each value that actually changed to its new number; you press ] / [ to walk dependents and precedents as accumulating motions instead of click-drawn arrows that vanish; you type \"/\" to fuzzy-jump to any node by its dotted path, and a non-content health chord (Space-leader, Ctrl+/) lights up everything stale, circular, or broken. Every one of those moments ships on TODAY's IR + the existing 12 intents with zero engine changes and zero invented values. Then three tight, reviewed IR additions (SelectNodes, ReplicateContent, PreviewEdit) upgrade FLOW from \"watch the model think\" to \"bend it\": fill one name-relative rule across a named set that survives reorder, and peek a what-if rippling through the sentence as ghost values without committing or polluting history. It is Excel's F9 + Trace Precedents + Name Box + Evaluate Formula, fused into one alive, precise, zippy reading surface — and it shows you the one thing Excel never has: your model in the act of computing, in the order it computed.",
+      "mental_model_borrowed": "Reading a sentence left-to-right with a karaoke \"now-playing\" head, fused with the Excel power user's three deepest reflexes — F9 to recalc, Ctrl+[ / Ctrl+] to trace precedents/dependents, the Name Box / Ctrl+G to jump — except the trace IS the permanent layout, the recalc is visible theatre played in the engine's true evaluation_order, and the Name Box is a fuzzy command bar. Crucially MODELESS like Excel itself: arrow to a node and start typing and it edits, exactly as a selected cell does. The ONLY mode is the 1-bit Excel-native distinction every spreadsheet has: a chip is either selected (bare keys are commands) or mid-edit (every key, including / and ?, is verbatim formula text). No Vim normal/insert/visual; no 'press i first'.",
+      "grafted_from": [
+        "SENTENCE (spine + headline wow): dependency order as the primary visual axis (re-grounded on a stable host-side topo sort, NOT the volatile per-run evaluation_order); F9 reading-head sweep framed HONESTLY as a host-side replay over before/after deltas in the engine's real evaluation_order; odometer value-roll; cycle-as-glowing-knot; phase_timings_micros as per-chip 'hot word' profiler badges; ]/[ as transitive accumulating dependency walk where the trace is the layout.",
+        "REPL (omnibox + health spine): path-as-Name-Box fuzzy bar over NodeId dotted paths (bare / is safe pre-edit, eaten as verbatim text mid-edit); health queries moved OFF bare ? onto a non-content chord so a division formula is never hijacked; ?ref/?dep blast-radius-by-name; the 'typing only moves a host-side caret, no intent until Enter' zippiness discipline.",
+        "Spotlight (focus + audit fix for SENTENCE's scale flaw): the oversized focused 'active cell' with recursive E-explain unfold of precedents in-place; operand enumeration of a .* aggregate via descriptors_by_owner.collection.members + membership_version; CycleBlocked cells naming their loop inline; value_epoch-keyed DOM memoization of unfolded subtrees.",
+        "MODELINE (buildable-today motions, de-modal-ized): Ctrl+Down remapped to 'jump to last sibling at this depth'; delete blast-radius preview from reverse_edges BEFORE the destructive intent; Space leader / which-key palette to defuse the keyboard-discovery cliff AND to host the health-query verbs off bare ?; the c-over-selection -> single ReplicateContent -> single Recalculate framing.",
+        "Scrubber (what-if + sensitivity, scoped tightly): PreviewEdit as a silent non-committing probe; baseline-tick + magnitude-aware delta badges on changed nodes diffed across value_epoch; scenario chips as typed SkinState NodeId->override maps flipped by number keys, each labeled by its live headline output; Esc-to-baseline risk-free loop.",
+        "Clay (structural fill, as the headline IR-addition payoff): Ctrl+Enter as the fill trigger (literal Excel muscle memory); ReplicateContent as the reorder-surviving name-relative rule; the drag-Q4-above-Q2 demo beat proving name-relative beats A1-relative; promote-to-template card persisted in SkinState."
+      ],
+      "the_first_90_seconds": [
+        "0s — FLOW mounts modeless. A horizontal ribbon of rounded node-CHIPS is laid out in a STABLE host-side topological order of the focused slice (computed from node_order + dependencies.edges_by_owner — always populated, even for a never-recalced workspace): Accounts.2026.Q1.Revenue -> Accounts.2026.Q1.COGS -> Accounts.2026.Q1.Margin -> Accounts.2026.FY.Margin. Each chip shows display_name on top, computed_value below (Scalar '412,300'), a calc_state pip in the corner. Faint wires arc backward from each chip to the chips that feed it (edges_by_owner). The selected chip, Accounts.2026.Q1.Margin, is enlarged dead-center with a prose band reading its content_text verbatim: '= Revenue - COGS'. It already reads like a sentence — and because the axis is topo, not the last run's dirty cone, it does not vanish or reshuffle on mount.",
+        "4s — Excel reflex #1: the user presses Down. Selection moves to Accounts.2026.Q1.COGS (next sibling under the same parent — Excel's 'down one row'); the centered chip swaps value/pip/prose. This is SelectNode(Some(id)) — dispatcher routes it purely to the selection signal, ZERO session call, ZERO recalc (verified dispatcher.rs:117-120), glass-smooth. Left/Right step along the topo axis; Up/Down stay within siblings, matching column-walk muscle memory.",
+        "9s — The user notices Accounts.2026.Q1.Margin is tinted amber with a soft pulse — calc_state = DirtyPending from an edit last session never recalced. Two chips downstream share the amber tint; the wires between them are dotted, not solid. The pending blast radius is VISIBLE before any action (reverse_edges closure of the dirty set, pure read).",
+        "14s — Muscle memory fires: F9. FLOW dispatches Recalculate (the one synchronous, main-thread-blocking act). The instant the republished state lands, the reading-head (a vertical light-bar) snaps to the leftmost chip present in last_run.evaluation_order and sweeps RIGHT strictly following that order. As it crosses each chip whose value ACTUALLY changed (strict diff vs the prior snapshot), the pip flips to VerifiedClean, the number does an odometer-roll to its new value, and the outgoing wire ignites. Clean/untouched chips are skipped — no animation lies. The user WATCHES causality move through the model in the engine's real solve order. (Honest: this is a host-side replay over already-published evaluation_order + before/after deltas, not a faked live engine mirror; on a large model the head starts on the first animation frame AFTER the recalc+reproject freeze returns.)",
+        "22s — The user wants to understand Margin. They press ] on Accounts.2026.Q1.COGS: every chip that DEPENDS on COGS lifts and brightens (reverse_edges), everything else dims to 30%. [ does the inverse (edges_by_owner precedents glow). Repeated presses walk one transitive hop further, accumulating a lit subgraph that STAYS on screen; Esc clears. They walk the dependency graph with the same keys Excel traces with — but the structure persists instead of vanishing on click-away. Pure reads; cursor moves via SelectNode (no recalc).",
+        "30s — They press '/' (safe: no edit buffer is open) and type 'q1marg'. A fuzzy omnibox over every NodeId dotted path resolves to Accounts.2026.Q1.Margin and centers it on Enter (SelectNode). It is the Name Box, but fuzzy over hierarchical paths; is_meta nodes excluded (constraint 8).",
+        "38s — They press the health chord (Space then d, or Ctrl+/) — NOT a bare '?', which is reserved for formula text. Every node whose calc_state is DirtyPending/Needed lights up; the bar reads '3 stale'. Space-c (cycle) — nothing (clean model); Space-e (err) — nothing. One-chord whole-model health, pure read, zero intents (calc_state + cycle_groups + computed_value::Error). Formula Auditing reframed as search, on keys that can never collide with a formula.",
+        "48s — Back on Margin they just START TYPING. The first printable char opens the inline prose editor pre-filled with content_text and flips the chip into EDIT state. They type '= Revenue / COGS' — and the '/' is eaten as a division operator, VERBATIM, because an edit buffer is open (exactly as a mid-edit Excel cell eats '/' as division, not as a command). They correct to '= Revenue - COGS - Tax'. Enter dispatches EditContent and advances selection to the next SIBLING (Excel's down-one-row), not a topological teleport; the chip greys to DirtyPending and the downstream wave goes amber. They press F9 and the reading-head replays the recompute in eval-order. Under 60s: navigated, audited health, walked the graph, edited a division-bearing formula safely, and watched the whole thing recompute — no mouse, no mode beyond selected-vs-editing."
+      ],
+      "signature_magic_moments": [
+        {
+          "name": "The model thinks out loud (F9 reading-head sweep)",
+          "trigger": "F9 (or Ctrl+Enter, the host recalc key)",
+          "what_happens": "Dispatch Recalculate. On the freshly republished state, animate a reading-head sweeping ONLY the chips present in last_run.evaluation_order, in that exact order; at each node whose value/calc_state ACTUALLY changed (strict diff vs prior snapshot, gated on value_epoch), flip the pip to VerifiedClean and odometer-roll computed_value to its new Scalar; ignite each outgoing wire as the head passes. Unchanged/Clean chips skipped — no animation lies. If evaluation_order is empty (clean load) the sweep is suppressed and chips simply show their published values. Sweep ends green (run_state Published/VerifiedClean) or halts at a red Rejected/CycleBlocked knot.",
+          "ir_basis": "WRITE Recalculate. READ last_run.evaluation_order (animation ordering ONLY — never the layout axis), per-node calc_state, computed_value (Scalar rendered verbatim per constraint 4; Array/Error fall back to state-tint with NO numeric interpolation), last_run.run_state, revision.value_epoch to gate the diff to once per publish. The chip LAYOUT is a separate stable topo sort (see surfaces).",
+          "why_it_beats_excel": "Excel's F9 is a black box: numbers blink and you trust them. FLOW shows the topological order the engine actually used and rolls each changed value in causal sequence — recalc becomes legible, debuggable theatre. No grid can do this."
+        },
+        {
+          "name": "Walk the dependency graph as a motion",
+          "trigger": "] (dependents) / [ (precedents) on the selected chip; repeated press = one transitive hop further",
+          "what_happens": "] brings forward all dependents of the selection (reverse_edges) and dims non-members; [ brings forward precedents (edges_by_owner); the lit subgraph accumulates across presses and stays on screen; Esc clears. Selection moves host-side via SelectNode — zero recalc. incoming_count/outgoing_count badge each chip's fan-in/out.",
+          "ir_basis": "READ dependencies.reverse_edges, dependencies.edges_by_owner, helpers incoming_count/outgoing_count. WRITE SelectNode(Some(id)) for the cursor. Pure host-side CSS over existing edge maps.",
+          "why_it_beats_excel": "Excel's Trace Precedents draws blue arrows you must manually clear and that vanish when you click away. Here the trace IS the permanent layout and the walk is keyboard-native and transitive — you traverse the graph, you don't decorate it."
+        },
+        {
+          "name": "Blast-radius before you break it",
+          "trigger": "Delete key on selection (preview), or staging edits in manual-batch mode (Space-m)",
+          "what_happens": "Before committing DeleteNode, FLOW lights every chip that will break (reverse_edges closure of the doomed set) in red-outline and shows 'this breaks 7 formulas' — you see the impact set BEFORE the #REF!, not after. In manual-batch mode, each EditContentDeferred paints its DirtyPending downstream closure amber so the pending blast radius GROWS visibly as you stage edits, before paying one recalc.",
+          "ir_basis": "READ dependencies.reverse_edges + per-node calc_state (DirtyPending). WRITE DeleteNode (existing) / EditContentDeferred (existing) + shared recalc_mode=Manual + manual_recalc_pending. Recalculate commits the staged wave once.",
+          "why_it_beats_excel": "Excel deletes silently and shows #REF! AFTER the damage; manual-calc mode merely stops recalc. FLOW turns the silent dirty-marking into a quantified, pre-commit 'what does this touch?' preview — the core analyst question answered before you pay for it."
+        },
+        {
+          "name": "Path-as-Name-Box + model-health search",
+          "trigger": "'/' opens fuzzy path omnibox (only when NO edit buffer is open); health lenses live on the Space-leader palette / Ctrl+/ chord — NEVER bare '?'",
+          "what_happens": "'/' fuzzy-matches every NodeId dotted path and centers the chosen chip on Enter (SelectNode). The health palette: dirty lights DirtyPending|Needed, cycle lights any node in cycle_groups, err lights computed_value::Error, ref <name> lights every chip whose content_text mentions a name PLUS its downstream reverse_edges closure (works on names not yet defined — text match), dep <path> lights the downstream closure; each with a live count, rest dimmed. All host-side reads; no intent fires until you act on a result.",
+          "ir_basis": "READ node_order/nodes keys (NodeId = stable dotted path), calc_state, cycle_groups, computed_value::Error, content_text, reverse_edges/edges_by_owner. WRITE only SelectNode on commit (never recalcs). is_meta excluded (constraint 8). Health verbs bound to non-content keys so they can NEVER hijack a '?'-bearing string literal or IFERROR message.",
+          "why_it_beats_excel": "Excel's Name Box only knows named ranges and Formula Auditing is a clunky ribbon mode. Here EVERY node is fuzzy-addressable by path, and 'show me everything broken/stale/circular' is one chord over engine truth — without ever risking your live formula text."
+        },
+        {
+          "name": "Recursive explain: the number derives itself",
+          "trigger": "E on the centered chip (only when not editing) — Excel Trace Precedents + Evaluate Formula, fused & recursive",
+          "what_happens": "The centered chip's direct precedents unfold beneath it as mini-chips, each with its own live value, pip, and prose formula (NOT a navigation — the chip stays put). E on a child recurses one level; Backspace collapses the deepest. For a SUM over a .* collection, instead of one child it enumerates the collection's actual members with a membership_version stamp — you see exactly what the SUM summed.",
+          "ir_basis": "READ edges_by_owner[node] (precedents) joined to nodes[id].computed_value/content_text/calc_state; for aggregates dependencies.descriptors_by_owner[node].collection{members, membership_version, order_version}; unfold set in SkinState, memoized on (NodeId, value_epoch). Collection drill profile-gated to treecalc-v1 (constraint 5).",
+          "why_it_beats_excel": "Excel's Evaluate Formula steps opaquely and never enumerates what a SUM actually summed. Here the derivation grows under the answer in plain names, N levels deep, and an aggregate shows its live operands WITH a version stamp so you watch membership change on reorder."
+        },
+        {
+          "name": "Fill one rule across a named set that survives reorder",
+          "trigger": "Multi-select a run of sibling chips (Shift+arrows / 'c' for children), type ONE formula, Ctrl+Enter",
+          "what_happens": "Author '= Revenue - COGS' once over the selected Margins; FLOW dispatches ONE ReplicateContent{source, targets} (not N text edits, so ONE republish not N). OxCalc rebinds Revenue/COGS by lexical walk-up inside EACH target's own quarter. Then drag Q4 above Q2 (MoveNode): the republished state shows Q4.Margin's content_text STILL '= Revenue - COGS', re-threaded to Q4's own scope. The rule is name-relative, not A1-relative — reorder is free. Promote-to-template ('T') persists the (source, target-set) rule in SkinState as a re-grabbable card.",
+          "ir_basis": "NEEDS: SelectNodes{nodes,anchor} + ReplicateContent{source:NodeId, targets:Vec<NodeId>}. Skin composes RAW text only (constraint 1); engine does all rebind. Re-thread verified post-hoc by reading content_text + descriptors_by_owner[].requires_rebind_on_structural_change + invalidated_nodes[].requires_rebind. v1 ships WITHOUT this (single-select edit works today).",
+          "why_it_beats_excel": "Excel's Ctrl+D copies a FROZEN, position-relative formula that breaks on reorder. ReplicateContent installs ONE name-relative rule across a meaningful named set, edited in one place, that re-threads itself when you restructure — a structural power A1 grids cannot express."
+        },
+        {
+          "name": "Ghost what-if: peek without committing",
+          "trigger": "A dedicated what-if entry (Space-w-i or a candidate-preview toggle on the focus chip); Esc discards, Enter commits — NOT triggered by ordinary typing, so it never collides with normal edits",
+          "what_happens": "You enter a hypothetical ('- Tax') in a clearly-marked ghost editor; the centered chip AND its downstream reverse_edges closure show overlay 'ghost' values tinted as hypothetical — the reading-head can replay a SPECULATIVE sweep — without publishing. Esc throws it away (zero undo debt, zero history pollution); Enter promotes to a real EditContent. Each ghost shows its delta vs the live baseline (magnitude-aware badge).",
+          "ir_basis": "NEEDS: PreviewEdit{node,content} -> non-published CalcRunProjection + overlay values (engine has candidate-overlay substrate per IR). Honors constraint 4 (ghosts rendered explicitly as non-authoritative) and constraint 6 (no revision pollution — stays off the publish path). v1 ships WITHOUT this — commit-then-F9 is the fallback.",
+          "why_it_beats_excel": "Excel needs Scenario Manager or a duplicated tab; Goal Seek is a modal that commits. FLOW lets you ask a what-if for one keypress and forget it for another, watching the consequence ripple through the sentence in ghost — so you probe 10x more hypotheses."
+        }
+      ],
+      "full_keyboard_map": [
+        {
+          "keys": "Up / Down",
+          "action": "Move selection to prev/next SIBLING under the same parent (Excel 'up/down one row'); falls back to host Up/Down select at edges",
+          "ir": "WRITE SelectNode(Some(id)); READ parent/children",
+          "excel_origin": "Arrow-key cell navigation (down one row)",
+          "mode": "selected"
+        },
+        {
+          "keys": "Left / Right",
+          "action": "Move selection to prev/next chip along the stable topo layout axis",
+          "ir": "WRITE SelectNode(Some(id)); READ node_order + edges_by_owner-derived topo slice",
+          "excel_origin": "Arrow-key cell navigation (across)",
+          "mode": "selected"
+        },
+        {
+          "keys": "Ctrl+Down / Ctrl+Up",
+          "action": "Jump to last / first sibling at this depth (structural boundary, not blank-cell edge)",
+          "ir": "READ parent.children (ordered) + depth; WRITE SelectNode",
+          "excel_origin": "Ctrl+Arrow (jump to data-region edge)",
+          "mode": "selected"
+        },
+        {
+          "keys": "(any printable char on a selected chip) / F2",
+          "action": "Open inline prose editor pre-filled with content_text and ENTER edit state; edit by NAME. While editing, ALL keys (incl. / ? ] [ E) are verbatim text — only Esc/Enter exit",
+          "ir": "READ content_text; WRITE EditContent / EditFormula on commit",
+          "excel_origin": "Type-to-replace / F2 edit-in-cell",
+          "mode": "selected -> editing"
+        },
+        {
+          "keys": "Enter (while editing)",
+          "action": "Commit edit (EditContent) and advance selection to the next SIBLING (Excel down-one-row), NOT a topological hop",
+          "ir": "WRITE EditContent + SelectNode",
+          "excel_origin": "Enter = commit & move down",
+          "mode": "editing"
+        },
+        {
+          "keys": "Ctrl+Enter / Tab (while editing)",
+          "action": "Commit and make the surprising topological-next hop OPT-IN (advance along eval/topo axis)",
+          "ir": "WRITE EditContent + SelectNode",
+          "excel_origin": "Ctrl+Enter = commit in place / Tab = move right",
+          "mode": "editing"
+        },
+        {
+          "keys": "Esc",
+          "action": "While editing: cancel edit. While selected: clear dependency highlight / discard what-if ghost / close omnibox",
+          "ir": "host-side; discards PreviewEdit overlay if present",
+          "excel_origin": "Esc = cancel cell edit",
+          "mode": "both"
+        },
+        {
+          "keys": "F9 / Ctrl+Enter (while selected, no buffer open)",
+          "action": "Recalculate + play the reading-head sweep along last_run.evaluation_order",
+          "ir": "WRITE Recalculate; READ last_run.evaluation_order + calc_state + computed_value + value_epoch",
+          "excel_origin": "F9 = recalculate workbook",
+          "mode": "selected"
+        },
+        {
+          "keys": "] / [",
+          "action": "Walk DEPENDENTS / PRECEDENTS one transitive hop further; accumulate lit subgraph (selected mode only)",
+          "ir": "READ reverse_edges / edges_by_owner; WRITE SelectNode",
+          "excel_origin": "Ctrl+] / Ctrl+[ = Trace Dependents / Precedents",
+          "mode": "selected"
+        },
+        {
+          "keys": "E",
+          "action": "Explain: unfold selected chip's precedents in-place as mini-chips (recursive); aggregates enumerate collection members (selected mode only)",
+          "ir": "READ edges_by_owner + descriptors_by_owner.collection.members + computed_value; unfold set in SkinState",
+          "excel_origin": "Trace Precedents + Evaluate Formula",
+          "mode": "selected"
+        },
+        {
+          "keys": "Backspace (while selected)",
+          "action": "Collapse the deepest unfolded explain level",
+          "ir": "SkinState only",
+          "excel_origin": "Remove Arrows / collapse trace",
+          "mode": "selected"
+        },
+        {
+          "keys": "/",
+          "action": "Open fuzzy path omnibox over NodeId dotted paths (ONLY when no edit buffer open); Enter jumps",
+          "ir": "READ node_order / nodes keys; WRITE SelectNode on commit",
+          "excel_origin": "Name Box / Ctrl+G Go To",
+          "mode": "selected -> omnibox"
+        },
+        {
+          "keys": "Space d | c | e (leader) or Ctrl+/",
+          "action": "Health query lens (dirty|cycle|err): light matching nodes, dim rest, live count. Bound to NON-content keys so a formula's '?' can never trigger it",
+          "ir": "READ calc_state, cycle_groups, computed_value::Error",
+          "excel_origin": "Find & Select / Go To Special / Formula Auditing",
+          "mode": "leader -> query"
+        },
+        {
+          "keys": "Space r <name> | Space p <path> (leader)",
+          "action": "Blast-radius-by-name: light definition sites + downstream closure (works on undefined names)",
+          "ir": "READ content_text + reverse_edges / edges_by_owner",
+          "excel_origin": "Trace Precedents/Dependents as search",
+          "mode": "leader -> query"
+        },
+        {
+          "keys": "h / l",
+          "action": "Collapse / expand subtree (outline disclosure), persisted cross-skin (selected mode)",
+          "ir": "READ parent/children + shared tree_collapsed:HashSet<NodeId>",
+          "excel_origin": "Group/Outline collapse",
+          "mode": "selected"
+        },
+        {
+          "keys": "Shift+Left / Shift+Right",
+          "action": "Extend selection to an adjacent run of chips (for fill)",
+          "ir": "NEEDS SelectNodes{nodes,anchor}",
+          "excel_origin": "Shift+Arrow = extend selection",
+          "mode": "selected"
+        },
+        {
+          "keys": "c / d / s",
+          "action": "Grow selection to children / descendants / like-named siblings",
+          "ir": "NEEDS SelectNodes; membership host-side from children/node_order",
+          "excel_origin": "(structural — closest is Ctrl+click add)",
+          "mode": "selected"
+        },
+        {
+          "keys": "Ctrl+Enter (over a multi-selection)",
+          "action": "Fill authored formula across selection as ONE name-relative rule + recalc",
+          "ir": "NEEDS ReplicateContent{source,targets}; WRITE Recalculate",
+          "excel_origin": "Ctrl+Enter = fill same formula to selection",
+          "mode": "selected"
+        },
+        {
+          "keys": "Ctrl+D",
+          "action": "Fill the first chip's formula across the selected run (alias of the above)",
+          "ir": "NEEDS ReplicateContent",
+          "excel_origin": "Ctrl+D = Fill Down",
+          "mode": "selected"
+        },
+        {
+          "keys": "o / O",
+          "action": "Add child after / sibling before selection",
+          "ir": "WRITE AddNode{parent,symbol,content}",
+          "excel_origin": "Insert row (Ctrl++)",
+          "mode": "selected"
+        },
+        {
+          "keys": "Delete",
+          "action": "Delete node — shows reverse_edges blast-radius preview before commit",
+          "ir": "READ reverse_edges; WRITE DeleteNode",
+          "excel_origin": "Delete / Ctrl+- (delete cells)",
+          "mode": "selected"
+        },
+        {
+          "keys": "Alt+Up / Alt+Down",
+          "action": "Reorder selected node among siblings (rule re-threads)",
+          "ir": "WRITE ReorderNode{node,new_index}",
+          "excel_origin": "(Excel can't reorder named cells)",
+          "mode": "selected"
+        },
+        {
+          "keys": "drag (or m then target)",
+          "action": "Reparent subtree; name-relative refs re-thread automatically",
+          "ir": "WRITE MoveNode{node,new_parent,new_index}; verify via requires_rebind",
+          "excel_origin": "Drag-move a range",
+          "mode": "selected"
+        },
+        {
+          "keys": "T",
+          "action": "Promote selection to a persistent fill-rule template card",
+          "ir": "NEEDS ReplicateContent; card persisted in SkinState",
+          "excel_origin": "Format Painter / Name Manager",
+          "mode": "selected"
+        },
+        {
+          "keys": "1-9",
+          "action": "Flip to scenario chip N (NodeId->override map); each labeled by live headline output",
+          "ir": "WRITE EditContentDeferred batch + Recalculate; overrides in SkinState",
+          "excel_origin": "Scenario Manager > Show",
+          "mode": "selected"
+        },
+        {
+          "keys": "Shift+S",
+          "action": "Snapshot current overrides as a new scenario chip",
+          "ir": "SkinState only",
+          "excel_origin": "Scenario Manager > Add",
+          "mode": "selected"
+        },
+        {
+          "keys": "Space (leader)",
+          "action": "Which-key palette: Space-m manual-batch, Space-r recalc-mode, Space-w workspace (+ Space-w-i what-if), Space-p pin, Space-d/c/e health — self-documents verbs AND keeps health off bare '?'",
+          "ir": "maps to Recalculate / SwitchWorkspace / NewWorkspace + shared recalc_mode/pinned/manual_recalc_pending; PreviewEdit when added",
+          "excel_origin": "Alt (ribbon key-tips)",
+          "mode": "leader"
+        },
+        {
+          "keys": "Ctrl+1..5",
+          "action": "Switch skin (host global keymap, preserved untouched)",
+          "ir": "host",
+          "excel_origin": "Sheet tabs / Ctrl+PgUp/PgDn",
+          "mode": "global"
+        }
+      ],
+      "surfaces": [
+        {
+          "name": "The Sentence (primary lane)",
+          "purpose": "A FOCUSED horizontal ribbon of node-chips laid out in a STABLE host-side topological order of the focused slice (topo sort of node_order + edges_by_owner — always populated, deterministic across runs, never empty at mount), with backward dependency wires. Focused, not the whole model: selected node + its eval-order neighborhood + its precedent/dependent chain, HARD-CAPPED to a fixed chip budget (<=40 visible) BEFORE layout and virtualized over node_order. This is where the F9 sweep (animated in last_run.evaluation_order over the on-screen intersection only), wire-ignition, and odometer-rolls happen.",
+          "layout": "Horizontal-primary scroll within the lane; the selected chip is enlarged (1.6x) and held near center; collapsed subtrees (tree_collapsed) render as a single summary chip and are not wire-routed; wires routed only between on-screen, non-collapsed chips."
+        },
+        {
+          "name": "Focus chip + explain stack",
+          "purpose": "The enlarged centered chip showing display_name, big computed_value, calc_state pip, and prose content_text band (editable in place; entering edit state flips the 1-bit buffer flag). E unfolds its precedents downward as a recursive mini-chip stack with live values — the self-explaining derivation.",
+          "layout": "Centered above/within the lane; explain children grow vertically beneath the focus chip; member caps + 'show N more' for wide fan-out; each unfolded subtree memoized on (NodeId, value_epoch)."
+        },
+        {
+          "name": "Command + health bar",
+          "purpose": "The always-available omnibox: '/' fuzzy path jump (pre-edit only). Health/blast-radius queries live on the Space-leader palette / Ctrl+/ (NOT bare '?'), so they can never be confused with formula text. Shows a live grammar chip ('/=jump  Space=health') and result counts. Typing here only moves a host-side caret — no intent until you act.",
+          "layout": "Thin bar pinned to the top edge; expands to a result list that filters/dims the Sentence."
+        },
+        {
+          "name": "Scenario rail + delta ledger",
+          "purpose": "Number-key scenario chips (1-9), each labeled by its live headline output, plus a baseline-tick + magnitude delta ledger summarizing 'what moved and by how much' after the last recalc or what-if (diffed across value_epoch).",
+          "layout": "Slim right rail; chips stacked; delta ledger lists changed nodes with +/- magnitude badges."
+        },
+        {
+          "name": "Which-key footer + state indicator",
+          "purpose": "A self-documenting modeline showing current selection path, calc_state, value, the active buffer state (SELECTED vs EDITING — making the 1-bit mode legible the way Excel's status bar shows 'Edit'/'Ready'), and — on Space — the leader palette. Defuses the keyboard-discovery cliff.",
+          "layout": "Single line pinned to the bottom edge; transient palette overlay on Space; a small SELECTED/EDITING badge mirrors Excel's Ready/Edit status."
+        }
+      ],
+      "read_ir_used": [
+        "node_order + dependencies.edges_by_owner — the STABLE topo layout axis of the Sentence (host-side topo sort, always populated, deterministic, never empty at mount)",
+        "last_run.evaluation_order — animation ordering ONLY for the F9 sweep (the volatile per-run evaluated subset), never the layout axis; empty -> suppress sweep, snap to published values",
+        "per-node calc_state (all 8 states) — chip tint, amber pending blast radius, which chips the head animates, CycleBlocked knots",
+        "computed_value (Scalar/Array/Error/Pending/Unevaluated) — chip value + odometer-roll target (Scalar verbatim; numeric-on-both-ends gate before any digit tween; Array/Error fall back to tint, no interpolation)",
+        "dependencies.edges_by_owner (precedents) — backward wires, [ walk, explain-unfold children, 'why this number' inputs",
+        "dependencies.reverse_edges (dependents) — ] walk, delete/edit blast-radius closure, ref/dep query downstream",
+        "dependencies.cycle_groups — red glowing-knot rendering + cycle health lens + explain of CycleBlocked loops",
+        "dependencies helpers incoming_count / outgoing_count — chip fan-in/fan-out badges",
+        "dependencies.descriptors_by_owner[].collection{members, membership_version, order_version} — operand enumeration of .* aggregates with version stamp",
+        "dependencies.descriptors_by_owner[].requires_rebind_on_structural_change — post-hoc verify a fill/move re-threaded",
+        "last_run.invalidated_nodes[{node,calc_state,requires_rebind,reasons}] — pre-recalc dirty set, 'why dirty' tooltips, rebind confirmation",
+        "last_run.phase_timings_micros — per-chip 'hot word' profiler badges",
+        "last_run.run_state (Published/VerifiedClean/Rejected) — whether the sweep ends green or shows rejection",
+        "content_text (raw, name-based) — the prose formula band and inline editor seed; references ARE node paths",
+        "nodes map (display_name, parent, children, depth, is_meta) — omnibox candidates, sibling nav, meta exclusion (constraint 8)",
+        "revision.value_epoch — gate the diff/animation to once per publish; key per-chip memos",
+        "revision.dependency_shape_snapshot_id — skip wire/layout recompute entirely when unchanged (value-only edits)",
+        "revision.structural_snapshot_id / publication_snapshot_id — coarse memo keys for layout vs value render passes",
+        "WorkspaceState.profile — gate treecalc-v1 navigators (.*/**/@-family) in the editor under strict-excel (constraint 5)"
+      ],
+      "write_ir_used": [
+        "SelectNode(Option<NodeId>) — all caret/cursor movement, omnibox jumps, dependency-walk landing (dispatcher routes purely to selection signal; never recalcs)",
+        "Recalculate — the F9 verb that triggers the reading-head sweep",
+        "EditContent{node,content} — commit a prose edit (raw name-based text, engine binds)",
+        "EditFormula{node,content} — F2 commit on a formula node",
+        "EditContentDeferred{node,content} — manual-batch staging so N edits collapse to ONE recalc; scenario flips",
+        "AddNode{parent,symbol,content} — o/O insert child/sibling",
+        "DeleteNode{node} — Delete (after blast-radius preview)",
+        "RenameNode{node,new_symbol} — rename",
+        "MoveNode{node,new_parent,new_index} — drag-reparent (engine re-threads name-relative refs)",
+        "ReorderNode{node,new_index} — Alt+Up/Down reorder (rule re-threads)",
+        "SwitchWorkspace{workspace_id} / NewWorkspace — leader commands"
+      ],
+      "ir_additions_required": [
+        {
+          "name": "Multi-select",
+          "rust_shape": "in SelectionState: `anchor: Option<NodeId>, selected: Vec<NodeId>`; new intent `WorkspaceIntent::SelectNodes { nodes: Vec<NodeId>, anchor: Option<NodeId> }` routed in dispatcher exactly like SelectNode — set the selection signal, return accepted, NO session call",
+          "justification": "Backs Shift+arrow run-selection and c/d/s structural set-growth — the prerequisite for any fill/bulk operation. The capability flag supports_multi_select ALREADY exists unbacked, so this is the sanctioned next step. Calc-free like SelectNode (dispatcher.rs:117-120 shows the zero-republish path it mirrors), so it never wakes the engine and stays zippy. Highest leverage of the three.",
+          "blast_radius": "minimal",
+          "v1_ships_without_it": true
+        },
+        {
+          "name": "ReplicateContent (fill-by-name)",
+          "rust_shape": "`WorkspaceIntent::ReplicateContent { source: NodeId, targets: Vec<NodeId> }` — one apply_workspace_edit with WorkspaceEditPublication::Recalculate, ONE republish for the whole set",
+          "justification": "The killer reframing of Ctrl+D: ONE name-relative rule across a named set, rebound per target by OxCalc by lexical role, surviving reorder. CANNOT be done skin-side because constraint 1 forbids the skin parsing/relative-shifting formula text — it MUST be an intent carrying ids so the engine rebinds. Folding the whole fill into a single republish (vs N EditContents = N full-struct republishes) is also the zippiness-correct shape given the monolithic RwSignal<WorkspaceState>.set() path. This is the headline payoff that turns FLOW from 'watch the model think' into 'bend it'. Pairs with multi-select.",
+          "blast_radius": "moderate",
+          "v1_ships_without_it": true
+        },
+        {
+          "name": "PreviewEdit (what-if peek)",
+          "rust_shape": "`WorkspaceIntent::PreviewEdit { node: NodeId, content: String }` returning a non-published `CalcRunProjection` + overlay values via the IntentReceipt (does NOT call workspace.set / does NOT republish / does NOT commit)",
+          "justification": "Powers the ghost what-if: type a hypothetical and watch it ripple through the Sentence as non-authoritative overlay values, Esc to discard. The IR notes the engine ALREADY has candidate-overlay substrate, so this exposes existing capability. Critically it keeps what-ifs OFF the publish path (no workspace.set, unlike every other edit in dispatcher.rs) — honoring constraint 4 (ghosts rendered explicitly as non-authoritative) AND constraint 6 (no garbage in the retained revision stream). v1 ships with commit-then-F9 as the honest fallback.",
+          "blast_radius": "moderate",
+          "v1_ships_without_it": true
+        }
+      ],
+      "skinstate_shape": "struct FlowSkinState {\n  // 1-bit Excel-native edit mode: is an inline edit buffer currently open on the focus chip?\n  // When true, ALL keystrokes (/, ?, ], [, E) are verbatim EditContent text; only Esc/Enter exit.\n  editing: Option<EditBuffer>,            // EditBuffer { node: NodeId, draft: String }\n  // explain-unfold: which nodes are expanded in the explain stack (memoized render on (NodeId,value_epoch))\n  unfolded: HashSet<NodeId>,\n  // baseline cache for delta badges + Esc-to-baseline (host snapshot of content_text/value scalar at interaction start)\n  baseline: HashMap<NodeId, (String /*content_text*/, String /*computed_value scalar text*/)>,\n  // scenario chips 1-9: each a named override map applied via EditContentDeferred batch + Recalculate\n  scenarios: Vec<ScenarioChip>,            // ScenarioChip { label: String, overrides: HashMap<NodeId, String> }\n  active_scenario: Option<usize>,\n  // persistent fill-rule template cards (Clay promote-to-template), re-grabbable across sessions\n  templates: Vec<FillRule>,                // FillRule { name: String, source: NodeId, targets: Vec<NodeId> }\n  // last dependency-walk frontier so ]/[ accumulation survives re-render; cleared on Esc\n  lit_subgraph: Vec<NodeId>,\n  // cached topo layout of the focused slice, invalidated only when dependency_shape_snapshot_id changes\n  layout_cache: Option<(String /*dependency_shape_snapshot_id*/, Vec<NodeId>)>,\n  // lane viewport anchor so the focused Sentence slice restores on remount\n  lane_anchor: Option<NodeId>,\n  // omnibox/query state is transient (not persisted): current_query, grammar_mode\n}",
+      "shared_state_usage": "tree_collapsed:HashSet<NodeId> — h/l collapse folds whole subtrees in the Sentence to single summary chips (also bounds the hairball at scale; folded subtrees are not wire-routed) and persists the fold across skin switches. recalc_mode(Auto|Manual) + manual_recalc_pending — Space-m enters manual-batch so EditContentDeferred edits stage with a growing amber blast radius and pay ONE Recalculate on F9; the footer shows pending state. pinned:Vec<NodeId> — Space-p pins reference chips (key drivers/outputs) so they stay visible in the lane regardless of focus, surviving across skins. workspace_ids + active_workspace_id — the leader palette's Space-w workspace switch reads/writes these; cross-workspace context shown in the footer. All mutated DIRECTLY (not via intent) per the cross-skin contract.",
+      "zippiness_design": [
+        "Decouple typing from the engine: omnibox fuzzy-match, the Space-leader/Ctrl+/ health & blast-radius queries, dependency-walk highlighting, and arrow navigation are ALL host-side reads over the last published WorkspaceState — they dispatch at most SelectNode/SelectNodes, which dispatcher.rs:117-120 routes purely to the selection signal with ZERO session call and ZERO republish. The passive engine never wakes while you explore.",
+        "ENGINEER the render cheapness — do NOT assume it: today the host publishes one monolithic RwSignal<WorkspaceState> via workspace.set(session.workspace_state()) (dispatcher.rs:270-275) and NO skin uses a keyed <For>. So S1/S2 must BUILD: (a) wrap workspace in derived Memos keyed on revision.value_epoch / dependency_shape_snapshot_id / publication_snapshot_id (all confirmed present in WorkspaceRevisionProjection); (b) render Sentence chips with a keyed leptos::For keyed by NodeId, each chip subscribing to a per-node Memo so only chips whose (content_text, computed_value, calc_state) changed re-render; (c) skip the wire/layout recompute entirely when dependency_shape_snapshot_id is unchanged, and skip the value-diff pass when value_epoch is unchanged.",
+        "The reading-head sweep is a host-side REPLAY over already-published last_run.evaluation_order + before/after computed_value deltas — NOT further engine calls. Theatre fully decoupled from engine cost; on a slow recalc the head starts on the first animation frame AFTER the single blocking republish returns.",
+        "Animate ONLY chips whose value/calc_state actually changed (strict diff vs prior snapshot) and only the on-screen intersection of evaluation_order — never animate unchanged nodes (would lie about constraint 4) and never route wires for off-screen/collapsed chips.",
+        "HARD-bound the draw regardless of model size: the focused slice is capped to a fixed chip budget (<=40 visible) BEFORE projection-driven layout, virtualized against node_order's stable draw order; collapsed subtrees (tree_collapsed) aren't routed at all. Concrete fix for SENTENCE's scale flaw — we never lay out 40k chips.",
+        "Collapse N edits into ONE republish: manual-batch (EditContentDeferred + Space-m) stages many edits for a single F9 republish; ReplicateContent fills a whole set in ONE intent (one republish, not N); scenario flips batch overrides into one EditContentDeferred wave + one Recalculate. This is the only lever a skin actually controls against the full-struct .set() cost.",
+        "Honest freeze UX: because Recalculate triggers recalc PLUS a full session.workspace_state() rebuild that calls the LINEAR node_id_for_tree_node reverse-scan once per edge/reverse-edge/cycle-member/collection-member (session.rs:517-527 — O(N*E) on the main thread BEFORE the signal fires), on a large tree F9 has a visible pre-sweep hang. FLOW shows a synchronous 'computing...' state on F9 and starts the sweep on the next animation frame after the signal lands. (Making node_id_for_tree_node an index lookup is a host-side fix worth a separate task; it removes the quadratic term independent of FLOW.)",
+        "Deep-path scaffolding caveat honored: we do NOT lead with multi-segment AddNode scaffolds (each is a full synchronous republish); structure creation is o/O single-node inserts, and the demo wow lives in nav/audit/recalc that cost zero or one republish.",
+        "PreviewEdit (when added) keeps what-ifs entirely OFF the publish path (no workspace.set) — probing never blocks the main thread with committed recalcs and never pollutes revisions."
+      ],
+      "visual_language": "A departure from the warm utilitarian prototypes toward something ALIVE, PRECISE, and instrument-grade — oscilloscope / synth-panel meets a code editor's minimap. Palette: near-black graphite canvas (#0E1116) with cool desaturated chips (#1B2230), so calc_state colors are the only saturated thing on screen and read as signal: DirtyPending amber (#E0A33A), Evaluating electric cyan pulse (#39D0E6), VerifiedClean phosphor green (#4ADE80), Error/CycleBlocked hot magenta-red (#FF4D6D), Clean muted slate. A subtle but CRITICAL legibility cue: the focus chip's border switches between a calm SELECTED outline and a bright EDITING outline (mirroring Excel's Ready/Edit status), so the 1-bit mode is always visible and the user always knows whether '/' will jump or divide. The reading-head is a single bright vertical light-bar (#FFFFFF at 90%) with a subtle motion-blur trail. Wires are thin 1px bezier arcs, dim graphite by default, igniting cyan-then-green as the head passes (CSS stroke-dashoffset animation, off the calc path). Typography: tabular-figures mono for all values (odometer-rolls align digit-for-digit) and a clean humanist sans for prose formula bands. Density: high but focused — the lane shows ~7-12 chips (hard-capped <=40), focus chip 1.6x. Motion: everything eases on 120-180ms cubic-bezier; odometer-roll is a brief vertical digit tween gated to values that parse as plain numerics on BOTH ends, labeled as a transition between two engine values (never a computed frame), hard-swap otherwise. Implementation today is the existing inline 'dtc-*' CSS string with hardcoded hex, structured as semantic classes (dtc-chip, dtc-chip--editing, dtc-pip--evaluating, dtc-wire--live, dtc-head, dtc-ghost) so a later design-token system can swap hex without touching markup. Feel: zippy, electric, quiet until the model moves — then it lights up like a circuit.",
+      "novel_analysis_workflows": [
+        "Watch topological causality: F9 plays the model in the engine's REAL evaluation_order (animation axis) while the stable topo layout (layout axis) holds steady — spot that a rollup gates a long tail or that one driver fans out across the sheet. Dependency dramaturgy invisible in Excel.",
+        "Whole-model health triage in one chord: Space-d / Space-c / Space-e (never bare '?') light every stale, circular, or broken node from engine truth (calc_state, cycle_groups, Error), replacing Excel's clunky Formula Auditing ribbon — and never colliding with formula text.",
+        "Blast-radius-by-name, including undefined names: Space-r COGS shows everything that consumes a concept before you've finished defining it — define-by-reference-first exploration with no Excel analog.",
+        "Pre-commit impact preview: stage edits in manual-batch and watch the amber DirtyPending downstream set grow via reverse_edges BEFORE paying one recalc; see exactly which formulas a Delete will break before the #REF!.",
+        "Operand enumeration of aggregates: drill a SUM-over-.* to its live members with a membership_version stamp and watch the operand set (and the number) change as you reorder — a structural power Excel cannot express.",
+        "Read a model as prose: because content_text is name-based and chips sit in topo order, a non-author reads 'Revenue, COGS, Margin = Revenue - COGS, FY.Margin = average of quarters' as English — audit at reading speed.",
+        "Performance triage by eye: phase_timings_micros badges turn the Sentence into a profiler — the 9ms clause glows hot, so you optimize the model the way you'd reread for the slow word.",
+        "(With ReplicateContent) author a metric ONCE across every quarter/region by lexical scope, then reorder or reparent and watch every reference re-thread — restructure fearlessly, verified post-hoc via requires_rebind.",
+        "(With PreviewEdit) continuous sensitivity sweep: nudge a driver and rank/brighten downstream chips by delta magnitude as ghosts, instantly separating load-bearing assumptions from inert ones — Excel's data tables are static and one-at-a-time."
+      ],
+      "build_plan": [
+        {
+          "slice": "S1 — The Sentence + modeless nav + render-cheapness foundation (first-touch foundation)",
+          "scope": "Render the focused STABLE-TOPO ribbon of chips (host topo sort of node_order + edges_by_owner) with backward dependency wires, HARD-CAPPED <=40 and virtualized. Keyed leptos::For by NodeId + per-node Memos + value_epoch/dependency_shape_snapshot_id-gated render passes (BUILT here, since no skin does this today). Up/Down=sibling, Left/Right=topo axis, Ctrl+Up/Down, h/l nav. 1-bit edit-state flag: printable-char/F2 opens editor, /-and-? go verbatim while editing, Esc/Enter exit; Enter advances to next SIBLING (Ctrl+Enter/Tab = topo hop opt-in). '/' fuzzy path omnibox (pre-edit only). Which-key footer with SELECTED/EDITING badge.",
+          "ir_deps": "TODAY only: node_order, NodeView fields, content_text, edges_by_owner, revision (value_epoch + snapshot ids), SelectNode/EditContent/EditFormula/AddNode/DeleteNode/RenameNode",
+          "demoable_wow": "Arrow to any node and just type to edit — including a division formula '=A/B' that stays a formula, never hijacked; fuzzy-jump by path; the model already reads like a sentence. Modeless except the one bit Excel itself has."
+        },
+        {
+          "slice": "S2 — F9 reading-head sweep + cycle knots (the headline wow)",
+          "scope": "Recalculate dispatch; host-side replay animation over last_run.evaluation_order (animation axis only) with strict before/after diff, numeric-gated odometer-roll, wire-ignition, pip transitions; empty-evaluation_order -> suppress sweep, snap to values; cycle_groups red knots; phase_timings_micros hot badges; synchronous 'computing...' state then sweep on next frame; value_epoch-gated memoization.",
+          "ir_deps": "TODAY only: Recalculate, last_run.evaluation_order, calc_state, computed_value, cycle_groups, phase_timings_micros, value_epoch",
+          "demoable_wow": "Press F9 and watch your model think — changed values roll to their new numbers in the engine's true solve order. The single most defensible Excel-can't moment, on a layout that doesn't reshuffle."
+        },
+        {
+          "slice": "S3 — Dependency walk + health queries + blast-radius (the analyst layer)",
+          "scope": "]/[ transitive accumulating precedent/dependent walk; Space-d/c/e + Space-r/p query lenses (off bare '?'); delete blast-radius preview; E recursive explain-unfold with .* operand enumeration; Space-m manual-batch staging with growing amber blast radius.",
+          "ir_deps": "TODAY only: reverse_edges, edges_by_owner, cycle_groups, calc_state, descriptors_by_owner.collection, EditContentDeferred + shared recalc_mode/manual_recalc_pending",
+          "demoable_wow": "Walk the dependency graph by keyboard; one-chord model-health search that never touches a formula's text; see what breaks before you delete it; numbers explain themselves N levels deep."
+        },
+        {
+          "slice": "S4 — Multi-select + ReplicateContent (the IR-addition payoff)",
+          "scope": "Wire SelectionState.anchor+selected + SelectNodes (dispatcher mirrors SelectNode); Shift+arrow / c/d/s set-growth; Ctrl+Enter/Ctrl+D fill via single ReplicateContent; promote-to-template ('T') in SkinState; the drag-Q4-above-Q2 reorder-survives demo; scenario chips 1-9.",
+          "ir_deps": "NEEDS: SelectNodes + ReplicateContent (both v1-ships-without)",
+          "demoable_wow": "Fill one name-relative rule across a named set, reorder the tree, and watch the rule re-thread itself — the structural power A1 fill-down cannot match, in ONE republish."
+        },
+        {
+          "slice": "S5 — PreviewEdit ghost what-if (the exploration unlock)",
+          "scope": "Wire PreviewEdit (off the publish path, no workspace.set); ghost overlay values on focus chip + downstream closure via a dedicated what-if entry (Space-w-i, NOT ordinary typing); speculative reading-head sweep; Esc-discard / Enter-commit; magnitude delta ledger; sensitivity brightening.",
+          "ir_deps": "NEEDS: PreviewEdit (v1-ships-without)",
+          "demoable_wow": "Type a hypothetical and watch it ripple through the Sentence as ghosts — ask a what-if for one keypress, forget it for another, zero undo debt, zero history pollution."
+        }
+      ],
+      "honest_limitations": [
+        "The F9 sweep is a host-side REPLAY over before/after deltas, not a live engine mirror — constraint 7's synchronous full-republish gives only before/after, no intermediate Evaluating states. We label it 'the order the engine used' (and use phase_timings_micros for real timing) so it never misleads, but a sophisticated user will realize per-step timing is choreography, not measurement.",
+        "Layout axis vs animation axis are deliberately DIFFERENT projections: the lane is laid out in a stable host-side topo sort (node_order + edges_by_owner), while the sweep animates in last_run.evaluation_order. This is the correct fix for the evaluation_order-as-layout defect (which would be empty at mount and reshuffle every run), but it means the visual left-to-right order is FLOW's topo choice, not literally 'the order the engine ran' for the static layout — only the animation is. We say so explicitly in copy.",
+        "Scale: even bounded to a <=40-chip focused slice with virtualization and tree_collapsed folding, you trade 'whole model at a glance' for 'legible focused slice'. The mitigation is the design, but it IS a constraint, not a free lunch.",
+        "Zippiness on the publish path is BUILT, not free: today's host uses one monolithic RwSignal<WorkspaceState>.set() (dispatcher.rs:270-275) with no keyed <For> in any skin, and session.workspace_state() rebuilds the whole projection calling the linear node_id_for_tree_node reverse-scan per edge/reverse-edge/cycle/collection member (session.rs:517-527) — effectively O(N*E) on the main thread before the signal fires. FLOW's memoization/keyed-For/virtualization are therefore S1/S2 deliverables, and on a large tree F9 still has a visible pre-sweep hang (recalc + that reprojection). Indexing node_id_for_tree_node is a host-side fix outside this skin that would remove the quadratic term.",
+        "The two boldest exploration powers (reorder-surviving fill, ghost what-if) live behind IR additions. v1 ships a genuinely strong observe/audit/edit shell on today's IR — the first-touch wow is fully there — but 'bend the model in ways Excel can't' (ReplicateContent + PreviewEdit) is reviewed-addition territory, honestly flagged v1-ships-without.",
+        "ReplicateContent's rebind-by-role semantics live entirely in OxCalc; until a reference_bindings pre-bind preview addition exists, a fill's correctness is verifiable only POST-HOC (read back content_text + invalidated_nodes.requires_rebind + descriptors requires_rebind_on_structural_change). For a financial modeler a silent mis-bind to a shadowed ancestor is a real trust risk — we surface what happened, not predictively. (reference_bindings deliberately kept OUT of the tight v1 addition set; it's the obvious next addition.)",
+        "computed_value.Scalar is raw debug text today, not a typed/formatted number — odometer-rolls and delta magnitudes are best-effort and gated to values that parse as plain numerics on both ends; formatted currency/%/dates won't roll cleanly until a format-resolver workset lands. We render Scalar verbatim and fall back to a state-tint (no interpolation) for Array/Error to never violate constraint 4.",
+        "Horizontal-primary scroll in the Sentence lane fights vertical-scroll muscle memory; mitigated by holding the focus chip near center and driving motion by keyboard (so you rarely scroll manually), but it is a departure a mouse-heavy user will feel.",
+        "Large single recalcs still block the WASM main thread — FLOW minimizes how OFTEN recalc fires (manual-batch, one-shot ReplicateContent, batched scenario flips) but cannot remove the freeze; very large workspaces need a future async engine, outside this skin's control."
+      ],
+      "name_rationale": "FLOW names the one thing the design makes visible that Excel never has: the model in the act of computing — values FLOWING downhill through the dependency graph, animated in the engine's real evaluation_order. It doubles as the visual metaphor (the reading-head sweep, igniting wires, left-to-right current) and the felt quality (zippy, fluid, modeless — the only mode is the 1-bit selected/editing distinction Excel itself has, so nothing interrupts the flow). 'The model that thinks out loud' captures the thesis: F9 stops being a black box and the model narrates its own computation. The word carries zero Vim/modal baggage (deliberately distancing from the rejected MODELINE) and reads as alive and precise rather than warm-utilitarian."
+    },
+    "critique_resolutions": [
+      {
+        "objection": "first-touch-skeptic: bare '/' (omnibox) and bare '?' (health) collide with the most-repeated act — typing a formula. The instant the analyst types an ordinary ratio '=Revenue/COGS' the '/' is ambiguous (division vs omnibox); '?' is legal in string literals/IFERROR. To make '/' safe mid-edit you MUST track an edit-buffer flag — i.e. a mode, the exact thing FLOW shamed MODELINE for, contradicting the 'no modes' claim. Compounding: Enter advancing in evaluation_order teleports the cursor to a structurally distant node instead of Excel's predictable down-one-row.",
+        "resolution": "Adopted the proposed fix in full. (1) Made the editor an explicit 1-bit 'is an edit buffer open?' state — the same selected-vs-editing distinction every spreadsheet has (Excel's Ready/Edit status), explicitly NOT a Vim normal/insert/visual mode and no 'press i'. While editing, ALL keystrokes including / ? ] [ E go verbatim to EditContent text; Esc/Enter are the only exits. So '=Revenue/COGS' stays a division formula. (2) Kept '/' for jump (safe pre-edit, the Name-Box reflex) but MOVED health/blast-radius queries OFF bare '?' onto non-content keys: the Space-leader palette (Space-d/c/e/r/p) and Ctrl+/. A formula's '?' can now never trigger a lens. (3) Re-mapped Enter-commit to advance to the next SIBLING (Excel down-one-row); the topological hop is opt-in on Ctrl+Enter/Tab. Added a SELECTED/EDITING footer badge + an editing border color so the user always sees which state they're in. Reframed name_rationale and mental_model_borrowed to own the 1-bit mode honestly rather than over-claiming 'no modes at all'.",
+        "changed_design": true
+      },
+      {
+        "objection": "ir-doctrine-skeptic: the Sentence is laid out 'strictly in last_run.evaluation_order' AND that same projection drives the sweep — incompatible. evaluation_order is the per-run evaluated subset (a dirty cone), can be EMPTY at mount, omits the Clean nodes the user arrows to, and reshuffles/shrinks every F9 — so it cannot be a stable layout axis. Secondary: odometer tweens host-invented intermediate frames, skating constraint 4.",
+        "resolution": "Adopted the re-grounding in full. (1) Layout axis is now a STABLE host-side topological sort of the focused slice computed from node_order (always present) + dependencies.edges_by_owner — deterministic, always populated, never empty at mount, never reshuffles per run; cached in SkinState.layout_cache keyed on dependency_shape_snapshot_id. (2) last_run.evaluation_order is DEMOTED to animation-only: it drives the F9 sweep ordering and which chips animate; when empty/partial we suppress the sweep and snap to published values, or sweep only the on-screen intersection. (3) Reframed the elevator pitch, tagline, first-90s 0s beat, and the F9 magic moment to 'laid out in dependency (topo) order, animated in the engine's real evaluation_order' — and added an explicit honest_limitation distinguishing the two axes. (4) Odometer nit: digit tween is now strictly gated to values that parse as plain numerics on BOTH ends and labeled as a transition between two engine values (never a computed frame), hard-swap otherwise — keeping constraint 4.",
+        "changed_design": true
+      },
+      {
+        "objection": "zippiness-skeptic: three load-bearing zippiness claims contradict the shipped host. (1) The headline 'chip rows memoize on (NodeId,value_epoch); only changed chips re-render' is NOT something the framework does — single RwSignal<WorkspaceState>.set() (dispatcher.rs:270-275) and zero keyed <For> in any skin; a republish re-runs every subscriber and rebuilds the whole chip DOM. (2) session.workspace_state() rebuilds the entire projection calling the linear node_id_for_tree_node reverse-scan (session.rs:517-527) per edge/reverse-edge/cycle/collection member — O(N*E) synchronously on the main thread BEFORE the signal fires; 'the single blocking act is F9' understates it. (3) The sweep can only start AFTER that freeze, so 'watch your model think' plays over a model that already finished thinking during a visible hang.",
+        "resolution": "Verified all three claims against the repo (dispatcher.rs:117-120 confirms SelectNode is republish-free; 270-275 confirms full-struct .set(); session.rs:517-527 confirms the linear reverse-scan invoked per edge/reverse-edge/cycle/collection member; grep confirms no keyed <For> in skins; workspace.rs:89-98 confirms value_epoch + structural/dependency_shape/publication snapshot ids exist). Adopted the fix: zippiness is now an EXPLICIT BUILT deliverable in S1/S2, not an assumed property. (a) Derive-don't-re-clone: wrap workspace in Memos keyed on value_epoch / dependency_shape_snapshot_id / publication_snapshot_id; skip wire/layout recompute when dependency_shape_snapshot_id unchanged, skip value-diff when value_epoch unchanged. (b) Keyed leptos::For by NodeId with per-node Memos so only changed chips re-render. (c) Hard-cap the draw to <=40 chips BEFORE layout, virtualized over node_order, wires only between on-screen non-collapsed chips, sweep only over the on-screen intersection of evaluation_order. (d) Honest freeze UX: synchronous 'computing...' state on F9, sweep starts next frame after the signal lands; added an honest_limitation naming the recalc + O(N*E) reprojection hang and flagging that indexing node_id_for_tree_node is a host-side fix worth a separate task. Also reshaped ReplicateContent to be ONE republish (vs N EditContents) given the monolithic .set() cost.",
+        "changed_design": true
+      },
+      {
+        "objection": "Secondary (first-touch): Enter-commit advancing along evaluation_order is a disorienting topological teleport right after a commit.",
+        "resolution": "Fixed as part of resolution 1: Enter now advances to the next SIBLING (Excel down-one-row); the topological/eval-axis hop is moved to opt-in Ctrl+Enter/Tab. Reflected in the keyboard map (separate 'Enter while editing' and 'Ctrl+Enter/Tab while editing' rows).",
+        "changed_design": true
+      }
+    ],
+    "tournament_summary": [
+      {
+        "concept": "SENTENCE",
+        "avg_verdict": 8,
+        "one_line": "Lay the model in evaluation order as a left-to-right sentence and let F9 play the calc forward clause-by-clause — the headline wow, but re-grounded so the stable layout is a topo sort and only the F9 animation uses the volatile evaluation_order."
+      },
+      {
+        "concept": "REPL",
+        "avg_verdict": 7.7,
+        "one_line": "One always-focused fuzzy command+path bar drives navigation, query and fill — contributed FLOW's '/' Name-Box omnibox and the host-side-caret zippiness discipline, with health verbs moved off bare '?' to survive live formula text."
+      },
+      {
+        "concept": "Clay",
+        "avg_verdict": 7.3,
+        "one_line": "Treat the tree as malleable clay and author one formula that fills a named collection by name — became FLOW's ReplicateContent reorder-surviving fill and promote-to-template payoff."
+      },
+      {
+        "concept": "Scrubber",
+        "avg_verdict": 7.3,
+        "one_line": "Make inputs draggable dials and outputs goal-seek handles so the model feels physical — contributed FLOW's PreviewEdit ghost what-if, scenario chips, and value_epoch delta ledger, scoped tightly off the publish path."
+      },
+      {
+        "concept": "Spotlight",
+        "avg_verdict": 7,
+        "one_line": "An oversized self-explaining active cell that unfolds its inputs as prose on one key — became FLOW's recursive E-explain stack with .* operand enumeration via collection.members + membership_version."
+      },
+      {
+        "concept": "MODELINE",
+        "avg_verdict": 7,
+        "one_line": "A Helix-grade modal cockpit rebinding Excel keys to tree-semantic verbs — its modal premise was the panel's clearest rejection, so FLOW kept its buildable-today motions (Ctrl+Down boundary jump, delete blast-radius, which-key leader) but went modeless except a 1-bit selected/editing flag."
+      }
+    ],
+    "what_ships_today_vs_needs_ir": {
+      "ships_today": [
+        "The Sentence: a focused horizontal ribbon laid out in a STABLE host-side topo sort of node_order + edges_by_owner, hard-capped <=40 chips and virtualized (pure reads, always populated even at mount)",
+        "Modeless nav with the 1-bit selected/editing flag: Up/Down sibling, Left/Right topo axis, Ctrl+Up/Down structural boundary, h/l collapse — all via SelectNode (dispatcher routes to selection signal, zero republish)",
+        "Type-to-edit / F2 inline prose editor seeded from content_text; division-bearing formulas safe because / and ? are verbatim while the buffer is open; Enter advances to next sibling; commit via EditContent/EditFormula",
+        "F9 reading-head sweep: Recalculate then host-side replay over last_run.evaluation_order (animation axis), numeric-gated odometer-roll, wire-ignition, pip transitions, cycle_groups red knots, phase_timings_micros hot badges, value_epoch-gated once-per-publish diff",
+        "]/[ transitive accumulating dependency walk over reverse_edges / edges_by_owner with incoming/outgoing_count badges; trace persists as layout",
+        "'/' fuzzy path omnibox over NodeId dotted paths with is_meta exclusion (constraint 8); jump via SelectNode",
+        "Health & blast-radius query lenses on Space-leader / Ctrl+/ (NOT bare '?'): dirty/cycle/err over calc_state + cycle_groups + computed_value::Error; ref/dep blast-radius over content_text + reverse_edges (works on undefined names)",
+        "Delete blast-radius preview: reverse_edges closure lit before DeleteNode commits",
+        "Manual-batch staging: Space-m + EditContentDeferred + shared recalc_mode/manual_recalc_pending, growing amber DirtyPending closure, single Recalculate on F9",
+        "Recursive E-explain unfold of precedents in-place with live values; .* aggregate operand enumeration via descriptors_by_owner.collection.members + membership_version (profile-gated to treecalc-v1)",
+        "Read-model-as-prose, performance-triage-by-eye (phase_timings_micros), and topological-causality workflows — all pure reads",
+        "Structure ops: o/O AddNode, RenameNode, Alt+Up/Down ReorderNode, drag MoveNode (engine re-threads name-relative refs; verified post-hoc via requires_rebind)",
+        "Cross-skin shared-state use: tree_collapsed folding, pinned chips, recalc_mode, workspace switching via SwitchWorkspace/NewWorkspace",
+        "BUILT zippiness layer (engineering deliverable, not assumed): keyed leptos::For by NodeId + per-node Memos + value_epoch/dependency_shape_snapshot_id/publication_snapshot_id-gated render passes over the monolithic workspace signal, with a synchronous 'computing...' freeze UX"
+      ],
+      "needs_ir_additions": [
+        "Multi-select — SelectionState.anchor+selected + WorkspaceIntent::SelectNodes{nodes,anchor} (calc-free, mirrors SelectNode, backs the existing unbacked supports_multi_select flag): unblocks Shift+arrow run-select and c/d/s structural set-growth",
+        "ReplicateContent — WorkspaceIntent::ReplicateContent{source:NodeId,targets:Vec<NodeId>} (ids only; OxCalc does all rebind per constraint 1; ONE republish): the reorder-surviving name-relative fill, promote-to-template, and the drag-Q4-above-Q2 re-thread demo",
+        "PreviewEdit — WorkspaceIntent::PreviewEdit{node,content} returning a non-published CalcRunProjection + overlay values (off the publish path, no workspace.set; honors constraints 4 and 6): ghost what-if ripple, speculative sweep, sensitivity brightening, Esc-to-discard",
+        "(Acknowledged next-but-deferred, NOT in v1 set) reference_bindings pre-bind preview — would make ReplicateContent rebind correctness verifiable predictively instead of only post-hoc; and a format resolver — would let odometer-rolls/deltas handle formatted currency/%/date instead of raw-Scalar best-effort"
+      ]
+    }
+  }
+}

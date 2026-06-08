@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<!-- Mockup 10: ATLAS — the flagship "Modeling Cockpit"
+     Multiple perspective lenses over ONE model, composed in a multi-slot cockpit:
+       Console (top)      — command + health + workspace + active-lens/persona
+       Flow   (Main)      — the dependency-flow "sentence" + F9 reading-head (the EXPLORE lens)
+       Lens   (Inspector) — the selection's derivation stack, value, format, precedents/dependents
+       Bench  (Split)     — scenario compare columns (Base/Bull/Bear) + a ghost what-if + a tornado
+       Transport (Rail)   — the revision-DAG scrubber (undo-as-navigation, a branch point)
+       Footer             — the 1-bit SELECTED/EDITING state + focused slot + kbd hints
+
+     ONE TOOL, MANY LENSES — the cues to look for:
+       CONTINUITY : the SAME node (Accounts.2026.Q1.Margin) is selected and highlighted in Flow,
+                    Lens, AND Bench — switching/adding a lens is re-projection, never re-load.
+       STYLING    : calc_state is the only saturated channel on nodes in every pane; provenance
+                    tints (published/pending/speculative-ghost/scenario) are identical glyphs;
+                    the SELECTED-vs-EDITING border + identity typeface are shared.
+       GRAMMAR    : the footer hints are the de-conflicted UNIVERSAL verbs (Enter=commit, F9=recalc,
+                    Ctrl+D=fill, ]/[ trace, / Name-Box, E explain, Ctrl+1..7 switch lens).
+       COMPOSITION: four independent skins over one shared truth; the focused slot (Flow) owns keys.
+
+     Skin IR / stack basis (frame-only over engine truth; see docs/ux/skin-suite + stack-requirements):
+       Flow chips/wires/head ... node_order + edges_by_owner + last_run.evaluation_order + calc_state
+       Lens derivation ......... full-derivation-trace (W1) + active-node-detail + reference-resolution-map
+       Bench compare columns ... candidate-overlay-handle (W4b) + comparative-multi-overlay-projection (W4c)
+       Bench ghost ............. preview-edit-intent + value-published-pending-flag (Speculative)
+       Transport ............... revision-graph-retention (W4a) + revision-history-projection + value-shape-diff
+       Console ................. model-query-projection + command-palette-metadata + workspace_ids
+       composition ............. multi-slot-composition + shared-focus-arbitration + keybinding-registry (W5)
+     NOTE: this is the W4+/W5 DESTINATION cockpit, not an early deliverable. ATLAS ships a single-slot
+     mono-lens core first (see docs/ux/skin-suite/README.md); this shows where it composes to. -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>10 — ATLAS Modeling Cockpit</title>
+<style>
+  :root {
+    --bg:#0E1116; --surface:#161B22; --surface-2:#1B2230; --surface-3:#222B3A;
+    --line:#2A3340; --line-strong:#3A4658; --text:#E6EDF3; --muted:#8B97A7; --fainter:#5B6675;
+    /* calc_state — the only saturated channel ON NODES, identical in every pane */
+    --calc-clean:#6B7A8D; --calc-dirty:#E0A33A; --calc-evaluating:#39D0E6;
+    --calc-verified:#4ADE80; --calc-error:#FF4D6D;
+    /* provenance tints (structural, not decorative) */
+    --prov-published:#E6EDF3; --prov-pending:#E0A33A; --prov-speculative:#9aa6ff; --prov-external:#c08adf;
+    /* scenario hues (Bench columns) */
+    --scn-base:#8B97A7; --scn-bull:#4ADE80; --scn-bear:#FF6b81;
+    --accent:#39D0E6; --accent-soft:#15323a; --head:#FFFFFF;
+    --radius:9px; --radius-sm:6px;
+    --font-ui:"Inter","Segoe UI",system-ui,sans-serif;
+    --font-mono:"Cascadia Code","JetBrains Mono","Consolas",monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:var(--font-ui);font-size:13px;-webkit-font-smoothing:antialiased;}
+  .cockpit{display:grid;grid-template-rows:38px 1fr 78px 28px;height:100vh;}
+
+  /* ---------- Console (top command bar) ---------- */
+  .console{display:flex;align-items:center;gap:12px;padding:0 12px;background:var(--surface);border-bottom:1px solid var(--line);font-size:12px;}
+  .console .ws{color:var(--accent);font-weight:600;font-family:var(--font-mono);}
+  .lenses{display:flex;gap:2px;margin-left:6px;}
+  .lens-tab{display:flex;align-items:center;gap:5px;padding:3px 9px;border-radius:5px;color:var(--muted);cursor:pointer;font-size:11.5px;}
+  .lens-tab kbd{font-family:var(--font-mono);font-size:9px;color:var(--fainter);}
+  .lens-tab:hover{background:var(--surface-2);color:var(--text);}
+  .lens-tab.active{background:var(--accent);color:#06222a;font-weight:700;}
+  .lens-tab.active kbd{color:#06343d;}
+  .console .omni{display:flex;align-items:center;gap:7px;font-family:var(--font-mono);background:var(--surface-2);border:1px solid var(--line-strong);border-radius:var(--radius-sm);padding:4px 9px;min-width:230px;color:var(--muted);margin-left:6px;}
+  .console .omni .slash{color:var(--accent);font-weight:700;}
+  .console .spacer{flex:1;}
+  .health{display:flex;align-items:center;gap:10px;font-family:var(--font-mono);font-size:11px;}
+  .health .h{display:flex;align-items:center;gap:4px;color:var(--muted);}
+  .health .h .d{width:7px;height:7px;border-radius:50%;}
+  .badge{font-family:var(--font-mono);font-size:10.5px;padding:2px 8px;border-radius:4px;background:var(--accent-soft);color:var(--accent);}
+  .persona{font-family:var(--font-mono);font-size:10.5px;padding:2px 8px;border-radius:4px;background:var(--surface-2);color:var(--muted);border:1px solid var(--line-strong);}
+
+  /* ---------- Body: Main | Inspector | Split ---------- */
+  .body{display:grid;grid-template-columns:1fr 312px 286px;min-height:0;}
+  .pane{display:flex;flex-direction:column;min-width:0;border-right:1px solid var(--line);background:var(--bg);}
+  .pane:last-child{border-right:none;}
+  .pane__hd{display:flex;align-items:center;gap:8px;padding:5px 11px;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--fainter);border-bottom:1px solid var(--line);background:var(--surface);}
+  .pane__hd kbd{font-family:var(--font-mono);font-size:9px;color:var(--fainter);}
+  .pane__hd .role{margin-left:auto;text-transform:none;letter-spacing:0;color:var(--fainter);font-size:10px;}
+  .pane.focused .pane__hd{color:var(--accent);border-bottom-color:var(--accent);}
+  .pane.focused .pane__hd::before{content:"●";color:var(--accent);font-size:9px;}
+  .pane__body{flex:1;overflow:auto;position:relative;}
+
+  /* ---------- Flow pane (the Sentence) ---------- */
+  .lane-wrap{position:relative;height:100%;background:radial-gradient(900px 320px at 42% 8%,#131A24 0%,var(--bg) 70%);}
+  .lane{position:relative;width:632px;height:230px;margin:14px auto;}
+  .wires{position:absolute;top:0;left:0;width:632px;height:230px;pointer-events:none;z-index:1;}
+  .wire{fill:none;stroke:var(--line-strong);stroke-width:1.3;opacity:.55;}
+  .wire-glow{fill:none;stroke:var(--calc-evaluating);stroke-width:2;opacity:0;filter:drop-shadow(0 0 4px var(--calc-evaluating));}
+  #w1{animation:ignite 6s linear infinite;animation-delay:.5s;}
+  #w2{animation:ignite 6s linear infinite;animation-delay:1.5s;}
+  #w3{animation:ignite 6s linear infinite;animation-delay:1.7s;}
+  #w4{animation:ignite 6s linear infinite;animation-delay:2.7s;}
+  @keyframes ignite{0%,100%{opacity:0;}3%{opacity:.95;}17%{opacity:0;}}
+  .head{position:absolute;top:104px;height:118px;width:2px;background:linear-gradient(var(--head),rgba(255,255,255,0));box-shadow:0 0 12px 2px rgba(255,255,255,.5);z-index:4;left:8px;animation:sweep 6s cubic-bezier(.45,0,.1,1) infinite;}
+  .head::after{content:"F9 · evaluation_order";position:absolute;top:-15px;left:5px;font-family:var(--font-mono);font-size:9px;color:var(--head);white-space:nowrap;opacity:.8;}
+  @keyframes sweep{0%{left:8px;opacity:0;}6%{opacity:1;}60%{left:600px;opacity:1;}68%{left:600px;opacity:0;}100%{left:600px;opacity:0;}}
+  .chip{position:absolute;z-index:2;background:var(--surface-2);border:1px solid var(--line-strong);border-radius:var(--radius);padding:7px 10px 8px;}
+  .chip .nm{font-size:10px;color:var(--muted);font-weight:600;margin-bottom:3px;white-space:nowrap;}
+  .chip .val{font-family:var(--font-mono);font-size:14px;font-weight:600;font-variant-numeric:tabular-nums;}
+  .pip{position:absolute;top:7px;right:8px;width:8px;height:8px;border-radius:50%;}
+  .s-clean .pip{background:var(--calc-clean);} .s-clean .val{color:var(--text);}
+  .s-verified .pip{background:var(--calc-verified);box-shadow:0 0 6px var(--calc-verified);} .s-verified .val{color:var(--text);}
+  .s-dirty .pip{background:var(--calc-dirty);box-shadow:0 0 6px var(--calc-dirty);} .s-dirty .val{color:var(--calc-dirty);} .s-dirty{border-color:rgba(224,163,58,.5);}
+  .chip.focus{border-color:var(--accent);background:linear-gradient(var(--surface-3),var(--surface-2));box-shadow:0 0 0 1px var(--accent),0 6px 22px rgba(57,208,230,.12);width:150px;}
+  .chip.focus .val{font-size:19px;}
+  .chip.focus .formula{margin-top:7px;padding-top:7px;border-top:1px solid var(--line);font-family:var(--font-mono);font-size:11.5px;color:var(--text);white-space:nowrap;}
+  .formula .eq{color:var(--accent);} .formula .ref{color:#C6B6FF;} .formula .op{color:var(--muted);}
+  .roll{animation:rollpulse 6s ease-out infinite;}
+  #r-rev{animation-delay:1.45s;} #r-cogs{animation-delay:1.65s;} #r-marg{animation-delay:2.6s;} #r-fy{animation-delay:3.0s;}
+  @keyframes rollpulse{0%,100%{color:inherit;text-shadow:none;}5%{color:var(--calc-verified);text-shadow:0 0 10px rgba(74,222,128,.6);}22%{color:var(--text);text-shadow:none;}}
+
+  /* ---------- Lens (inspector) ---------- */
+  .insp{padding:10px 12px;display:flex;flex-direction:column;gap:11px;}
+  .insp .band-label{font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--fainter);margin-bottom:4px;}
+  .insp .ident .name{font-family:var(--font-mono);font-weight:600;color:var(--text);}
+  .insp .ident .path{font-family:var(--font-mono);font-size:11px;color:var(--fainter);}
+  .insp .ident .key{font-family:var(--font-mono);font-size:9.5px;color:var(--fainter);background:var(--surface-2);padding:1px 6px;border-radius:3px;margin-left:6px;}
+  .insp .bigval{font-family:var(--font-mono);font-size:24px;font-weight:600;font-variant-numeric:tabular-nums;display:flex;align-items:center;gap:8px;}
+  .insp .bigval .pip{position:static;width:9px;height:9px;background:var(--calc-verified);box-shadow:0 0 7px var(--calc-verified);}
+  .insp .fbar{font-family:var(--font-mono);font-size:12px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-sm);padding:6px 9px;}
+  /* derivation stack */
+  .deriv{font-family:var(--font-mono);font-size:11.5px;line-height:1.7;}
+  .deriv .row{display:flex;align-items:center;gap:7px;}
+  .deriv .indent{color:var(--fainter);}
+  .deriv .dpip{width:7px;height:7px;border-radius:50%;flex:none;}
+  .deriv .nm{color:var(--text);} .deriv .v{color:var(--text);font-variant-numeric:tabular-nums;margin-left:auto;}
+  .deriv .sub{color:var(--fainter);font-size:10.5px;}
+  .chips-row{display:flex;flex-wrap:wrap;gap:5px;}
+  .nchip{font-family:var(--font-mono);font-size:11px;padding:2px 8px;border-radius:12px;border:1px solid var(--line-strong);color:var(--muted);background:var(--surface-2);cursor:pointer;}
+  .nchip:hover{border-color:var(--accent);color:var(--text);}
+  .fmt-code{font-family:var(--font-mono);font-size:12px;color:var(--text);}
+
+  /* ---------- Bench (scenario compare) ---------- */
+  .bench{padding:10px 12px;display:flex;flex-direction:column;gap:12px;}
+  .cmp{width:100%;border-collapse:collapse;font-family:var(--font-mono);font-size:11.5px;}
+  .cmp th{text-align:right;padding:5px 7px;font-size:10px;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--line);}
+  .cmp th.l{text-align:left;color:var(--muted);}
+  .cmp th.base{color:var(--scn-base);} .cmp th.bull{color:var(--scn-bull);} .cmp th.bear{color:var(--scn-bear);}
+  .cmp td{text-align:right;padding:5px 7px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums;color:var(--text);}
+  .cmp td.l{text-align:left;color:var(--muted);}
+  .cmp tr.sel td{background:rgba(57,208,230,.07);}
+  .cmp td.base{color:var(--text);} .cmp td.bull{color:var(--scn-bull);} .cmp td.bear{color:var(--scn-bear);}
+  .ghost-row td{color:var(--prov-speculative);border-bottom:1px dashed var(--line-strong);}
+  .ghost-row td.l{color:var(--prov-speculative);}
+  .ghost-tag{display:inline-block;border:1px dashed var(--prov-speculative);border-radius:10px;padding:0 6px;font-size:9.5px;color:var(--prov-speculative);opacity:.85;}
+  .tornado .t-row{display:flex;align-items:center;gap:7px;margin-bottom:5px;font-family:var(--font-mono);font-size:11px;}
+  .tornado .t-row .lbl{width:78px;color:var(--muted);white-space:nowrap;}
+  .tornado .bar{height:8px;border-radius:2px;background:var(--accent);opacity:.7;}
+  .tornado .t-row .pct{color:var(--fainter);width:34px;text-align:right;}
+
+  /* ---------- Transport (revision DAG rail) ---------- */
+  .transport{display:flex;align-items:center;gap:0;padding:0 16px;background:var(--surface);border-top:1px solid var(--line);position:relative;}
+  .transport .tlabel{font-family:var(--font-mono);font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--fainter);position:absolute;top:8px;left:16px;}
+  .rail{display:flex;align-items:center;gap:0;margin:18px auto 0;position:relative;}
+  .rail .seg{width:64px;height:2px;background:var(--line-strong);}
+  .tick{position:relative;display:flex;flex-direction:column;align-items:center;}
+  .tick .dot{width:12px;height:12px;border-radius:50%;background:var(--surface-2);border:2px solid var(--line-strong);z-index:2;}
+  .tick.clean .dot{border-color:var(--calc-clean);}
+  .tick.verified .dot{border-color:var(--calc-verified);background:var(--calc-verified);}
+  .tick.dirty .dot{border-color:var(--calc-dirty);}
+  .tick.current .dot{border-color:var(--head);background:var(--head);box-shadow:0 0 10px 2px rgba(255,255,255,.5);animation:play 6s ease-in-out infinite;}
+  @keyframes play{0%,100%{box-shadow:0 0 8px 1px rgba(255,255,255,.4);}50%{box-shadow:0 0 14px 3px rgba(255,255,255,.7);}}
+  .tick .cap{font-family:var(--font-mono);font-size:9px;color:var(--fainter);margin-top:5px;white-space:nowrap;}
+  .tick.current .cap{color:var(--text);}
+  /* a branch fork */
+  .branch{position:absolute;top:-1px;left:258px;}
+  .branch .fork{width:48px;height:22px;border-left:2px solid var(--line-strong);border-bottom:2px solid var(--line-strong);border-radius:0 0 0 8px;}
+  .branch .bdot{width:10px;height:10px;border-radius:50%;background:var(--surface-2);border:2px solid var(--calc-dirty);position:absolute;left:44px;top:18px;}
+  .branch .blabel{position:absolute;left:60px;top:13px;font-family:var(--font-mono);font-size:9px;color:var(--calc-dirty);white-space:nowrap;}
+
+  /* ---------- Footer ---------- */
+  .footer{display:flex;align-items:center;gap:13px;padding:0 12px;background:var(--surface);border-top:1px solid var(--line);font-family:var(--font-mono);font-size:11px;color:var(--muted);}
+  .mode{font-weight:700;letter-spacing:.06em;padding:2px 8px;border-radius:4px;background:var(--accent-soft);color:var(--accent);border:1px solid rgba(57,208,230,.4);}
+  .footer .sel{color:var(--text);} .footer .cs{color:var(--calc-verified);display:flex;align-items:center;gap:5px;}
+  .footer .cs::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--calc-verified);}
+  .footer .slot{color:var(--accent);}
+  .footer .hints{margin-left:auto;display:flex;gap:9px;}
+  .footer kbd{font-family:var(--font-mono);background:var(--bg);border:1px solid var(--line-strong);border-radius:3px;padding:1px 5px;font-size:10px;color:var(--text);}
+</style>
+</head>
+<body>
+<div class="cockpit">
+
+  <!-- Console -->
+  <div class="console">
+    <span class="ws">forecast-2026.dnatree</span>
+    <div class="lenses">
+      <span class="lens-tab">Capture<kbd>1</kbd></span>
+      <span class="lens-tab">Ledger<kbd>2</kbd></span>
+      <span class="lens-tab">Tree<kbd>3</kbd></span>
+      <span class="lens-tab">Sheet<kbd>4</kbd></span>
+      <span class="lens-tab active">Flow<kbd>5</kbd></span>
+      <span class="lens-tab">Canvas<kbd>6</kbd></span>
+      <span class="lens-tab">Story<kbd>7</kbd></span>
+    </div>
+    <div class="omni"><span class="slash">/</span><span>q1·marg</span><span style="color:var(--fainter)">→ Accounts.2026.Q1.Margin</span></div>
+    <span class="spacer"></span>
+    <div class="health">
+      <span class="h"><span class="d" style="background:var(--calc-verified)"></span>38 clean</span>
+      <span class="h"><span class="d" style="background:var(--calc-dirty)"></span>2 stale</span>
+      <span class="h"><span class="d" style="background:var(--calc-error)"></span>0 err</span>
+    </div>
+    <span class="badge">Modeling cockpit</span>
+    <span class="persona">Author</span>
+  </div>
+
+  <!-- Body: Flow | Lens | Bench -->
+  <div class="body">
+
+    <!-- Flow (Main, focused slot) -->
+    <div class="pane focused">
+      <div class="pane__hd">Flow<kbd>Ctrl 5</kbd><span class="role">Main · explore</span></div>
+      <div class="pane__body">
+        <div class="lane-wrap">
+          <div class="lane">
+            <svg class="wires" viewBox="0 0 632 230">
+              <path class="wire"     d="M54,150 C92,96 150,96 175,132"/>
+              <path class="wire-glow" id="w1" d="M54,150 C92,96 150,96 175,132"/>
+              <path class="wire"     d="M175,132 C260,52 380,52 447,112"/>
+              <path class="wire-glow" id="w2" d="M175,132 C260,52 380,52 447,112"/>
+              <path class="wire"     d="M298,132 C350,80 410,80 447,112"/>
+              <path class="wire-glow" id="w3" d="M298,132 C350,80 410,80 447,112"/>
+              <path class="wire"     d="M447,112 C510,60 560,60 580,132"/>
+              <path class="wire-glow" id="w4" d="M447,112 C510,60 560,60 580,132"/>
+            </svg>
+            <div class="head"></div>
+            <div class="chip s-clean" style="left:8px;top:150px;width:92px;"><div class="pip"></div><div class="nm">GrowthRate</div><div class="val">4.2%</div></div>
+            <div class="chip s-clean" style="left:120px;top:132px;width:110px;"><div class="pip"></div><div class="nm">Q1.Revenue</div><div class="val roll" id="r-rev">132,400.00</div></div>
+            <div class="chip s-clean" style="left:250px;top:132px;width:96px;"><div class="pip"></div><div class="nm">Q1.COGS</div><div class="val roll" id="r-cogs">22,959.60</div></div>
+            <div class="chip focus s-verified" style="left:372px;top:96px;"><div class="pip"></div><div class="nm">Q1.Margin</div><div class="val roll" id="r-marg">109,440.40</div><div class="formula"><span class="eq">=</span> <span class="ref">Revenue</span> <span class="op">−</span> <span class="ref">COGS</span></div></div>
+            <div class="chip s-verified" style="left:540px;top:132px;width:84px;"><div class="pip"></div><div class="nm">FY.Margin</div><div class="val roll" id="r-fy">446,501</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Lens (Inspector) — drilling the SAME selected node -->
+    <div class="pane">
+      <div class="pane__hd">Lens<kbd>Ctrl I</kbd><span class="role">Inspector · zoom-in</span></div>
+      <div class="pane__body">
+        <div class="insp">
+          <div class="ident">
+            <div class="band-label">Identity</div>
+            <span class="name">Q1.Margin</span><span class="path"> · Accounts.2026</span><span class="key">#k4191</span>
+          </div>
+          <div>
+            <div class="band-label">Value · provenance published</div>
+            <div class="bigval"><span class="pip"></span>109,440.40</div>
+          </div>
+          <div>
+            <div class="band-label">Formula</div>
+            <div class="fbar"><span style="color:var(--accent)">=</span> <span style="color:#C6B6FF">Revenue</span> <span style="color:var(--muted)">−</span> <span style="color:#C6B6FF">COGS</span></div>
+          </div>
+          <div>
+            <div class="band-label">Derivation · E to descend</div>
+            <div class="deriv">
+              <div class="row"><span class="dpip" style="background:var(--calc-verified)"></span><span class="nm">= Revenue − COGS</span><span class="v">109,440.40</span></div>
+              <div class="row"><span class="indent">├</span><span class="dpip" style="background:var(--calc-clean)"></span><span class="nm">Revenue</span><span class="v">132,400.00</span></div>
+              <div class="row"><span class="indent">│&nbsp;&nbsp;</span><span class="sub">= Units × Price</span></div>
+              <div class="row"><span class="indent">└</span><span class="dpip" style="background:var(--calc-clean)"></span><span class="nm">COGS</span><span class="v">22,959.60</span></div>
+              <div class="row"><span class="indent">&nbsp;&nbsp;&nbsp;</span><span class="sub">= Units × UnitCost</span></div>
+            </div>
+          </div>
+          <div>
+            <div class="band-label">Precedents → · ← Dependents &nbsp;<kbd style="font-size:9px;color:var(--fainter)">]</kbd><kbd style="font-size:9px;color:var(--fainter)">[</kbd></div>
+            <div class="chips-row">
+              <span class="nchip">Revenue</span><span class="nchip">COGS</span>
+              <span style="color:var(--fainter);align-self:center">·→·</span>
+              <span class="nchip">FY.Margin</span><span class="nchip">Variance</span>
+            </div>
+          </div>
+          <div>
+            <div class="band-label">Format · effective</div>
+            <span class="fmt-code">#,##0.00</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bench (Split) — scenarios + ghost what-if + tornado for the SAME node -->
+    <div class="pane">
+      <div class="pane__hd">Bench<kbd>Ctrl B</kbd><span class="role">Split · what-if</span></div>
+      <div class="pane__body">
+        <div class="bench">
+          <div>
+            <div class="band-label" style="font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--fainter);margin-bottom:4px;">Compare · candidate overlays</div>
+            <table class="cmp">
+              <thead><tr><th class="l">node</th><th class="base">Base</th><th class="bull">Bull</th><th class="bear">Bear</th></tr></thead>
+              <tbody>
+                <tr class="sel"><td class="l">Q1.Margin</td><td class="base">109,440</td><td class="bull">124,800</td><td class="bear">88,200</td></tr>
+                <tr><td class="l">FY.Margin</td><td class="base">446,501</td><td class="bull">503,840</td><td class="bear">392,110</td></tr>
+                <tr class="ghost-row"><td class="l">Q1.Margin <span class="ghost-tag">ghost</span></td><td>—</td><td>—</td><td colspan="1" style="text-align:right">+ Tax?</td></tr>
+              </tbody>
+            </table>
+            <div style="font-family:var(--font-mono);font-size:10px;color:var(--prov-speculative);margin-top:4px;">ghost what-if · Esc discards free · Enter commits</div>
+          </div>
+          <div class="tornado">
+            <div class="band-label" style="font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--fainter);margin-bottom:6px;">Sensitivity · FY.Margin drivers</div>
+            <div class="t-row"><span class="lbl">GrowthRate</span><span class="bar" style="width:96px;"></span><span class="pct">±12%</span></div>
+            <div class="t-row"><span class="lbl">TaxRate</span><span class="bar" style="width:58px;"></span><span class="pct">±7%</span></div>
+            <div class="t-row"><span class="lbl">Discount</span><span class="bar" style="width:30px;background:var(--scn-bear);"></span><span class="pct">±4%</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Transport (revision-DAG scrubber) -->
+  <div class="transport">
+    <span class="tlabel">Transport · revision DAG · Ctrl+Z/Y navigates</span>
+    <div class="rail">
+      <div class="tick clean"><div class="dot"></div><div class="cap">init</div></div>
+      <div class="seg"></div>
+      <div class="tick clean"><div class="dot"></div><div class="cap">+Assumptions</div></div>
+      <div class="seg"></div>
+      <div class="tick verified"><div class="dot"></div><div class="cap">fill Margin×4</div></div>
+      <div class="seg"></div>
+      <div class="tick dirty"><div class="dot"></div><div class="cap">rename Q1</div></div>
+      <div class="seg"></div>
+      <div class="tick verified"><div class="dot"></div><div class="cap">edit COGS</div></div>
+      <div class="seg"></div>
+      <div class="tick current"><div class="dot"></div><div class="cap">F9 · ε41</div></div>
+      <!-- a branch left after undo-then-edit -->
+      <div class="branch"><div class="fork"></div><div class="bdot"></div><div class="blabel">branch: alt-COGS</div></div>
+    </div>
+  </div>
+
+  <!-- Footer: the 1-bit state + focused slot + universal grammar hints -->
+  <div class="footer">
+    <span class="mode">SELECTED</span>
+    <span class="sel">Accounts.2026.Q1.Margin</span>
+    <span class="cs">VerifiedClean</span>
+    <span>109,440.40</span>
+    <span class="slot">focus: Flow</span>
+    <span class="hints">
+      <span><kbd>F9</kbd> recalc</span>
+      <span><kbd>]</kbd><kbd>[</kbd> trace</span>
+      <span><kbd>/</kbd> jump</span>
+      <span><kbd>E</kbd> explain</span>
+      <span><kbd>Ctrl 1-7</kbd> lens</span>
+      <span><kbd>Space</kbd> menu</span>
+    </span>
+  </div>
+
+</div>
+</body>
+</html>

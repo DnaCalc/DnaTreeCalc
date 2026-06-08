@@ -1,0 +1,649 @@
+{
+  "summary": "Design a multi-perspective TreeCalc skin suite: shared spine + perspective space + composition -> per-lens designs -> coherence/coverage/stack critics -> finalize",
+  "agentCount": 15,
+  "logs": [],
+  "result": {
+    "suite": {
+      "suite_name": "ATLAS — One Model, Many Lenses",
+      "one_paragraph": "ATLAS is a suite of seven perspective lenses over one calc-tree model — Capture (scaffold fast), Tree (see/reshape hierarchy), Ledger (dense audit + cleave), Sheet (Excel-familiar value-first edit + table authoring), Flow (dependency-flow explore + calc-theatre), Canvas (spatial wide map), and Story (read-only narrative report) — composed in a cockpit alongside four companion panes (Lens/Inspector, Transport, Bench, Console) and re-tuned by four cross-cutting modes (Filter/Sort, Focus/Zoom, Present, Persona). Every lens shines for one modality from the brief, yet they are one tool, not seven, because they share a single nervous system: ONE GRAMMAR — a small set of UNIVERSAL verbs whose meaning is fixed in every lens and recorded once in the keybinding-registry default layer (arrows move selection, F2/type edits, ENTER is the sole commit-and-advance, F9 is the sole recalc, ]/[ trace, / is the Name-Box, Space is the leader, E explains, h/l fold, Ctrl+Z/Y is revision-nav, Ctrl+1..7 switches lens). Crucially, chords that previously collided are now de-conflicted in that single table: Enter is the ONLY universal commit-advance; Tab and Ctrl+Enter are demoted to clearly-flagged LENS-LOCAL secondary chords (never universal), F9 is the ONLY recalc (no Ctrl+Enter alias), and Ctrl+D is the ONLY fill (no Ctrl+Enter alias). ONE STYLING language (calc_state is the only saturated channel; provenance, the SELECTED-vs-EDITING cue, and the pip vocabulary are identical glyphs everywhere via shared design tokens — with Story declared the single sanctioned exception that intentionally leaves the instrument look for an editorial one). ONE CONTINUITY (selection, scope, collapse, pins, focus, active scenario, current revision, recalc-mode, AND the active cleave PREDICATE are host-owned shared truth, so switching a lens is a re-projection — never a re-load — and you never lose your place). ONE COMPOSITION (a multi-slot cockpit with capability negotiation, focus/keybinding arbitration, persona-per-origin, and per-slot fault isolation). Every lens is frame-only over engine truth: it reads typed values via the resolver, calc_state, dependencies, traces, and provenance, and mutates only through the closed scope-carrying intent enum — never re-deriving, parsing formulas, or faking values. The suite is delivered in honest stack order: a single-slot mono-lens core ships first on the early waves, and the cockpit, companions, scenarios, time-travel, and Story arrive only as their gating engine waves (W4a/W4b/W4c/W5/W6) land. The result is a system you flow through — capture → structure → compute → explore → review → present — as one continuous session over one model, with zero re-orientation.",
+      "tenets": [
+        {
+          "name": "One verb, one meaning, everywhere — defined ONCE in the registry",
+          "statement": "A UNIVERSAL key's meaning is fixed across the entire suite and is recorded VERBATIM in the keybinding-registry default layer, which every lens spec cites rather than re-describing. The universal set is deliberately small and collision-free: Arrow=move selection (no calc), F2/type=edit, ENTER=commit+advance along the one axis every lens shares (next sibling/row), F9=recalc (sole), ]/[=trace dependents/precedents, /=Name-Box jump, Space=leader+health, E=explain, h/l=collapse/expand, Ctrl+Z/Y=revision-nav, Ctrl+1..7=switch lens, Esc=back-out. A lens may RENDER the result differently (a trace is a lit subgraph in Flow, indented precedents in Tree, highlighted columns in Sheet) but a lens may NEVER reassign a universal verb. Secondary chords a lens wants (Tab, Ctrl+Enter, drag) are explicitly LENS-LOCAL, declared as such, and may differ per lens because they were never promised as universal.",
+          "rationale": "Muscle memory is the single biggest cost of a multi-lens tool and the single biggest payoff if shared — but ONLY if the universal set is actually collision-free. The prior design overloaded Tab (indent-child vs next-column vs topo-hop) and Ctrl+Enter (commit vs recalc vs fill) under one chord, which is the exact betrayal the suite exists to prevent. Resolving this means promoting only Enter to commit-advance, keeping F9 the sole recalc and Ctrl+D the sole fill, and honestly labelling Tab/Ctrl+Enter as lens-local — so a key a user thinks is universal always behaves universally, and a key that varies is one they never expected to be constant."
+        },
+        {
+          "name": "Modeless 1-bit authoring (SELECTED vs EDITING)",
+          "statement": "Every lens has exactly one mode distinction: a subject is SELECTED (bare keys are commands) or EDITING (every key, including / and ?, is verbatim text). No Vim normal/insert/visual, no 'press i'. F2-or-type-to-edit opens the buffer; Enter commits and advances; Esc cancels. The current state is ALWAYS visible (border cue + status line, mirroring Excel Ready/Edit).",
+          "rationale": "This is FLOW's core safety property — you always know whether / will jump or divide — and it is the ONE rule that lets the same keymap serve both navigation-heavy lenses (Tree, Canvas) and text-heavy ones (Capture, Sheet). A second mode anywhere would fork the muscle memory and reintroduce the modal-confusion class of bugs the suite exists to avoid."
+        },
+        {
+          "name": "Frame-only over engine truth",
+          "statement": "No lens computes, re-derives, parses a formula, or fabricates a value or format. Lenses READ the engine's published projection (typed values via the resolver, calc_state, dependencies, derivation traces, provenance, history) and MUTATE only through the closed WorkspaceIntent enum carrying ids/handles/scopes — never synthesized formula text, never A1 ranges, never grid coordinates, never $-anchored abs/rel addressing. Reference insertion composes text the HOST splices over an OxFml-built RefHandle; F4 cycles binding on a NodeKey handle, not on grid coordinates. Display text comes from the OxFml resolver on SkinContext.",
+          "rationale": "This is the program's load-bearing correctness invariant and what lets the suite be this expressive without betraying Excel-faithfulness. A lens that re-derives or invents A1-style addressing can diverge from the engine and silently lie; a window cannot. It also keeps the suite cheap to extend: a new lens inherits trustworthiness for free by obeying the contract."
+        },
+        {
+          "name": "Switching a lens is re-projection, never re-load — for SHARED truth",
+          "statement": "Continuity state that is host-owned — selection (anchor+multi-select), authoring scope, collapse set, pins, focus/hover, recent-selections, active scenario, current revision, recalc-mode, and the active cleave PREDICATE — re-projects instantly into a new lens; you never lose your place. Lens-INTRINSIC presentation that is NOT derivable from shared truth — Canvas facade positions (x,y), Sheet column widths, Story block order — is per-lens persisted SkinState, preserved across switches by skinstate-persistence (W5), not re-projected from the model. The headline 'zero re-orientation' is a promise about shared truth; intrinsic geometry is preserved, not reconstructed.",
+          "rationale": "If switching lenses dropped your selection, scope, or cleave, the suite would feel like seven separate apps. But honesty matters: Canvas's positions are cosmetic state the model never had, so switching INTO Canvas cannot re-project a position — it lays out fresh (auto-DAG) and relies on persisted SkinState to restore your map. Claiming geometry is 're-projected from shared truth' would be false. Distinguishing shared-truth re-projection from intrinsic-state persistence keeps the promise true."
+        },
+        {
+          "name": "Calc-state is the only saturated signal (Story is the one sanctioned exception)",
+          "statement": "Across every INSTRUMENT lens (Capture, Tree, Ledger, Sheet, Flow, Canvas) the calc_state palette (Clean=muted slate, DirtyPending=amber, Evaluating=electric-cyan pulse, VerifiedClean=phosphor green, Error/CycleBlocked=hot magenta-red) is the single saturated channel; everything else is desaturated graphite chrome. Provenance is a consistent tint/texture layer; the SELECTED-vs-EDITING border cue and the pip vocabulary are identical glyphs everywhere. Story is the DECLARED exception: as a presentation surface it intentionally adopts a warm editorial chrome — but even there, calc_state and provenance remain the only saturated channels ON NODES, the identity typeface is unchanged, and warm accents are confined to non-node chrome. Recognition-on-sight transfers across all six instrument lenses; Story is understood to look like a report, not an instrument.",
+          "rationale": "Recognition across lenses requires that the same fact paints the same color regardless of geometry. The prior design granted Story decorative teal/rust/ochre on its surface and a serif identity face, which forks the visual language while still claiming 'recognizable on sight in any lens'. Resolving the contradiction means either keeping Story inside the grammar or declaring it OUT loudly. We declare it a sanctioned exception, but constrain it: nodes still wear calc_state+provenance, identity type is unchanged, so a figure in Story still reads as the same node even though its document chrome is editorial."
+        },
+        {
+          "name": "Provenance is never ambiguous",
+          "statement": "A value's origin is always legible: published values are solid, pending/dirty are amber-edged, speculative ghosts are dashed/translucent and provenance-tagged so they can NEVER be mistaken for real, scenario values carry the scenario tint, external/live values carry the external mark. What-if and scenarios are consequence-free overlays off the publish path; promoting one is a deliberate CommitSpeculation, discarding costs zero undo debt. This holds in Story too: a reader can never mistake a ghost for a published fact.",
+          "rationale": "An expressive what-if instrument is dangerous precisely because it shows numbers that aren't committed; the discipline that makes it safe is that provenance is structural, not decorative. A modeler must never trust a ghost as a published fact. This is what lets exploration be ten-times cheaper without polluting history or eroding the correctness aim."
+        },
+        {
+          "name": "Cross-cutting modes are lens modifiers, not skins",
+          "statement": "Filter/Sort (cleave), Focus/Zoom (degree-of-interest), Present (strip chrome, read-only), and Persona (Author/Reviewer/ReadOnly) are MODES that apply WITHIN any primary lens, toggled by the same chords everywhere — not separate lenses. The cleave PREDICATE is carried continuity (host-owned shared state); each lens re-runs the predicate locally on switch, so cleaving the Ledger and switching to Flow re-applies the same predicate (the resulting set may differ if the model changed in between). Sort and group-by remain lens-local presentation, not carried. Focus/Zoom's collapse and pin portions are the EXISTING shared tree_collapsed/pinned sets; viewport zoom level is skin-local cosmetic state, never an intent and never shared.",
+          "rationale": "Promoting every modality to its own skin would explode the lens count and split muscle memory; making them modifiers keeps the lens set small. But continuity must be honest: a sort order is an ordering over a materialized set, not a NodeKey-addressed fact, so only the predicate is promotable to shared truth; the predicate re-applies, it is not a frozen match-set. And a camera-zoom is cosmetic — unifying it with shared collapse/pin state under one 'zoom intent' would blur the frame-only boundary, so zoom level stays skin-local and only collapse/pin are shared."
+        },
+        {
+          "name": "Predict before you pay; undo is navigation",
+          "statement": "Mutating and recalc verbs surface their consequence before commit — delete shows its reverse-edge blast radius, a fill shows what it rebinds, a move shows its drop-legality verdict, a recalc can show its plan. A gesture that mutates the model (e.g. a structural drag) ALWAYS previews legality/blast-radius first, so even where a gesture is lens-local the safety cue is constant. Every verb routes through the dispatcher, which previews legality and records a (intent, receipt, delta, revision) entry. Undo/redo is navigation of the retained revision DAG (Ctrl+Z/Y), not inverse-replay; the Transport scrubber and value-shape diff read the same DAG.",
+          "rationale": "Confidence to act fast comes from seeing the consequence first; this is what makes a keyboard-first, multi-select tool safe at the speed it demands. Making 'mutating gestures always preview first' an invariant resolves the drag collision: plain-drag in Canvas only moves a cosmetic position (no preview needed), while a structural reparent — whether by Tree's gutter-handle or a modified drag — always shows its rebind/blast-radius before committing, so a gesture never silently mutates the model. Treating undo as revision navigation gives time-travel, branching what-ifs, and audit from one substrate."
+        }
+      ],
+      "grammar": [
+        {
+          "verb": "Move selection (primary)",
+          "keys": "Arrow keys. INVARIANT: Up/Down = previous/next SIBLING at the current depth in EVERY lens. Left = move toward parent / precedent / less-detail; Right = toward child / dependent / more-detail.",
+          "universal_meaning": "Move the single primary selection to an adjacent subject via SelectNode, routed to the selection signal with zero recalc. Never wakes the engine. The VERTICAL axis is standardized (Up/Down = sibling order) because every lens has a sibling order; the HORIZONTAL axis follows one shared rule (Left=toward-parent/less, Right=toward-child/more) so direction-semantics rhyme across lenses.",
+          "realization_note": "Up/Down ALWAYS walk siblings (Flow: sibling chips; Tree: visible rows at depth; Sheet/Ledger: rows; Canvas: nearest sibling along the authored order; Capture: committed lines; Story: blocks). Left/Right follow the shared toward-parent/toward-child rule (Tree: to parent vs first-child; Flow: precedent vs dependent topo neighbour; Sheet/Ledger: out a level vs into array/children; Canvas: up vs down the wire, camera follows). CRITICAL FIX: Left NEVER folds — folding is h/l only — so a bare arrow never means 'collapse' in one lens and 'navigate' in another."
+        },
+        {
+          "verb": "Extend / grow selection (scope)",
+          "keys": "Shift+Arrow (run-extend); Ctrl+click / Ctrl+Space (toggle); c / d / s (grow to children / descendants / like-named siblings). [W2-gated: requires selection-subject-model + scope-value.]",
+          "universal_meaning": "Build a multi-selection or grow the typed AuthoringScope (Node→Nodes→Subtree→Collection) via SelectNodes/SelectRange/ToggleNodeInSelection. anchor+selected is shared truth; the scope rides every subsequent mutating verb and carries across lens switches. Until W2 lands, lenses run SINGLE-selection only and negotiate() rejects the bulk verbs.",
+          "realization_note": "Same intents everywhere once W2 lands. Flow extends along the topo sentence; Tree extends down visible rows or grows a Subtree; Ledger extends a sorted/filtered row range; Canvas rubber-band lassos a spatial region; Capture extends a sibling run for fill-down. The marquee differs; 'the set/scope I act on next' is identical. Pre-W2 the suite ships these lenses as single-select skins — a real, narrower lens, not a degraded one."
+        },
+        {
+          "verb": "Edit (enter EDITING)",
+          "keys": "F2, or any printable character",
+          "universal_meaning": "Open the inline edit buffer on the focused subject and flip SELECTED→EDITING; every key (incl. / and ?) is now verbatim content. On commit, dispatch Edit{Content|Formula}. Skins never synthesize formula text — the buffer's text is the user's, bound by the engine.",
+          "realization_note": "Flow: inline prose band under the focus chip. Tree: editable field is the IDENTITY (rename-as-refactor) by default, content on demand. Sheet: cell editor mirrored in a top formula bar. Capture: the always-hot frontier line that mints nodes on commit. Canvas: in-place node editor. Story: suppressed by read-only persona. The buffer's POSITION/TARGET differs; the 1-bit flip and the EDITING border cue are identical."
+        },
+        {
+          "verb": "Commit + advance (UNIVERSAL — Enter only)",
+          "keys": "Enter (commit + advance to next SIBLING/row — the one author-axis every lens shares).",
+          "universal_meaning": "Commit the edit buffer (Edit/AddNode intent) and move selection one step to the next sibling/row, staying in the flow of authoring. This is the SOLE universal commit-advance verb. There is no universal secondary-axis commit key — see the lens-local Tab/Ctrl+Enter entry.",
+          "realization_note": "Enter advances to the next sibling/row in EVERY lens (Flow: next sibling chip; Sheet/Ledger: next row; Capture: next sibling line; Tree: next visible row; Canvas: next sibling card). FIX: the prior design's per-lens reinterpretation of a universal commit (next-column vs indent-child vs topo-hop) is removed; that elasticity now lives ONLY in the explicitly lens-local Tab/Ctrl+Enter chord, never under a universal key."
+        },
+        {
+          "verb": "Secondary commit (LENS-LOCAL — NOT universal: Tab / Ctrl+Enter)",
+          "keys": "Tab and Ctrl+Enter are DECLARED lens-local secondary chords, NOT part of the universal grammar. Each lens defines its own; the registry marks them lens-scoped and the which-key footer shows the active one.",
+          "universal_meaning": "There is no universal meaning — and that is the point. By declaring these lens-local, the suite stops pretending a single chord means the same thing everywhere when it cannot. A user is taught explicitly that Tab/Ctrl+Enter are lens-specific accelerators, the way an app's local shortcuts are.",
+          "realization_note": "Sheet/Ledger: Tab = commit + next COLUMN. Capture: Tab = commit + add CHILD (indent), Shift+Tab = outdent. Flow: Ctrl+Enter = commit + topological-next HOP (opt-in power move, FLOW canon). Tree: no secondary commit (Enter suffices). These differ by design and are labelled as differing; none is ever advertised as cross-lens muscle memory, resolving the prior Tab/Ctrl+Enter collision."
+        },
+        {
+          "verb": "Recalculate (UNIVERSAL — F9 only)",
+          "keys": "F9 (sole recalc chord; Ctrl+Enter is NOT a recalc alias anymore).",
+          "universal_meaning": "Dispatch Recalculate; the engine runs in its true evaluation_order and republishes. F9 is the ONLY key that recalcs, in every lens and every mode — removing the prior Ctrl+Enter-as-recalc overlap. Every lens shows the recompute as legible theatre keyed on what actually changed (value_epoch-gated), never animating unchanged nodes.",
+          "realization_note": "Flow: the signature reading-head light-bar sweeps the chips in evaluation_order, odometer-rolling changed values. Sheet: cells settle in dependency order in the column. Ledger: changed rows pulse VerifiedClean in eval order. Canvas: a radial wavefront spreads spatially along wires. Capture: the amber Pending field flips green. Transport: F9 on a past/branched revision is reinterpreted as 'branch from here'. The CHOREOGRAPHY differs; F9 = 'make the model think in the engine's real order' is fixed and sole."
+        },
+        {
+          "verb": "Trace dependents / precedents",
+          "keys": "] (dependents) / [ (precedents); repeat to walk one transitive hop further",
+          "universal_meaning": "Walk the dependency graph one hop at a time, accumulating a lit subgraph that persists on screen, reading reverse_edges (dependents) / edges_by_owner (precedents). Esc clears (per the canonical Esc ladder). The same keys Excel TRACES with, but the trace is durable.",
+          "realization_note": "Flow: dependents lift+brighten, the rest dim — the trace IS the layout. Tree: precedents/dependents highlight in place, scrolling into view. Sheet: tracer highlights across cells. Canvas: edges and target nodes ignite spatially while cards stay put (you keep your bearings). Ledger: matching rows light. Lens companion: the same data as a clickable enumerated list drill. 'Walk causality one hop, keep it lit' is fixed."
+        },
+        {
+          "verb": "Explain (why is this value this?)",
+          "keys": "E (unfold one level); repeat / arrow to descend; Backspace to collapse a level",
+          "universal_meaning": "Unfold the focus subject's derivation in place — direct precedents with live values, then a kernel-level call stack (template, hole bindings, child calls, leaf inputs) once full-derivation-trace (W1) lands. A SUM-over-set enumerates its live members with a membership version stamp.",
+          "realization_note": "Flow: a recursive mini-chip stack drops below the focus chip. Lens/Inspector: the full call-stack tree standing still, scrollable to N levels. Tree: an inline derivation sub-outline. Sheet: an Evaluate-Formula-style step panel. Story: a curated editorial pull-quote excerpt. Bench: explains the value UNDER ITS SCENARIO (per-candidate derivation, W6). 'The number derives itself, on demand, to any depth' is fixed."
+        },
+        {
+          "verb": "Name-Box jump (omnibox)",
+          "keys": "/ (only when no edit buffer is open)",
+          "universal_meaning": "Open the fuzzy Name-Box over dotted node paths (is_meta excluded); on commit, SelectNode to the match and the lens re-centers on it. Typing only moves a host-side caret — no intent until commit. OMNIBOX OWNERSHIP: pre-W5 each lens has a SELF-CONTAINED local / omnibox (no cross-slot dependency). Once shared-focus-arbitration + keybinding-registry (W5) land, Console owns the canonical model-query-scaled omnibox and a lens's / delegates to it without focus theft. The keystroke is identical in both eras; only the backing changes.",
+          "realization_note": "Ledger parses / as a FILTER predicate (Name-Box-as-cleave). Sheet routes it into the literal formula-bar Name Box slot. Transport indexes REVISIONS; Story indexes document blocks + nodes; Console indexes the whole model at 100k scale via model-query (W2). The jump target space differs; the keystroke is identical and never collides with formula text (gated to SELECTED)."
+        },
+        {
+          "verb": "Leader: health + palette",
+          "keys": "Space (leader), then context sub-keys; Ctrl+/ as the non-Space alias",
+          "universal_meaning": "Space opens a which-key leader palette. Its model-wide health/blast-radius/action sub-keys live here on keys that can NEVER collide with a formula's ? or /. Sub-key vocabulary is lens-tuned but the leader entry is universal. Scenario flips (formerly bare number keys) are moved BEHIND the leader / a Bench-local prefix so a mis-modified keypress can never swap the user's whole lens.",
+          "realization_note": "Flow/Console/most lenses: d/c/e light dirty/cycle/error sets, r/p blast-radius by name/path. Capture: m/p/u for manual-batch/policy/undo-batch. Story: p/persona/record/scenario-flip. Bench: w/t/g for what-if/tornado/goal-seek, and the scenario roster (Base/Bull/Bear) lives here too. The leader is the shared entry point; the menu is lens-specific; the which-key footer self-documents it everywhere."
+        },
+        {
+          "verb": "Collapse / expand (the SOLE fold verb)",
+          "keys": "h (collapse) / l (expand). Folding is h/l ONLY — bare arrows never fold.",
+          "universal_meaning": "Fold/unfold the focused subtree via the shared tree_collapsed set; persisted cross-skin so a fold in one lens is a fold in all. Because h/l is the only fold verb, Left-arrow is free to mean 'move toward parent' uniformly (resolving the prior Tree Left=collapse collision).",
+          "realization_note": "Flow: collapsed subtree becomes one summary chip. Tree: classic disclosure fold with a worst-of-descendants rolled-up pip. Ledger: collapsed rows hidden / a group-by cohort band folds. Sheet: array/table cells expand in place under their owner. Canvas: subtree collapses to a group super-card; viewport zoom (skin-local) separately drives spatial degree-of-interest. The fold WIDGET differs; the shared tree_collapsed truth survives every switch."
+        },
+        {
+          "verb": "Undo / redo (revision navigation)",
+          "keys": "Ctrl+Z (undo) / Ctrl+Y or Ctrl+Shift+Z (redo). [W4a/W4b-gated: requires revision-graph-retention + undo-redo-revision-nav.]",
+          "universal_meaning": "Navigate the retained revision DAG — not inverse-replay. Moves current_revision to parent/child; computed values from that revision re-appear. Edit-after-undo branches the DAG. The Transport scrubber and value-shape diff read this same DAG. Before W4a/W4b, undo is unavailable (negotiate() declines it) rather than faked as an inverse stack.",
+          "realization_note": "Every lens moves the SAME shared current_revision and re-projects. Transport makes the discrete verb continuous and spatial. Canvas watches nodes/wires snap back to a prior shape. Story treats the DAG as a first-class readable presentation artifact. The verb 'step through model history' is fixed; only the diff visualization differs."
+        },
+        {
+          "verb": "Switch lens",
+          "keys": "Ctrl+1..7 (direct to a primary); Ctrl+Tab to cycle. (Renumbered from FLOW canon's original Ctrl+1..5 to span seven primaries — recorded explicitly in the registry so the canon isn't silently contradicted.)",
+          "universal_meaning": "Re-project the entire shared continuity (selection, scope, collapse, pins, focus, scenario, revision, recalc-mode, cleave predicate) into a different primary lens in the Main slot. Never a re-load. Host global keymap, resolved ABOVE any slot so it works regardless of focus. MODIFIER CONTRACT (documented prominently): Ctrl+digit = switch lens; bare digit is NOT a lens switch (scenario flips moved behind the Space-leader, so the thin Ctrl-vs-bare distinction can no longer swap your lens by accident).",
+          "realization_note": "Identical everywhere. Default map: Ctrl+1 Capture, Ctrl+2 Ledger, Ctrl+3 Tree, Ctrl+4 Sheet, Ctrl+5 Flow, Ctrl+6 Canvas, Ctrl+7 Story. The destination renders the shared truth it inherits (and re-runs the cleave predicate); a lens that can't show a facet (Story is read-only) still preserves the full continuity for the next switch. Console surfaces the active-lens indicator."
+        },
+        {
+          "verb": "Back out one level (Esc) — single canonical ladder",
+          "keys": "Esc",
+          "universal_meaning": "Step back exactly one layer of intent, following ONE fixed precedence order in EVERY lens (lenses skip rungs they lack but never reorder them): (1) cancel edit buffer EDITING→SELECTED, (2) close open omnibox/leader palette, (3) discard active speculation ghost (free, zero undo debt), (4) clear lit trace / health overlay, (5) clear multi-select down to primary. Never destructive, never leaves the lens.",
+          "realization_note": "FIX: the prior design let the Nth Esc do different things per lens (Bench discarded a speculation early where Tree cleared a trace). Now the precedence is fixed in the spine, so Esc is predictable as 'the same layer in the same order everywhere', skipping only absent rungs — which is what makes Esc-to-safety true muscle memory."
+        },
+        {
+          "verb": "Structural author verbs (add / delete / move / reorder / fill / duplicate / template / meta)",
+          "keys": "o/O (add child/sibling), Delete, Alt+Arrow (reorder), m (move/reparent via keyboard), Ctrl+D (fill/replicate — the SOLE fill chord), Space-leader for duplicate/template/meta. Drag is a LENS-LOCAL gesture (see realization). [Mostly W2/W3-gated.]",
+          "universal_meaning": "Mutate structure via scope-carrying intents (AddNode, DeleteNode, MoveNode, ReorderNode, ReplicateContent, DuplicateNode, PromoteToTemplate, SetMeta) over the current AuthoringScope. Delete previews its reverse_edge blast radius; move shows its drop-legality verdict; fill is name-relative (rebinds per target by lexical role, never A1-relative). Ctrl+D is the sole fill key (no Ctrl+Enter alias). INVARIANT: any gesture that mutates the model previews legality/blast-radius FIRST.",
+          "realization_note": "Persona-gated (Reviewer/ReadOnly forbid these per intent origin). DRAG IS LENS-LOCAL, not universal: in Canvas plain-drag moves only a COSMETIC facade position (no model edit, no preview); in Tree a STRUCTURAL reparent uses the gutter-handle (or a modified drag) and ALWAYS shows its rebind/blast-radius before commit. So plain-drag never silently mutates the model, and the structural-drag safety cue is constant. The keyboard verbs (m, Alt+arrow, Ctrl+D) are the actual universal structural grammar; drag is an accelerator that differs by lens by design."
+        }
+      ],
+      "styling": [
+        {
+          "cue": "calc_state pip + chip color",
+          "tokens": "--calc-clean (muted slate), --calc-dirty (amber), --calc-evaluating (electric-cyan, pulse anim), --calc-verified (phosphor green), --calc-error (hot magenta-red); --pip-size, --pip-shape. Read from NodeView.calc_state. [Ships early — design-token-layer lands as soon as W0 stable-node-identity exists, per the roadmap's W5 sequencing note.]",
+          "meaning": "The node's computation status: Clean / DirtyPending / Evaluating / VerifiedClean / Error-or-CycleBlocked. The ONLY saturated channel ON NODES in the suite — including Story — so any color a user sees on a node is a fact about calc state. Identical glyph and palette in every lens."
+        },
+        {
+          "cue": "provenance tint / texture",
+          "tokens": "--prov-published (solid, full opacity), --prov-pending (amber edge), --prov-speculative (dashed border + reduced opacity, 'ghost'), --prov-scenario (scenario hue + tag), --prov-external (external mark/icon). Read from ValueProvenance.origin + is_stale. [Speculative/scenario tints meaningful only once W4b/W4c land; before then only published/pending/external apply.]",
+          "meaning": "Where the displayed value came from: Published / Pending / Speculative / Scenario / External. Structural, not decorative — a ghost is ALWAYS dashed+translucent so it can never be mistaken for a committed value, even in a Story figure. Lets the eye separate real from hypothetical at a glance in any lens."
+        },
+        {
+          "cue": "mode border (SELECTED vs EDITING)",
+          "tokens": "--mode-selected-outline (calm graphite outline), --mode-editing-outline (bright accent outline); --focus-ring for focused-but-not-selected. Bound to the 1-bit edit flag + focused_slot (focused_slot meaningful once W5 multi-slot lands; pre-W5 the single slot is always focused).",
+          "meaning": "The 1-bit modeless state of the focused subject: a calm outline means bare keys are commands (SELECTED); a bright outline means every key is verbatim text (EDITING), mirroring Excel Ready/Edit. Always visible so the user knows whether / will jump or divide. Same two outlines in every lens; the status line echoes it as words; Capture's frontier line is the always-EDITING surface."
+        },
+        {
+          "cue": "identity (name + path + key) — unchanged typeface EVERYWHERE incl. Story",
+          "tokens": "--ident-name (humanist sans, display_name — the SAME face in all seven lenses, Story included), --ident-path (dimmed dotted display_path), stable DOM ids derived from NodeKey for aria-activedescendant; --meta-dim for is_meta. Read from NodeView identity fields.",
+          "meaning": "Makes a node recognizable as the SAME node across lenses: its display_name in the same typeface (FIX: Story does NOT get a serif identity face — its editorial chrome may use mixed type, but the NODE identity stays in the shared humanist sans so a figure reads as the same node), its dotted path in the same dimmed treatment, is_meta nodes consistently de-emphasized. Because the DOM id is NodeKey-derived, selection/highlight/a11y focus track the same node through every re-projection."
+        },
+        {
+          "cue": "value typography",
+          "tokens": "--val-mono (tabular-figure mono for numerics, digit-aligned for odometer-rolls), --val-prose (humanist sans for formula/text bands), alignment tokens from the resolver's RenderedCell. Display text via SkinContext.resolver (W1 format-resolver-on-context), never raw debug.",
+          "meaning": "Values render Excel-faithfully and consistently: numbers right-aligned in tabular mono so they line up and can odometer-roll, formulas/text in prose sans. The number you read is the engine's resolved render, the same in Sheet, Ledger, Flow, and Story — never a host-parsed approximation."
+        },
+        {
+          "cue": "kbd-hint / which-key affordance",
+          "tokens": "--kbd-bg, --kbd-fg, --kbd-border for keycap chips; --leader-palette-surface; --hint-dim for the self-documenting footer. Driven by the keybinding-registry's effective bindings (W5; pre-W5 a static default map). The footer DISTINGUISHES universal verbs from lens-local chords (Tab/Ctrl+Enter/drag shown with a 'lens' badge).",
+          "meaning": "Defuses the keyboard-discovery cliff AND teaches the universal-vs-lens-local split: the same keycap styling and Space-leader which-key palette appear in every lens, showing the effective binding and flagging which chords are lens-specific. A user sees ']' hinted identically everywhere (universal) and Tab badged as lens-local, reinforcing exactly which reflexes transfer."
+        },
+        {
+          "cue": "trace / overlay highlight",
+          "tokens": "--trace-lit (lifted/brightened), --trace-dim (receded), --wire-live (cyan→green ignite), --health-dirty/cycle/error overlay tints. Off the calc path (pure CSS/host-side reads).",
+          "meaning": "The shared language for 'this set is currently called out': a lit subgraph from ]/[, a health set from Space-d/c/e, a blast-radius preview before delete, a value-shape change-pulse between two revisions. Lit-vs-dim and the ignite gradient mean the same thing everywhere, so a trace reads as a trace in any lens even though its geometry differs."
+        },
+        {
+          "cue": "theme mode (token layer)",
+          "tokens": "The entire token set resolves through SkinContext.tokens (ThemeMode { Light, Dark, HighContrast }) as CSS custom properties; skins reference var(--surface) etc., never literal hex. Story adds a paper-warm editorial BACKGROUND/chrome token surface over the same signal/provenance palette — but warm accents are confined to non-node chrome and never become a node's saturated channel.",
+          "meaning": "One theme switch retints every lens at once. No instrument lens hardcodes color, so Dark/HighContrast/RTL apply uniformly. Story's warm-paper surface is a sanctioned BACKGROUND token swap, not a node-palette change: calc_state + provenance hex on nodes are identical to the instrument lenses, which is what still lets a Story figure read as the same node despite the editorial frame."
+        }
+      ],
+      "continuity": [
+        {
+          "shared_state": "SelectionState { primary, anchor, selected }",
+          "carries": "The single primary selection AND (W2+) the full multi-selection set with its anchor. Switching from Tree to Flow keeps exactly the same node(s) selected; the new lens re-centers on the primary and re-paints the set. NodeKey-addressed (W0), so it survives rename/move. TODAY the struct is { primary } only; anchor/selected arrive with W2's selection-subject-model, and the suite ships single-select until then."
+        },
+        {
+          "shared_state": "AuthoringScope (Node / Nodes / Subtree / Collection)",
+          "carries": "The typed subject your next mutating verb will act on. Grow a Subtree scope in Tree, switch to Ledger, and a Delete/fill there still targets that subtree. The scope is host/engine truth (a lens cannot safely expand a Subtree itself), so it transfers intact. [W2-gated: the AuthoringScope enum does not exist today; until scope-value lands, the only subject is the single primary selection.]"
+        },
+        {
+          "shared_state": "tree_collapsed (fold set)",
+          "carries": "Which subtrees are folded. A collapse in Flow (summary chip) is the same fold in Tree (disclosure), Ledger (hidden rows), and Canvas (group super-card). h/l in any lens mutates the one shared set. EXISTS TODAY (SharedSkinState.tree_collapsed). This is the collapse portion of Focus/Zoom — the camera-zoom portion is NOT here (it is skin-local)."
+        },
+        {
+          "shared_state": "pinned",
+          "carries": "The set of pinned key drivers/outputs. Pins stay visible regardless of focus and lens — pinned in Flow's lane, anchored rows in Ledger, pinned nodes on Canvas, pinned figures that BECOME Story's sections. EXISTS TODAY (SharedSkinState.pinned). This is the pin portion of Focus/Zoom."
+        },
+        {
+          "shared_state": "active cleave PREDICATE (a QuerySpec predicate — filter only, NOT sort/group, NOT a frozen match-set)",
+          "carries": "The current Filter/Sort cleave's PREDICATE as carried host-owned shared truth. Cleave to all errors in Ledger, switch to Flow, and Flow re-RUNS the predicate locally and trace-walks the matching error cone; switch to Tree and the outline prunes to the re-evaluated match keeping ancestor scaffolding. HONEST SCOPE: only the predicate is shared — each lens re-runs model-query locally on switch, so the resulting set MAY DIFFER if the model changed in between; sort key and group-by stay lens-local presentation. This is a NEW shared-state field (see new_stack_needs) and is a Phase-0/spine deliverable BECAUSE it is sold as continuity — it must ship WITH the spine, not three phases later. Backed by model-query-projection (W2)."
+        },
+        {
+          "shared_state": "shared focus arbitration { focused_slot, hovered, recent_selections }",
+          "carries": "Which slot owns the keyboard, what's hovered, and the recent-selection breadcrumb. One slot's selection DRIVES companions' highlight without focus theft. [W5-gated: shared-focus-arbitration. Pre-W5 there is one slot which always has focus; companions and cross-slot highlight do not exist until the cockpit lands.]"
+        },
+        {
+          "shared_state": "active scenario + scenario manifest",
+          "carries": "Which scenario overlay is active and the roster. Flip to Bear in Bench, switch to Sheet, and Sheet shows Bear's overlaid values with the scenario tint; Bench's compare columns and Story's callouts re-project together. Override VALUES live as an engine overlay (single source of truth); names/active-selection are host state. [W4c-gated: scenario-substrate; scenario durability across save is itself open question #10. Until then no scenario continuity exists.]"
+        },
+        {
+          "shared_state": "current_revision (position in the revision DAG)",
+          "carries": "Where you are in model history. Scrub back two revisions in Transport, switch to Tree, and Tree shows that past revision's computed values. Undo/redo in any lens moves this same pointer. [W4a/W4b-gated: revision-graph-retention + undo-redo-revision-nav. Only snapshot-identity hashes exist today; there is no navigable revision cursor until W4a lands.]"
+        },
+        {
+          "shared_state": "recalc_mode + manual_recalc_pending",
+          "carries": "Auto vs manual-batch recalc and whether a deferred recompute is pending. Stage deferred edits in Capture under manual-batch, switch to Flow, and the pending amber blast radius and the 'pay one F9' contract are still in effect. EXISTS TODAY (SharedSkinState). Read as dispatcher policy (audited-shared-state, W5) so all lenses honor the same mode."
+        },
+        {
+          "shared_state": "live speculation handle + candidate overlay",
+          "carries": "An open what-if ghost. Type a hypothetical in Bench, switch to Flow, and the same ghost ripples down the lane provenance-tagged Speculative; Esc discards it globally for free (rung 3 of the Esc ladder), an explicit Commit promotes it. [W4b-gated: candidate-overlay-handle — the single largest engine risk. No speculation continuity exists until W4b proves the substrate.]"
+        },
+        {
+          "shared_state": "workspace_ids + active_workspace_id",
+          "carries": "Which workspace is open and the roster. Lens switches never change the workspace; switching workspace (New/SwitchWorkspace, owned by Console) re-projects all mounted lenses onto the new model. EXISTS TODAY (SharedSkinState). Cross-workspace REFERENCES (cross-workspace-alias) are W6."
+        },
+        {
+          "shared_state": "persona + theme/locale tokens",
+          "carries": "The active Author/Reviewer/ReadOnly persona and the ThemeMode/locale. Persona gates which verbs are enabled identically in every lens; theme/locale retint and re-direct every lens uniformly. [persona is W5 readonly-reviewer-persona; theme/locale tokens land early with design-token-layer. Pre-W5 every origin is effectively Author.]"
+        },
+        {
+          "shared_state": "lens-INTRINSIC persisted SkinState (Canvas x,y positions + group rects; Sheet column widths; Story block order) — preserved, NOT re-projected",
+          "carries": "State a lens needs that the MODEL does not hold. This is per-lens persisted SkinState, kept across switches once skinstate-persistence-exercised (W5) lands — it is NOT re-projected from shared truth (the model never had a Canvas position). Switching INTO Canvas from Tree lays out fresh (auto-DAG) on first entry, then restores your authored map from persisted CanvasSkinState. Listed explicitly so the 'zero re-orientation' claim is honest about what is re-projected vs merely preserved."
+        }
+      ],
+      "composition_model": "THE COCKPIT = a multi-slot frame the shell composes, where each slot mounts one capability-negotiated lens over ONE shared truth, arbitrated for keys and focus, framed by persona and fault isolation. IMPORTANT STACK HONESTY: the ENTIRE cockpit (multi-slot-composition, shared-focus-arbitration, keybinding-registry, capability-manifest-negotiation, readonly-reviewer-persona, skin-error-isolation, audited-shared-state) is W5 platform-hardening — the LAST major platform wave. The repo today mounts a SINGLE skin (SkinSlot::Primary) over SelectionState{primary} only. So everything below describes the W5 destination, NOT an early deliverable; the suite SHIPS FIRST as single-slot mono-lenses (see rollout) and the cockpit, every companion pane, and every cockpit_layout below are W5+ contingent.\n\nSLOTS (multi-slot-composition, W5): the shell mounts a SlotLayout { main, right_inspector, split_left, split_right, command_bar }. Exactly one PRIMARY lens (Capture / Tree / Ledger / Sheet / Flow / Canvas / Story) lives in Main as the organizing structure. COMPANION panes fill the other slots and compose with ANY primary: Lens/Inspector (the zoom-in) in right_inspector; Transport (revision-DAG scrubber, W4a/b) as a thin bottom/split rail; Bench (what-if / compare / sensitivity, W4c/W6) in split_left|right; and Console (omnibox + palette + health) as the persistent top command_bar. Each slot gets its OWN SkinContext with a distinct typed SkinState but SHARES the same workspace + selection + shared signals. Cross-cutting MODES (Filter/Sort-cleave, Focus/Zoom, Present, Persona) are toggled WITHIN whichever lens has focus, never by adding slots.\n\nMOUNT NEGOTIATION (capability-manifest-negotiation, W5): before mounting, the shell checks each lens's SkinManifest { required_read_fields, required_intents, required_slots, min_profile, schema_version } via negotiate(); a lens that needs an unavailable field/intent/profile is rejected cleanly (loud, not a render panic). This is the mechanism by which the suite degrades gracefully across waves — e.g. multi-select bulk verbs are NOT offered until W2's selection-subject-model + scope-value land; Bench's ghost mode isn't offered until W4b's candidate-overlay-handle lands; Transport isn't offered until W4a's revision-graph-retention lands. Phase A's mono-lenses MUST actually have negotiate() decline these, not pretend.\n\nFOCUS ARBITRATION (shared-focus-arbitration, W5): exactly one slot is the focused_slot and owns the keyboard; hovered and recent_selections are shared. One slot's selection DRIVES the others' highlight WITHOUT focus theft. Tab/click moves focused_slot; Esc's ladder is slot-local until exhausted. This is what lets a lens's local / omnibox delegate to Console without focus theft once W5 lands.\n\nKEYBINDING ARBITRATION (keybinding-registry, W5): the host resolves KeyChord→IntentId for the focused_slot with a conflict policy and surfaces effective bindings in Console's command catalog; user overrides persist via audited shared state. THE UNIVERSAL grammar (the de-conflicted verb table above) is the registry's default layer shared by all lenses; a lens may add lens-specific chords ONLY in unused keyspace (Tab, Ctrl+Enter, drag are the declared lens-local set), never rebinding a universal verb. Global verbs (Ctrl+1..7 switch-lens, Ctrl+Z/Y) resolve at the host level above any slot. Pre-W5 a static default map encodes the same universal table.\n\nPERSONA (readonly-reviewer-persona, W5): SkinContext.permissions { persona, can_mutate, allowed_intents } is enforced centrally by the dispatcher PER INTENT ORIGIN — not by trusting each lens. A disallowed mutation is rejected with Forbidden{persona} and Console greys the verb with a reason, identically across all lenses and slots. Present mode pairs with ReadOnly. (Persona source-of-truth + remote-peer authentication is open question #12.)\n\nFAULT ISOLATION (skin-error-isolation, W5): the shell wraps each slot mount in an error boundary; a panicking lens shows a fallback in ITS slot only. Combined with negotiation, a flaky lens can never take down the cockpit.\n\nWHY IT'S ONE TOOL, NOT SEVEN: every slot reads the SAME NodeKey-addressed continuity and renders the SAME de-conflicted grammar + styling tokens; switching the Main lens is re-projection of that shared truth (Ctrl+1..7), and adding a companion is just mounting another window onto it. The frame is lens-agnostic; the lenses are interchangeable, composable windows. That is the cockpit — but it is the W5 destination, reached by first shipping the mono-lens core on W0–W3.",
+      "primary_lenses": [
+        {
+          "name": "Capture",
+          "modality": "Capture / rapid input / scaffold — setting up a model fast, the throughput-first lens you live in for the first hour, a bulk paste-in, or a data-entry session.",
+          "one_line": "Structure-by-typing: type a dotted path that doesn't exist and the tree scaffolds itself; Tab indents a child, Enter drops a sibling, fill-down a column, paste a block as a dry-run.",
+          "organizing_structure": "input-form / append TYPESTREAM: a single ever-growing top-to-bottom linear entry surface with one bright EDITING 'frontier line' at the growth frontier; committed lines stack upward as settled node-rows; indentation IS hierarchy; reading order is entry order, structure inferred from leading-dot paths / Tab-depth. A right-rail Scratch/Paste dock stages block-paste and import as a dry-run preview with per-row legality glyphs.",
+          "signature": "Type 'Accounts.2026.Q1.Revenue = 1200' + Enter → scaffolds every missing ancestor in one motion (a host-planned multi-AddNode TRANSACTION = ONE revision = one undo step) and lands the leaf, caret waiting on the next sibling. Enter=next sibling; Tab=add child (LENS-LOCAL secondary), Shift-Tab=outdent. Shift+↓ over a sibling run + one formula + Ctrl+D fills a whole column name-relative. Paste a 2-D block → dry-run dock with legal/collision/would-create glyphs, Enter accepts as one batch. Space-leader m=manual-batch (one F9 for 50 rows), the whole un-run field amber-Pending until F9. PRE-W2: mints one node at a time without atomic ancestor-scaffolding (single AddNode); atomic scaffold-as-one-revision needs transaction-scope.",
+          "stack_faculties": "transaction-scope (W2 — makes ancestor-scaffolding ONE revision/one undo step; the dependency that makes 'scaffold N ancestors in one motion' real) · add-node-content-policy (W3) · edit-transaction-id (W2 — undo a batch as one step) · naming-collision-policy (W2) · legality-impact-preview / engine-dry-bind (W2) · selection-subject-model + scope-value (W2 — sibling-run fill) · replicate-by-id / ReplicateContent (W3) · clipboard-transfer-model + paste-special (W3) · import-workbook DryRun|Commit (W6) · duplicate-subtree (W3) · format-resolver-on-context (W1) · empty-state-onboarding / StarterTemplate (W6). Tab/Shift-Tab are declared LENS-LOCAL secondary chords.",
+          "differentiation": "vs TREE: Tree manipulates an EXISTING hierarchy (structure-as-object); Capture GROWS hierarchy by typing (structure-as-act). vs LEDGER: Ledger is a dense filterable audit grid; Capture is a narrow append buffer with NO filter/sort. vs SHEET: Sheet edits placed cells with a formula bar; Capture has no grid/coords — its 'column' is a sibling run and a 2-D paste lands as NODES. ANTI-REDUNDANCY (Capture vs Sheet on raw value entry): Capture MINTS structure by typing paths (creates ancestors); Sheet enters values into nodes that ALREADY EXIST (no scaffolding). If you are creating the tree it's Capture; if you are filling an existing tree it's Sheet. vs FLOW: Flow explores; Capture DEMOTES exploration (no reading-head/trace on the frontier) and PROMOTES minting. Anti-redundancy rule: if the task is 'change/inspect what's there,' it is NOT Capture.",
+          "reuses": "Evolves prototypes 03 (template-editor) + 04 (outline-table) and absorbs the existing outline_table walking-skeleton skin. Adopts the shared (FLOW-derived) grammar+styling reference wholesale: graphite tokens, calc_state palette, SELECTED-vs-EDITING cue (frontier line = always-EDITING), pip vocabulary, which-key footer, Space-leader. Capture is the one wholly-new primary — no existing skin owns rapid first-entry."
+        },
+        {
+          "name": "Tree",
+          "modality": "Structure — see and MANIPULATE the hierarchy. The 'see the tree structure' lens and the home of structural refactoring (outline, collapse, reparent, reorder, duplicate, templates, meta, rename-as-refactor).",
+          "one_line": "The hierarchy made spatial: depth and sibling order are the literal axes, and you reshape the model like clay with a live legality net so a formula never breaks.",
+          "organizing_structure": "a TREE — a single vertically-scrolling indented outline, one row per node, depth=indentation, parent/child=containment, sibling order=vertical order; tree_collapsed folds subtrees; virtualization (W5) windows a 100k-node tree to ~100 visible rows. A left structure gutter holds collapse triangles, drag-handles, and depth guide-rails; a bottom legality ribbon lights during any structural gesture.",
+          "signature": "h/l collapse/expand (the sole fold verb; Left-arrow moves to parent, never folds). Drag a subtree BY ITS GUTTER HANDLE → a glowing drop-lane snaps between rows and the ribbon reads live 'reparent into Region.West — rebinds 4, no cycle, no collision' (drop_legality verdict, zero mutation); release commits MoveNode and the moved subtree flashes '4 rebound'. F2=rename-as-refactor (pre-commit 'rebinds 6, no collision'). Alt+↑/↓ reorder. Space-p duplicate-subtree, Space-t promote/instantiate template (drift shown as an amber tilde), Space-m toggle is_meta. STRUCTURAL-DRAG INVARIANT: the gutter-handle drag always previews legality before commit (plain content drag does nothing structural here).",
+          "stack_faculties": "stable NodeKey identity (W0) · drag-gesture-model / DropVerdict (W2) · legality-impact-preview / engine-dry-bind (W2) · rename-move-ref-integrity (W2) · naming-collision-policy (W2) · duplicate-subtree (W3) · template-subsystem Promote/Instantiate/Sync/Detach + drift (W6) · meta-and-attribute-write + note-write (W3) · selection-subject-model + scope-value (W2) · set-membership-write (W3) · virtualization-window-projection + model-query-projection (W5/W2) · command-palette-metadata (W2) · a11y-primitives (W5 — the canonical aria tree-role widget for the suite)",
+          "differentiation": "vs LEDGER: Ledger is a flat row-per-node GRID where depth is just a column and the win is filter/sort/scan; Tree is the HIERARCHY where depth/containment/order ARE the axes and the win is reshaping shape. Multi-select in Ledger targets rows for bulk VALUE edits; in Tree it targets SUBTREES for bulk MOVES. vs CAPTURE: Capture grows the tree (value-first, throughput); Tree REFACTORS it. vs FLOW: Flow lays nodes in dependency-topological order to explore causation; Tree lays them in authored containment order to manipulate shape. Tree is the ONLY lens that surfaces template drift, meta scaffolding, and live drop-legality as first-class structural signals.",
+          "reuses": "Absorbs the existing outline_table skin but flips its defining choice — restores true indentation (parent/children/depth), keeps is_meta VISIBLE as structural scaffolding, replaces the flat formula column with chevrons/drag-handles/badges. Keeps its reactive Memo over node_order + recalc-mode-aware edit helper; upgrades to a keyed For by NodeKey. Inherits the shared layer wholesale (4-row shell, dtc-* tokens, 1-bit edit, / omnibox, Space-leader, legality-ribbon pattern). The old triple_editor = Tree + Lens composed (a W5 cockpit, not an early deliverable)."
+        },
+        {
+          "name": "Ledger",
+          "modality": "Wide audit/overview + 'cleave' (filter/sort/group-by) + bulk authoring. The lens to see ALL nodes at once as a dense scannable queryable grid and slice the population into sub-populations you act on en masse.",
+          "one_line": "Think in POPULATIONS: cleave 100k rows to the 200 that matter by attribute predicate, sort by real typed value, group into health cohorts, then author the whole class at once.",
+          "organizing_structure": "ROWS — a flat, virtualized, sortable/filterable/groupable row-per-node table; the row set is the full node population (windowed), ORDER and VISIBILITY are a host-side query layer (predicate filter + sort key + group-by) over node_order; hierarchy is demoted to one optional Path column. A sticky cleave bar + configurable attribute columns (Value, calc_state, Deps, Format, Provenance, Reason) + a calc-state-tinted scroll-minimap.",
+          "signature": "Type '/state:dirty' in the cleave bar → 100k rows collapse to the 41 stale ones, minimap goes amber. Click the Value header → sort descending by REAL typed numeric value. 'g s' → reband into health cohorts with aggregates (h/l folds a cohort). Multi-select the cohort, type one formula, Ctrl+D → one name-relative rule fills all 41 rows as a single republish. Space-d = health-as-filter; bulk Delete previews reverse_edge blast radius across the whole selection. CLEAVE CONTINUITY: the PREDICATE ('/state:dirty') is promoted to shared truth and carries to other lenses; the sort key and group-by stay Ledger-local. PRE-W2: single-select only; bulk fill/multi-select negotiate() declines until selection-subject-model + scope-value land.",
+          "stack_faculties": "model-query-projection (W2 — the cleave engine; backs the carried predicate) · virtualization-window-projection (W5) · projection-delta-channel (W5/early — re-render only changed rows) · selection-subject-model + scope-value (W2) · replicate-by-id (W3 — Ctrl+D bulk fill) · set-membership-write (W3) · format-resolver-on-context (W1 — typed sort/group keys) · typed-invalidation-reasons (W0 — Reason column) · typed-dependency-kinds (W0 — Deps column) · table-cell-readback (W6 — table nodes as rows) · legality-impact-preview (W2) · command-palette-metadata (W2)",
+          "differentiation": "vs TREE: Tree's spine is the hierarchy EDGE; Ledger's spine is the COLUMN/PREDICATE. vs SHEET: Sheet is VALUE-FIRST cells with a formula bar (one node deep, no population query, NO predicate-cleave); Ledger is AUDIT-GRID-first with many parallel attribute columns you sort/filter/group. SHARPENED TEST: if the task is 'query/scan/bulk a population' it's Ledger; if it's 'author one cell correctly with point-mode+F4' it's Sheet — Sheet does NOT do predicate-cleave at all (every filter/sort user is pushed to Ledger). vs FLOW: Flow is set-by-neighbourhood with causal layout; Ledger is set-by-PREDICATE over the whole 100k with no causal layout. vs LENS companion: Lens is deep-single, Ledger is wide-many. Ledger is the canonical home of Filter/Sort (cleave) and Persona modes.",
+          "reuses": "Evolves outline_table (its canonical seed) — keeps SkinCategory::Overview, supports_inline_formula_edit, the EditContent/EditContentDeferred-per-recalc_mode pattern, value_render::value_text, the dtc-outline-* CSS, the is_meta filter, node_order iteration — and adds the cleave/sort/group query layer, virtualization, multi-select, and bulk verbs the existing code explicitly defers. Absorbs dependency_inspector's count/descriptor columns as just more columns. OutlineTableState extends into LedgerState (filters, sort, group-by, visible-column set, group-collapsed set — note: filter PREDICATE is mirrored into shared state, sort/group stay local)."
+        },
+        {
+          "name": "Sheet",
+          "modality": "Focused editing — the value-first, formula-bar-bound authoring surface for the Excel migrant, AND the home of table authoring. 'Type a number, type a formula, point at a precedent, F4 it, commit, move on' — plus insert/delete table rows/columns and calculated columns.",
+          "one_line": "The Excel edit loop on a calc-tree: values by default, formulas on edit in a real formula bar, point-mode reference insertion + F4 binding-cycle, arrays AND tables expand in place — no A1, no coordinates.",
+          "organizing_structure": "ROWS — a single vertical column of nodes-as-cells in structural order, depth-indented, each row a two-part cell (name-cell left + format-resolved value-cell right); exactly ONE cell is the active selection; a top FORMULA BAR (Name Box | fx | ✗/✓ | formula field | binding chip) is bound to that selection; arrays/tables expand IN PLACE beneath their owning cell as a child grid. A TABLE node additionally exposes table-structural ops (insert/delete row/column, calculated column) over that in-place grid.",
+          "signature": "F2 or type → the formula bar lights with the EDITING outline and syntax-tinted content_text. Arrow to another node mid-edit → POINT-MODE: arrows move a reference caret over EXISTING NODES (not grid cells), the target highlights, confirming splices a reference to its NodeKey via a host-built RefHandle (skin never writes formula text); F4 cycles that reference's BINDING by handle. An array/table cell expands into a real formatted mini-table with a dims·min/max/sum band; in a table you can insert a row/column or add a calculated column. Multi-select a cell run + Ctrl+D fills name-relative; paste-special offers Values|Formula|Format. (Tab=next column is the LENS-LOCAL secondary chord.)",
+          "stack_faculties": "format-resolver-on-context (W1 — the load-bearing value-first dependency) · active-node-detail (W1 — backs the formula bar) · richer-typed-value (W0 — Number right-aligned, Logical as checkbox, Array expansion) · reference-insertion (W3 — point-mode; host splices over an OxFml RefHandle, skin never writes formula text) · f4-toggle-binding (W3 — cycles binding on a NodeKey HANDLE; see doctrine note) · binding-diagnostics-typed (W1) · reference-resolution-map (W1) · per-node-effective-format + cf_results (W1) · scope-value + replicate-by-id + paste-special (W2/W3) · format-write / SetFormatProperty (W3) · table-structural-ops + table-cell-readback (W6 — the table-authoring mode) · legality-impact-preview (W2) · projection-delta-channel (W5/early)",
+          "differentiation": "vs LEDGER: Ledger is a WIDE audit grid (many analytic columns, filter/sort/cleave, scan hundreds of rows); Sheet is ONE CELL DEEP with a bound FORMULA BAR optimized for authoring a single cell correctly and is FORBIDDEN from predicate-cleave (push filter/sort to Ledger). Sheet has no multi-column audit matrix. vs FLOW: Flow lays nodes as a causal SENTENCE; Sheet as a STRUCTURAL column, values by default, edit in an Excel-style bar. Sheet is the ONLY lens with point-mode reference insertion + F4 + in-place array/table grids + table-structural-ops. vs TREE: Tree edits SHAPE; Sheet edits CONTENT in the same outline shape. DOCTRINE NOTE on F4: binding axes are defined in TREE terms — anchored-to-NodeKey vs relative-by-lexical-role — NOT Excel abs/rel/mixed ($-anchoring is a grid concept and is dropped). There is NO A1 addressing; point-mode arrows select NODES; 'fill' is name-relative, never coordinate-relative.",
+          "reuses": "Evolves prototype 06 (excel-style-cell) — inherits its four-row shell, the formula-bar grid, the node-as-cell two-column layout, the inline expanded-array grid + header band, the status modeline. Absorbs prototype 02 (array-value grid) as its array-node-expansion mode (one Array node's cells in place — doctrine: multi-value is one node's Array, never a grid range). Re-skins 06's warm palette to the shared graphite DESIGN TOKENS. Reuses shared components (1-bit EditBuffer, / Name-Box, which-key footer, calc-state pip + odometer-roll value, keyed-For/Memo foundation, shared SkinState). dtc-* classes carry over."
+        },
+        {
+          "name": "Flow",
+          "modality": "Explore / calc-theatre / what-if — the interrogative wind-tunnel lens and the suite's grammar reference. ALREADY DESIGNED; the others share its (now de-conflicted) nervous system.",
+          "one_line": "The dependency-flow 'sentence': F9 reading-head sweeps in evaluation_order, ]/[ trace-walk where the trace IS the layout, recursive E-explain, consequence-free ghost what-if and a scenario rail.",
+          "organizing_structure": "a dependency-flow RIBBON — nodes as chips in stable topo order with backward wires; the focused ≤40-chip slice; the F9 reading-head light-bar; ]/[ trace accumulates a lit subgraph that reflows; a scenario rail + delta ledger. Layout axis (topo) is distinct from animation axis (the sweep). The 1-bit modeless model is the canonical reference.",
+          "signature": "F9 → the reading-head sweeps the chips in evaluation_order, odometer-rolling only changed values and igniting wires. ]/[ walk dependents/precedents one hop, the lit subgraph persists and the rest dims. E unfolds a recursive mini-chip derivation stack below the focus. Type a hypothetical → a Speculative ghost ripples down the lane (PreviewEdit, zero history pollution), Esc discards free (Esc-ladder rung 3) / Enter commits. Scenarios flip via the Space-leader roster (moved off bare number keys so a mis-keypress can't swap lenses). Manual-batch (Space-m) stages deferred edits as a growing amber blast radius paying one F9. GRAMMAR NOTE: Flow's opt-in 'commit + topological-next hop' is bound to Ctrl+Enter as a LENS-LOCAL secondary chord — NOT a universal verb, and F9 remains the sole recalc.",
+          "stack_faculties": "projection-delta-channel + host-worker calc (W5 — the sweep over real ValuesChanged deltas) · last_run.evaluation_order + phase_timings (W0) · full-derivation-trace + EvaluateFragment (W1 — E) · candidate-overlay-handle + preview-edit-intent + speculation-discard-commit (W4b — ghost what-if) · scenario-substrate (W4c) · typed-dependency-kinds (W0 — wire routing) · value-published-pending-flag (W4b — ghost tint) · model-query-projection (W2 — / omnibox) · keybinding-registry (W5 — the universal grammar's home) · design-token-layer (early W5 — defines the suite's signal palette)",
+          "differentiation": "vs CANVAS: Flow is a LINEAR causal sentence that reflows on trace (the trace IS the layout) and recomputes its focused slice; Canvas is a PERSISTENT authored 2D map where tracing only illuminates a fixed layout (cards never move). Flow answers 'narrate this computation'; Canvas answers 'show me the whole shape.' vs SHEET/LEDGER: those are value/attribute surfaces; Flow is causality-first with recompute theatre. Flow is the canonical owner of the dependency-graph-AS-MODALITY (trace-as-layout is its defining structure); the others' trace surfaces are the shared ]/[ verb realized per-lens, not competing homes. Flow absorbs prototype 07 (nodes-across) as its static columnar layout mode.",
+          "reuses": "IS the reference lens — already designed in docs/ux/flow-skin/. The suite does NOT redesign it; it EXTRACTS its grammar (universal-verb table → keybinding-registry, AFTER de-conflicting Tab/Ctrl+Enter to lens-local and F9/Ctrl+D to sole), its styling (calc_state + provenance tokens → design-token-layer), and its carried-truth list (→ shared-focus-arbitration + SkinState) into the cross-lens contract every other lens inherits. Its FlowSkinState (collapsed-set, baseline-for-Esc, scenarios, lane_anchor) is the template the other lenses' SkinState mirror."
+        },
+        {
+          "name": "Canvas",
+          "modality": "Wide overview + SPATIAL degree-of-interest zoom — the spatial 'see the shape and relationships' whiteboard/map where the whole model is laid out in free 2D space and cross-cutting dependency structure, clusters, and blast-radius become visible as geometry. (ASPECT/node-detail zoom is owned by the Lens companion + Focus/Zoom mode, not by Canvas — resolving the prior dual-zoom contradiction.)",
+          "one_line": "The model as a constellation you arrange and keep: spatial memory becomes navigation, F9 spreads a recalc wave as an igniting stain, lasso-and-promote a region to a template.",
+          "organizing_structure": "FREE 2D SPACE — skin-owned facade positions (x,y per NodeKey + group rectangles) persisted in CanvasSkinState, NOT derived from node_order/depth and NOT re-projected from shared truth (the model never had a position); dependency wires are the connective tissue; cycle_groups render as enclosing knots; a SPATIAL degree-of-interest field (viewport zoom = skin-local state, never an intent) over the selection governs full-detail-vs-dot; a layout-mode toolbar (Free/Auto-DAG/Hierarchy/Grid/Radial), zoom pill, and calc-state-tinted minimap.",
+          "signature": "Arrows hop along wires (Up/Down siblings, Left/Right up/down the wire), camera follows. Lasso a region → multi-select a spatial set, c/d/s grow it. F9 → the recalc wave spreads radially along wires like an igniting stain, amber→green node-by-node in true evaluation order; cards never move so the blast radius reads as expanding geometry. ]/[ ignite the traced subgraph in place. PLAIN-DRAG moves only the cosmetic facade position (no model edit, no preview). Lasso + G draws a hull, P promotes it to a template (legality preview first — a model mutation, so it previews). h/l fold + viewport-zoom drive degree-of-interest from wide-overview to one-node detail. FIRST ENTRY: switching into Canvas lays out fresh (auto-DAG) then restores your authored map from persisted CanvasSkinState.",
+          "stack_faculties": "projection-delta-channel (W5 — F9 wavefront over real deltas) · typed-dependency-kinds + CarrierDetail (W0 — wire color/routing) · value-published-pending-flag (W4b — ghost cards) · candidate-overlay + preview-edit-intent (W4b/c — map-wide ripple) · scenario-substrate + comparative-multi-overlay-projection (W4c — re-tint the map per scenario) · value-shape-diff + revision-history-projection (W4b — watch the map morph) · virtualization-window-projection (W5 — windowed by viewport rect) · selection-subject-model + scope-value (W2 — lasso → scope) · template-subsystem (W6 — draw-a-boundary-then-promote) · legality-impact-preview + drag-gesture-model (W2) · model-query-projection (W2) · cycle_groups (W0) · a11y-primitives (W5). NEW NEED: skin-owned-facade persistence keyed on NodeKey (see new_stack_needs).",
+          "differentiation": "vs FLOW: Flow is a LINEAR topo sentence with a moving reading-head that recomputes/reflows; Canvas is a PERSISTENT authored 2D map (spatial memory), the whole model on screen, tracing only ILLUMINATES the fixed map. Canvas is the owner of dependency-graph-AS-PERSISTENT-MAP. vs TREE: Tree is a containment OUTLINE; Canvas is a dependency GRAPH in free space — a node feeding three unrelated subtrees is one card with three wires, invisible in an outline. vs SHEET/LEDGER: those are value/row surfaces; Canvas is relationship-first geometry. ANTI-REDUNDANCY guard (Canvas vs Flow/Ledger): if the task is dense tabular scan it's Ledger; if linear causal narration it's Flow; Canvas ONLY when persistent 2D spatial-memory is the point. Canvas is the widest primary and the home of SPATIAL Focus/Zoom.",
+          "reuses": "Evolves prototype 08 (canvas-flow) — keeps its free/auto/hierarchy/grid layout-mode toolbar, bezier wire SVG layer, lasso marquee, group banner with 'Promote to template', zoom pill, and minimap with viewport box. Re-skins from the warm palette to the shared graphite instrument language via the shared design-token-layer. Inherits the shared grammar wholesale (1-bit edit, / omnibox, Space-leader health, ]/[ trace, F9 theatre, E explain, h/l→tree_collapsed; plain-drag = cosmetic position only). Reuses the 4-row shell, the content_text band, node-as-card, and the dtc-* CSS classes."
+        },
+        {
+          "name": "Story",
+          "modality": "Present / narrate / report (read-only) — a curated editorial model card built from selected nodes; the perspective for when the model is DONE and must be EXPLAINED, defended, audited, or onboarded, not edited.",
+          "one_line": "A finished model ships as a readable, faithful, tamper-proof narrative that can replay a walkthrough of its own reasoning — same model, one lens away, zero re-orientation.",
+          "organizing_structure": "NARRATIVE — a top-to-bottom editorial document (a 'model card'); the spine is an ordered list of curated BLOCKS (headline metric strip, prose sections, key-formula-as-named-prose, dependency/flow figure, charts/sparklines, scenario callouts, annotations) in authored editorial order; each block is backed by a NodeKey/scope/series so the document is a LIVE projection over engine truth, never frozen text. Block order is lens-INTRINSIC persisted SkinState. Read-only by default (persona ReadOnly + Present mode).",
+          "signature": "Ctrl+7 from any lens carries your live selection/scope/scenario/revision and composes a model card around it (re-projection, read-only by default). Arrows move the reading cursor block-to-block; Enter adopts a block's NodeKey as shared primary so companions follow. E unfolds a derivation as a curated editorial pull-quote. Space Play runs a recorded walkthrough: the cursor self-advances, scenarios flip and every value/chart re-renders, explains unfold, the revision scrubs to 'as presented at sign-off' — hands-free, with a scrubber. STYLING: Story is the DECLARED sanctioned exception — its CHROME is warm/editorial (mixed serif/sans/mono on prose, warm background) but NODE identity stays in the shared humanist sans and calc_state+provenance stay the only saturated channels on nodes, so a figure still reads as the same node.",
+          "stack_faculties": "format-resolver-on-context + per-node-effective-format + richer-typed-value (W0/W1 — faithful FORMATTED hero metrics/charts; the most-depended-on faculty) · series-projection (W4c — chart/sparkline blocks over a node's Array or a reference collection) · scenario-substrate + comparative-multi-overlay-projection (W4c — callouts + whole-document scenario flips) · full-derivation-trace + derivation-trace-for-candidate (W1/W6 — editorial explain + 'why under Bear') · intent-log-replay (W5 — the Play walkthrough) · revision-graph-retention + value-shape-diff (W4a/b — the time-scrubber as a presentation device) · readonly-reviewer-persona (W5 — read-only by default, per origin) · note-write (W3 — authored annotations round-trip to Excel notes) · value-published-pending-flag (W4b — provenance marks). NEW NEEDS: intent-log-replay as a curated/authored artifact, and block-backed narrative projection (see new_stack_needs).",
+          "differentiation": "vs LEDGER: Ledger shows ALL nodes for filtering/scanning (completeness); Story shows a CURATED AUTHORED SUBSET as editorial narrative (selectivity/persuasion). vs SHEET: Sheet EDITS values; Story is a read-only-by-default REPORT. vs FLOW: Flow narrates the model COMPUTING; Story narrates the model EXPLAINING ITSELF (editorial sequence, Play over authored/recorded narrative). They share E, /, Space, and a 'press-one-key-and-watch-the-model-move-through-itself' transport verb. Distinct from 'any lens in Present mode' because its organizing structure is an authored document. STYLING EXCEPTION is explicit: Story is the one place recognition-on-sight transfers only PARTIALLY (editorial chrome differs by design) — but node identity + calc_state + provenance are unchanged, so it is not a different product, just a report face on the same nodes. EARLIEST-SHIP: Story is a W4–W6 lens (needs revision graph, candidate overlays, scenarios, replay), NOT part of the early core.",
+          "reuses": "Evolves value_board (the value cards skin) — promotes its value cards into the headline metric strip and absorbs its array/table rendering (value_render render_value/value_text) for chart/series blocks. Reuses the command-a-plus editorial design reference (docs/ux/design-references) for its CHROME — mixed serif/sans/mono, warm accents on chrome only — explicitly named there as intended for a read-only/presentation skin and model-card export. Reuses the shared grammar wholesale (1-bit model with EDITING gated off by persona, / Name-Box, Space leader, E explain, Esc-ladder, Ctrl+Z/Y revision-nav) and the shared calc_state + provenance tokens as a paper-warm chrome re-skin OVER the same node palette. Pulls the dependency flow figure from prototype 08's arc routing."
+        }
+      ],
+      "companion_panes": [
+        {
+          "name": "Lens (the Inspector / multimeter)",
+          "role": "The universal ZOOM-IN and the owner of ASPECT/node-detail zoom: focus-and-context drill of the current selection — full recursive E-explain derivation stack, typed value + effective format, precedents/dependents as a clickable list, and binding/profile diagnostics. It owns the single-node altitude pole so no primary has to (resolving the dual-zoom split: Lens+Focus/Zoom own node-detail zoom, Canvas owns spatial zoom). A tall right_inspector column of fixed-order bands (Identity · Value · Formula · Derivation stack · Precedents/Dependents · Format). Reads only shared SelectionState — never drives the primary's layout. Subsumes the standalone dependency_inspector view and the format-editor (prototype 05, as its format-authoring mode); evolves triple_editor's value/formula panes. Where Flow's E unfolds precedents transiently, Lens renders the SAME trace as a persistent N-level scrollable indented tree standing still. [W5-gated as a COMPANION — needs multi-slot. Its underlying reads (active-node-detail, full-derivation-trace) are W1, so its CONTENT can ship inside a mono-lens before the cockpit exists.]",
+          "pairs_with": "Every primary (it is what makes Tree/Capture viable without inline formula panes; it is Flow's named right inspector; it deepens Sheet's formula bar; it explains a Canvas-tapped node). Suppressed under Story's read-only Present chrome unless a reader opens it on demand."
+        },
+        {
+          "name": "Transport (the time scrubber / tape head)",
+          "role": "The HISTORY/TIME companion: the revision-DAG scrubber — undo-as-navigation, branch points after undo-then-edit, value-shape change-pulse between any two revisions. A thin horizontal rail of revision ticks (each a tape-transport node with its edit summary, value_epoch, and a calc-state-tinted dot) with a bright playhead; where edit-after-undo branched, the spine FORKS into a small DAG ribbon. Drag the handle to PLAY the workspace through its own history; anchor + Shift-extend two ticks to diff them as a change-pulse heat overlay the primary paints. F9 on a past/branched revision is reinterpreted as 'branch from here.' No walking-skeleton predecessor. [W4a/W4b-gated and W5 for the companion frame — Transport cannot exist in ANY form until revision-graph-retention (W4a) + undo-redo-revision-nav/value-shape-diff (W4b) land. It is one of the two latest-landing companions.]",
+          "pairs_with": "Review-oriented primaries (Ledger AS OF a past revision, Tree structural history, Flow's transport rail) and Lens (scrub time while Lens explains the same node at that revision via derivation-trace-for-candidate). Drives the shared revision cursor; every slot re-projects when it moves. With Story it becomes a 'how we got here' presentation timeline."
+        },
+        {
+          "name": "Bench (the Scenario bench / wind-tunnel)",
+          "role": "The WHAT-IF/COMPARE companion: scenario rail (Base/Bull/Bear overlays, selected via the Space-leader roster — NOT bare number keys), comparative adjacent-column projection per node (a side-by-side over a TREE shape no Excel data-table does), goal-seek convergence trace, and a sensitivity/tornado that ranks drivers. A split pane; ghost what-if (PreviewEdit, Speculative-tinted) is consequence-free — Esc discards for free (Esc-ladder rung 3), Enter promotes (CommitSpeculation). The non-Flow home for structured comparison. Evolves value_board into provenance-tinted compare columns and promotes Flow's scenario rail into a dedicated multi-column companion. [W4c-gated for scenarios/compare; goal-seek + sensitivity-sweep are W6. Cannot exist before W4b's candidate substrate. A late companion.]",
+          "pairs_with": "Flow (ghosts ripple in the lane as Bench drives them), Sheet (type a hypothetical in a familiar cell, compare columns appear), Ledger (compare scenarios across a dense audited row set), Lens (Bench drives a scenario; Lens explains the node within it), Transport (promote a ghost to a kept branch). With Story it supplies the compare columns a narrative needs."
+        },
+        {
+          "name": "Console (the Command + Health + Workspace bar)",
+          "role": "The always-on COMMAND/SEARCH/HEALTH/WORKSPACE spine: the canonical / Name-Box + model-query (text/calc_state/has_error/references/is_meta at 100k scale), the Space/Ctrl-P command palette auto-populated from command-catalog metadata, the calc-state-tinted health cluster (Clean/Dirty/Evaluating/Error counters, each a clickable lens), AND — closing a coverage gap — the WORKSPACE switcher/roster (New/SwitchWorkspace are first-class Console verbs; it is the suite's true 'address bar'). It is where the active-lens indicator and persona badge make CONTINUITY visible. Promotes Flow's command+health row into a first-class shared top companion. OMNIBOX OWNERSHIP: pre-W5 each lens has its own self-contained / ; once W5's shared-focus-arbitration + keybinding-registry land, Console OWNS the canonical omnibox and lenses delegate to it without focus theft. [The COMPANION frame is W5; the underlying model-query is W2; New/SwitchWorkspace exist TODAY.]",
+          "pairs_with": "Every composition — effectively always mounted once the cockpit exists; it is how you reach every lens, command, and WORKSPACE. Drives shared selection/highlight/lens-switch/workspace-switch that all panes read. Shrinks to a minimal title strip in Story/Present mode. Visualizes cross-workspace-alias dependencies (W6) by routing an external-workspace reference into Flow/Canvas wires or the Ledger Deps column."
+        }
+      ],
+      "cross_cutting_modes": [
+        {
+          "name": "Filter / Sort (cleave)",
+          "what": "Degree-of-interest by predicate + ordering: subset the visible node set (by calc_state, depth, provenance, search, dep-degree, reason) and reorder it. Native and richest in Ledger (its home), but available in EVERY lens as a re-projection of the same PREDICATE via model-query-projection — Tree prunes to the match keeping ancestor scaffolding, Flow lights the cleaved cone, Canvas regions it spatially. NOT a separate skin. HONEST CONTINUITY: only the PREDICATE is carried shared truth; on a lens switch each lens RE-RUNS the predicate locally (the resulting set may differ if the model changed in between), and sort key + group-by stay lens-local presentation. This is the resolution of the prior over-promise that a frozen 'cleaved set' carried verbatim — it is the predicate that carries, re-evaluated per lens, which is both honest and a Phase-0/spine deliverable because it is sold as continuity."
+        },
+        {
+          "name": "Focus / Zoom",
+          "what": "Degree-of-interest by proximity, split into a SHARED part and a LENS-LOCAL part. SHARED (carried truth, EXISTING fields): collapse periphery (tree_collapsed), pin drivers/outputs (pinned). LENS-LOCAL (cosmetic, never an intent, never shared): viewport zoom level / camera, fade-by-distance. There is NO single abstract 'zoom intent' that the dispatcher sees — unifying a camera-zoom with shared model state would blur the frame-only boundary. The altitude knob inside any lens maps onto each structure consistently (Canvas camera-zoom = skin-local; Tree collapse = shared; Ledger pin-the-cohort = shared; Flow slice-width = skin-local) so the overview↔focus FEEL transfers, while only the collapse/pin facts are actually shared. Complements the Lens companion (mode narrows the SAME structure in place; companion opens a dedicated node-detail pane and owns ASPECT zoom)."
+        },
+        {
+          "name": "Present",
+          "what": "Strip chrome + go read-only + enlarge: any lens can enter a clean, audience-facing, non-editing state (the general form of which Story is the dedicated extreme). Toggled by the same chord everywhere (Space-leader p); pairs with Persona=ReadOnly. Console shrinks to a title strip, edit affordances disable, type scales up. Present is a reversible MODE over the same shared truth — switching out restores the full authoring frame at the identical selection and scope, never a separate export. [Persona/ReadOnly enforcement is W5; the chrome-strip itself can ship earlier as a mono-lens display toggle.]"
+        },
+        {
+          "name": "Persona",
+          "what": "Author / Reviewer / ReadOnly, enforced PER INTENT ORIGIN at the dispatcher (not by trusting each lens). Re-tunes what every verb is allowed to do without changing the lens — a Reviewer can't Delete in Tree OR Sheet, identically; a disallowed mutation is rejected Forbidden{persona} and Console greys the verb with a reason. Reviewer persona additionally surfaces audit affordances (change-marks, comments) over the same structure. Ambient cockpit state that frames all lenses and slots. [W5-gated: readonly-reviewer-persona; persona source-of-truth + remote-peer authentication is open question #12. Pre-W5 every origin is effectively Author.]"
+        }
+      ],
+      "cockpit_layouts": [
+        {
+          "name": "The Modeling Cockpit (flagship) — W4+/W5",
+          "slots": "Main = Flow (the Sentence). RightInspector = Lens (focus chip's full derivation stack). Split = Bench (comparative scenario columns / what-if ghost). Rail = Transport (history scrubber). CommandBar = Console (omnibox + palette + health + workspace) spanning the top.",
+          "for_what": "The everyday EXPLORE + COMPUTE home and the suite's destination cockpit. REQUIRES the full stack: multi-slot (W5) + candidate overlays (W4b) + revision graph (W4a) + scenarios (W4c). Four independent skins over one shared truth; a selection in one highlights in all. This is a LATE deliverable, not a baseline."
+        },
+        {
+          "name": "The Author Cockpit — W5 (content needs W2/W3)",
+          "slots": "Main = Tree (structure outline). RightInspector = Lens (active_detail: formula bar, binding_diagnostics, reference_map). Split = Flow (compact Sentence, optional). Rail = collapsed. CommandBar = Console. Persona = Author.",
+          "for_what": "STRUCTURE + CAPTURE work: build/reshape the hierarchy on the left, author each node's content against live legality on the right, watch references re-thread in Flow as you reorder/move. (Capture leads this cockpit's first phase, handing the freshly-built subtree forward as a Subtree scope.) The cockpit frame is W5; the underlying authoring verbs are W2/W3."
+        },
+        {
+          "name": "The Audit Cockpit — W4+/W5",
+          "slots": "Main = Ledger (dense grid, Filter/Sort cleave active). RightInspector = Lens (drill the flagged row). Split = Flow (trace WHY on demand). Rail = Transport with value-shape change-pulse. CommandBar = Console. Persona = Reviewer (mutations rejected per origin).",
+          "for_what": "REVIEW at scale: cleave the model, diff two revisions as a heat overlay, drill any flagged node in Lens, trace-walk its cause in Flow. The cleave PREDICATE carries into Flow so you trace the re-evaluated cohort. REQUIRES Transport (W4a/b), persona (W5), multi-slot (W5)."
+        },
+        {
+          "name": "The Sheet Cockpit — W5 (content W1/W3)",
+          "slots": "Main = Sheet (value-first cells + formula bar). RightInspector = Lens (precedents/dependents of the active cell). Split = collapsed or Bench. Rail = collapsed. CommandBar = Console. Persona = Author.",
+          "for_what": "The Excel-reflex modality: value-first entry/review with formula bar, point-mode reference insertion, F4 binding-cycle, trace-precedents, and table authoring — node-as-cell (no A1/coords), multi-value as a node Array. The familiar on-ramp. Formula-bar reads are W1, point-mode/F4 are W3, the cockpit frame is W5."
+        },
+        {
+          "name": "The Map Cockpit — W5 (history W4)",
+          "slots": "Main = Canvas (spatial map, zoom + groups, wide). RightInspector = Lens (selected cluster detail). Split = Flow OR Ledger. Rail = collapsed. CommandBar = Console.",
+          "for_what": "WIDE-OVERVIEW + SPATIAL zoom modality: the whole model as a spatial graph, with a precise lens (Flow/Ledger) in Split for the cluster you select. Pan-and-zoom the forest, drill the tree; F9 spreads the recalc wave as geometry. Needs facade-persistence (new need) + multi-slot (W5); morphing-through-revisions needs W4."
+        },
+        {
+          "name": "The Story Cockpit (present mode) — W4–W6",
+          "slots": "Main = Story (narrative, read-only, chrome stripped). RightInspector = Lens exposed on-demand for explain-anywhere. Split = none. Rail = optional Transport as a 'how we got here' replay timeline. CommandBar = Console shrunk to a title strip. Persona = ReadOnly.",
+          "for_what": "PRESENT / handoff: a finished model shipped as a readable narrative with Excel-faithful figures and an optional replayable Play walkthrough. The terminal, shareable face of the suite. The LATEST-landing cockpit — needs revision graph (W4a), candidate overlays (W4b), scenarios (W4c), intent-log-replay + persona (W5), and the narrative/replay new needs."
+        }
+      ],
+      "journeys": [
+        {
+          "task": "CAPTURE — scaffold nodes + values fast (cold-start / paste-in / rapid-entry)",
+          "leading_lens": "Capture (Main)",
+          "flow": "Type 'Accounts.2026.Q1.Revenue = 1200' into the bright frontier line; Enter scaffolds every missing ancestor as ONE host-planned multi-AddNode TRANSACTION (W2 transaction-scope → one revision, one undo step) and lands the leaf, legality-impact-preview ghosting the will-create set first. Tab indents a child (LENS-LOCAL), Shift-Tab outdents, Enter walks siblings. Shift+↓ over the quarters + '= Revenue*0.4' + Ctrl+D fills a COGS column name-relative; the whole field is amber-Pending under Space-m manual-batch. Companions (W5 cockpit): Lens squiggles an unresolved name; Console runs legality-impact-preview on each pending AddNode and offers StarterTemplate on an empty model. F9 runs the lot once, green. Handoff: Ctrl+3 to Tree carries selection.primary on the last-created node + the freshly-built subtree as AuthoringScope::Subtree(root). PRE-W2 fallback: nodes mint one at a time without atomic scaffolding."
+        },
+        {
+          "task": "STRUCTURE — see + manipulate the hierarchy",
+          "leading_lens": "Tree (Main)",
+          "flow": "h/l collapse/expand (shared tree_collapsed; Left-arrow moves to parent, never folds). Drag a subtree BY ITS GUTTER HANDLE → a glowing drop-lane + a live legality ribbon ('reparent into Region.West — rebinds 4, no cycle, no collision', drop_legality, zero mutation); release commits MoveNode and rename-move-ref-integrity re-threads dependents. Alt+↑/↓ reorder; F2 rename-as-refactor (pre-commit rebind count); Space-p duplicate-subtree; Space-t promote-to-template. Multi-select grows by c/d/s into a Subtree/Nodes scope (W2). Companions: Lens drills the selected node; optional Flow Split shows refs re-threading live. Continuity: selection + scope + tree_collapsed + pins + cleave predicate survive untouched into every other lens; each move is one revision on the DAG (W4a). STRUCTURAL-DRAG safety invariant: the handle-drag previews legality before commit."
+        },
+        {
+          "task": "COMPUTE — recalc + watch values settle",
+          "leading_lens": "Flow (Main)",
+          "flow": "F9 (the SOLE recalc chord) dispatches Recalculate; the reading-head sweeps last_run.evaluation_order, odometer-rolling only changed values (value_epoch-gated). Manual-batch (Space-m) stages EditContentDeferred with a growing amber blast radius and pays one Recalculate. Companions: Sheet or Ledger (Split) audits the same recompute in dense rows while Flow narrates causally; Transport (Rail) captures the revision F9 produced; Lens follows selection with phase_timings. Continuity: recalc_mode + manual_recalc_pending are shared, so a batch staged in Tree/Capture is still pending here and one F9 clears it everywhere. (Delta-channel sweep is W5/early; the underlying eval-order is W0.)"
+        },
+        {
+          "task": "EXPLORE — what-if, scenarios, trace-walk, explain, sensitivity",
+          "leading_lens": "Flow (Main, EXPLORE register)",
+          "flow": "]/[ walk precedents/dependents accumulating a lit subgraph (the trace IS the layout); E recursive explain (full-derivation-trace, W1); Space-leader health lenses; ghost what-if via PreviewEdit (W4b, Speculative-tinted, zero history pollution); scenarios flip via the Space-leader roster (NOT bare number keys, so a mis-keypress can't swap lenses). Companions: Bench (Split) renders comparative-multi-overlay-projection as Base/Bull/Bear adjacent columns plus a tornado (W4c/W6); Lens shows per-candidate derivation (W6); Transport lets a promising ghost be CommitSpeculation'd into a kept branch. Continuity: active_scenario + the live speculation handle are shared — flip a scenario in Bench and Flow's Sentence + Lens's derivation re-project under it together; Speculative/Scenario tints render identically everywhere; Esc backs out one overlay layer globally (rung 3 of the canonical ladder). REQUIRES W4b (the single largest engine risk) — this journey is contingent on that landing."
+        },
+        {
+          "task": "REVIEW — audit, filter/sort/cleave, diff revisions, health sweep",
+          "leading_lens": "Ledger (Main, cleave mode)",
+          "flow": "Cleave via model-query-projection ('/state:dirty', value:>1M, provenance:external). Sort by calc_state; click Value header for real typed numeric order; 'g s' groups into health cohorts. Persona = Reviewer (dispatcher rejects mutations per origin, W5). Companions: Transport (Rail) scrubs the revision DAG and value-shape-diff turns any two revisions into a change-pulse heat overlay (W4a/b); Lens drills any flagged row; Flow (Split) traces WHY. Continuity: the cleave PREDICATE is carried shared truth — cleave to all errors, switch to Flow, and Flow RE-RUNS the predicate and trace-walks the matching error cone (the set may differ if the model changed; sort/group stay Ledger-local); current revision is shared so scrubbing re-projects every pane. This is the journey the prior design over-promised; it now carries the predicate honestly, and it is a Phase-0/spine deliverable, not deferred."
+        },
+        {
+          "task": "PRESENT — narrative report, story, read-only walkthrough",
+          "leading_lens": "Story (Main, Present mode)",
+          "flow": "Ctrl+7 carries your live selection/scope/scenario/revision and composes a read-only model card (persona ReadOnly, chrome stripped). format-resolver renders Excel-faithful currency/percent/dates (W1); sections are pinned scopes; an intent-log-replay plays a recorded exploration as a guided self-narrating walkthrough (Space Play: cursor self-advances, scenarios flip and re-render, explains unfold, revision scrubs to 'as presented at sign-off'). Companions: Lens optionally exposed; Transport as a 'how we got here' timeline; no edit lenses. Continuity: pins (the chosen figures) + active scenario/revision carry in from Explore/Review — you build the story by pinning elsewhere, then Present re-projects those pins read-only; switching OUT restores the full authoring frame at the exact same selection. STYLING: the warm editorial chrome is the sanctioned exception; nodes keep calc_state+provenance+identity-typeface so figures read as the same nodes. LATEST-LANDING journey — needs W4a/W4b/W4c/W5/W6."
+        },
+        {
+          "task": "WIDE OVERVIEW + ORIENT — see the whole model's shape, then drill",
+          "leading_lens": "Canvas (Main)",
+          "flow": "The whole model appears as a constellation — cards in graphite space, dependency wires arcing, clusters clumped, a magenta cycle-knot in the corner. First entry lays out auto-DAG then restores your authored positions from persisted CanvasSkinState. Arrows hop along wires (camera follows); Space-d/c/e heat-map dirty/cycle/error; lasso a cluster → G draws a hull, P promotes it to a template (legality preview first — it mutates). F9 spreads the recalc wave radially as an igniting stain, cards staying put so the blast radius reads as geometry. PLAIN-DRAG moves only cosmetic positions (no mutation). h/l fold + viewport-zoom (skin-local) drive SPATIAL degree-of-interest from forest to leaf (node-DETAIL zoom is the Lens companion's job). Companions: Lens drills the selected cluster; Flow or Ledger (Split) gives precise detail. Continuity: the selected cluster travels as a Subtree scope; facade positions persist across undo (keyed on NodeKey) so structural undo never scrambles your map. Needs facade-persistence (new need) + multi-slot (W5)."
+        }
+      ],
+      "coverage_matrix": [
+        {
+          "modality": "capture / input / scaffold nodes+values",
+          "primary": "Capture (append-stream input-form; type-a-path-to-scaffold; template-stamp mode)",
+          "also": "Tree (o/O surgical insert + promote-to-template); Sheet (value-first entry into EXISTING nodes — see anti-redundancy test); Console (StarterTemplate / empty-state-onboarding)"
+        },
+        {
+          "modality": "see the tree structure",
+          "primary": "Tree (indented hierarchy outline; depth/order as axes)",
+          "also": "Canvas (spatial graph shows cross-cutting structure an outline flattens); Ledger (optional Path column + group-by-parent)"
+        },
+        {
+          "modality": "edit (Excel-familiar, value-first)",
+          "primary": "Sheet (value cells + formula bar + point-mode + F4 binding-cycle)",
+          "also": "Ledger (bulk fill across a cleaved cohort); Flow (edit a chip in the sentence); Capture (first-entry edit loop)"
+        },
+        {
+          "modality": "tables / array detail (NEW ROW — closes a brief-named gap)",
+          "primary": "Sheet (array+table mode: in-place table grid, insert/delete row/column, calculated column — table-structural-ops + table-cell-readback, W6)",
+          "also": "Ledger (table nodes as rows via table-cell-readback); Lens (table cell drill). Doctrine: multi-value is a node Array or a reference collection, never a 2D coordinate range."
+        },
+        {
+          "modality": "review / audit",
+          "primary": "Ledger (dense audit grid)",
+          "also": "Lens companion (per-node derivation drill); Transport companion (diff two revisions); Persona=Reviewer mode (per-origin gating + change-marks)"
+        },
+        {
+          "modality": "cleave the view (filter + sort + group-by)",
+          "primary": "Filter/Sort MODE (home = Ledger); the PREDICATE is carried continuity, sort/group are lens-local",
+          "also": "Tree (prune keeping ancestor scaffolding); Flow (light the cleaved cone); Canvas (spatial regioning); Console (the / model-query omnibox)"
+        },
+        {
+          "modality": "explore / what-if / calc theatre",
+          "primary": "Flow (dependency-flow ribbon; F9 reading-head; trace-walk; ghost what-if)",
+          "also": "Bench companion (compare columns + tornado + goal-seek); Lens companion (per-candidate derivation); Canvas (map-wide ripple)"
+        },
+        {
+          "modality": "presentation / tell a story",
+          "primary": "Story (narrative model card; read-only; Play walkthrough)",
+          "also": "Present MODE on any lens; value_board headline cards (now Story's strip); Canvas group-summary super-cards"
+        },
+        {
+          "modality": "a wide overview / whole model",
+          "primary": "Canvas (spatial wide map) and Ledger (tabular wide grid) — TWO wide shapes are intentional and non-substitutable: tabular-exhaustive (Ledger) vs spatial-relational (Canvas)",
+          "also": "Focus/Zoom mode zoomed out; Console health counters as a one-glance dashboard; Flow's static columnar layout mode"
+        },
+        {
+          "modality": "zoom into an aspect / one node detail",
+          "primary": "Lens COMPANION (derivation / value / format drill) + Focus/Zoom MODE — owner of ASPECT/node-detail zoom (Canvas owns SPATIAL zoom; no overlap)",
+          "also": "Sheet formula bar (quick single-node edit); Flow E-explain (recursive in-lane); Tree inline derivation sub-outline"
+        },
+        {
+          "modality": "see dependencies / the graph",
+          "primary": "Flow (dependency-graph-AS-MODALITY: trace-as-layout) + Canvas (dependency-graph-AS-PERSISTENT-MAP)",
+          "also": "the others realize the shared ]/[ VERB, NOT competing homes: Lens (per-selection precedents/dependents list); Ledger (typed Deps columns); Sheet (trace-precedents tracer)"
+        },
+        {
+          "modality": "time-travel / history / undo",
+          "primary": "Transport COMPANION (revision-DAG scrubber)",
+          "also": "Ctrl+Z/Y revision-nav in every lens; Canvas (watch the map morph through revisions); Story (revision as a presentation device). [All W4a/W4b-gated.]"
+        },
+        {
+          "modality": "format / conditional-format authoring",
+          "primary": "Lens companion (format-authoring mode — per-node effective-format + CF, format-write)",
+          "also": "Sheet (SetFormatProperty on the selected cell/scope); Ledger (Format column scan + bulk format)"
+        },
+        {
+          "modality": "templates / reusable sub-models",
+          "primary": "Capture (stamp mode) + Tree (promote-to-template mode)",
+          "also": "Canvas (lasso-a-region + P promote); Bench (instantiate as a fresh placed cluster); Lens (template binding/drift drill). [template-subsystem is W6.]"
+        },
+        {
+          "modality": "command / search / health / palette",
+          "primary": "Console COMPANION (omnibox + palette + health, always mounted once W5)",
+          "also": "/ omnibox local invocation in every lens (self-contained pre-W5); Space-leader in every lens; Lens health-at-node-scale"
+        },
+        {
+          "modality": "multi-workspace / cross-workspace reference (NEW ROW — closes a gap; workspace_ids is in SHARED state today)",
+          "primary": "Console COMPANION (workspace switcher/roster; New/SwitchWorkspace as first-class verbs — available TODAY)",
+          "also": "Story (cross-workspace model card); Bench (compare across workspaces); Flow/Canvas wires + Ledger Deps column visualize an external-workspace dependency via cross-workspace-alias (W6)"
+        },
+        {
+          "modality": "bulk authoring (one rule across many nodes)",
+          "primary": "Ledger (cleave a class, multi-select, Ctrl+D fill name-relative) + Sheet (fill a cell run)",
+          "also": "Capture (fill-down a freshly-scaffolded sibling run); Tree (bulk MOVE a multi-subtree selection); Flow (fill across a topo run). [All need W2 multi-select + W3 replicate-by-id.]"
+        }
+      ],
+      "rollout": [
+        {
+          "phase": "Phase A — Single-slot mono-lens core (NO cockpit; honest early stack)",
+          "lenses": "Re-skin Flow as the reference. Evolve Tree (absorb outline_table → restore indentation + is_meta visibility + structural affordances), Ledger (add cleave PREDICATE + sort/group + virtualization), Sheet (value-first + formula bar + point-mode), Capture (typestream + frontier line). Lens-CONTENT and Console-CONTENT ship INSIDE a mono-lens (not yet as separate slots). All run SINGLE-SELECT until W2; negotiate() declines bulk/scope verbs. RESOLVES the prior rollout inversion: these are buildable MONO-SLOT skins on W0–W3 and deliver most of the suite's value WITHOUT the W5 cockpit.",
+          "depends_on_stack": "W0 stable-node-identity + typed values/reasons/dep-kinds; W1 format-resolver-on-context + active-node-detail + reference-resolution-map + full-derivation-trace + binding-diagnostics; W2 selection-subject-model + scope-value + transaction-scope + typed-intent-error + model-query-projection + legality-impact-preview + rename-move-ref-integrity + drag-gesture-model; W3 replicate-by-id + reference-insertion + f4-toggle-binding + paste-special + duplicate-subtree + meta/note-write + format-write + add-node-content-policy. PLUS the early-landing W5 subset the roadmap explicitly allows once W0 exists: design-token-layer + projection-delta-channel + projection-version-stamp + a11y-primitives + skinstate-persistence. CARRIED-CLEAVE PREDICATE shared-state field lands HERE (it is sold as continuity, so it ships with the spine)."
+        },
+        {
+          "phase": "Phase B — The composable cockpit (W5 platform hardening — the gate the prior design wrongly placed first)",
+          "lenses": "NO new primary lens. Stand up the multi-slot SlotLayout shell; promote Lens, Console (incl. workspace switcher) into real COMPANION slots; add capability-manifest negotiate(), shared-focus-arbitration, keybinding-registry (encoding the de-conflicted universal table + the lens-local Tab/Ctrl+Enter/drag set), readonly-reviewer-persona, audited-shared-state, skin-error-isolation, host-worker-calc + virtualization for 100k scale. The cockpit_layouts that only need structure lenses (Author, Sheet, Map-without-history) become available here.",
+          "depends_on_stack": "W5: multi-slot-composition; shared-focus-arbitration; keybinding-registry; capability-manifest-negotiation; readonly-reviewer-persona; skin-error-isolation; audited-shared-state; host-worker-calc; virtualization-window-projection; intent-log-replay (capture side); locale-presentation-layer. (These are the LAST major platform wave in the roadmap — placing them AFTER Phase A is the corrected sequence.)"
+        },
+        {
+          "phase": "Phase C — Time + speculation (the two single-largest engine risks)",
+          "lenses": "Transport companion (net-new revision-DAG scrubber). Bench companion (scenario rail + compare columns). Ghost what-if + scenario flips activate in Flow/Sheet/Ledger/Canvas. Undo-as-navigation activates the Ctrl+Z/Y grammar verb everywhere. The Modeling Cockpit and Audit Cockpit become fully live here.",
+          "depends_on_stack": "W4a revision-graph-retention (the time substrate); W4b candidate-overlay-handle (THE single largest engine risk) + value-published-pending-flag + speculation-discard-commit + undo-redo-revision-nav + revision-history-projection + value-shape-diff; W4c preview-edit-intent + scenario-substrate + scenario-projection + comparative-multi-overlay-projection + series-projection. CONTINGENT on the two gating engine spikes (overlay reach, retained revision graph) succeeding."
+        },
+        {
+          "phase": "Phase D — Narrative + spatial reuse + tables (frontier)",
+          "lenses": "Story (narrative model card + Play walkthrough). Canvas gains revision-morphing + lasso-promote-to-template. Sheet gains table-authoring mode. With this phase all SEVEN primaries + four companions + four modes are live = the full ATLAS suite.",
+          "depends_on_stack": "W6 template-subsystem + table-structural-ops + table-cell-readback + cross-workspace-alias + import/export + derivation-trace-for-candidate + goal-seek-substrate + sensitivity-sweep-substrate + pinned-speculative-view + empty-state-onboarding; PLUS the two NEW projection needs (block-backed narrative projection; intent-log-replay-as-authored-artifact) and the skin-owned-facade persistence need. Story/Canvas-history are the LATEST-landing lenses — they cannot exist in any form before W4a/W4b land."
+        }
+      ],
+      "new_stack_needs": [
+        "CARRIED-CLEAVE PREDICATE (not a NodeKey match-set) AS SHARED STATE: promote the active QuerySpec PREDICATE (filter only) from Ledger-local SkinState into HOST-OWNED carried continuity, alongside selection/scope/collapse/pins. Honest scope (correcting the prior over-reach): the host persists the PREDICATE, and each lens RE-RUNS model-query locally on switch — it does NOT persist a frozen resolved NodeKey set (that would require re-running the predicate against a possibly-changed model AND would blow past the virtualization window). Sort key and group-by stay lens-local presentation, NOT carried. Drop the 'trace EXACTLY the cleaved set' guarantee → 'the predicate re-applies; the resulting set may differ if the model changed.' Must ship as a Phase-A/spine field because it is sold as continuity. (Surfaced by the Filter/Sort mode + Ledger→Flow REVIEW journey.)",
+        "SPLIT DEGREE-OF-INTEREST — NO unified 'zoom intent': do NOT invent a cross-lens abstract focus/zoom intent (correcting the prior over-reach that blurred the frame-only boundary). Viewport/camera zoom is SKIN-LOCAL SkinState — never an intent the dispatcher sees, never shared. Only the COLLAPSE and PIN portions of Focus/Zoom are shared truth, and they already exist as tree_collapsed/pinned. The only genuinely-new need is a small shared 'focus set' for fade-by-distance highlighting if desired; it is optional, NOT a dispatcher intent. (Surfaced by the Focus/Zoom mode + Canvas/Map journey.)",
+        "COCKPIT PRESET REGISTRY (W5): named, persisted SlotLayout presets (the six flagship cockpits) selectable as first-class objects with per-preset default persona/companions, plus a 'restore on workspace open' policy. multi-slot-composition gives the mechanism but not the curated default compositions-per-modality, which the COMPOSITION work flags as an open question.",
+        "SKIN-OWNED-FACADE PERSISTENCE keyed on NodeKey (Canvas): durable per-node (x,y) + group-rectangle facade state that survives reparent/rename/undo (positions are cosmetic, never the model) and is workspace-scoped, not session-scoped — and that is PRESERVED (not re-projected) across lens switches via skinstate-persistence (W5). This is a new persisted-SkinState shape (CanvasSkinState) the shell round-trips and keeps stable across revision navigation. It is the concrete reason the 'zero re-orientation' claim is scoped to shared truth, not intrinsic geometry. (Surfaced by Canvas.)",
+        "INTENT-LOG-REPLAY AS A FIRST-CLASS AUTHORED ARTIFACT (W6, beyond W5 raw replay): Story's Play walkthrough needs a recorded (intent, receipt, delta, revision) exploration to be SAVED, NAMED, EDITED (trim/reorder steps), and shipped with the workspace as a presentation asset — plus a self-advancing timeline transport bound to the narrative block sequence. W5 intent-log-replay covers capture/playback; this is authoring/curation on top. (Surfaced by Story.)",
+        "BLOCK-BACKED NARRATIVE PROJECTION (W6): Story's document spine is an ordered list of curated BLOCKS each backed by a NodeKey/scope/series — a new live projection type (narrative/model-card) distinct from the node/grid/graph projections, with stable block identity across edits and a read-only block-cursor selection axis. (Surfaced by Story.)",
+        "TABLE-AUTHORING REACH (W6, names the brief-flagged gap explicitly): Sheet's array-expansion must extend to OWN table-structural-ops (insert/delete row/column, calculated column) bound to table-cell-readback — within the no-grid doctrine (open question #9: an engine 'table' reconciling rows AND columns without reintroducing 2D coordinate addressing). Closes the tables coverage hole the brief named."
+      ]
+    },
+    "critique_resolutions": [
+      {
+        "issue": "BLOCKING (coherence): universal grammar overloads Tab and Ctrl+Enter to conflicting per-lens meanings (indent-child vs next-column vs topo-hop; recalc vs fill vs commit), breaking 'one verb one meaning'. Verified against FLOW_DESIGN.md keymap (Tab=topo-hop; Ctrl+Enter bound to recalc, topo-hop, AND fill).",
+        "resolution": "Resolved by de-conflicting in a single registry table. ENTER is now the SOLE universal commit-advance (advances to next sibling/row — the one axis every lens shares). Tab and Ctrl+Enter are explicitly DEMOTED to LENS-LOCAL secondary chords (Sheet Tab=next column; Capture Tab=indent-child; Flow Ctrl+Enter=topo-hop) and badged as lens-local in the which-key footer, so they were never advertised as universal. F9 is the SOLE recalc (Ctrl+Enter recalc-alias dropped). Ctrl+D is the SOLE fill (Ctrl+Enter fill-alias dropped). Added a dedicated grammar row 'Secondary commit (LENS-LOCAL)' and rewrote the 'Commit + advance' and 'Recalculate' rows. Tenet 1 rewritten to 'defined ONCE in the registry' with the universal-vs-lens-local split as its core.",
+        "changed": true
+      },
+      {
+        "issue": "BLOCKING (coherence): continuity does NOT hold for the cleave — QuerySpec is not in the canonical 6-field SharedSkinState (verified in state.rs), yet REVIEW/Audit journeys sell carried-cleave as working. new_stack_needs #1 admits it is unbuilt.",
+        "resolution": "Resolved by elevating the cleave PREDICATE (not a frozen match-set, not sort/group) to host-owned shared continuity AND making it a Phase-A/spine deliverable because it is sold as continuity (option b from the critique). Added it to the continuity list with explicit honest scope: each lens RE-RUNS the predicate locally on switch; the resulting set may differ if the model changed; sort/group stay lens-local. Rewrote the REVIEW journey and Filter/Sort mode to state this. Rewrote new_stack_needs #1 to scope it as predicate-persistence, dropping the 'trace EXACTLY the cleaved set' guarantee.",
+        "changed": true
+      },
+      {
+        "issue": "MAJOR (coherence): arrow keys silently reassign axis per lens; Tree Left=collapse vs Sheet Left=prev-column vs Flow Left=topo, three incompatible outcomes for the most reflexive key.",
+        "resolution": "Resolved by standardizing the VERTICAL axis (Up/Down = previous/next sibling at current depth) across ALL lenses, and confining lens-specifics to the HORIZONTAL axis under one shared rule (Left=toward parent/precedent/less-detail, Right=toward child/dependent/more). Tree's Left=collapse REMOVED from bare arrows — h/l is now the SOLE fold verb — so an arrow never means 'fold' in one lens and 'navigate' in another. Rewrote the 'Move selection' and 'Collapse/expand' grammar rows.",
+        "changed": true
+      },
+      {
+        "issue": "MAJOR (coherence): Story granted teal/rust/ochre decorative accents + serif identity type, forking the visual language while claiming 'recognizable on sight in any lens'.",
+        "resolution": "Resolved by declaring Story a SANCTIONED EXCEPTION loudly (the critique's option to say-so). Constrained it: warm editorial chrome is a BACKGROUND/chrome token swap only; calc_state + provenance remain the only saturated channels ON NODES; the identity typeface is UNCHANGED (shared humanist sans), so a figure still reads as the same node. Rewrote tenet 5, the identity + theme-mode styling cues, Story's signature/differentiation, and qualified the recognition-transfer claim to exclude Story's chrome.",
+        "changed": true
+      },
+      {
+        "issue": "MAJOR (coherence): drag collides — Tree drag=structural reparent (mutates model) vs Canvas drag=cosmetic position; identical gesture, opposite consequence, never arbitrated.",
+        "resolution": "Resolved by declaring drag a LENS-LOCAL gesture (not universal) and adding the invariant 'any gesture that mutates the model previews legality/blast-radius FIRST.' Plain-drag in Canvas moves only a cosmetic facade position (no mutation, no preview); structural reparent in Tree uses the gutter-handle (or modified drag) and ALWAYS previews. Keyboard verbs (m, Alt+arrow, Ctrl+D) are the actual universal structural grammar. Updated the structural-author grammar row, tenet 8, and both Tree/Canvas signatures.",
+        "changed": true
+      },
+      {
+        "issue": "MINOR (coherence): Esc ladder claimed identical but per-lens ladders differ in rung order/set, so the Nth Esc does different things per lens.",
+        "resolution": "Resolved by defining ONE canonical Esc precedence order in the spine (editing-buffer > omnibox/leader > speculation ghost > lit trace/health > multi-select-to-primary); every lens honors that exact order, skipping only rungs it lacks. Rewrote the 'Back out one level' grammar row.",
+        "changed": true
+      },
+      {
+        "issue": "MINOR (coherence): Ctrl+1..n renumber from FLOW's 1..5 is silent; bare number scenario flips sit one modifier away from lens-switch.",
+        "resolution": "Resolved by locking Ctrl+1..7 in the registry with the renumber from FLOW's 1..5 recorded explicitly, documenting the modifier contract (Ctrl=lens, bare=not-a-lens-switch), and MOVING scenario flips behind the Space-leader/Bench roster so a mis-modified keypress can never swap the whole lens. Updated the 'Switch lens' and 'Leader' grammar rows and Flow/Bench/Explore-journey references.",
+        "changed": true
+      },
+      {
+        "issue": "MAJOR (coverage): TABLES have no owner — brief explicitly names them; suite only covers single-node Arrays.",
+        "resolution": "Resolved by making table authoring an explicit MODE of Sheet (table-structural-ops + table-cell-readback, W6), adding a new coverage_matrix row 'tables / array detail', naming the faculties in Sheet's stack_faculties and modality, and adding a TABLE-AUTHORING REACH new_stack_need referencing open question #9 (no-grid table). Sheet's organizing_structure and differentiation updated.",
+        "changed": true
+      },
+      {
+        "issue": "MAJOR (coverage): MULTI-WORKSPACE is in SHARED state (workspace_ids/active_workspace_id) but owned by nobody; coverage_matrix omits it.",
+        "resolution": "Resolved by assigning workspace switching/roster to Console (renamed its role to include Workspace; New/SwitchWorkspace as first-class verbs, available today) and adding a new coverage_matrix row 'multi-workspace / cross-workspace reference' (primary Console; also Story/Bench; Flow/Canvas/Ledger visualize cross-workspace-alias, W6).",
+        "changed": true
+      },
+      {
+        "issue": "MAJOR (coverage): Ledger vs Sheet is the weakest two-primary split — both ROWS, both bulk fill, both edit content; Sheet risks being Ledger-with-a-formula-bar.",
+        "resolution": "Resolved by sharpening (the critique's preferred option, keep both): Sheet's spine is the single-active-cell + bound formula bar + point-mode authoring loop, and Sheet is now FORBIDDEN from predicate-cleave (every filter/sort user is pushed to Ledger). Added the explicit test 'query/scan/bulk a population = Ledger; author one cell with point-mode+F4 = Sheet' to both lenses' differentiation. Kept 6→7 primaries (did not demote) but made the boundary non-column-count.",
+        "changed": true
+      },
+      {
+        "issue": "MINOR (coverage): Canvas claims BOTH 'wide overview AND zoom-into-an-aspect' while Lens+Focus/Zoom also claim aspect/node-detail zoom — ownership contradiction.",
+        "resolution": "Resolved by splitting: Canvas owns SPATIAL degree-of-interest zoom (forest→leaf geometry), Lens companion + Focus/Zoom mode own ASPECT/node-detail zoom. Reworded Canvas's modality to 'wide overview + spatial degree-of-interest', and the coverage_matrix zoom rows now name single owners with '(no overlap)'.",
+        "changed": true
+      },
+      {
+        "issue": "MINOR (coverage): two primaries per 'wide overview' and per 'see dependencies' undercuts the minimal-complete claim and invites the Canvas/Flow merge question.",
+        "resolution": "Resolved by explicitly defending the choice in the coverage_matrix ('two wide shapes are intentional and non-substitutable: tabular-exhaustive vs spatial-relational') and adding a Canvas anti-redundancy guard ('dense tabular = Ledger; linear causal = Flow; Canvas only when persistent 2D spatial-memory is the point'). Declared Flow the owner of graph-AS-MODALITY and Canvas of graph-AS-PERSISTENT-MAP, reframing the others as the shared ]/[ verb.",
+        "changed": true
+      },
+      {
+        "issue": "MINOR (coverage): Capture vs Sheet first-entry overlap unguarded.",
+        "resolution": "Resolved by adding a Capture-vs-Sheet anti-redundancy clause: 'Capture MINTS structure by typing paths (creates ancestors); Sheet enters values into nodes that ALREADY EXIST. Creating the tree = Capture; filling an existing tree = Sheet.' Added to Capture's differentiation and the coverage_matrix capture row.",
+        "changed": true
+      },
+      {
+        "issue": "BLOCKING (stack-fit): rollout inversion — Phase 0/1 promise the W5 composable cockpit as the first thing built and the gate for everything, but multi-slot/focus/keybinding/negotiation/persona/isolation/tokens are all W5 (last platform wave); repo today mounts a single skin with SelectionState{primary}. Verified against ROADMAP.md and selection.rs/intent.rs/state.rs.",
+        "resolution": "Resolved by re-sequencing into four honest phases: Phase A = single-slot MONO-LENS core on W0–W3 (+ the early-landing W5 subset the roadmap explicitly allows: design-tokens, delta-channel, a11y, persistence); Phase B = the W5 composable cockpit (the gate the prior design wrongly placed first); Phase C = time + speculation (W4a/W4b/W4c, the two gating engine risks); Phase D = narrative + tables + spatial reuse (W6). Rewrote the entire rollout, the composition_model preamble (now states the cockpit is the W5 DESTINATION not an early deliverable), and tagged every cockpit_layout with its earliest wave.",
+        "changed": true
+      },
+      {
+        "issue": "BLOCKING (stack-fit): multi-select + AuthoringScope assumed pervasively in 'today's IR' Phase-1 lenses, but selection-subject-model + scope-value are W2; SelectionState{primary} is the whole struct today.",
+        "resolution": "Resolved by tagging every multi-select/scope behavior W2-gated, stating the lenses ship FIRST as single-selection skins, and requiring negotiate() to decline bulk verbs until W2. Updated the 'Extend/grow selection' and structural-author grammar rows, the SelectionState/AuthoringScope continuity entries, Capture/Ledger signatures, the mount-negotiation paragraph, and Phase A.",
+        "changed": true
+      },
+      {
+        "issue": "BLOCKING (stack-fit): new stack needs undersell cost and one is self-contradictory — carried-cleave as a NodeKey set conflicts with sort/group being an ordering + virtualization; unified zoom 'intent' blurs cosmetic viewport with shared model state.",
+        "resolution": "Resolved by rescoping both. Carried-cleave: persist the PREDICATE only (not a NodeKey set); lenses re-run model-query locally; sort/group stay lens-local; dropped the 'exactly the cleaved set' guarantee. Zoom: NO unified zoom intent — viewport zoom is skin-local SkinState (never an intent, never shared); only collapse/pin (existing tree_collapsed/pinned) are shared. Rewrote new_stack_needs #1 and #2 and the Focus/Zoom mode + tenet 7.",
+        "changed": true
+      },
+      {
+        "issue": "MAJOR (stack-fit): continuity over-promises 'zero re-orientation' across Canvas whose facade positions are skin-local cosmetic state, not re-projectable from shared truth.",
+        "resolution": "Resolved by qualifying the claim: tenet 4 rewritten to distinguish SHARED-truth re-projection from lens-INTRINSIC persisted state (Canvas positions, Sheet column widths, Story block order are PRESERVED via W5 persistence, NOT reconstructed from the model). Added a continuity entry for lens-intrinsic persisted SkinState, updated Canvas's organizing_structure/signature/journey to say first-entry lays out auto-DAG then restores persisted positions.",
+        "changed": true
+      },
+      {
+        "issue": "MAJOR (stack-fit): Story and Transport lean on W4a/W4b/W4c/W5/W6 faculties but are presented as part of a coherent shipped whole; the seven-primary cockpit is framed as the baseline.",
+        "resolution": "Resolved by stratifying the suite by earliest-ship wave throughout: one_paragraph now states the mono-lens core ships first and cockpit/companions/scenarios/time-travel/Story arrive as their gating waves land; Story/Transport/Bench labelled as the latest-landing surfaces; rollout Phases C/D made explicitly contingent on the two gating engine spikes (overlay reach, retained revision graph).",
+        "changed": true
+      },
+      {
+        "issue": "MAJOR (stack-fit): Sheet point-mode imports Excel A1 abs/rel/mixed mental model; abs/rel/mixed is a grid concept undefined on a NodeKey tree.",
+        "resolution": "Resolved by redefining F4 binding axes in TREE terms (anchored-to-NodeKey vs relative-by-lexical-role) and DROPPING abs/rel/mixed and any $-anchoring. Added to tenet 3 (no A1, no $-anchored addressing) and Sheet's differentiation/stack_faculties (F4 cycles binding on a NodeKey handle; point-mode arrows select NODES not grid cells; confirming splices via a host-built OxFml RefHandle, skin never writes text).",
+        "changed": true
+      },
+      {
+        "issue": "MINOR (stack-fit): Capture's atomic multi-ancestor scaffold needs transaction-scope (W2); today's single AddNode would make N revisions, breaking the one-undo-step promise.",
+        "resolution": "Resolved by adding transaction-scope (W2) + edit-transaction-id to Capture's stack_faculties and stating ancestor-scaffolding is a host-planned multi-AddNode TRANSACTION = one revision; and that PRE-W2 Capture mints one node at a time without atomic scaffolding. Updated Capture's signature and the CAPTURE journey.",
+        "changed": true
+      },
+      {
+        "issue": "MINOR (stack-fit): Console 'owns the canonical omnibox the primaries invoke' (cross-slot, W5) conflicts with the grammar's 'each lens invokes / locally'.",
+        "resolution": "Resolved by picking a two-era model and gating it: pre-W5 each lens has a SELF-CONTAINED local / omnibox (no cross-slot dependency); post-W5 Console owns the canonical omnibox and lenses delegate without focus theft (needs shared-focus-arbitration + keybinding-registry). Updated the Name-Box grammar row and Console's role with the explicit dependency.",
+        "changed": true
+      }
+    ],
+    "one_line_summary": "Finalized ATLAS: de-conflicted the universal grammar (Enter sole commit, F9 sole recalc, Ctrl+D sole fill, Tab/Ctrl+Enter/drag demoted to lens-local, arrows standardized, single Esc ladder), made the cleave PREDICATE genuine spine-level shared continuity, declared Story a sanctioned styling exception, closed the tables and multi-workspace coverage gaps, sharpened Sheet-vs-Ledger and Canvas zoom ownership, and re-sequenced the rollout honestly against the waves (mono-lens core on W0–W3, cockpit at W5, time/speculation at W4, Story/tables at W6) — preserving the one-tool-many-lenses feel."
+  }
+}

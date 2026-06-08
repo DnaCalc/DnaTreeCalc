@@ -1,0 +1,1901 @@
+{
+  "summary": "Principled, layer-assigned requirement matrix to push up the stack (Skin IR / OxCalc / OxFml) for richer, robuster skinning",
+  "agentCount": 9,
+  "logs": [],
+  "result": {
+    "north_star": "A passive, Excel-faithful calc engine (OxFunc/OxFml/OxCalc) feeds a host projection (DnaTreeCalc) consumed by frame-only skins through a closed intent dispatcher. This requirement set pushes truth UP the stack so skins gain deep, robust reach without ever owning semantics: a stable identity spine, lossless typed projections of facts the engine already derives, atomic id-carrying authoring verbs, a consequence-free speculation/time axis, and a composable governed platform. The ordering principle is push-up-the-stack-first: land the keystone identity and the free typed-vs-stringly conversions, then fan out — and honestly distinguish \"expose existing engine truth\" from three large unbuilt engine workstreams (per-node value epochs, an addressable candidate-overlay substrate, and a retained revision graph) that the speculation/time/async bands actually require.",
+    "tenets": [
+      {
+        "name": "Identity is permanent, path is cosmetic",
+        "statement": "Every model node is addressed by a stable opaque NodeKey (the engine's existing TreeNodeId), invariant across rename/move; the dotted display_path is a derived label. All projections, deltas, selection, scope, references, view-state, persisted SkinState, history, and collaboration key off NodeKey, never the path. The cutover carries BOTH key and display_path during a transition window rather than a single big-bang break.",
+        "rationale": "NodeId IS the dotted path in the IR today, so every rename/move silently orphans selection, scroll, pins, expansion, persisted SkinState, delta addressing, references, and history correlation. The engine already mints a stable TreeNodeId(u64) — so the engine side is expose-existing; the L-effort, schedule-risk work is the breaking IR/host cutover, best de-risked by carrying both key and path transitionally. Stable identity is the single precondition that lets value-diff, deltas, undo-navigation, persistence, multi-select, and collaboration correlate the same entity across two observations. It is the keystone."
+      },
+      {
+        "name": "Typed and lossless over stringly and flattened",
+        "statement": "Every fact the engine already derives crosses the IR boundary intact, as closed exhaustive Rust enums/structs keyed by stable identity — never as String prose to grep, a bare count, or a collapsed Scalar(String) — INCLUDING the write-failure channel (IntentError). Where the engine emits an open taxonomy today (phase-timing keys), the IR uses a typed-key map with an explicit Other(String) escape rather than host-side re-classification into invented closed fields. The projection is where engine variants become host enums; the skin matches variants and never re-derives, re-parses, or re-classifies.",
+        "rationale": "Invalidation reasons/dependency kinds/IntentError are String, runtime effects/derivation traces are bare counts, tables expose no cells, scalars are raw debug text. A skin forced to grep prose re-implements engine semantics it cannot own, breaks on rewording, and cannot localize. Critically the engine itself still branches on diagnostic prose (e.g. matching 'cycle.excel_match_iterative'); the typed contract is partly aspirational and carries a real engine cleanup obligation. Typing the failure channel is not optional polish — a stringly IntentError is a tenet violation hiding inside the receipt."
+      },
+      {
+        "name": "Engine is the sole source of derivation, value, and format",
+        "statement": "Explanations, traces, caches, schedules, overlays, cycle terminals, conditional-format results, number-format meaning, and rendered value text are READ from the engine that produced them, never reconstructed host- or skin-side. The format/value resolver on SkinContext is a thin forward into OxFml's renderer (it MUST NOT parse or interpret number-format codes host-side); the host attaches only frame concerns (align/color mapped to tokens). 'Formats describe the value; skins describe the frame.'",
+        "rationale": "Re-deriving any engine fact host-side risks divergence from Excel-canonical truth (HARD CONSTRAINT 4/7). A host resolver that interpreted format codes itself would re-implement OxFml semantics and reintroduce divergence; constraining it to a forwarding FFI makes constraint-7 a structural guarantee, not a convention. 'Expose-existing' is the dominant readiness for reads — but only where the engine has committed to a closed taxonomy; phase-timing keys and per-edge cache outcomes have NOT, so those are extend-existing pending an engine commitment."
+      },
+      {
+        "name": "Conceivable is one intent; subjects are first-class, text is the engine's",
+        "statement": "Every articulable model change is exactly ONE entry in the closed WorkspaceIntent enum, applied to a typed host-owned SUBJECT (one node, an ordered multi-selection, a subtree, a reference collection) carried in the intent — never a skin-stitched sequence and never synthesized formula text. Fill, F4, paste-formula, column-formula, and reference building all travel as ids/handles; OxFml recomposes RAW text and OxCalc rebinds. Edit-buffer concerns (caret position) stay host-side; OxFml returns composed text the host splices.",
+        "rationale": "HARD CONSTRAINTS 1, 2, 3. A skin that fakes a missing op reintroduces formula authoring, partial-failure states, and breakage across profiles/named-refs/moves. Authoring richness scales with subject richness, not verb count. Pushing caret state into an OxFml intent would be the opposite ownership leak — the engine taking on host editing-buffer state it should not model."
+      },
+      {
+        "name": "All-or-nothing, reversible only by navigation",
+        "statement": "A single conceptual edit — even spanning many nodes — commits atomically as ONE transaction producing ONE published revision and ONE projection update, or not at all; its undo is achieved by navigating OxCalc's retained immutable revision GRAPH, never by replaying inverse intents. Every receipt carries the transaction id and produced revision; on failure it reports WHICH scoped edit failed and why (typed).",
+        "rationale": "HARD CONSTRAINT 6 plus the synchronous full-republish contract. The engine today publishes PER-NODE and retains only snapshot-IDENTITY hashes, not a navigable revision store — so both atomic-multi-edit transactions AND undo-by-navigation are genuine engine workstreams (new-capability), not expose-existing. Inverse-intent replay is unsound against runtime overlays/spill. The transaction id is the stable correlation handle between the closed-enum layer and revision retention."
+      },
+      {
+        "name": "Speculation is consequence-free, composable, and provenanced",
+        "statement": "Every what-if, scenario, goal-seek, and sweep runs on handle-addressed candidate overlays that are structurally incapable of touching the published revision stream; overlays compose and stack; published value_epoch advances only on an explicit Commit intent. Every projected value is tagged with provenance (Published | Pending | Speculative{handle} | Scenario{id} | External{source}) so a ghost can never be mistaken for real.",
+        "rationale": "HARD CONSTRAINT 6/7. The engine today has a per-NODE publish lifecycle and a SINGLE runtime-overlay set pinned to the publication snapshot — NOT 'N addressable layerable non-publishing contexts.' Generalizing it is the largest single engine workstream in this set (new-capability, not extend-existing); the entire band is gated on that one milestone. A provenance discriminator is the only thing preventing a user from trusting an uncommitted number."
+      },
+      {
+        "name": "Predict before you pay",
+        "statement": "Any consequential intent is answerable in the interrogative mood before the imperative: the same dispatcher that mutates can report — without mutating — what an intent WOULD invalidate, collide with, rebind, orphan, cost, and reject. Legality, blast-radius, reference-impact, and drop-validity are first-class pure queries. The host computes ONLY the host-owned fields (collisions, orphans, scope expansion); profile-legality and rebind impact are DELEGATED to engine dry-bind / plan-invalidation and surfaced verbatim.",
+        "rationale": "The skin owns no semantics and cannot judge collision/rebind/profile-legality. A host-layer query that returned profile_violations as if it owned them would duplicate engine truth and diverge the moment the engine's gate changes. The invalidation/blast-radius walk uses the EXISTING committed dependency graph and needs NO speculation substrate — so the plan-preview read path must stand alone and must NOT back-edge into the candidate-overlay band."
+      },
+      {
+        "name": "The frame is composable, negotiated, and presentation-tokened",
+        "statement": "Multiple skins mount simultaneously into distinct slots sharing one workspace/selection/shared-state source of truth with defined focus arbitration, keybinding arbitration, and per-slot fault isolation; each skin declares a capability manifest the host negotiates at mount; all visual/locale/accessibility presentation flows through typed tokens on SkinContext. SkinState is the skin's private, schema-versioned, migratable, gc'd possession; shared state is a small AUDITED common ground — and the one calc-affecting shared field (recalc_mode) is treated as dispatcher-level policy, not a raw shared write.",
+        "rationale": "The shell mounts ONE skin; theme is hardcoded hex; no a11y/i18n/negotiation/persistence/keybinding-arbitration exercised. The FLOW multi-pane vision and third-party/reviewer extensibility need composition + negotiation + isolation as platform guarantees. recalc_mode changes what the engine does, so leaving its switch as a raw shared write — even audited — lets a skin alter calc behavior outside the closed chokepoint."
+      },
+      {
+        "name": "Every interaction is observable, governed, and replayable",
+        "statement": "Mutation funnels through one dispatcher chokepoint that enforces persona/permission PER INTENT ORIGIN (local or peer), records the (intent, receipt, delta, revision) stream as a deterministic replayable log, and emits minimal addressable projection deltas (sequence-stamped, gap-detecting) alongside the full snapshot. Long calc moves to a HOST-OWNED worker (the engine stays single-threaded and passive; the host pumps bounded calc slices and observes a Pending run-state) — the frame never blocks, polls, or owns scheduling semantics. Frame cost itself is observable.",
+        "rationale": "There are no intent-log/replay/permission/delta/async hooks. For a passive + closed-intent + republish architecture the intent stream IS the behavior. Delta-over-republish is the #1 zippiness ceiling. Crucially, 'engine computes off-thread' and 'host drives every tick' cannot both hold — we resolve it by keeping the engine synchronous and making concurrency a HOST concern, so passivity is preserved literally. A '60fps on 100k nodes' goal is unfalsifiable without frame telemetry to attribute a stall to engine-calc vs delta-apply vs render."
+      }
+    ],
+    "requirements": [
+      {
+        "id": "stable-node-identity",
+        "title": "Re-key the IR off the engine's stable NodeKey; display_path becomes derived",
+        "principle": "Identity is permanent, path is cosmetic",
+        "owner_layer": "SkinIR-contract",
+        "shape": "NodeView { key: NodeKey, display_path: NodeId, .. } where NodeKey wraps the engine's existing oxcalc_core TreeNodeId(u64). WorkspaceState keys node_order, dependencies, selection, scope, references, history, SkinState by NodeKey. TRANSITION WINDOW: carry both key and display_path; intents accept either during migration, then cut over.",
+        "unlocks": "Selection, scroll anchor, pins, expansion, persisted SkinState, delta addressing, reference maps, multi-select, value-diff, and history survive rename/move instead of resetting. Precondition for incremental deltas, undo-navigation, persistence, and collaboration.",
+        "depends_on": [],
+        "doctrinal_note": "CRITIQUE FIX (1-minor, 3-minor): the engine ALREADY mints and round-trips a stable TreeNodeId — engine side is expose-existing, NOT L engine work. The L/schedule-risk is the breaking IR/host cutover (every projection field, intent payload, SkinState, walking_skeleton test). De-risk via a transition window carrying both identifiers rather than a big-bang break. Primary ownership is therefore SkinIR-contract/Host-projection, with an OxCalc expose-existing dependency that is essentially done.",
+        "engine_readiness": "expose-existing",
+        "effort": "L",
+        "tier": "foundational"
+      },
+      {
+        "id": "typed-invalidation-reasons",
+        "title": "Typed invalidation reason & calc-transition enums",
+        "principle": "Typed and lossless over stringly and flattened",
+        "owner_layer": "SkinIR-contract",
+        "shape": "enum InvalidationReason { UpstreamValueChanged{source:NodeKey}, StructuralRebindRequired, RefTargetMoved{handle:RefHandle}, CollectionMembershipChanged{family:CollectionId}, OverlayApplied, ManualDirty, CycleParticipant, FormatRuleChanged, .. #[non_exhaustive] }; invalidated_nodes[].reasons: Vec<InvalidationReason> replaces Vec<String>.",
+        "unlocks": "Calc X-ray renders reason chips per node and filters 'show only structurally-rebound nodes'; skin matches variants instead of grepping prose, enabling i18n and compiler-checked completeness.",
+        "depends_on": [],
+        "doctrinal_note": "OxCalc already classifies why it invalidated each node to decide rebind; the String is a lossy render of an internal enum. Independent, parallelizable, low-risk expose-existing conversion — schedulable anytime, does not gate on NodeKey for its own shape (reasons referencing source nodes use NodeKey once it lands).",
+        "engine_readiness": "expose-existing",
+        "effort": "M",
+        "tier": "foundational"
+      },
+      {
+        "id": "typed-dependency-kinds",
+        "title": "Typed dependency-descriptor kind & carrier enums",
+        "principle": "Typed and lossless over stringly and flattened",
+        "owner_layer": "SkinIR-contract",
+        "shape": "enum DependencyKind { DirectRef, QualifiedSibling, CollectionMember, RangeCarrier, NameRef, ExternalAlias, RuntimeSpill, .. #[non_exhaustive] }; enum CarrierDetail { SingleCell, Collection{family:CollectionId,members:u32}, Region{rows:u32,cols:u32}, .. }; descriptors_by_owner[] use these instead of kind:String/carrier_detail:String.",
+        "unlocks": "Dependency inspector groups/filters edges by typed kind; precedents/dependents overlay color-codes by kind; find-references scopes by reference family.",
+        "depends_on": [],
+        "doctrinal_note": "The dependency graph is OxCalc-owned; kind/carrier are already discriminated internally to drive rebind-on-structural-change. Independent free conversion; do it anytime.",
+        "engine_readiness": "expose-existing",
+        "effort": "M",
+        "tier": "foundational"
+      },
+      {
+        "id": "richer-typed-value",
+        "title": "Typed NodeValueProjection variants",
+        "principle": "Typed and lossless over stringly and flattened",
+        "owner_layer": "SkinIR-contract",
+        "shape": "enum NodeValueProjection { Unevaluated, Pending, Empty, Number{raw:f64,unit:Option<UnitHint>}, Text(String), Logical(bool), ErrorV(ExcelError), Array{dims:(u32,u32),cells:Vec<Vec<NodeValueProjection>>}, Reference(RefValue), Lambda{arity:u8,params:Vec<String>}, Rich(RichValueRef), Image(ImageRef) } where RefValue = Single(RefHandle)|Collection{family,members}.",
+        "unlocks": "Skin renders numbers right-aligned, logicals as checkboxes, errors with typed glyphs, lambdas with arity badges, references as chips, Empty distinct from Unevaluated — without parsing the debug string. Number.unit feeds unit-aware/chart skins.",
+        "depends_on": [],
+        "doctrinal_note": "EvalValue is OxFunc's value universe; the single Scalar(String) collapses it. Host-projection must NOT add display formatting here (that is the resolver's job, constraint 9). Independent free conversion. unit:Option<UnitHint> is expose-existing IF EvalValue carries a unit/semantic hint; otherwise that field is omitted until it does.",
+        "engine_readiness": "expose-existing",
+        "effort": "L",
+        "tier": "foundational"
+      },
+      {
+        "id": "typed-run-and-calc-state",
+        "title": "Close run/calc_state enums AND retire engine control-flow-via-diagnostic-string",
+        "principle": "Typed and lossless over stringly and flattened",
+        "owner_layer": "OxCalc",
+        "shape": "Keep calc_state:CalcState and last_run.run_state:RunState as closed #[non_exhaustive] enums; designate diagnostics:Vec<String> as the ONLY free-text channel, advisory/non-load-bearing. ENGINE CLEANUP: retire existing sites that branch on diagnostic prose (e.g. matching 'cycle.excel_match_iterative', parsing 'oxfml_reject:{code}') — promote those facts to typed enum fields.",
+        "unlocks": "Skins safely switch on lifecycle state for badges and the calc-status bar; the engine stops keying control flow off its own prose, so 'diagnostics are advisory' becomes true rather than aspirational.",
+        "depends_on": [],
+        "doctrinal_note": "CRITIQUE FIX (1-minor): the live engine TODAY leaks control-relevant facts into diagnostics and branches on them downstream — declaring diagnostics non-load-bearing is contradicted by current behavior. This is not n/a: it is OxCalc extend-existing engine debt to retire, otherwise the tenet ships violated on day one.",
+        "engine_readiness": "extend-existing",
+        "effort": "M",
+        "tier": "foundational"
+      },
+      {
+        "id": "value-epoch-keying",
+        "title": "Per-node published-value epoch stamp (engine bookkeeping)",
+        "principle": "Identity is permanent, path is cosmetic",
+        "owner_layer": "OxCalc",
+        "shape": "OxCalc stamps each node's published value with a value_epoch distinct from its input_epoch; NodeView.computed_value pairs with value_epoch:u64. Skin memoizes rendered cells keyed by (NodeKey, value_epoch). If true per-node value epochs prove too costly, the delta channel falls back to workspace value_epoch + the engine's existing invalidated-node set.",
+        "unlocks": "Precondition for shape-diff, history scrubbing, delta value carriage, and 'is this stale relative to epoch N'. Lets a skin skip re-formatting unchanged cells at scale.",
+        "depends_on": [
+          "stable-node-identity"
+        ],
+        "doctrinal_note": "CRITIQUE FIX (1-minor, 3-blocking): the engine exposes a SINGLE workspace-scope value_epoch and a per-node INPUT epoch (not a published-VALUE epoch). Threading a true per-node value epoch is engine bookkeeping = extend-existing (plausibly new-capability), NOT a host expose-existing thread-through. Resolve the open_question before relying on per-node granularity; the fallback keeps the delta channel unblocked.",
+        "engine_readiness": "extend-existing",
+        "effort": "M",
+        "tier": "foundational"
+      },
+      {
+        "id": "phase-timings-typed",
+        "title": "Typed-KEY phase-timing map with Other(String) escape",
+        "principle": "Typed and lossless over stringly and flattened",
+        "owner_layer": "OxCalc",
+        "shape": "last_run.phase_timings: BTreeMap<PhaseKey, u64> where enum PhaseKey { Invalidate, Schedule, Evaluate, Publish, Overlay, .. Other(String) } is OxCalc-OWNED. Replaces the raw BTreeMap<String,u128>.",
+        "unlocks": "Calc X-ray performance lane labels known phases; unknown ad-hoc phases survive via Other(String) instead of being dropped or re-classified; regression detection per phase.",
+        "depends_on": [],
+        "doctrinal_note": "CRITIQUE FIX (1-major): the engine records phases by FREE-STRING keys with ad-hoc names. A fixed 5-field struct would be host RE-CLASSIFICATION of engine prose (the exact anti-pattern) or would silently drop phases. The fix is an engine-owned PhaseKey enum with Other(String) escape — so owner is OxCalc, readiness extend-existing (engine must commit to the enum first).",
+        "engine_readiness": "extend-existing",
+        "effort": "S",
+        "tier": "enriching"
+      },
+      {
+        "id": "runtime-effects-list",
+        "title": "Explicit runtime-effects list (not just count)",
+        "principle": "Typed and lossless over stringly and flattened",
+        "owner_layer": "Host-projection",
+        "shape": "last_run.runtime_effects: Vec<RuntimeEffect> where enum RuntimeEffect { Spill{origin:NodeKey,dims:(u32,u32)}, DynamicRef{owner:NodeKey,resolved:RefHandle}, OverlayWrite{node:NodeKey}, RegionResize{node:NodeKey,from:(u32,u32),to:(u32,u32)} } replaces runtime_effect_count.",
+        "unlocks": "FLOW's runtime-effect panel lists exactly what spilled/resolved this tick; array unfurl knows which node spilled and its new dims; overlay debugging shows overwritten nodes.",
+        "depends_on": [
+          "richer-typed-value"
+        ],
+        "doctrinal_note": "OxCalc tracks each runtime effect to apply it (the typed RuntimeEffect record genuinely exists); the count is a lossy summary. Honest expose-existing.",
+        "engine_readiness": "expose-existing",
+        "effort": "M",
+        "tier": "high-leverage"
+      },
+      {
+        "id": "overlay-resize-deltas",
+        "title": "Region/spill overlay resize deltas",
+        "principle": "Typed and lossless over stringly and flattened",
+        "owner_layer": "Host-projection",
+        "shape": "last_run.overlay_deltas: Vec<OverlayDelta { node:NodeKey, kind:SpillOverlayKind, prior_dims:Option<(u32,u32)>, new_dims:(u32,u32), grew:bool }> alongside runtime_overlay_count.",
+        "unlocks": "Array unfurl animates only the changed region; a spill that shrinks/grows highlights reclaimed/overwritten area; FLOW shows 'this spill grew from 3x1 to 5x1'.",
+        "depends_on": [
+          "runtime-effects-list"
+        ],
+        "doctrinal_note": "Overlay sizing is OxCalc runtime-overlay substrate; the delta is computed internally to apply/clear overlays. No grid/coords — delta is dims+node, not A1 (constraint 3).",
+        "engine_readiness": "expose-existing",
+        "effort": "M",
+        "tier": "high-leverage"
+      },
+      {
+        "id": "per-edge-cache-evidence",
+        "title": "Per-edge value-cache hit/miss + scheduling-mode + reuse ratio",
+        "principle": "Engine is the sole source of derivation, value, and format",
+        "owner_layer": "Host-projection",
+        "shape": "last_run.scheduling: SchedulingReport { mode:ScheduleMode, edges:Vec<EdgeEval{owner:NodeKey, cache:CacheOutcome(Hit|Miss|Bypassed), reused:bool}>, reuse_ratio:f32 } — CONTINGENT on the scheduler exposing per-edge outcomes.",
+        "unlocks": "Calc X-ray's performance lane shows which subtree recomputed vs reused; perf debugging of 'why did this recalc' without guessing.",
+        "depends_on": [
+          "typed-invalidation-reasons"
+        ],
+        "doctrinal_note": "CRITIQUE FIX (1-major): only an edge-value-cache BASIS fingerprint is confirmed in the engine; per-edge Hit/Miss/Bypassed is NOT confirmed. Downgraded to extend-existing pending confirmation (see open_questions). Do not claim expose-existing until the per-edge record exists.",
+        "engine_readiness": "extend-existing",
+        "effort": "M",
+        "tier": "high-leverage"
+      },
+      {
+        "id": "full-derivation-trace",
+        "title": "Full derivation-trace payload + EvaluateFragment read",
+        "principle": "Engine is the sole source of derivation, value, and format",
+        "owner_layer": "Host-projection",
+        "shape": "last_run.derivation_traces: Vec<DerivationTrace { node:NodeKey, template:Option<TemplateRef>, hole_bindings:Vec<(HoleId,RefHandle)>, child_calls:Vec<PreparedCall{kernel:String, arg_values:Vec<NodeValueProjection>, result:NodeValueProjection}> }> replaces derivation_trace_count; plus read-only EvaluateFragment(node, sub_expr_id)->NodeValueProjection.",
+        "unlocks": "FLOW's explain-stack renders the full ordered child prepared-call tree with per-call kernel inputs/outputs — the most-cited Band A need; formula step-through; hover-a-subexpression-see-its-value.",
+        "depends_on": [
+          "richer-typed-value"
+        ],
+        "doctrinal_note": "OxFml/OxCalc build the prepared-call tree to evaluate (the typed DerivationTraceRecord genuinely exists); the count discards it. EvaluateFragment is a read-only single-node re-eval the engine already supports. Honest expose-existing.",
+        "engine_readiness": "expose-existing",
+        "effort": "L",
+        "tier": "high-leverage"
+      },
+      {
+        "id": "typed-cycle-diagnostics",
+        "title": "Typed cycle diagnostics",
+        "principle": "Typed and lossless over stringly and flattened",
+        "owner_layer": "OxCalc",
+        "shape": "dependencies.cycle_groups[].diagnostics: CycleDiagnostic { members:Vec<NodeKey>, profile:IterationProfile, iteration_trace:Vec<IterStep{epoch:u32, max_change:f64}>, terminal:CycleTerminalState(Converged|MaxIter|Diverged), reject_kind:Option<RejectKind> }.",
+        "unlocks": "Cycle panel shows convergence curve, terminal state, reject reason instead of an opaque CycleBlocked badge.",
+        "depends_on": [
+          "typed-invalidation-reasons"
+        ],
+        "doctrinal_note": "CRITIQUE FIX (1-major): the iterative-cycle path is FIXTURE-surfaced — per-iteration max_change exists only for specific hardcoded scenarios, not a general solver over arbitrary cycles. Downgraded to extend-existing; the typed shape is sound but general per-iteration convergence data is not yet engine-derived for arbitrary cycles.",
+        "engine_readiness": "extend-existing",
+        "effort": "M",
+        "tier": "enriching"
+      },
+      {
+        "id": "reference-resolution-map",
+        "title": "Reference-token to target resolution map (+ reverse index)",
+        "principle": "Identity is permanent, path is cosmetic",
+        "owner_layer": "OxCalc",
+        "shape": "WorkspaceState.dependencies += resolution_map: BTreeMap<SourceReferenceHandle, ResolvedRef { token_span:(u16,u16), target:RefTarget(Node(NodeKey)|Collection(CollectionId)|External(AliasId)|Unresolved), collection_members:Option<Vec<NodeKey>> }> plus a reverse index for find-references.",
+        "unlocks": "Jump-to-definition / find-references in the formula bar; hover-a-token-highlight-its-target; precedents overlay maps tokens to nodes; powers legality preview's rebind_impact; F4-toggle UI targets the right handle.",
+        "depends_on": [
+          "typed-dependency-kinds"
+        ],
+        "doctrinal_note": "OxFml binds tokens to handles and OxCalc resolves handles to targets — both engine-owned; descriptors already carry source_reference_handle. Skin reads for navigation and NEVER parses formula text (constraint 1).",
+        "engine_readiness": "expose-existing",
+        "effort": "M",
+        "tier": "high-leverage"
+      },
+      {
+        "id": "binding-diagnostics-typed",
+        "title": "Typed binding/parse diagnostics per node (incl. profile-rejection)",
+        "principle": "Typed and lossless over stringly and flattened",
+        "owner_layer": "OxFml",
+        "shape": "enum BindingDiagnostic { UnresolvedRef{token_span:(u16,u16)}, ProfileRejected{feature:ProfileFeature}, AmbiguousName{name:String}, TypeMismatch, RebindPending }; carried on NodeView and ActiveNodeDetail. ProfileFeature is a readable enum so the UI can explain WHY input is rejected.",
+        "unlocks": "Inline red-squiggle authoring feedback at a token span; profile-gating UI explains 'this function is rejected under strict-excel'; X-ray shows nodes needing rebind.",
+        "depends_on": [
+          "reference-resolution-map"
+        ],
+        "doctrinal_note": "OxFml produces bind diagnostics at parse/bind; profile gating happens there (constraint 5). Owner is OxFml (it emits them); skin renders, never re-validates.",
+        "engine_readiness": "expose-existing",
+        "effort": "M",
+        "tier": "high-leverage"
+      },
+      {
+        "id": "per-node-effective-format",
+        "title": "Per-node effective format + per-cell conditional-format RESULT",
+        "principle": "Engine is the sole source of derivation, value, and format",
+        "owner_layer": "Host-projection",
+        "shape": "NodeView.effective_format: EffectiveFormat { number_code:String, font, fill, align, .. }; NodeView.cf_results: Vec<CfResult { rule_id:CfRuleId, matched:bool, applied:FormatOverride }>; for arrays, per-cell CfResult indexed by logical cell. READ of evaluated results only.",
+        "unlocks": "Skin shows resolved format and which CF rule fired per cell; FLOW's format lens; 'why is this cell red'. Feeds the resolver. Also surfaces validation_state (read).",
+        "depends_on": [
+          "richer-typed-value"
+        ],
+        "doctrinal_note": "CF rule semantics are OxFml-owned and already evaluated to decide formatting; the result is engine truth. Host surfaces the evaluated result, never re-evaluates rules host-side (constraint 7). This READ projection is justified independent of any WRITE authoring of CF/validation rules.",
+        "engine_readiness": "expose-existing",
+        "effort": "M",
+        "tier": "high-leverage"
+      },
+      {
+        "id": "format-resolver-on-context",
+        "title": "Format/value resolver (thin OxFml forward) + profile on SkinContext",
+        "principle": "Engine is the sole source of derivation, value, and format",
+        "owner_layer": "Host-projection",
+        "shape": "SkinContext gains profile:CapabilityProfile and resolver:&FormatResolver where resolve() FORWARDS to an OxFml render(value, format_code, locale)->RenderedCell and the host only attaches frame concerns (align/color mapped to tokens). Profile's gated feature set is READABLE so UI can explain rejections.",
+        "unlocks": "Every skin renders Excel-faithful display text by calling resolve() instead of debug Scalar text (closes constraint 9); profile-aware input gating UI; localized number/date display via the engine, not the skin.",
+        "depends_on": [
+          "per-node-effective-format",
+          "richer-typed-value"
+        ],
+        "doctrinal_note": "CRITIQUE FIX (1-minor): a host resolver that PARSED number-format codes would re-implement OxFml semantics and risk divergence (constraint 7). Constrained to a thin forward into OxFml's renderer — the resolver MUST NOT interpret format codes host-side. extend-existing because OxFml must expose a render entrypoint.",
+        "engine_readiness": "extend-existing",
+        "effort": "M",
+        "tier": "foundational"
+      },
+      {
+        "id": "active-node-detail",
+        "title": "First-class active-node / formula-bar detail struct",
+        "principle": "Typed and lossless over stringly and flattened",
+        "owner_layer": "Host-projection",
+        "shape": "WorkspaceState.active_detail: Option<ActiveNodeDetail { node:NodeKey, content_text:String, value:NodeValueProjection, effective_format:EffectiveFormat, binding_diagnostics:Vec<BindingDiagnostic>, reference_map:Vec<ResolvedRef> }> derived from selection.primary.",
+        "unlocks": "A formula bar / inspector renders the selected node's content + live binding diagnostics + format + reference chips from ONE struct instead of cross-joining nodes/dependencies/diagnostics manually.",
+        "depends_on": [
+          "reference-resolution-map",
+          "per-node-effective-format",
+          "richer-typed-value",
+          "binding-diagnostics-typed"
+        ],
+        "doctrinal_note": "Pure projection convenience: a denormalized read view over facts the engine already exposes, keyed by selection. Reduces skin-side re-derivation.",
+        "engine_readiness": "extend-existing",
+        "effort": "M",
+        "tier": "high-leverage"
+      },
+      {
+        "id": "rich-image-value-handles",
+        "title": "RichValue / Image value handles in projection",
+        "principle": "Typed and lossless over stringly and flattened",
+        "owner_layer": "SkinIR-contract",
+        "shape": "NodeValueProjection::Rich(RichValueRef { type_id, fields:Vec<(String,NodeValueProjection)> }) and ::Image(ImageRef { source, alt }); references opaque, resolved via context, not inlined bytes.",
+        "unlocks": "Skins render linked-data rich values (stocks/geography) and in-cell images Excel-faithfully; future card-view skins read structured fields without parsing.",
+        "depends_on": [
+          "richer-typed-value"
+        ],
+        "doctrinal_note": "RichValue/Image are part of OxFunc's value universe; opaque handles keep the engine the source and avoid host transcoding. Cheap once richer-typed-value lands.",
+        "engine_readiness": "extend-existing",
+        "effort": "M",
+        "tier": "frontier"
+      },
+      {
+        "id": "table-cell-readback",
+        "title": "Read-only table cell/column projection",
+        "principle": "Typed and lossless over stringly and flattened",
+        "owner_layer": "Host-projection",
+        "shape": "TableProjection gains optional cells_view: fn(table_id)->TableCells { columns:Vec<ColumnView{name, formula:Option<String>, effective_format}>, rows:Vec<Vec<NodeValueProjection>> } — read-only, lazily fetched, NOT the structural intent surface.",
+        "unlocks": "A table skin renders actual cell values/column formulas (today TableProjection has identity+counts but NO cells); FLOW's table lens; verifying computed table output against Excel.",
+        "depends_on": [
+          "richer-typed-value",
+          "per-node-effective-format"
+        ],
+        "doctrinal_note": "Table cells are engine-evaluated values bound to nodes; READ surface only (structural ops are separate intents). Multi-value stays as a node's Array/collection — the table is a node-rooted structured value, not A1 coords (constraint 3).",
+        "engine_readiness": "extend-existing",
+        "effort": "L",
+        "tier": "enriching"
+      },
+      {
+        "id": "selection-subject-model",
+        "title": "First-class multi-selection subject (anchor + ordered set)",
+        "principle": "Conceivable is one intent; subjects are first-class, text is the engine's",
+        "owner_layer": "Host-intent",
+        "shape": "struct SelectionState { primary:Option<NodeKey>, anchor:Option<NodeKey>, selected:Vec<NodeKey> /*ordered, de-duped*/ }; WorkspaceIntent::SelectNodes(Vec<NodeKey>), ::SelectRange{anchor:NodeKey,focus:NodeKey}, ::ToggleNodeInSelection(NodeKey).",
+        "unlocks": "Shift/ctrl-click a set of siblings and apply ONE fill/delete/format verb to all; FLOW's batch authoring gestures become a single subject the verbs target.",
+        "depends_on": [
+          "stable-node-identity"
+        ],
+        "doctrinal_note": "SelectionState is host-owned projection truth; range resolution uses node_order/depth the host already projects. SelectNode routes to selection signal only (no recalc). Keyed on NodeKey so it survives structural edits.",
+        "engine_readiness": "n/a",
+        "effort": "S",
+        "tier": "foundational"
+      },
+      {
+        "id": "scope-value",
+        "title": "Typed AuthoringScope carried by mutating intents",
+        "principle": "Conceivable is one intent; subjects are first-class, text is the engine's",
+        "owner_layer": "Host-intent",
+        "shape": "enum AuthoringScope { Node(NodeKey), Nodes(Vec<NodeKey>), Subtree(NodeKey), Collection{owner:NodeKey, source_reference_handle:Handle} }; mutating intents take scope:AuthoringScope instead of a bare NodeId.",
+        "unlocks": "One verb spans single node, multi-select, subtree, or a reference collection's members — Delete/Replicate/PasteContent/SetFormatProperty work over any subject without verb explosion.",
+        "depends_on": [
+          "selection-subject-model"
+        ],
+        "doctrinal_note": "Scope is a host concept (NodeKeys + host-owned collection handle); carries no semantics. Keeps the closed enum small while making subjects rich. A skin cannot safely expand a Subtree scope (membership + meta-invisibility are host/engine truth).",
+        "engine_readiness": "n/a",
+        "effort": "M",
+        "tier": "foundational"
+      },
+      {
+        "id": "transaction-scope",
+        "title": "Atomic batch transaction with single publication (engine accumulate-publish-once)",
+        "principle": "All-or-nothing, reversible only by navigation",
+        "owner_layer": "OxCalc",
+        "shape": "WorkspaceIntent::EditNodes(Vec<ScopedEdit>) OR host begin_transaction()->TransactionScope { push(intent); commit()->IntentReceipt }; OxCalc accumulates edits, schedules ONCE, republishes ONE WorkspaceState; rollback on any rejection.",
+        "unlocks": "A 50-target fill, multi-node format change, or import bulk edit commits as ONE revision and ONE update — no intermediate flicker, no half-applied model on failure. Prerequisite for every multi-target verb and the speculation commit path.",
+        "depends_on": [],
+        "doctrinal_note": "CRITIQUE FIX (3-major): the engine TODAY publishes PER-NODE (produce_candidate -> PublishReady -> publish_and_clear keyed by TreeNodeId). Accumulate-many-edits-then-publish-once is genuine scheduler rework — the highest-RISK foundational item even though effort=L. Flag explicitly as the gating engine milestone for W2 and beyond.",
+        "engine_readiness": "extend-existing",
+        "effort": "L",
+        "tier": "foundational"
+      },
+      {
+        "id": "edit-transaction-id",
+        "title": "IntentReceipt carries transaction id + produced revision + completion signal + per-edit failure",
+        "principle": "All-or-nothing, reversible only by navigation",
+        "owner_layer": "Host-intent",
+        "shape": "struct IntentReceipt { accepted:bool, error:Option<IntentError>, transaction_id:TxnId, produced_revision:Option<RevisionId>, completed_signal:Option<CompletionToken>, delta:WorkspaceDelta, failed_edit_index:Option<usize> }.",
+        "unlocks": "A skin correlates an edit with the revision it produced (undo navigation, optimistic UI, time-scrubber labels), awaits completion once async lands, ties a delta-ledger entry to its cause, and on a failed batch knows WHICH ScopedEdit failed.",
+        "depends_on": [
+          "transaction-scope",
+          "typed-intent-error"
+        ],
+        "doctrinal_note": "Host-owned projection of the dispatch outcome; transaction_id/produced_revision reference OxCalc revision identity. completed_signal Option keeps it synchronous today, async-ready later. failed_edit_index closes the transaction-partial-failure gap.",
+        "engine_readiness": "extend-existing",
+        "effort": "S",
+        "tier": "foundational"
+      },
+      {
+        "id": "typed-intent-error",
+        "title": "Typed IntentError replacing Rejected(String)",
+        "principle": "Typed and lossless over stringly and flattened",
+        "owner_layer": "Host-intent",
+        "shape": "enum IntentError { ProfileRejected{feature:ProfileFeature}, NameCollision{existing:NodeKey}, WouldFormCycle{members:Vec<NodeKey>}, Forbidden{persona:Persona}, Orphans{refs:Vec<NodeKey>}, EngineRejected{revision:Option<RevisionId>, detail:RejectKind}, Unsupported }. Shares reason vocabulary with legality-impact-preview so pre/post-commit errors match.",
+        "unlocks": "A skin renders a recoverable, explainable rejection (profile vs collision vs cycle vs forbidden vs engine-internal) instead of grepping a string; the POST-commit failure path gains a typed shape mirroring the PRE-commit preview.",
+        "depends_on": [],
+        "doctrinal_note": "CRITIQUE FIX (2-major/strongest): IntentError is {Unsupported, Rejected(String)} TODAY — a stringly write-failure channel directly violating tenet-2 while everything else is typed. Foundational, sequenced in W2 with transaction-scope, NOT deferred. EngineRejected.detail surfaces the engine's typed RejectKind verbatim.",
+        "engine_readiness": "extend-existing",
+        "effort": "S",
+        "tier": "foundational"
+      },
+      {
+        "id": "command-palette-metadata",
+        "title": "Command/intent metadata projection",
+        "principle": "Conceivable is one intent; subjects are first-class, text is the engine's",
+        "owner_layer": "Host-intent",
+        "shape": "fn command_catalog(&WorkspaceState, &SelectionState) -> Vec<CommandMeta { intent_kind:IntentKind, title:&'static str, shortcut:Option<KeyChord>, effective_binding:Option<KeyChord>, enabled:bool, disabled_reason:Option<DisabledReason> }>.",
+        "unlocks": "Command palette and context menus auto-populate with titles, shortcuts, and enablement (greyed 'Delete' when nothing selected); discoverability of the closed intent set; FLOW's action surface.",
+        "depends_on": [
+          "selection-subject-model",
+          "legality-impact-preview"
+        ],
+        "doctrinal_note": "Enablement is a function of WorkspaceState+selection+legality, computed where the closed dispatcher lives. Host-intent owns the intent set, so it owns enablement metadata; skin reads, dispatches the chosen intent. effective_binding surfaces the keybinding-registry's resolved chord.",
+        "engine_readiness": "new-capability",
+        "effort": "M",
+        "tier": "enriching"
+      },
+      {
+        "id": "replicate-by-id",
+        "title": "ReplicateContent (fill) carrying source + target IDs",
+        "principle": "Conceivable is one intent; subjects are first-class, text is the engine's",
+        "owner_layer": "OxFml",
+        "shape": "WorkspaceIntent::ReplicateContent{ source:NodeKey, targets:AuthoringScope, mode:ReplicateMode (RelativeRefs|AbsoluteRefs|ValuesOnly) }; host forwards to OxFml which recomposes RAW text per target by reference-relative rebind, then OxCalc schedules within one transaction.",
+        "unlocks": "Excel-style fill-down/right by NAME: select a formula node + a target column of siblings, replicate with relative refs, engine rebinds each clone under the active profile. FLOW's 'extend this calc across the children' with no skin text-splicing.",
+        "depends_on": [
+          "scope-value",
+          "transaction-scope"
+        ],
+        "doctrinal_note": "HARD CONSTRAINT 1: skins never rewrite formula text. Relative-vs-absolute adjustment is OxFml grammar/bind; host routes ids+mode only. This is the hard reference-rebind machinery that paste-special and duplicate-subtree also need.",
+        "engine_readiness": "new-capability",
+        "effort": "L",
+        "tier": "high-leverage"
+      },
+      {
+        "id": "f4-toggle-binding",
+        "title": "ToggleReferenceBinding (F4) by reference handle",
+        "principle": "Conceivable is one intent; subjects are first-class, text is the engine's",
+        "owner_layer": "OxFml",
+        "shape": "WorkspaceIntent::ToggleReferenceBinding{ node:NodeKey, source_reference_handle:Handle, cycle:BindingCycle (Rel->ColAbs->RowAbs->Abs) }; OxFml mutates the binding mode of that one reference token, re-emits RAW text; OxCalc rebinds.",
+        "unlocks": "Excel F4 cycling $A$1 / A$1 / $A1 / A1 on the reference under the cursor — an intent carrying the source_reference_handle, never a character edit.",
+        "depends_on": [
+          "reference-resolution-map"
+        ],
+        "doctrinal_note": "HARD CONSTRAINT 1 explicitly names F4 as MUST-be-intent-carrying-ids. The handle exists on descriptors; write side is OxFml because absolute/relative is a binding-mode property of the parsed reference.",
+        "engine_readiness": "extend-existing",
+        "effort": "M",
+        "tier": "high-leverage"
+      },
+      {
+        "id": "reference-insertion",
+        "title": "InsertReference: compose profile-correct reference text for a clicked target",
+        "principle": "Conceivable is one intent; subjects are first-class, text is the engine's",
+        "owner_layer": "OxFml",
+        "shape": "OxFml compose_reference(editing_node:NodeKey, target:NodeKey, binding:BindingMode)->RawText; the HOST owns the edit buffer + caret and splices the returned text at its own caret. The intent carries (editing_node, target, binding) only — NO caret.",
+        "unlocks": "Click a node while editing a formula to insert a reference to it (Excel point-mode); the skin never synthesizes 'A1'/name text.",
+        "depends_on": [
+          "reference-resolution-map"
+        ],
+        "doctrinal_note": "CRITIQUE FIX (1-minor): the original shape pushed caret position into an OxFml intent — an ownership leak (engine taking on host edit-buffer state). Corrected: OxFml COMPOSES profile-correct text; the host performs the splice at its own caret. Composition of reference grammar/naming is OxFml's; caret is the host's.",
+        "engine_readiness": "new-capability",
+        "effort": "M",
+        "tier": "high-leverage"
+      },
+      {
+        "id": "clipboard-transfer-model",
+        "title": "Typed host Clipboard payload (Values|Formula|Format|Subtree)",
+        "principle": "Conceivable is one intent; subjects are first-class, text is the engine's",
+        "owner_layer": "Host-intent",
+        "shape": "struct Clipboard { payload:ClipboardPayload (Values(Vec<NodeValueProjection>) | Formula{source:NodeKey} | Format(EffectiveFormat) | Subtree{root:NodeKey}) }; Copy/Cut intents populate it; PasteContent/PasteSubtree consume it. Distinct from OS clipboard text.",
+        "unlocks": "Coherent copy/cut/paste-special and duplicate-subtree sharing ONE typed carrier; the paste verbs reference a host artifact, not ad-hoc args.",
+        "depends_on": [
+          "scope-value",
+          "richer-typed-value"
+        ],
+        "doctrinal_note": "The carrier is host-owned model/transfer state (not OS clipboard, not engine semantics). Formula payload's rebind on paste delegates to OxFml; Values payload reads engine computed_value.",
+        "engine_readiness": "new-capability",
+        "effort": "M",
+        "tier": "enriching"
+      },
+      {
+        "id": "paste-special",
+        "title": "PasteContent with Values|Formula|Format modes",
+        "principle": "Conceivable is one intent; subjects are first-class, text is the engine's",
+        "owner_layer": "OxFml",
+        "shape": "WorkspaceIntent::PasteContent{ source:NodeKey /*or Clipboard*/, targets:AuthoringScope, mode:PasteMode (Values|Formula|Format|FormulaAndFormat) }; Values resolves source computed_value to constants, Formula rebinds like Replicate, Format copies effective format.",
+        "unlocks": "Paste-special parity: paste the computed result as a constant, the formula with rebound refs, or just the number format. FLOW's 'snapshot this calc as a value' / 'copy this cell's look'.",
+        "depends_on": [
+          "scope-value",
+          "replicate-by-id",
+          "format-write",
+          "clipboard-transfer-model"
+        ],
+        "doctrinal_note": "CRITIQUE FIX (3-major): retagged L — it requires the SAME hard rebind machinery as replicate-by-id (its dependency), so it is not cheaper than the thing it depends on. Each mode's semantics lives in its owning engine layer; host orchestrates.",
+        "engine_readiness": "extend-existing",
+        "effort": "L",
+        "tier": "high-leverage"
+      },
+      {
+        "id": "duplicate-subtree",
+        "title": "DuplicateNode / CopySubtree / PasteSubtree (structural clone)",
+        "principle": "Conceivable is one intent; subjects are first-class, text is the engine's",
+        "owner_layer": "Host-intent",
+        "shape": "WorkspaceIntent::DuplicateNode{ source:NodeKey, new_parent:NodeKey, new_index:usize, rename:RenameStrategy }; clones structure + content; internal refs rebind to the clone, external refs preserved.",
+        "unlocks": "Duplicate a whole sub-model (a calc block with children and inter-references) in one reviewable intent — FLOW's 'copy this scenario block and tweak it' without N AddNode + N EditContent.",
+        "depends_on": [
+          "transaction-scope",
+          "replicate-by-id",
+          "naming-collision-policy"
+        ],
+        "doctrinal_note": "CRITIQUE FIX (3-major): retagged L — clone's internal reference rebinding reuses the replicate-by-id rebind machinery plus id minting; not cheaper than its dependency. One transaction so the clone publishes atomically.",
+        "engine_readiness": "new-capability",
+        "effort": "L",
+        "tier": "high-leverage"
+      },
+      {
+        "id": "naming-collision-policy",
+        "title": "Host naming/uniqueness policy + RenameStrategy",
+        "principle": "Predict before you pay",
+        "owner_layer": "Host-projection",
+        "shape": "struct RenameStrategy { on_collision:CollisionPolicy (Reject|AutoSuffix|Replace) }; host owns the name-uniqueness algebra used by AddNode/RenameNode/Duplicate/InstantiateTemplate; collisions reported via legality-impact-preview as NameCollision.",
+        "unlocks": "Predictable auto-suffixing on duplicate/stamp, clean rejection on conflicting rename, pre-commit collision warnings.",
+        "depends_on": [
+          "stable-node-identity"
+        ],
+        "doctrinal_note": "Naming policy is host-owned (model<->Excel mapping, display-path uniqueness) and operates on NodeKey identity with display_path as the contended namespace. Not engine semantics.",
+        "engine_readiness": "new-capability",
+        "effort": "S",
+        "tier": "high-leverage"
+      },
+      {
+        "id": "add-node-content-policy",
+        "title": "Default/initial-content policy for AddNode + template instantiation",
+        "principle": "Conceivable is one intent; subjects are first-class, text is the engine's",
+        "owner_layer": "Host-intent",
+        "shape": "AddNode gains initial:InitialContent (Empty | InheritColumnFormula | TemplateBound{template_id} | Literal(content)) and is_meta:bool; InstantiateTemplate resolves per-hole initial content from template bindings.",
+        "unlocks": "A node added under a calculated column inherits the column formula; a stamped template node gets its bound content — authored truth rather than implied by a bare AddNode.",
+        "depends_on": [
+          "scope-value"
+        ],
+        "doctrinal_note": "What content a new/stamped node receives is host-owned authoring policy; the formula MEANING (if inherited) is composed by OxFml on rebind.",
+        "engine_readiness": "extend-existing",
+        "effort": "S",
+        "tier": "enriching"
+      },
+      {
+        "id": "set-membership-write",
+        "title": "SetCollectionMembership (authored reference collections)",
+        "principle": "Conceivable is one intent; subjects are first-class, text is the engine's",
+        "owner_layer": "OxCalc",
+        "shape": "WorkspaceIntent::SetCollectionMembership{ owner:NodeKey, source_reference_handle:Handle, members:Vec<NodeKey>, order:MemberOrder }; bumps membership_version/order_version.",
+        "unlocks": "Authoring a multi-value input as a reference COLLECTION (the doctrine's sanctioned grid alternative): add/remove/reorder the nodes a SUM-over-set references. FLOW's 'these children feed this aggregate' edited directly.",
+        "depends_on": [
+          "selection-subject-model"
+        ],
+        "doctrinal_note": "HARD CONSTRAINT 3: multi-value is a node Array or a reference COLLECTION, never a grid. The collection descriptor is already projected; OxCalc owns membership/order versioning. A skin cannot mutate membership_version.",
+        "engine_readiness": "extend-existing",
+        "effort": "M",
+        "tier": "high-leverage"
+      },
+      {
+        "id": "meta-and-attribute-write",
+        "title": "SetNodeAttributes / SetMeta (engine-visible, revisioned)",
+        "principle": "Conceivable is one intent; subjects are first-class, text is the engine's",
+        "owner_layer": "Host-intent",
+        "shape": "WorkspaceIntent::SetMeta{ node:NodeKey, is_meta:bool }, ::SetNodeAttributes{ node:NodeKey, attrs:NodeAttributePatch }.",
+        "unlocks": "Mark a subtree meta (scratch/annotation invisible to formulas) or set authored attributes as reviewable, revisioned edits. FLOW's 'this branch is notes, exclude it from calc'.",
+        "depends_on": [
+          "transaction-scope"
+        ],
+        "doctrinal_note": "HARD CONSTRAINT 8: is_meta subtrees are invisible to formulas, so toggling meta changes the dependency graph — MUST be an engine-visible revisioned intent, not a shared-state flag. Host owns the meta concept; OxCalc re-derives dependencies.",
+        "engine_readiness": "extend-existing",
+        "effort": "M",
+        "tier": "high-leverage"
+      },
+      {
+        "id": "note-write",
+        "title": "SetNote (per-node comment/annotation)",
+        "principle": "Conceivable is one intent; subjects are first-class, text is the engine's",
+        "owner_layer": "Host-intent",
+        "shape": "WorkspaceIntent::SetNote{ node:NodeKey, note:Option<NoteContent> }; NodeView gains note:Option<NoteSummary>. May stay allowed for the Reviewer persona.",
+        "unlocks": "Authored notes/comments that survive in the model and projection (vs skin-local state lost on reload); reviewer annotations that round-trip to Excel comments.",
+        "depends_on": [
+          "transaction-scope"
+        ],
+        "doctrinal_note": "A note is authored model content (persist, version, round-trip to Excel comments), so it belongs in the host model + intent path — not in SkinState nor SHARED view state.",
+        "engine_readiness": "extend-existing",
+        "effort": "S",
+        "tier": "enriching"
+      },
+      {
+        "id": "format-write",
+        "title": "SetFormatProperty (per-node effective format authoring)",
+        "principle": "Engine is the sole source of derivation, value, and format",
+        "owner_layer": "OxFml",
+        "shape": "WorkspaceIntent::SetFormatProperty{ scope:AuthoringScope, property:FormatProperty (NumberFormatCode|Font|Fill|Border|Alignment) }; OxFml parses/validates the number-format code; host stores the binding; projection surfaces effective_format.",
+        "unlocks": "Authoring number formats and styling as Excel-faithful intents — set a code on a scope and have OxFml validate/parse it. FLOW's 'show this as currency'/'percent' without host display logic.",
+        "depends_on": [
+          "scope-value",
+          "per-node-effective-format"
+        ],
+        "doctrinal_note": "HARD CONSTRAINT 4/7: format-code parsing is OxFml; rendering engine-faithful. Host orchestrates the write and owns where the format binds; the CODE'S MEANING is OxFml's.",
+        "engine_readiness": "extend-existing",
+        "effort": "M",
+        "tier": "high-leverage"
+      },
+      {
+        "id": "conditional-format-write",
+        "title": "AddCfRule / RemoveCfRule / ReorderCfRules (gated on a concrete FLOW use)",
+        "principle": "Engine is the sole source of derivation, value, and format",
+        "owner_layer": "OxFml",
+        "shape": "WorkspaceIntent::AddCfRule{ scope:AuthoringScope, rule:CfRuleSpec }, ::RemoveCfRule{ scope, rule_id }, ::ReorderCfRules{ scope, order:Vec<CfRuleId> }; OxFml owns rule semantics, OxCalc schedules per-cell evaluation.",
+        "unlocks": "Authoring conditional formatting as reviewable intents; the per-cell CF RESULT already returns on the read projection (per-node-effective-format).",
+        "depends_on": [
+          "format-write",
+          "per-node-effective-format"
+        ],
+        "doctrinal_note": "CRITIQUE FIX (3-major): the CF RESULT read projection is justified and kept; the WRITE authoring subsystem is a large net-new OxFml rule-authoring surface and is DEFERRED to frontier, gated behind a concrete FLOW authoring use beyond 'highlight over threshold'. Rule order is significant Excel semantics, hence explicit reorder.",
+        "engine_readiness": "new-capability",
+        "effort": "L",
+        "tier": "frontier"
+      },
+      {
+        "id": "data-validation-write",
+        "title": "Data-validation rule authoring (gated on a concrete FLOW use)",
+        "principle": "Engine is the sole source of derivation, value, and format",
+        "owner_layer": "OxFml",
+        "shape": "WorkspaceIntent::SetDataValidation{ scope:AuthoringScope, rule:Option<ValidationRule (List(Vec<NodeKey>)|NumberRange{min,max}|CustomFormula{text})> }; OxFml binds/evaluates; NodeView.validation_state:Option<ValidationResult> is surfaced (READ) regardless.",
+        "unlocks": "Constrain a node's input to a list/range/custom rule, with engine-evaluated pass/fail surfaced for inline UI.",
+        "depends_on": [
+          "format-write",
+          "reference-resolution-map"
+        ],
+        "doctrinal_note": "CRITIQUE FIX (3-major): the validation_state READ is kept (in per-node-effective-format); the WRITE authoring is a net-new OxFml surface, DEFERRED to frontier until a concrete use justifies it. Custom-formula constraints are formula text the engine binds (constraint 1); host carries spec, never computes the result (constraint 7).",
+        "engine_readiness": "new-capability",
+        "effort": "M",
+        "tier": "frontier"
+      },
+      {
+        "id": "batch-repair-write",
+        "title": "RebindReferences / AcceptRepair (author-side counterpart to rejection states)",
+        "principle": "Conceivable is one intent; subjects are first-class, text is the engine's",
+        "owner_layer": "OxCalc",
+        "shape": "WorkspaceIntent::RebindReferences{ scope:AuthoringScope }, ::AcceptRepair{ scope:AuthoringScope }; drives OxCalc to re-bind/clear RejectedPendingRepair and requires_rebind states in one transaction; receipt reports repaired nodes.",
+        "unlocks": "Batch-repair nodes stuck in RejectedPendingRepair / requires_rebind after structural churn or import — the WRITE verb the read-side rejection states implied. FLOW's 'fix all broken references'.",
+        "depends_on": [
+          "transaction-scope",
+          "reference-resolution-map",
+          "rename-move-ref-integrity"
+        ],
+        "doctrinal_note": "Rebind/repair is OxCalc/OxFml truth (binding + rejection lifecycle); host carries scope only. Distinct from rename/move integrity (automatic) — this is explicit author-driven repair.",
+        "engine_readiness": "extend-existing",
+        "effort": "M",
+        "tier": "enriching"
+      },
+      {
+        "id": "rename-move-ref-integrity",
+        "title": "Reference-preserving Rename/Move (rebind, never break)",
+        "principle": "Conceivable is one intent; subjects are first-class, text is the engine's",
+        "owner_layer": "OxCalc",
+        "shape": "RenameNode/MoveNode dispatch triggers OxCalc reference rebind so dependents follow the node by stable NodeKey; descriptors_by_owner[].requires_rebind_on_structural_change drives it; receipt reports rebound dependents.",
+        "unlocks": "Renaming/moving a node updates all name-based references automatically (Excel name-manager parity) so authoring structure never silently breaks formulas. FLOW's freely-reorganize-the-tree stays safe.",
+        "depends_on": [
+          "stable-node-identity",
+          "legality-impact-preview",
+          "edit-transaction-id"
+        ],
+        "doctrinal_note": "The intents exist; the GAP is guaranteed reference integrity. content_text is name-based and refs carry source_reference_handle, so rebind is OxCalc/OxFml truth keyed on stable NodeKey. Host must not rewrite referencing text (constraint 1).",
+        "engine_readiness": "extend-existing",
+        "effort": "M",
+        "tier": "foundational"
+      },
+      {
+        "id": "legality-impact-preview",
+        "title": "Pre-commit legality + impact: thin host JOIN over engine dry-bind + plan-invalidation",
+        "principle": "Predict before you pay",
+        "owner_layer": "Host-projection",
+        "shape": "host preview_intent(&WorkspaceIntent)->MutationImpact { legal:bool, profile_violations:Vec<ProfileFeature> /*from engine dry_bind*/, requires_rebind:Vec<NodeKey> /*from engine plan_invalidation*/, affected_refs:Vec<NodeKey>, orphaned_dependents:Vec<NodeKey> /*host*/, collisions:Vec<NameCollision> /*host*/, blocked_reason:Option<DisabledReason> }; pure, no mutation. Host computes NONE of the semantic fields, only joins them.",
+        "unlocks": "A skin disables an illegal Delete, warns 'renaming rebinds 7 dependents', blocks AddNode under strict-excel, powers command-palette enablement and drop-validity — all BEFORE commit.",
+        "depends_on": [
+          "scope-value",
+          "recalc-plan-preview",
+          "reference-resolution-map",
+          "naming-collision-policy",
+          "engine-dry-bind"
+        ],
+        "doctrinal_note": "CRITIQUE FIX (1-major/strongest): the original presented profile_violations/requires_rebind as host-computed — duplicating engine truth. Recast as a thin ORCHESTRATOR: profile_violations DELEGATED to an engine dry_bind (new dep engine-dry-bind), requires_rebind to plan_invalidation, both surfaced verbatim; only collisions/orphans/scope-expansion are genuinely host. Host computes no semantic field.",
+        "engine_readiness": "extend-existing",
+        "effort": "M",
+        "tier": "high-leverage"
+      },
+      {
+        "id": "engine-dry-bind",
+        "title": "OxFml dry-bind: profile/bind legality of an unexecuted edit without mutating",
+        "principle": "Predict before you pay",
+        "owner_layer": "OxFml",
+        "shape": "OxFml dry_bind(edit:&PreviewMutation, profile:CapabilityProfile)->BindVerdict { profile_violations:Vec<ProfileFeature>, bind_diagnostics:Vec<BindingDiagnostic>, would_rebind:Vec<NodeKey> } — parse/bind only, no evaluation, no publish.",
+        "unlocks": "The semantic half of legality-impact-preview: profile-rejection and bind diagnostics for an intent that has not been applied. Distinct from recalc-plan-preview (which covers invalidation, not bind-time profile rejection).",
+        "depends_on": [
+          "binding-diagnostics-typed"
+        ],
+        "doctrinal_note": "CRITIQUE FIX (1-major): legality-impact-preview needs an engine bind-check that recalc-plan-preview does NOT provide (invalidation != profile rejection at bind). Profile gating happens at parse/bind (constraint 5), which is OxFml. New engine read entrypoint.",
+        "engine_readiness": "new-capability",
+        "effort": "M",
+        "tier": "high-leverage"
+      },
+      {
+        "id": "recalc-plan-preview",
+        "title": "Recalc-PLAN dry-run over the COMMITTED graph: invalidation set + blast radius",
+        "principle": "Predict before you pay",
+        "owner_layer": "OxCalc",
+        "shape": "OxCalc plan_invalidation(&self, edits:&[PreviewMutation]) -> InvalidationPlan { invalidated_nodes:Vec<InvalidationEntry>, evaluation_order:Vec<NodeKey>, requires_rebind:Vec<NodeKey>, estimated_node_count, cycle_risk:Vec<CycleGroup> } — walks the EXISTING committed dependency graph WITHOUT evaluating kernels, publishing, or opening a candidate.",
+        "unlocks": "FLOW's delta-ledger preview ('this edit touches 14 nodes, forces 2 rebinds, risks a cycle') as a hover BEFORE commit; the blast-radius highlight on the tree.",
+        "depends_on": [
+          "stable-node-identity"
+        ],
+        "doctrinal_note": "CRITIQUE FIX (3-blocking/major): the original depended on candidate-overlay-handle (W4) — a W2->W4 back-edge inversion. The invalidation/blast-radius walk uses ONLY the committed dependency graph (reverse edges + rebind flags the engine already computes every tick); it needs NO speculation substrate. Standalone read path so W2 stands on W0/W1 alone.",
+        "engine_readiness": "extend-existing",
+        "effort": "M",
+        "tier": "high-leverage"
+      },
+      {
+        "id": "drag-gesture-model",
+        "title": "Drop-legality query + typed drag/drop contract for tree gestures",
+        "principle": "Predict before you pay",
+        "owner_layer": "SkinIR-contract",
+        "shape": "host drop_legality(dragged:AuthoringScope, over:NodeKey, position:DropPosition{Before|After|Into})->DropVerdict{ legal:bool, would_rebind:Vec<NodeKey>, would_orphan:Vec<NodeKey>, collision:Option<NameCollision> } reusing legality-impact-preview; SkinIR DropPosition/DropVerdict types. Drag STATE (what is dragged, pointer pos) stays skin-local; only the verdict crosses the boundary.",
+        "unlocks": "Live drop-target validity feedback DURING a drag, insertion-point indicators, multi-node drag of a SelectionState set, cross-slot drag (tree node into scenario pane) — consistent across every tree skin.",
+        "depends_on": [
+          "legality-impact-preview",
+          "selection-subject-model"
+        ],
+        "doctrinal_note": "CRITIQUE FIX (2-major): a tree-centric platform was missing a first-class drag model; FLOW's 'drag-preview gutter' was mentioned but never specified. Gesture state is skin view-state; the legality verdict is the only boundary-crossing fact, reusing the existing preview.",
+        "engine_readiness": "extend-existing",
+        "effort": "M",
+        "tier": "high-leverage"
+      },
+      {
+        "id": "model-query-projection",
+        "title": "Model search/filter query projection",
+        "principle": "Every interaction is observable, governed, and replayable",
+        "owner_layer": "Host-projection",
+        "shape": "query(QuerySpec{ text_match:Option<String>, calc_state_filter:Option<CalcState>, has_error:bool, references:Option<NodeKey>, is_meta:Option<bool> })->QueryResult{ matches:Vec<NodeKey>, total }. Pure read over node_order + nodes + reverse_edges.",
+        "unlocks": "FIND a node in a 100k-node tree: name/content search, 'show only nodes with errors', 'nodes referencing X', go-to-node; pairs with virtualization (a window anchored on a match). Without it, virtualization can only scroll, never jump.",
+        "depends_on": [
+          "stable-node-identity",
+          "reference-resolution-map"
+        ],
+        "doctrinal_note": "CRITIQUE FIX (2-major): search/filter was an absent domain that makes virtualization usable. Distinct from find-references (token-level) — this is whole-model node search. Results keyed by NodeKey survive edits.",
+        "engine_readiness": "extend-existing",
+        "effort": "M",
+        "tier": "high-leverage"
+      },
+      {
+        "id": "template-subsystem",
+        "title": "Template author/instantiate/sync/detach intents + template_index",
+        "principle": "Conceivable is one intent; subjects are first-class, text is the engine's",
+        "owner_layer": "Host-intent",
+        "shape": "WorkspaceIntent::PromoteToTemplate{ source:NodeKey, name }, ::InstantiateTemplate{ template_id, parent, bindings }, ::EditTemplate{..}, ::SyncInstance{ instance }, ::DetachInstance{ instance }; WorkspaceState gains template_index + NodeView.instance_of/drift.",
+        "unlocks": "Reusable model templates with managed instances and drift tracking — FLOW's 'define a department block once, stamp it per region, push edits to all instances.'",
+        "depends_on": [
+          "duplicate-subtree",
+          "transaction-scope",
+          "add-node-content-policy"
+        ],
+        "doctrinal_note": "Templates are explicitly host-owned. Instantiation reuses the clone/rebind path (OxFml/OxCalc for internal refs); host owns template identity, instance->template link, and drift detection.",
+        "engine_readiness": "new-capability",
+        "effort": "L",
+        "tier": "enriching"
+      },
+      {
+        "id": "table-structural-ops",
+        "title": "Table Insert/Delete Row|Column + SetColumnFormula",
+        "principle": "Conceivable is one intent; subjects are first-class, text is the engine's",
+        "owner_layer": "OxCalc",
+        "shape": "WorkspaceIntent::InsertTableRow{table,at}, ::DeleteTableRow{table,at}, ::InsertTableColumn{table,at,spec}, ::DeleteTableColumn{table,at}, ::SetColumnFormula{table,column,source_reference_handle}; TableProjection gains columns metadata (still NO grid coords).",
+        "unlocks": "Authoring structured tables: add/remove rows/columns and set a calculated-column formula that fills the column by reference (engine rebinds per row).",
+        "depends_on": [
+          "transaction-scope",
+          "replicate-by-id",
+          "table-cell-readback"
+        ],
+        "doctrinal_note": "HARD CONSTRAINT 3: no grid/coords — these are structural (row/column as table structure, not cell addresses); SetColumnFormula is reference-relative fill owned by OxFml/OxCalc. Confirm the engine's table notion reconciles rows+columns without reintroducing 2D coordinate addressing (open_question).",
+        "engine_readiness": "new-capability",
+        "effort": "L",
+        "tier": "frontier"
+      },
+      {
+        "id": "cross-workspace-alias",
+        "title": "RegisterAlias / UnregisterAlias + alias manifest projection",
+        "principle": "Conceivable is one intent; subjects are first-class, text is the engine's",
+        "owner_layer": "OxCalc",
+        "shape": "WorkspaceIntent::RegisterAlias{ local_name, target_workspace, target_node:NodeKey }, ::UnregisterAlias{ local_name }; WorkspaceState gains alias_manifest + per-descriptor external_available:bool.",
+        "unlocks": "Referencing another workspace's node by a stable local alias, engine tracking external availability/staleness. FLOW's cross-model links.",
+        "depends_on": [
+          "reference-resolution-map"
+        ],
+        "doctrinal_note": "Cross-workspace resolution + external-availability are scheduling/dependency truth (OxCalc owns the dep graph across revisions). Host registers the alias and projects the manifest; cannot judge external availability. Aliases keep refs as ids/handles, never spliced text.",
+        "engine_readiness": "new-capability",
+        "effort": "L",
+        "tier": "frontier"
+      },
+      {
+        "id": "import-workbook",
+        "title": "ImportWorkbook dry-run + ImportManifestProjection",
+        "principle": "Predict before you pay",
+        "owner_layer": "Host-intent",
+        "shape": "WorkspaceIntent::ImportWorkbook{ source, mode:DryRun|Commit }; DryRun returns ImportManifestProjection{ proposed_nodes, binding_diagnostics, unsupported_features } without mutating; Commit applies in one transaction.",
+        "unlocks": "Bringing an existing Excel workbook into the tree model with a preview of what maps cleanly vs needs repair, before committing. FLOW's onboarding from real spreadsheets.",
+        "depends_on": [
+          "transaction-scope",
+          "legality-impact-preview"
+        ],
+        "doctrinal_note": "Host owns model<->Excel mapping; parse/bind of imported formulas is OxFml, scheduling OxCalc. Dry-run produces a NON-published manifest, respecting no-partial-publish.",
+        "engine_readiness": "new-capability",
+        "effort": "L",
+        "tier": "frontier"
+      },
+      {
+        "id": "workbook-export",
+        "title": "ExportWorkbook (round-trip OUT to Excel) + value-snapshot export",
+        "principle": "Conceivable is one intent; subjects are first-class, text is the engine's",
+        "owner_layer": "Host-intent",
+        "shape": "WorkspaceIntent::ExportWorkbook{ scope:AuthoringScope, mode:ExportMode{ValuesOnly|FormulasAndFormat|FullModel} }->ExportArtifact{ format, bytes_handle }; plus a lighter Host-projection value_snapshot(scope)->Csv|Json over computed_value.",
+        "unlocks": "Export-to-Excel (backs the canonical-verification loop — comparing against a real workbook), render-to-report, CSV/value snapshot. A platform that imports but cannot export traps user work.",
+        "depends_on": [
+          "transaction-scope",
+          "per-node-effective-format"
+        ],
+        "doctrinal_note": "CRITIQUE FIX (2-minor): export was an entirely absent output domain, arguably load-bearing given 'verify against Excel as canonical truth' implies a comparable workbook artifact. Host owns model<->Excel mapping (its stated ownership); formula/format serialization is OxFml. value-snapshot is a lighter read.",
+        "engine_readiness": "new-capability",
+        "effort": "L",
+        "tier": "high-leverage"
+      },
+      {
+        "id": "series-projection",
+        "title": "Typed numeric/temporal Series projection for chart/visualization skins",
+        "principle": "Engine is the sole source of derivation, value, and format",
+        "owner_layer": "Host-projection",
+        "shape": "series(scope:AuthoringScope | reference-collection)->Series{ points:Vec<(label:String, NodeValueProjection)>, unit:Option<UnitHint> } — resolves a scope into a plottable series without re-walking the tree.",
+        "unlocks": "A chart/value-board skin reads a time-series or numeric series off the tree in a plottable shape; pairs with comparative-multi-overlay-projection to feed tornado/spider charts from a sweep grid.",
+        "depends_on": [
+          "richer-typed-value",
+          "scope-value"
+        ],
+        "doctrinal_note": "CRITIQUE FIX (2-minor): sensitivity sweeps and comparative columns produced chart DATA but nothing specified how a chart skin consumes it. A shaped READ over engine-rendered values; the skin lays them out, the engine owns every value. unit rides on richer-typed-value's UnitHint.",
+        "engine_readiness": "extend-existing",
+        "effort": "M",
+        "tier": "enriching"
+      },
+      {
+        "id": "revision-graph-retention",
+        "title": "OxCalc retains an addressable immutable revision GRAPH (store + parents + cursor)",
+        "principle": "All-or-nothing, reversible only by navigation",
+        "owner_layer": "OxCalc",
+        "shape": "OxCalc retains published revisions in an addressable store: RevisionId -> RetainedRevision { parent:Option<RevisionId>, value_epoch, edit_transaction_id, snapshot_refs }; a navigable cursor; fn revision_at(id), fn navigate(id). A DAG because edit-after-undo branches.",
+        "unlocks": "The substrate ALL of undo-navigation, version-history, time-scrubbing, and collaboration depend on. Without it, HARD CONSTRAINT 6 (undo = navigate retained revisions) has no engine to navigate.",
+        "depends_on": [
+          "transaction-scope"
+        ],
+        "doctrinal_note": "CRITIQUE FIX (3-blocking): the engine TODAY holds snapshot-IDENTITY hashes (content hashes for change detection), NOT a retained navigable revision store with parent links — formula.rs even notes 'retained non-table replay missing'. Undo-by-navigation therefore has NO substrate; this is a genuine new-capability engine workstream that MUST precede the time axis. Surfaced as an explicit gating milestone.",
+        "engine_readiness": "new-capability",
+        "effort": "L",
+        "tier": "foundational"
+      },
+      {
+        "id": "candidate-overlay-handle",
+        "title": "Handle-addressed, layerable, non-publishing candidate overlay substrate",
+        "principle": "Speculation is consequence-free, composable, and provenanced",
+        "owner_layer": "OxCalc",
+        "shape": "OxCalc: fn open_candidate(basis:RevisionId)->CandidateHandle; fn apply_overlay(h, overlay:OverlaySet); fn evaluate_candidate(h)->CandidateRun; fn close_candidate(h). Candidates layer (a candidate may declare a parent) and NEVER enter the publication queue.",
+        "unlocks": "Multiple simultaneous what-ifs / scenario comparisons / sweep points at once; PreviewEdit, scenarios, goal-seek, sensitivity all share ONE substrate. The Band C keystone and the single largest engine risk.",
+        "depends_on": [
+          "transaction-scope",
+          "revision-graph-retention"
+        ],
+        "doctrinal_note": "CRITIQUE FIX (3-blocking/strongest): the engine TODAY has a per-NODE publish lifecycle plus a SINGLE RuntimeOverlaySet pinned to the publication snapshot — there is NO open_candidate, no parented/layered candidates, no isolation from the publication queue. Going from one publish path to many isolated parented overlay contexts is scheduler rework = NEW-CAPABILITY, not extend-existing. The whole speculation band is gated on this one milestone.",
+        "engine_readiness": "new-capability",
+        "effort": "L",
+        "tier": "foundational"
+      },
+      {
+        "id": "value-published-pending-flag",
+        "title": "Published/pending/speculative/scenario/external provenance on every value",
+        "principle": "Speculation is consequence-free, composable, and provenanced",
+        "owner_layer": "SkinIR-contract",
+        "shape": "ValueProvenance { origin:Published|Pending|Speculative{handle:SpeculationHandle}|Scenario{scenario_id}|External{source}, basis_epoch:ValueEpoch } carried alongside computed_value on NodeView and in overlay_values maps; plus is_stale:bool during async runs.",
+        "unlocks": "Skin renders ghost vs real vs scenario vs external values with unambiguous styling; the delta ledger attributes each row to its source; during async recalc users see dimmed last-good values, not blanks.",
+        "depends_on": [
+          "candidate-overlay-handle"
+        ],
+        "doctrinal_note": "SkinIR-contract enrichment adding a discriminator the engine knows (which overlay/source produced the value). Constraint 7 respected: provenance is metadata; the value stays engine-rendered raw.",
+        "engine_readiness": "extend-existing",
+        "effort": "S",
+        "tier": "high-leverage"
+      },
+      {
+        "id": "preview-edit-intent",
+        "title": "PreviewEdit / WhatIf intent producing a non-published CalcRunProjection",
+        "principle": "Speculation is consequence-free, composable, and provenanced",
+        "owner_layer": "Host-intent",
+        "shape": "WorkspaceIntent::PreviewEdit{ edits:Vec<PreviewMutation>, handle:SpeculationHandle }; receipt carries preview:Option<PreviewProjection { handle, run:CalcRunProjection, overlay_values:BTreeMap<NodeKey,NodeValueProjection>, value_epoch_basis }>. NEVER advances published value_epoch.",
+        "unlocks": "FLOW's ghost what-if: typing into a node shows the downstream recompute as a ghost overlay without committing; skin renders provisional style and offers Commit/Discard.",
+        "depends_on": [
+          "candidate-overlay-handle",
+          "speculation-discard-commit"
+        ],
+        "doctrinal_note": "A deliberate closed-enum addition. The candidate evaluation is OxCalc's; host marshals the edit payload. Constraint 1: carries the same raw-text/id payload an EditFormula would; engine rebinds.",
+        "engine_readiness": "extend-existing",
+        "effort": "L",
+        "tier": "high-leverage"
+      },
+      {
+        "id": "speculation-discard-commit",
+        "title": "Discard / Commit terminal actions for a speculation handle",
+        "principle": "Speculation is consequence-free, composable, and provenanced",
+        "owner_layer": "Host-intent",
+        "shape": "WorkspaceIntent::CommitSpeculation{handle} applies the candidate's edits as a normal published edit-transaction (advances value_epoch, becomes a retained revision, returns edit_transaction_id); ::DiscardSpeculation{handle} closes the candidate, no revision created.",
+        "unlocks": "The only two terminal actions on a ghost what-if: bless it into history or drop it for free. Makes 'explore freely, commit deliberately' the core FLOW loop.",
+        "depends_on": [
+          "candidate-overlay-handle",
+          "edit-transaction-id"
+        ],
+        "doctrinal_note": "Commit is the SOLE bridge from speculation to the publish path. Host-intent sequences engine accept + revision retention; engine owns the publication.",
+        "engine_readiness": "extend-existing",
+        "effort": "M",
+        "tier": "foundational"
+      },
+      {
+        "id": "scenario-substrate",
+        "title": "Named scenario override set (engine overlay) + scenario intents",
+        "principle": "Speculation is consequence-free, composable, and provenanced",
+        "owner_layer": "Host-intent",
+        "shape": "WorkspaceIntent::SetScenarioOverride{scenario_id, node:NodeKey, value:OverrideInput}, ClearScenarioOverride{..}, CreateScenario{name}, DeleteScenario{scenario_id}, ActivateScenario{scenario_id:Option<ScenarioId>}. OverrideInput carries raw content; engine binds it.",
+        "unlocks": "FLOW's scenario rail: 'Base/Bull/Bear' tabs each holding input overrides; activating one re-projects the whole tree against that overlay.",
+        "depends_on": [
+          "candidate-overlay-handle"
+        ],
+        "doctrinal_note": "Override VALUES live as an OxCalc overlay (they participate in coercion/array-lift/error algebra); naming/active-selection is host projection state. Constraint 1: SetScenarioOverride carries raw text, engine rebinds. Durable round-trip to Excel scenario-manager is an open_question.",
+        "engine_readiness": "extend-existing",
+        "effort": "L",
+        "tier": "high-leverage"
+      },
+      {
+        "id": "scenario-projection",
+        "title": "Scenario manifest + active-scenario in the read projection",
+        "principle": "Speculation is consequence-free, composable, and provenanced",
+        "owner_layer": "SkinIR-contract",
+        "shape": "WorkspaceState += scenarios:ScenarioManifest { entries:Vec<ScenarioEntry{id, name, override_count, overridden_nodes:Vec<NodeKey>, value_epoch}>, active:Option<ScenarioId> }; NodeView += scenario_override:Option<NodeValueProjection> when active scenario overrides it.",
+        "unlocks": "Scenario rail UI renders tabs + per-scenario override badges; the delta ledger shows 'this node is overridden in Bear scenario.'",
+        "depends_on": [
+          "scenario-substrate",
+          "value-published-pending-flag"
+        ],
+        "doctrinal_note": "Pure read-projection addition. Manifest metadata host-owned, override values engine-rendered.",
+        "engine_readiness": "extend-existing",
+        "effort": "S",
+        "tier": "high-leverage"
+      },
+      {
+        "id": "comparative-multi-overlay-projection",
+        "title": "Side-by-side multi-overlay value projection (compare N candidates)",
+        "principle": "Speculation is consequence-free, composable, and provenanced",
+        "owner_layer": "SkinIR-contract",
+        "shape": "ComparativeProjection { basis:ValueEpoch, columns:Vec<OverlayColumn{label, source:ValueProvenance, values:BTreeMap<NodeKey,NodeValueProjection>}> } — one column per active candidate/scenario, baseline included.",
+        "unlocks": "The scenario rail's comparison view and the sensitivity sweep grid: Base | Bull | Bear as adjacent columns per node; no Excel data-table can do this over a tree shape.",
+        "depends_on": [
+          "candidate-overlay-handle",
+          "value-published-pending-flag"
+        ],
+        "doctrinal_note": "A shaped READ over multiple engine candidate handles. Each column's values are engine-rendered; the skin only lays them out.",
+        "engine_readiness": "extend-existing",
+        "effort": "M",
+        "tier": "enriching"
+      },
+      {
+        "id": "value-shape-diff",
+        "title": "Value-shape diff keyed by value_epoch (dims + changed-cell mask)",
+        "principle": "Predict before you pay",
+        "owner_layer": "OxCalc",
+        "shape": "OxCalc value_delta(from:ValueEpoch, to:ValueEpoch) -> ValueDelta { per_node:BTreeMap<NodeKey, NodeValueDelta { prior_dims:Option<(u32,u32)>, new_dims, changed:ChangeMask, kind_changed:bool }> }; works between any two epochs incl. a candidate's.",
+        "unlocks": "FLOW's delta ledger / change-pulse: precisely which nodes/cells changed between baseline and a what-if, as a heat overlay; array deltas show only changed cells.",
+        "depends_on": [
+          "richer-typed-value",
+          "value-epoch-keying",
+          "candidate-overlay-handle"
+        ],
+        "doctrinal_note": "OxCalc owns value epochs + retained revisions, so it owns the diff. Inherits value-epoch-keying's risk: if only workspace value_epoch + per-node input_epoch exist, true per-node value diff is larger than expose-existing. Mask is logical cells, not grid coords (constraint 3).",
+        "engine_readiness": "extend-existing",
+        "effort": "L",
+        "tier": "high-leverage"
+      },
+      {
+        "id": "derivation-trace-for-candidate",
+        "title": "Derivation trace addressable per candidate (why-did-this-change)",
+        "principle": "Engine is the sole source of derivation, value, and format",
+        "owner_layer": "OxCalc",
+        "shape": "fn derivation_trace(h:CandidateHandle, node:NodeKey) -> DerivationTrace; extends full-derivation-trace addressability from the single published run to any candidate.",
+        "unlocks": "In a what-if the user asks 'why is this value different under Bear?' and gets the full kernel-level explanation; pairs with value-shape-diff to explain, not just show.",
+        "depends_on": [
+          "candidate-overlay-handle",
+          "value-shape-diff",
+          "full-derivation-trace"
+        ],
+        "doctrinal_note": "OxCalc owns the derivation trace; Band C extends its addressability to any candidate so explanation is available off the publish path.",
+        "engine_readiness": "extend-existing",
+        "effort": "M",
+        "tier": "frontier"
+      },
+      {
+        "id": "goal-seek-substrate",
+        "title": "Goal-seek substrate: iterate a candidate to a target",
+        "principle": "Speculation is consequence-free, composable, and provenanced",
+        "owner_layer": "OxCalc",
+        "shape": "fn goal_seek(basis:RevisionId, GoalSeekSpec { target_node:NodeKey, target_value:f64, by_node:NodeKey, tolerance, max_iters }) -> GoalSeekResult { converged:bool, solved_value:Option<NodeValueProjection>, iterations:Vec<IterationStep>, terminal:GoalSeekTermination }. Runs entirely inside candidate overlays.",
+        "unlocks": "FLOW's goal-seek ('set this output to 1M by varying this input') with a visible convergence trace; each Newton step is a candidate eval that never touches history.",
+        "depends_on": [
+          "candidate-overlay-handle"
+        ],
+        "doctrinal_note": "CRITIQUE FIX (1-major): do NOT cite 'already handles cycles/iteration' as readiness — the cycle/iteration path is fixture-surfaced, not a general solver. A Newton/secant goal-seek loop driving candidate evals is genuinely new scheduler work distinct from cycle fixed-point iteration. Gated behind the proven candidate-overlay milestone.",
+        "engine_readiness": "new-capability",
+        "effort": "L",
+        "tier": "enriching"
+      },
+      {
+        "id": "sensitivity-sweep-substrate",
+        "title": "Sensitivity / sweep substrate: N parallel candidate points",
+        "principle": "Speculation is consequence-free, composable, and provenanced",
+        "owner_layer": "OxCalc",
+        "shape": "fn sweep(basis:RevisionId, SweepSpec { vary:Vec<SweepAxis{node:NodeKey, points:Vec<OverrideInput>}>, observe:Vec<NodeKey> }) -> SweepResult { grid:Vec<SweepCell { inputs, outputs:BTreeMap<NodeKey,NodeValueProjection>, run_summary }> }. Each grid point is an independent candidate; none publishes.",
+        "unlocks": "Sensitivity sweeps no Excel data-table can do: vary tree-shaped inputs across N points, observe multiple outputs, tornado/spider charts off the result grid (via series-projection).",
+        "depends_on": [
+          "candidate-overlay-handle"
+        ],
+        "doctrinal_note": "A sweep is many independent candidate evaluations — pure engine work, host-driven (passive). Vary/observe axes are arbitrary tree nodes, not a contiguous grid. Gated behind the candidate milestone.",
+        "engine_readiness": "new-capability",
+        "effort": "L",
+        "tier": "frontier"
+      },
+      {
+        "id": "speculation-budget-gc",
+        "title": "Speculation lifecycle: lease, budget, GC, orphan reclamation",
+        "principle": "Speculation is consequence-free, composable, and provenanced",
+        "owner_layer": "OxCalc",
+        "shape": "Candidate handles carry a lease; fn reap_candidates(policy:ReapPolicy) closes un-pinned/un-referenced candidates past a budget; projection exposes speculation_pressure:SpeculationPressure { open_candidates, retained_revisions, mem_estimate } in last_run/diagnostics.",
+        "unlocks": "Lets sweep/goal-seek open hundreds of transient candidates without unbounded memory; the skin shows 'speculation pressure' and the engine reclaims safely.",
+        "depends_on": [
+          "candidate-overlay-handle",
+          "pinned-speculative-view"
+        ],
+        "doctrinal_note": "OxCalc owns candidate/revision memory; pinned views (host) are the GC roots it must honor. Passive: host triggers reap; engine never reaps unilaterally during a host-driven tick.",
+        "engine_readiness": "new-capability",
+        "effort": "M",
+        "tier": "enriching"
+      },
+      {
+        "id": "pinned-speculative-view",
+        "title": "Pinned / stable speculative views (frozen candidate snapshot)",
+        "principle": "Speculation is consequence-free, composable, and provenanced",
+        "owner_layer": "Host-projection",
+        "shape": "Shared-state (audited write): pinned_speculations:Vec<PinnedView { handle:SpeculationHandle, label, basis_epoch }>. A pinned candidate is kept alive (not closed) so its projection stays stable while the user explores other what-ifs.",
+        "unlocks": "FLOW's 'keep this what-if on screen while I try another'; the scenario rail can pin Base while editing Bear.",
+        "depends_on": [
+          "candidate-overlay-handle",
+          "audited-shared-state"
+        ],
+        "doctrinal_note": "Host-projection/shared state owns view persistence + which candidates stay open. The candidate itself is engine-owned; pinning just defers close_candidate. Must be an audited shared write.",
+        "engine_readiness": "extend-existing",
+        "effort": "M",
+        "tier": "enriching"
+      },
+      {
+        "id": "undo-redo-revision-nav",
+        "title": "Undo/Redo as OxCalc revision-graph navigation + NavigateRevision intent",
+        "principle": "All-or-nothing, reversible only by navigation",
+        "owner_layer": "OxCalc",
+        "shape": "WorkspaceIntent::Undo, ::Redo, ::NavigateRevision{target:RevisionId}; dispatcher moves a revision CURSOR over the retained revision DAG and republishes the WorkspaceState for that snapshot. NEVER synthesizes inverse edits.",
+        "unlocks": "Correct, deterministic undo/redo across runtime overlays and spill; FLOW's time-scrubber sliding the workspace to any past revision; substrate for collaboration and what-if branching.",
+        "depends_on": [
+          "revision-graph-retention",
+          "revision-history-projection",
+          "edit-transaction-id"
+        ],
+        "doctrinal_note": "CRITIQUE FIX (3-blocking): retagged new-capability — there is no retained navigable revision store today (see revision-graph-retention). HARD CONSTRAINT 6: undo = navigate retained revisions, NEVER inverse-replay (unsound against overlays). Cannot be scheduled before revision-graph-retention exists.",
+        "engine_readiness": "new-capability",
+        "effort": "M",
+        "tier": "high-leverage"
+      },
+      {
+        "id": "revision-history-projection",
+        "title": "VersionHistoryProjection over retained revisions (a DAG, not a stack)",
+        "principle": "All-or-nothing, reversible only by navigation",
+        "owner_layer": "SkinIR-contract",
+        "shape": "WorkspaceState += history:VersionHistoryProjection { entries:Vec<RevisionEntry { revision_id, value_epoch, edit_transaction_id, label:Option<String>, parent:Option<RevisionId>, is_current:bool, summary:Vec<NodeKey> }>, current:RevisionId }. A DAG, since edit-after-undo branches.",
+        "unlocks": "FLOW's time-scrubber rail and history panel: scrub to any revision, see what each edit touched, branch points after undo-then-edit. The temporal axis made visible.",
+        "depends_on": [
+          "revision-graph-retention",
+          "edit-transaction-id"
+        ],
+        "doctrinal_note": "CRITIQUE FIX (3-blocking): retagged new-capability via its dependency on revision-graph-retention. Modeling it as a DAG (not a stack) is required because edit-after-undo forks history; Excel's linear undo cannot express this.",
+        "engine_readiness": "new-capability",
+        "effort": "M",
+        "tier": "high-leverage"
+      },
+      {
+        "id": "projection-delta-channel",
+        "title": "Incremental projection delta alongside full snapshot",
+        "principle": "Every interaction is observable, governed, and replayable",
+        "owner_layer": "Host-projection",
+        "shape": "enum WorkspaceDelta { NodesChanged(Vec<NodeKey>), ValuesChanged(Vec<(NodeKey,NodeValueProjection)>), DepsChanged(Vec<NodeKey>), CalcRun(CalcRunProjection), Structural(StructuralDelta), FullReset }; receipt carries delta:WorkspaceDelta and the workspace signal exposes a delta stream alongside the full ReadSignal. Keys on the engine's existing invalidated-node set; uses per-node value_epoch when available else workspace epoch.",
+        "unlocks": "Skins re-render only changed rows instead of diffing a full clone — the single biggest responsiveness win; makes spill/region-resize and value-shape-diff cheap; a virtualized tree updates O(changed) not O(model).",
+        "depends_on": [
+          "stable-node-identity"
+        ],
+        "doctrinal_note": "CRITIQUE FIX (3-blocking): no longer hard-depends on per-node value_epoch — it keys on the engine's existing invalidated_nodes set, so it is not blocked by value-epoch-keying's risk. The host maps engine invalidation into a delta rather than discarding it via full re-snapshot. Republish stays synchronous and complete; the delta is additive.",
+        "engine_readiness": "extend-existing",
+        "effort": "L",
+        "tier": "foundational"
+      },
+      {
+        "id": "projection-version-stamp",
+        "title": "Monotonic projection version stamp + delta sequencing guard",
+        "principle": "Every interaction is observable, governed, and replayable",
+        "owner_layer": "SkinIR-contract",
+        "shape": "WorkspaceState.projection_seq:u64; each delta carries from_seq->to_seq; a skin that detects a gap requests a full resync.",
+        "unlocks": "Correctness guarantee for the incremental path: a dropped/reordered delta is detected and triggers resync instead of corrupting the displayed model.",
+        "depends_on": [
+          "projection-delta-channel"
+        ],
+        "doctrinal_note": "The sequencing contract is part of the IR (producer host + consumer skin must agree). Cheap insurance that makes 'Delta over Republish' trustworthy.",
+        "engine_readiness": "n/a",
+        "effort": "S",
+        "tier": "high-leverage"
+      },
+      {
+        "id": "host-worker-calc",
+        "title": "Host-owned worker calc with Pending run-state (engine stays synchronous/passive)",
+        "principle": "Every interaction is observable, governed, and replayable",
+        "owner_layer": "Host-projection",
+        "shape": "The HOST runs the synchronous engine calc on a worker, pumping bounded slices per tick; CalcRunProjection.run_state gains Pending { token:RunToken, started_value_epoch }; dispatch returns immediately with completion:Option<CompletionToken>; host republishes (or deltas) on the completion tick. The skin renders run_state; never owns threading.",
+        "unlocks": "A slow recalc on a large model no longer freezes the frame; skins dim stale values and show progress while staying interactive. Foundation for external value motion and time-taking speculation.",
+        "depends_on": [
+          "projection-delta-channel"
+        ],
+        "doctrinal_note": "CRITIQUE FIX (1-major, 3-major/strongest): 'engine computes off-thread' and 'host drives every tick' cannot both hold. RESOLVED by choosing model (A): the engine stays SINGLE-THREADED and passive; concurrency is a HOST concern (host owns the worker, pumps slices, observes Pending). So owner is Host-projection and the calc itself is engine n/a — there is no engine threading new-capability. This removes the latent contradiction.",
+        "engine_readiness": "n/a",
+        "effort": "L",
+        "tier": "high-leverage"
+      },
+      {
+        "id": "backpressure-coalescing",
+        "title": "Intent coalescing + backpressure for rapid edits during async calc",
+        "principle": "Every interaction is observable, governed, and replayable",
+        "owner_layer": "Host-intent",
+        "shape": "Dispatcher coalesces superseded edits (successive EditContentDeferred on same NodeKey) and drops/queues recalc requests while a run is Pending; receipt may return Coalesced { into_seq }.",
+        "unlocks": "Typing fast or dragging a slider doesn't queue 50 full recalcs; the engine sees the latest intent. Keeps the UI responsive under input pressure.",
+        "depends_on": [
+          "host-worker-calc"
+        ],
+        "doctrinal_note": "Coalescing is a host scheduling concern over the intent stream; it must preserve observable correctness (final state == as if all applied in order). EditContentDeferred already signals coalescible intent.",
+        "engine_readiness": "extend-existing",
+        "effort": "M",
+        "tier": "enriching"
+      },
+      {
+        "id": "frame-telemetry-hooks",
+        "title": "Frame-cost telemetry: dispatch-to-paint latency per intent",
+        "principle": "Every interaction is observable, governed, and replayable",
+        "owner_layer": "SkinIR-contract",
+        "shape": "skin-framework instrumentation emitting FrameMetric{ intent_seq, dispatch_to_delta_us, delta_apply_us, render_us, dropped:bool } into the same sink as intent-log-replay; SkinContext gains an optional metrics tap.",
+        "unlocks": "Attribute a stall to engine-calc vs delta-apply vs skin-render; makes the '60fps on 100k nodes' target falsifiable; correlates frame cost to its causing intent.",
+        "depends_on": [
+          "intent-log-replay",
+          "projection-version-stamp"
+        ],
+        "doctrinal_note": "CRITIQUE FIX (2-minor): the matrix had rich engine telemetry but nothing measuring the FRAME, making the performance-budget tenet unfalsifiable. Frame instrumentation is a skin-framework concern; correlates to the causing intent via seq.",
+        "engine_readiness": "n/a",
+        "effort": "M",
+        "tier": "enriching"
+      },
+      {
+        "id": "virtualization-window-projection",
+        "title": "Windowed/range projection request for virtualized large trees",
+        "principle": "Every interaction is observable, governed, and replayable",
+        "owner_layer": "Host-projection",
+        "shape": "request_window(WindowSpec { anchor:NodeKey, before, after, expanded_set })->only the NodeViews in view + their values; off-window nodes reference-only. Pairs with the delta channel for scroll and with model-query for jump-to-match.",
+        "unlocks": "A 100k-node model renders only the ~100 visible rows; scrolling fetches a new window. Essential for very large models.",
+        "depends_on": [
+          "projection-delta-channel",
+          "stable-node-identity",
+          "model-query-projection"
+        ],
+        "doctrinal_note": "Windowing is a host projection-shaping concern; the engine holds all nodes, the host decides which to materialize. Must stay consistent under deltas; an off-window delta updates the reference, not a full view.",
+        "engine_readiness": "extend-existing",
+        "effort": "L",
+        "tier": "enriching"
+      },
+      {
+        "id": "multi-slot-composition",
+        "title": "Wire RightInspector/SplitLeft/SplitRight mount slots with per-slot context",
+        "principle": "The frame is composable, negotiated, and presentation-tokened",
+        "owner_layer": "Host-projection",
+        "shape": "Shell mounts a SlotLayout { main, right_inspector, split_left, split_right }; each slot gets its own SkinContext sharing the SAME workspace + selection + shared signals but distinct typed SkinState; SlotId on context.",
+        "unlocks": "The FLOW multi-pane vision: tree in Main, active-node detail in RightInspector, what-if/scenario in a split pane — simultaneously, by independent skins.",
+        "depends_on": [
+          "skinstate-persistence-exercised"
+        ],
+        "doctrinal_note": "Composition is a host/shell concern (the shell owns mounting). Skins remain frame-only. Shared truth via one signal set keeps panes coherent without skins coordinating.",
+        "engine_readiness": "n/a",
+        "effort": "M",
+        "tier": "foundational"
+      },
+      {
+        "id": "shared-focus-arbitration",
+        "title": "Cross-slot focus + hover + recent-selection arbitration in shared state",
+        "principle": "The frame is composable, negotiated, and presentation-tokened",
+        "owner_layer": "Host-intent",
+        "shape": "Shared state gains focused_slot:Option<SlotId>, hovered:Option<NodeKey>, recent_selections:VecDeque<NodeKey> (bounded); arbitration helper so one slot's selection drives others' highlight without focus theft.",
+        "unlocks": "Selecting a node in the tree highlights it in the inspector and what-if pane; hover in one pane previews in another; back/forward through visited nodes; FLOW's breadcrumb trail.",
+        "depends_on": [
+          "multi-slot-composition",
+          "audited-shared-state"
+        ],
+        "doctrinal_note": "Focus/hover/recent-selection are view-coordination state, not model truth — host shared state, keyed on stable NodeKey so they survive structural edits.",
+        "engine_readiness": "n/a",
+        "effort": "M",
+        "tier": "enriching"
+      },
+      {
+        "id": "keybinding-registry",
+        "title": "Cross-slot keybinding registry with conflict resolution",
+        "principle": "The frame is composable, negotiated, and presentation-tokened",
+        "owner_layer": "Host-projection",
+        "shape": "host resolves KeyChord->IntentId per focused_slot with a conflict policy (focused slot wins, then global); user overrides persist in audited SharedState; surfaces effective_bindings in command_catalog.",
+        "unlocks": "Two simultaneously-mounted skins both wanting Ctrl+D are arbitrated; user-rebindable, scope-aware (chord means different things per focused_slot); the palette shows the resolved chord.",
+        "depends_on": [
+          "multi-slot-composition",
+          "shared-focus-arbitration",
+          "command-palette-metadata"
+        ],
+        "doctrinal_note": "CRITIQUE FIX (2-minor): with multi-pane composition, keyboard input is an arbitration problem (same gap as shared-focus but for keys) the matrix did not address. Host resolves bindings; conflict policy is host policy.",
+        "engine_readiness": "n/a",
+        "effort": "M",
+        "tier": "enriching"
+      },
+      {
+        "id": "audited-shared-state",
+        "title": "Typed, audited shared-state writes; recalc_mode treated as dispatcher policy",
+        "principle": "Every interaction is observable, governed, and replayable",
+        "owner_layer": "Host-intent",
+        "shape": "Replace direct-mutation shared fields (tree_collapsed, pinned, manual_recalc_pending, active_workspace_id, active_scenario, pinned_speculations) with a SharedStore set(key,value) that validates and records (SlotId, key, prev, next, ts) into a bounded audit ring; typed key enum. The recalc_mode SWITCH (calc-affecting) routes through the dispatcher (or is read as dispatcher-level host policy), NOT a raw shared write.",
+        "unlocks": "Debuggable cross-skin interaction; prevents one skin corrupting another's assumptions; replay includes shared-state transitions; closes the side-door mutation gap.",
+        "depends_on": [],
+        "doctrinal_note": "CRITIQUE FIX (1-minor): recalc_mode GATES calc behavior, so leaving its switch as even an audited shared write lets a skin alter calc behavior outside the closed chokepoint — undercutting 'mutation funnels through one dispatcher'. The calc-affecting mode selection is reclassified to dispatcher-level treatment; purely cosmetic view-state stays in the SharedStore.",
+        "engine_readiness": "n/a",
+        "effort": "M",
+        "tier": "high-leverage"
+      },
+      {
+        "id": "skinstate-persistence-exercised",
+        "title": "Exercise SkinState persist + schema-versioned migration + identity-keyed gc",
+        "principle": "The frame is composable, negotiated, and presentation-tokened",
+        "owner_layer": "SkinIR-contract",
+        "shape": "Persist each slot's SkinState keyed by (skin_id, slot_id, workspace_id); on load run migrate(from schema_version); run gc(live_node_keys) to drop view-state for deleted nodes. Round-trip tested.",
+        "unlocks": "View-state (expansion, pins, column widths, scenarios) survives reload and skin upgrades; renamed nodes keep view-state (gc keys off NodeKey). Makes the dead contract real.",
+        "depends_on": [
+          "stable-node-identity"
+        ],
+        "doctrinal_note": "SkinState is the skin's owned, versioned possession; persistence/migration/gc are part of that contract. gc must key off stable NodeKey so renamed nodes keep state, deleted nodes are reclaimed.",
+        "engine_readiness": "n/a",
+        "effort": "M",
+        "tier": "foundational"
+      },
+      {
+        "id": "scenario-persist-migrate",
+        "title": "Scenario + pinned-view metadata persistence in SkinState (values stay in engine)",
+        "principle": "Speculation is consequence-free, composable, and provenanced",
+        "owner_layer": "Host-projection",
+        "shape": "Scenario names/metadata and pinned-view labels persist via SkinState (serde + schema_version + migrate + gc). Override VALUES are NOT persisted in skin state — they round-trip through the engine model.",
+        "unlocks": "Scenarios survive reload; FLOW's scenario rail is durable, not session-only.",
+        "depends_on": [
+          "scenario-substrate",
+          "scenario-projection",
+          "skinstate-persistence-exercised"
+        ],
+        "doctrinal_note": "Only NAMES/metadata persist in skin state; override values persist in the engine model (constraint 4/7 — values are engine-faithful, the skin must not become a parallel value store). Whether the engine has a DURABLE Excel-round-tripping scenario store is an open_question.",
+        "engine_readiness": "n/a",
+        "effort": "M",
+        "tier": "enriching"
+      },
+      {
+        "id": "design-token-layer",
+        "title": "Design tokens on SkinContext (CSS vars) with dark + high-contrast",
+        "principle": "The frame is composable, negotiated, and presentation-tokened",
+        "owner_layer": "SkinIR-contract",
+        "shape": "SkinContext.tokens:ThemeTokens resolving to CSS custom properties; ThemeMode { Light, Dark, HighContrast }; shell sets the active theme; skins reference var(--surface), var(--space-2), never literal hex.",
+        "unlocks": "Dark mode, high-contrast a11y theme, and brand re-skinning apply to EVERY skin at once; removes hardcoded-hex coupling in theme.rs/shell.",
+        "depends_on": [],
+        "doctrinal_note": "Theming is pure frame presentation — skin-layer territory, exposed via SkinContext. Distinct from VALUE formatting (engine-owned resolver). Independent free win.",
+        "engine_readiness": "n/a",
+        "effort": "M",
+        "tier": "high-leverage"
+      },
+      {
+        "id": "a11y-primitives",
+        "title": "Accessibility primitives: roving tabindex, ARIA tree roles, active-descendant",
+        "principle": "The frame is composable, negotiated, and presentation-tokened",
+        "owner_layer": "SkinIR-contract",
+        "shape": "Skin-framework helpers: tree_a11y(node_key, depth, expanded, selected)->AriaAttrs; roving-tabindex controller bound to the selection signal; aria-activedescendant wired to NodeKey-derived stable DOM ids.",
+        "unlocks": "Keyboard navigation, screen-reader support, focus management for every tree/table skin without each author re-implementing it.",
+        "depends_on": [
+          "stable-node-identity"
+        ],
+        "doctrinal_note": "A11y is a frame concern; lives in the skin framework as reusable primitives. Stable NodeKey is needed for stable DOM ids that active-descendant references.",
+        "engine_readiness": "n/a",
+        "effort": "M",
+        "tier": "high-leverage"
+      },
+      {
+        "id": "locale-presentation-layer",
+        "title": "Locale/i18n presentation: RTL + UI-string catalog (NOT value formatting)",
+        "principle": "The frame is composable, negotiated, and presentation-tokened",
+        "owner_layer": "SkinIR-contract",
+        "shape": "SkinContext.locale:LocaleTokens { dir:Ltr|Rtl, ui_strings:&Catalog }; skins pull chrome labels/tooltips from the catalog and honor dir. Number/date VALUE formatting stays in the engine resolver.",
+        "unlocks": "RTL layouts and translated skin chrome without per-skin string surgery; the same skin ships in multiple languages.",
+        "depends_on": [
+          "design-token-layer"
+        ],
+        "doctrinal_note": "Critical boundary: UI-chrome strings + layout direction are FRAME (skin); number/date/currency VALUE formatting is Excel-faithful ENGINE truth and must NOT be re-localized in the skin. Deliberately scoped to chrome only.",
+        "engine_readiness": "n/a",
+        "effort": "M",
+        "tier": "enriching"
+      },
+      {
+        "id": "capability-manifest-negotiation",
+        "title": "Skin capability manifest + host negotiation at mount",
+        "principle": "The frame is composable, negotiated, and presentation-tokened",
+        "owner_layer": "Host-projection",
+        "shape": "SkinManifest { required_read_fields, required_intents:Vec<IntentId>, required_slots, min_profile, schema_version }; host negotiate(manifest)->Result<MountGrant, CapabilityError> checked before mount; mismatches fail loudly with a typed reason.",
+        "unlocks": "Third-party / dynamically-registered skins built against a contract are rejected cleanly when the host or profile can't satisfy them, instead of panicking at render.",
+        "depends_on": [
+          "projection-delta-channel"
+        ],
+        "doctrinal_note": "Negotiation is a host responsibility. The closed intent enum is non_exhaustive, so a manifest names intents by stable IntentId to survive enum growth.",
+        "engine_readiness": "n/a",
+        "effort": "M",
+        "tier": "high-leverage"
+      },
+      {
+        "id": "readonly-reviewer-persona",
+        "title": "Persona/permission gate at the dispatcher, keyed by intent ORIGIN",
+        "principle": "Every interaction is observable, governed, and replayable",
+        "owner_layer": "Host-intent",
+        "shape": "SkinContext.permissions:Permissions { persona:Persona (Author|Reviewer|ReadOnly), can_mutate:bool, allowed_intents:IntentMask }; dispatcher rejects disallowed intents with IntentReceipt { error:Forbidden{persona} }. Gate evaluates PER INTENT ORIGIN (local session or peer_id), not a single session persona. SelectNode/Recalculate/SetNote may stay allowed for Reviewer.",
+        "unlocks": "Reviewer/commenter mode enforced centrally; shared review workflows; and the per-peer gating that collaboration requires (a reviewer peer's remote intents gated at the SAME dispatcher).",
+        "depends_on": [
+          "capability-manifest-negotiation",
+          "edit-transaction-id",
+          "typed-intent-error"
+        ],
+        "doctrinal_note": "CRITIQUE FIX (2-major): made the gate per-intent-ORIGIN so it serves both single-user reviewer mode AND collaboration's per-peer permission (which the open_questions flagged as unspecified). Permission MUST gate at the dispatcher chokepoint, never in skin code. Forbidden is a typed IntentError variant.",
+        "engine_readiness": "extend-existing",
+        "effort": "M",
+        "tier": "enriching"
+      },
+      {
+        "id": "intent-log-replay",
+        "title": "Recordable intent + receipt + delta log with deterministic replay",
+        "principle": "Every interaction is observable, governed, and replayable",
+        "owner_layer": "Host-intent",
+        "shape": "IntentRecorder taps the dispatcher: append (seq, intent, receipt, delta, value_epoch, persona, origin); replay(log, fresh_workspace)->WorkspaceState; serializable fixtures; WorkspaceState may expose recent_intents summary.",
+        "unlocks": "Deterministic skin tests against recorded sessions; reproducible bug reports; time-travel debugging; auditable who-changed-what; the wire format for collaboration.",
+        "depends_on": [
+          "projection-delta-channel",
+          "edit-transaction-id"
+        ],
+        "doctrinal_note": "The intent stream is the host's behavioral surface; recording is a host concern. Replay re-issues intents through the SAME dispatcher (not inverse-undo, not bypassing the engine), requiring stable NodeKey and the host being the sole mutation path.",
+        "engine_readiness": "extend-existing",
+        "effort": "M",
+        "tier": "high-leverage"
+      },
+      {
+        "id": "skin-error-isolation",
+        "title": "Per-slot skin panic/error isolation boundary",
+        "principle": "The frame is composable, negotiated, and presentation-tokened",
+        "owner_layer": "Host-projection",
+        "shape": "Shell wraps each slot mount in an error boundary; a panicking/erroring skin shows a fallback in ITS slot and is unmounted/restartable without taking down other slots or the host.",
+        "unlocks": "A buggy third-party skin in the inspector pane can't crash the whole workspace; the tree keeps working.",
+        "depends_on": [
+          "multi-slot-composition",
+          "capability-manifest-negotiation"
+        ],
+        "doctrinal_note": "Isolation is a shell/host composition responsibility — the host owns the mount lifecycle and must contain faults at the slot boundary.",
+        "engine_readiness": "n/a",
+        "effort": "M",
+        "tier": "enriching"
+      },
+      {
+        "id": "empty-state-onboarding",
+        "title": "Empty-state / starter-template seeding + onboarding metadata",
+        "principle": "The frame is composable, negotiated, and presentation-tokened",
+        "owner_layer": "Host-projection",
+        "shape": "NewWorkspace optionally seeds from a named StarterTemplate via template-subsystem; the command catalog exposes help-text/onboarding metadata; an empty workspace projects a guided empty-state hint.",
+        "unlocks": "A guided first-run for non-core authors and Excel-migrants; sample models; discoverability beyond the command palette.",
+        "depends_on": [
+          "template-subsystem",
+          "command-palette-metadata"
+        ],
+        "doctrinal_note": "CRITIQUE FIX (2-minor): cold-start was silently absent for a platform pitched to non-core authors and import users. Low cost once templates land; named explicitly rather than left implicit. Acceptable to defer.",
+        "engine_readiness": "n/a",
+        "effort": "S",
+        "tier": "frontier"
+      },
+      {
+        "id": "external-rtd-value-motion",
+        "title": "External/RTD value injection with host-pumped async-pending lifecycle",
+        "principle": "Every interaction is observable, governed, and replayable",
+        "owner_layer": "OxCalc",
+        "shape": "WorkspaceIntent::UpdateExternalValue { handle, value } / ::InvalidateExternal { handle } feed an engine external-value source; affected nodes go Pending then resolve when the HOST pumps the resolving tick on its worker; NodeValueProjection gains External provenance.",
+        "unlocks": "Live external feeds (RTD-style market data, sensor streams) drive recalc without the host blocking; skins show pending then live values.",
+        "depends_on": [
+          "host-worker-calc",
+          "value-published-pending-flag"
+        ],
+        "doctrinal_note": "CRITIQUE FIX (1-major, 3-major): external value SOURCES + invalidation are engine truth (they join the dependency graph + epochs), but the engine stays SYNCHRONOUS — the host pumps the resolving tick on its worker (model A). 'Passive-engine preserved' is now literally true because the engine does not compute on its own thread. The external-source intake is the new-capability part.",
+        "engine_readiness": "new-capability",
+        "effort": "L",
+        "tier": "frontier"
+      },
+      {
+        "id": "intent-conflict-policy",
+        "title": "Collaboration: typed conflict resolution over the revision DAG",
+        "principle": "Every interaction is observable, governed, and replayable",
+        "owner_layer": "OxCalc",
+        "shape": "enum ConflictResolution { Rebase, Reject, Merge }; OxCalc reports a typed ConflictReport when two peers' intents target overlapping nodes against the same basis revision; resolution policy lives in the immutable revision graph.",
+        "unlocks": "The keystone of any multi-user story: detecting and resolving overlapping concurrent edits deterministically instead of a doctrinal hand-wave.",
+        "depends_on": [
+          "revision-graph-retention",
+          "intent-log-replay"
+        ],
+        "doctrinal_note": "CRITIQUE FIX (2-major/strongest): the single collab requirement deferred the ONE hard part (conflict policy) to a hand-wave. Promoted to a named requirement; conflict detection/resolution + revision ordering are engine truth. This is a research-grade workstream — see research bucket caveat in open_questions.",
+        "engine_readiness": "new-capability",
+        "effort": "L",
+        "tier": "frontier"
+      },
+      {
+        "id": "intent-rebase",
+        "title": "Collaboration: rebase a remote intent from its basis onto local head",
+        "principle": "All-or-nothing, reversible only by navigation",
+        "owner_layer": "OxCalc",
+        "shape": "OxCalc rebase(intent, from_basis:RevisionId, onto_head:RevisionId)->RebasedIntent|Conflict; structural edits keyed on NodeKey rebase tractably; content/formula edits and collection membership may conflict.",
+        "unlocks": "A remote intent authored against revision R re-applies against local head R' — the mechanical core of co-editing.",
+        "depends_on": [
+          "intent-conflict-policy",
+          "stable-node-identity"
+        ],
+        "doctrinal_note": "CRITIQUE FIX (2-major): rebase was an unaddressed sub-domain. NodeKey-keyed structural rebase is tractable; content rebase is not free — this is genuinely research-grade and gated behind conflict-policy.",
+        "engine_readiness": "new-capability",
+        "effort": "L",
+        "tier": "frontier"
+      },
+      {
+        "id": "collab-presence-markers",
+        "title": "Collaboration: presence + edit-claim soft-lock markers",
+        "principle": "The frame is composable, negotiated, and presentation-tokened",
+        "owner_layer": "Host-projection",
+        "shape": "Shared state gains peers:Vec<PresenceMarker { peer_id, slot, selection:NodeKey, editing:Option<NodeKey> }>; WorkspaceIntent::ClaimNode/ReleaseNode advisory soft-locks surfaced in projection.",
+        "unlocks": "Live presence cursors, who-is-editing-which-node, and advisory claims preventing two users editing the same formula.",
+        "depends_on": [
+          "intent-conflict-policy",
+          "shared-focus-arbitration"
+        ],
+        "doctrinal_note": "CRITIQUE FIX (2-major): presence beyond a cursor (claims/soft-locks) was missing. Markers are view-coordination in host shared state; claims are advisory host intents. Conflict semantics stay out of skins entirely.",
+        "engine_readiness": "new-capability",
+        "effort": "M",
+        "tier": "frontier"
+      }
+    ],
+    "matrix": [
+      {
+        "domain": "Stable identity & provenance",
+        "skin_ir": "NodeView { key:NodeKey, display_path } (transition window carries both); all maps/selection/state use NodeKey; ValueProvenance per value",
+        "host_projection": "derive display_path from key; map engine invalidation to deltas; identity-keyed SkinState gc",
+        "host_intent": "selection/scope/clipboard/log key on NodeKey; receipt joins intent->revision via txn id",
+        "oxcalc": "engine ALREADY mints stable TreeNodeId (expose-existing); per-node value epoch is extend-existing engine bookkeeping; resolution map handle->NodeKey",
+        "oxfml": "-"
+      },
+      {
+        "domain": "Typed read fidelity (X-ray)",
+        "skin_ir": "InvalidationReason/DependencyKind/CarrierDetail/BindingDiagnostic enums; PhaseKey-keyed timing map with Other(String); richer NodeValueProjection; closed run/calc_state",
+        "host_projection": "runtime_effects list, overlay_deltas, full derivation_traces, active-node-detail; per-edge cache CONTINGENT on engine exposing per-edge outcomes",
+        "host_intent": "-",
+        "oxcalc": "expose existing invalidation/scheduling/overlay records verbatim; commit to PhaseKey enum; RETIRE control-flow-via-diagnostic-string; cycle iteration only fixture-surfaced today (extend)",
+        "oxfml": "expose prepared-call tree + hole bindings; emit typed bind diagnostics; expose evaluated CF results"
+      },
+      {
+        "domain": "Value display & formatting",
+        "skin_ir": "NodeValueProjection typed variants incl. Rich/Image + UnitHint; FormattedValue/EffectiveFormat shapes",
+        "host_projection": "per-node effective_format + per-cell cf_results (READ); resolver+profile on SkinContext as a thin FORWARD; table cell readback; series-projection",
+        "host_intent": "-",
+        "oxcalc": "expose EvalValue universe as typed variants; spill/array dims",
+        "oxfml": "OWN number/format-code rendering behind the resolver (host must not parse codes); CF rule semantics; rich-value field structure"
+      },
+      {
+        "domain": "Selection, scope & subjects",
+        "skin_ir": "SelectionState { primary, anchor, selected }; AuthoringScope enum; DropPosition/DropVerdict",
+        "host_projection": "node_order/depth range resolution; collision/naming policy; drop-legality; recent_selections/hover in shared",
+        "host_intent": "SelectNodes/SelectRange/ToggleNodeInSelection; scope-bearing intents; command_catalog enablement",
+        "oxcalc": "collection membership/order versioning",
+        "oxfml": "-"
+      },
+      {
+        "domain": "Structural authoring & references",
+        "skin_ir": "intents carry NodeKey/RefHandle/scope only — never formula text, never caret; ResolvedRef map shape",
+        "host_projection": "reference_map projection; legality-impact JOIN over engine dry-bind + plan-invalidation; default-content policy; clipboard payload",
+        "host_intent": "AddNode/Rename/Move/Delete/Duplicate/Reorder; SetMeta/Attributes/Note; template subsystem; clipboard Copy/Cut; host owns caret + splice",
+        "oxcalc": "rename/move reference rebind by NodeKey; plan_invalidation over committed graph; batch repair; one-transaction publish (engine rework)",
+        "oxfml": "dry_bind (profile legality); recompose RAW text on replicate/paste/F4; COMPOSE profile-correct reference text (host splices); column-formula"
+      },
+      {
+        "domain": "Format & rule authoring",
+        "skin_ir": "FormatProperty spec typed; CfRuleSpec/ValidationRule specs typed (WRITE deferred to frontier; RESULTS read now)",
+        "host_projection": "store where format binds; surface effective_format + cf_results + validation_state back",
+        "host_intent": "SetFormatProperty dispatch + scope; CF/data-validation WRITE intents deferred until a concrete FLOW use",
+        "oxcalc": "schedule per-cell CF + validation evaluation; version stamps",
+        "oxfml": "parse/validate number-format codes; own CF rule semantics; bind data-validation formulas — never host-computed (constraint 7)"
+      },
+      {
+        "domain": "Atomicity, errors, undo & history",
+        "skin_ir": "IntentReceipt { txn_id, produced_revision, completion, failed_edit_index }; typed IntentError; VersionHistoryProjection (DAG)",
+        "host_projection": "project history entries + touched-node summaries",
+        "host_intent": "begin_transaction/EditNodes; Undo/Redo/NavigateRevision; receipt + typed-error minting",
+        "oxcalc": "accumulate-schedule-publish-once (ENGINE REWORK); RETAINED immutable revision GRAPH + cursor (NEW-CAPABILITY, gating); never inverse replay",
+        "oxfml": "-"
+      },
+      {
+        "domain": "Speculation & scenarios",
+        "skin_ir": "ValueProvenance discriminator; ScenarioManifest; ComparativeProjection; PreviewProjection",
+        "host_projection": "pinned speculative views (audited); scenario metadata persistence (values stay in engine); SkinContext speculation facade",
+        "host_intent": "PreviewEdit/Commit/Discard; scenario Create/Set/Clear/Activate",
+        "oxcalc": "HANDLE-ADDRESSED LAYERABLE candidate overlays (NEW-CAPABILITY keystone, gates the whole band); scenario overlay; goal-seek/sweep (new); value-shape-diff; per-candidate trace; lease/GC",
+        "oxfml": "bind scenario/preview override raw text under the active profile"
+      },
+      {
+        "domain": "Performance, async & freshness",
+        "skin_ir": "projection_seq + from_seq->to_seq sequencing; is_stale flag; FrameMetric; (NodeKey, value_epoch) memo key",
+        "host_projection": "WorkspaceDelta channel (keys on engine invalidated-node set); windowed/range projection; model-query; HOST-OWNED worker calc",
+        "host_intent": "intent coalescing/backpressure; drive completion pump; receipt.delta",
+        "oxcalc": "engine stays SYNCHRONOUS/passive (no engine threading); external/RTD value source intake (new); maps invalidation into the host delta",
+        "oxfml": "-"
+      },
+      {
+        "domain": "Platform: composition, persona, observability, collab",
+        "skin_ir": "SkinManifest; ThemeTokens/LocaleTokens/AriaAttrs; SkinState serde+schema_version+migrate+gc",
+        "host_projection": "wire RightInspector/SplitLeft/SplitRight; per-slot context + fault isolation; capability negotiate(); design-token/theme; keybinding registry; persist+migrate SkinState; export",
+        "host_intent": "persona/permission gate at dispatcher PER ORIGIN; audited typed SharedStore (recalc_mode is dispatcher policy); cross-slot focus; intent log + replay; edit-claims",
+        "oxcalc": "immutable revision ordering + conflict policy + intent rebase as the collaboration sync substrate (research-grade new-capability)",
+        "oxfml": "profile feature set readable so the host can gate/explain rejected input; export serialization"
+      }
+    ],
+    "waves": [
+      {
+        "wave": "W0 — Identity keystone + free typed-vs-stringly conversions",
+        "theme": "NodeKey first and ALONE; then the independent zero-risk typing conversions",
+        "requirement_ids": [
+          "stable-node-identity",
+          "typed-invalidation-reasons",
+          "typed-dependency-kinds",
+          "richer-typed-value",
+          "typed-run-and-calc-state",
+          "phase-timings-typed"
+        ],
+        "rationale": "CRITIQUE FIX (3-minor): only stable-node-identity is a true universal precondition (depends_on:[]) — it gates delta addressing, persistence gc, selection survival, history correlation. Land it via a TRANSITION WINDOW (carry both key+path), not a big-bang cutover, to de-risk the keystone. The typed conversions are independent, parallelizable, low-risk expose-existing/extend work that can land in ANY order — framed as 'free, do anytime' rather than strictly sequenced. NOTE: value-epoch-keying is deliberately MOVED OUT of W0 (it is engine bookkeeping, not a free thread-through) and phase-timings/typed-run carry small engine obligations.",
+        "unlocks": "Skins correlate facts across recalcs and structural edits; reason chips, dependency-kind filters, typed value rendering; the IR stops lying about what it knows AND the engine stops branching on its own prose."
+      },
+      {
+        "wave": "W1 — Value-faithful display & deep read",
+        "theme": "Render values as Excel would; surface the derivation the engine already holds",
+        "requirement_ids": [
+          "per-node-effective-format",
+          "format-resolver-on-context",
+          "reference-resolution-map",
+          "binding-diagnostics-typed",
+          "runtime-effects-list",
+          "overlay-resize-deltas",
+          "per-edge-cache-evidence",
+          "full-derivation-trace",
+          "typed-cycle-diagnostics",
+          "active-node-detail",
+          "value-epoch-keying"
+        ],
+        "rationale": "With typed values present, the resolver (a thin OxFml forward, NOT a host reimplementation) + effective format close constraint-9; reference-resolution + binding diagnostics power navigation and inline feedback; runtime/derivation/cycle surfaces turn the X-ray on. value-epoch-keying lands here as honest engine bookkeeping (extend-existing) rather than a W0 freebie. per-edge-cache and typed-cycle are honestly extend-existing pending engine confirmation.",
+        "unlocks": "Excel-faithful value display everywhere; FLOW's explain-stack, calc X-ray (effects/cycle lanes), formula bar with live binding diagnostics, jump-to-definition / find-references; per-node value epochs for downstream memo/diff."
+      },
+      {
+        "wave": "W2 — Subjects, transactions, typed errors & safe structural authoring",
+        "theme": "First-class subjects + atomic publish-once + typed failure + foresight, standing on W0/W1 alone",
+        "requirement_ids": [
+          "selection-subject-model",
+          "scope-value",
+          "transaction-scope",
+          "typed-intent-error",
+          "edit-transaction-id",
+          "naming-collision-policy",
+          "engine-dry-bind",
+          "recalc-plan-preview",
+          "legality-impact-preview",
+          "drag-gesture-model",
+          "model-query-projection",
+          "rename-move-ref-integrity",
+          "command-palette-metadata"
+        ],
+        "rationale": "CRITIQUE FIX (3-blocking/major, 2-major): transaction-scope is the highest-RISK foundational item (the engine publishes per-node today — accumulate-publish-once is genuine rework). typed-intent-error closes a tenet-2 violation hiding in the receipt and is sequenced HERE, not deferred. The legality/plan preview is a thin host JOIN over engine dry_bind + plan_invalidation; recalc-plan-preview reads the COMMITTED graph and does NOT back-edge into the candidate substrate, so this wave stands on W0/W1 only — the W2->W4 inversion is broken. drag-gesture and model-query are the added tree-platform domains.",
+        "unlocks": "Confident structural editing: batch select-and-act, atomic multi-edit, recoverable typed rejections, pre-commit 'this rebinds 7 dependents', live drop-validity, model search, command-palette enablement, reorganize the tree without breaking formulas."
+      },
+      {
+        "wave": "W3 — Reference & content authoring verbs",
+        "theme": "Fill, F4, point-mode insert, paste, duplicate, set-membership, meta/notes — all id/handle-carrying",
+        "requirement_ids": [
+          "replicate-by-id",
+          "f4-toggle-binding",
+          "reference-insertion",
+          "clipboard-transfer-model",
+          "paste-special",
+          "duplicate-subtree",
+          "set-membership-write",
+          "meta-and-attribute-write",
+          "note-write",
+          "format-write",
+          "add-node-content-policy"
+        ],
+        "rationale": "The authoring verbs that compose RAW text in OxFml and rebind in OxCalc — each carries ids/handles/scope, never skin-synthesized text (constraint 1); reference-insertion COMPOSES text the HOST splices (caret stays host-side). They depend on scope+transaction from W2 and reference-resolution from W1. paste-special and duplicate-subtree are retagged L (they reuse the same hard rebind machinery as replicate-by-id, not cheaper). format-write feeds the resolver already in place.",
+        "unlocks": "Excel-parity fill-down/right, F4 cycling, point-mode reference insertion, paste-special, subtree duplication, authored reference collections, meta subtrees, notes, number formats — the deliberate write surface."
+      },
+      {
+        "wave": "W4a — Revision graph (gating engine workstream)",
+        "theme": "Build the retained navigable revision DAG the entire time axis depends on",
+        "requirement_ids": [
+          "revision-graph-retention"
+        ],
+        "rationale": "CRITIQUE FIX (3-blocking): the engine holds snapshot-IDENTITY hashes, NOT a retained navigable revision store ('retained non-table replay missing'). Undo-by-navigation has NO substrate today. This is an explicit gating engine milestone that MUST precede the time axis and collaboration — isolated into its own sub-wave so its risk is visible and not buried among IR shapes.",
+        "unlocks": "The substrate for undo-navigation, version-history, time-scrubbing, and (later) collaboration — nothing in the time axis is schedulable before this lands."
+      },
+      {
+        "wave": "W4b — Candidate substrate (gating engine workstream) + time axis",
+        "theme": "Build the addressable candidate-overlay substrate, then provenance, undo & history on top",
+        "requirement_ids": [
+          "candidate-overlay-handle",
+          "value-published-pending-flag",
+          "speculation-discard-commit",
+          "undo-redo-revision-nav",
+          "revision-history-projection",
+          "value-shape-diff"
+        ],
+        "rationale": "CRITIQUE FIX (3-blocking/strongest): candidate-overlay-handle is the single LARGEST engine risk — the engine has a per-node publish lifecycle + a SINGLE overlay set, NOT N addressable layerable non-publishing contexts; this is NEW-CAPABILITY, not extend-existing, and gates the whole speculation band. Sequenced as a milestone with provenance + commit/discard. undo/history ride on W4a's revision graph (also new-capability). value-shape-diff inherits value-epoch-keying's risk.",
+        "unlocks": "Consequence-free what-if substrate; ghost-vs-real provenance; commit-to-history bridge; deterministic undo by navigation; branchable DAG history; the delta-ledger change-pulse."
+      },
+      {
+        "wave": "W4c — Scenarios & preview UX",
+        "theme": "The author-facing speculation features riding the proven candidate substrate",
+        "requirement_ids": [
+          "preview-edit-intent",
+          "scenario-substrate",
+          "scenario-projection",
+          "comparative-multi-overlay-projection",
+          "series-projection"
+        ],
+        "rationale": "With the candidate substrate proven in W4b, the scenario rail, ghost preview, comparison columns, and chart-feed series-projection are buildable. Kept distinct from W4b so they do not appear schedulable before the substrate exists.",
+        "unlocks": "FLOW's ghost what-if, scenario rail (Base/Bull/Bear comparison columns), comparative projection, and chart-ready series feeds — explore freely, commit deliberately."
+      },
+      {
+        "wave": "W5 — Platform robustness: deltas, host-worker async, composition, persistence, governance",
+        "theme": "Incremental updates, host-side concurrency, multi-pane, theming/a11y/keybinding, negotiation, observability",
+        "requirement_ids": [
+          "projection-delta-channel",
+          "projection-version-stamp",
+          "host-worker-calc",
+          "backpressure-coalescing",
+          "frame-telemetry-hooks",
+          "skinstate-persistence-exercised",
+          "multi-slot-composition",
+          "shared-focus-arbitration",
+          "keybinding-registry",
+          "audited-shared-state",
+          "design-token-layer",
+          "a11y-primitives",
+          "capability-manifest-negotiation",
+          "readonly-reviewer-persona",
+          "intent-log-replay",
+          "virtualization-window-projection"
+        ],
+        "rationale": "CRITIQUE FIX (1-major, 3-major): host-worker-calc resolves the async-vs-passive contradiction by keeping the engine SYNCHRONOUS and making concurrency a HOST concern (engine n/a) — so 'host drives every tick' holds literally. The delta channel keys on the engine's existing invalidated-node set (NOT blocked by per-node value epochs). multi-slot + focus + keybinding + isolation + tokens + a11y + manifest deliver the composable frame; persona gates per ORIGIN (serving collab too); frame-telemetry makes the perf goal falsifiable; audited-shared-state treats recalc_mode as dispatcher policy.",
+        "unlocks": "60fps on 100k-node models with measurable frame budget; the full FLOW multi-pane layout; dark/high-contrast/RTL themable accessible skins; arbitrated keybindings; third-party + reviewer extensibility; deterministic replayable tests; persistent view-state."
+      },
+      {
+        "wave": "W6 — Frontier: structural reuse, export, external feeds, sweeps, onboarding",
+        "theme": "Templates, tables, aliases, import/export, RTD, sensitivity, rich values — on proven substrates",
+        "requirement_ids": [
+          "template-subsystem",
+          "table-structural-ops",
+          "table-cell-readback",
+          "cross-workspace-alias",
+          "import-workbook",
+          "workbook-export",
+          "batch-repair-write",
+          "rich-image-value-handles",
+          "scenario-persist-migrate",
+          "pinned-speculative-view",
+          "speculation-budget-gc",
+          "derivation-trace-for-candidate",
+          "goal-seek-substrate",
+          "sensitivity-sweep-substrate",
+          "external-rtd-value-motion",
+          "empty-state-onboarding"
+        ],
+        "rationale": "Reach-extending capabilities on every prior wave: templates/tables/aliases/import/export are structural-reuse and the canonical-verification round-trip; batch-repair completes the rejection lifecycle; goal-seek/sweep + RTD are gated behind the proven candidate (W4b) and host-worker (W5) milestones rather than listed as independently schedulable; onboarding seeds from templates.",
+        "unlocks": "Reusable templates with drift, structured tables, cross-model links, Excel import AND export (closing the verify-against-Excel loop), live RTD dashboards, sensitivity/tornado analysis over a tree, guided onboarding."
+      },
+      {
+        "wave": "W7 — Research bucket: NOT on the sequenced roadmap",
+        "theme": "Collaboration conflict semantics and deferred rule-authoring — explicitly off the critical path",
+        "requirement_ids": [
+          "intent-conflict-policy",
+          "intent-rebase",
+          "collab-presence-markers",
+          "conditional-format-write",
+          "data-validation-write"
+        ],
+        "rationale": "CRITIQUE FIX (3-major, 2-major): collaboration's hard core (conflict policy + intent rebase over the revision DAG) is research-grade new-capability, not a deferred feature — moved to an explicit research bucket out of the wave plan; presence-markers ride it. CF-WRITE and data-validation-WRITE authoring are large net-new OxFml rule-authoring surfaces with no cited near-term FLOW use (their RESULT/STATE reads already shipped in W1) — kept as candidates pending a concrete authoring use, NOT sequenced. This prevents the matrix diluting into a wishlist.",
+        "unlocks": "Multi-user co-editing with presence (research); full conditional-format and data-validation authoring (pending demand) — none gating the planned UX."
+      }
+    ],
+    "minimum_foundational_set": [
+      "stable-node-identity",
+      "typed-invalidation-reasons",
+      "typed-dependency-kinds",
+      "richer-typed-value",
+      "reference-resolution-map",
+      "per-node-effective-format",
+      "format-resolver-on-context",
+      "scope-value",
+      "transaction-scope",
+      "typed-intent-error",
+      "edit-transaction-id",
+      "projection-delta-channel"
+    ],
+    "critique_resolutions": [
+      {
+        "issue": "legality-impact-preview presented engine-owned profile/rebind truth as a host-COMPUTED pure query (1-major).",
+        "resolution": "Recast as a thin host ORCHESTRATOR: profile_violations DELEGATED to a new engine-dry-bind (OxFml) requirement and requires_rebind to recalc-plan-preview (OxCalc), surfaced verbatim; only collisions/orphans/scope-expansion are host-computed. Added engine-dry-bind as a dependency and as its own requirement. Doctrinal_note now states the host computes NO semantic field.",
+        "changed": true
+      },
+      {
+        "issue": "phase-timings-typed and per-edge-cache-evidence risked host RE-CLASSIFICATION of open string-keyed engine telemetry into invented closed structs (1-major).",
+        "resolution": "phase-timings-typed moved to OxCalc/extend-existing as a BTreeMap<PhaseKey,u64> where PhaseKey is an engine-owned enum with Other(String) escape (no host re-classification, no dropped phases). per-edge-cache-evidence downgraded to extend-existing with an explicit open_question on whether per-edge Hit/Miss/Bypassed is exposed or only a cache-basis fingerprint.",
+        "changed": true
+      },
+      {
+        "issue": "typed-cycle-diagnostics (expose-existing) and goal-seek leaned on an iteration substrate that is only fixture-surfaced (1-major).",
+        "resolution": "typed-cycle-diagnostics downgraded to extend-existing with a note that general per-iteration convergence data is not yet engine-derived for arbitrary cycles. goal-seek-substrate's doctrinal_note no longer cites 'already handles cycles/iteration' — it is new scheduler work. Open_question added on whether a general iterative-convergence engine exists.",
+        "changed": true
+      },
+      {
+        "issue": "async-offthread-calc / external-rtd contradicted the passive-engine invariant; 'engine computes off-thread' and 'host drives every tick' cannot both hold (1-major, 3-major).",
+        "resolution": "Resolved by choosing model (A): engine stays SINGLE-THREADED and passive; concurrency is a HOST concern. Renamed async-offthread-calc to host-worker-calc (owner Host-projection, engine n/a for the calc itself). external-rtd-value-motion keeps the engine synchronous with the host pumping the resolving tick; only external-source intake is the engine new-capability. Tenet 9 reworded to make passivity literal.",
+        "changed": true
+      },
+      {
+        "issue": "stable-node-identity mis-located effort as OxCalc/extend-existing/L; the engine TreeNodeId already exists (1-minor, 3-minor).",
+        "resolution": "Relabeled primary owner to SkinIR-contract (with an OxCalc expose-existing dependency that is essentially done). Engine readiness expose-existing; the L is the breaking IR/host cutover, de-risked via a TRANSITION WINDOW carrying both key and display_path. Tenet 1 and the open_question updated.",
+        "changed": true
+      },
+      {
+        "issue": "value-epoch-keying tagged expose-existing/S/Host in W0, but the engine has only a workspace-scope value_epoch + per-node INPUT epoch, not a per-node published-VALUE epoch (1-minor, 3-blocking).",
+        "resolution": "Retagged OxCalc/extend-existing/M and MOVED OUT of W0 into W1 as honest engine bookkeeping. Critically, projection-delta-channel was rewired to key on the engine's EXISTING invalidated-node set (not per-node epochs), so the delta architecture is no longer blocked by this risk; a fallback is documented on value-epoch-keying.",
+        "changed": true
+      },
+      {
+        "issue": "format-resolver-on-context could let the host reimplement format-code semantics and diverge from Excel (1-minor).",
+        "resolution": "Constrained the shape to a thin FORWARD into an OxFml render entrypoint; the resolver MUST NOT parse/interpret number-format codes host-side, only attach frame concerns. Retagged extend-existing (OxFml must expose render). Tenet 3 reworded to make this structural.",
+        "changed": true
+      },
+      {
+        "issue": "recalc_mode sits in SHARED but gates calc behavior, letting a skin alter engine behavior outside the dispatcher (1-minor).",
+        "resolution": "audited-shared-state reclassifies the recalc_mode SWITCH as dispatcher-level policy (routed through or read by the dispatcher), while cosmetic view-state stays in the audited SharedStore. Tenet 8 updated.",
+        "changed": true
+      },
+      {
+        "issue": "reference-insertion pushed caret position into an OxFml intent — a host concern leaking into the engine (1-minor).",
+        "resolution": "Reshaped so OxFml only COMPOSES profile-correct reference text for the target; the HOST owns the edit buffer + caret and performs the splice. The intent carries (editing_node, target, binding) and returns text. Tenet 4 updated; promoted from open_question to a shape fix.",
+        "changed": true
+      },
+      {
+        "issue": "typed-run-and-calc-state declared diagnostics non-load-bearing, but the engine TODAY branches on diagnostic prose (e.g. 'cycle.excel_match_iterative') (1-minor).",
+        "resolution": "Strengthened from n/a guardrail to an actionable OxCalc/extend-existing cleanup: retire the control-flow-via-diagnostic-string sites and promote those facts to typed enum fields. Tenet 2 rationale now acknowledges the tenet is partly aspirational with a real engine obligation.",
+        "changed": true
+      },
+      {
+        "issue": "IntentError is {Unsupported, Rejected(String)} — a stringly write-failure channel violating tenet-2, never typed (2-major/strongest).",
+        "resolution": "Added typed-intent-error as a FOUNDATIONAL requirement sequenced in W2 with transaction-scope; enum covers ProfileRejected/NameCollision/WouldFormCycle/Forbidden/Orphans/EngineRejected/Unsupported, sharing vocabulary with legality-impact-preview. edit-transaction-id gains failed_edit_index for transaction-partial-failure.",
+        "changed": true
+      },
+      {
+        "issue": "Collaboration was a single hand-wavy frontier requirement deferring conflict policy + rebase + per-peer permission (2-major/strongest).",
+        "resolution": "Split into intent-conflict-policy, intent-rebase, collab-presence-markers (with edit-claims), and made readonly-reviewer-persona gate PER INTENT ORIGIN to serve per-peer permission. Moved the collab trio into an explicit W7 research bucket OFF the sequenced roadmap rather than buried at the end of W6.",
+        "changed": true
+      },
+      {
+        "issue": "Drag-and-drop / pointer gesture semantics absent as a first-class domain (2-major).",
+        "resolution": "Added drag-gesture-model: a host drop_legality query returning a typed DropVerdict (reusing legality-impact-preview) plus SkinIR DropPosition/DropVerdict types; gesture state stays skin-local. Sequenced in W2.",
+        "changed": true
+      },
+      {
+        "issue": "Search/filter/query over the model was missing, making virtualization useless (2-major).",
+        "resolution": "Added model-query-projection (Host-projection) — a pure read over node_order/nodes/reverse_edges returning NodeKey matches; virtualization-window-projection now depends on it for jump-to-match. Sequenced in W2.",
+        "changed": true
+      },
+      {
+        "issue": "Print/export/report-generation entirely absent despite Excel-as-canonical-truth implying an export artifact (2-minor).",
+        "resolution": "Added workbook-export (Host-intent orchestrating OxFml serialization) with ValuesOnly/FormulasAndFormat/FullModel modes plus a lighter value-snapshot read, backing the canonical-verification loop. Sequenced in W6.",
+        "changed": true
+      },
+      {
+        "issue": "Frame/render telemetry for the skin itself missing, making '60fps on 100k nodes' unfalsifiable (2-minor).",
+        "resolution": "Added frame-telemetry-hooks emitting FrameMetric (dispatch-to-delta, delta-apply, render, dropped) into the intent-log sink, correlated by intent_seq. Sequenced in W5. Tenet 9 updated.",
+        "changed": true
+      },
+      {
+        "issue": "Keybinding registry / shortcut conflict resolution across simultaneous skins missing (2-minor).",
+        "resolution": "Added keybinding-registry (Host-projection) resolving KeyChord->IntentId per focused_slot with a conflict policy and user overrides; command_catalog surfaces the effective binding. Sequenced in W5.",
+        "changed": true
+      },
+      {
+        "issue": "Value-unit/semantic-type metadata and chart/visualization-feed projection missing (2-minor).",
+        "resolution": "Added unit:Option<UnitHint> to NodeValueProjection::Number (expose-existing if EvalValue carries it) and series-projection (Host-projection) resolving a scope into a plottable Series for chart skins, pairing with comparative-multi-overlay-projection.",
+        "changed": true
+      },
+      {
+        "issue": "Onboarding / empty-state / sample-model absent for a platform pitched to non-core authors (2-minor).",
+        "resolution": "Added empty-state-onboarding (NewWorkspace seeds from a starter template + command-catalog help metadata) as an explicitly DEFERRED frontier item rather than leaving it silently absent.",
+        "changed": true
+      },
+      {
+        "issue": "value_epoch mis-tagged expose-existing/S in foundational W0 — blocking sequencing dishonesty (3-blocking).",
+        "resolution": "See value-epoch-keying resolution above: retagged extend-existing/M, moved to W1, and the delta channel decoupled from it. Listed in open_questions to confirm before relying on per-node granularity.",
+        "changed": true
+      },
+      {
+        "issue": "The entire speculation band rested on candidate-overlay-handle being extend-existing, but the engine has a per-node publish path + single overlay set (3-blocking/strongest).",
+        "resolution": "Retagged candidate-overlay-handle as NEW-CAPABILITY/L and isolated it as a gating milestone (W4b). The speculation band (preview/scenarios/goal-seek/sweep/comparative) is explicitly gated behind it; goal-seek/sweep moved to W6 behind the proven substrate. The W2->W4 back-edge on recalc-plan-preview was removed (it now reads the committed graph only).",
+        "changed": true
+      },
+      {
+        "issue": "undo/history/async tagged extend-existing on a non-existent retained revision DAG (3-blocking).",
+        "resolution": "Added revision-graph-retention as an explicit NEW-CAPABILITY gating engine milestone (W4a); undo-redo-revision-nav and revision-history-projection retagged new-capability and depend on it. The time axis cannot be scheduled before it lands.",
+        "changed": true
+      },
+      {
+        "issue": "W2's own rationale admitted a forward dependency into W4 (recalc-plan-preview -> candidate-overlay-handle) (3-major).",
+        "resolution": "Broke the back-edge: recalc-plan-preview now walks the COMMITTED dependency graph (reverse edges + rebind flags the engine already computes), depending only on stable-node-identity. legality-impact-preview's blast-radius pulls from it. W2 stands on W0/W1 alone.",
+        "changed": true
+      },
+      {
+        "issue": "Effort tags systematically optimistic for the new-capability cluster (transaction-scope, paste-special, duplicate-subtree) (3-major).",
+        "resolution": "transaction-scope flagged as the highest-RISK foundational item (engine publishes per-node today); paste-special and duplicate-subtree bumped to L (they reuse replicate-by-id's hard rebind machinery). Doctrinal_notes call out 'requires scheduler/engine rework' distinct from mechanical size.",
+        "changed": true
+      },
+      {
+        "issue": "Genuine over-reach diluting the matrix into a wishlist: collab, CF/validation WRITE authoring, sweeps stacked on missing foundations (3-major).",
+        "resolution": "Moved collaboration (conflict-policy/rebase/presence) and CF-WRITE/data-validation-WRITE authoring into an explicit W7 research bucket OFF the sequenced roadmap; kept their RESULT/STATE READS in W1. goal-seek/sweep kept as frontier but gated behind the single proven candidate-overlay milestone.",
+        "changed": true
+      },
+      {
+        "issue": "Minimum foundational set not isolated; W0 lumped 7 co-equal items obscuring that only NodeKey is the universal precondition (3-minor).",
+        "resolution": "Reframed W0 so stable-node-identity is THE keystone and the typed conversions are 'free, do anytime'; moved value-epoch-keying out. The minimum_foundational_set is now the smallest spine that unlocks the most (identity + core typed reads + resolver + scope/transaction/typed-error/receipt + delta channel).",
+        "changed": true
+      },
+      {
+        "issue": "stable-node-identity sequenced everything after a single big-bang cutover that was not de-risked (3-minor).",
+        "resolution": "Adopted the transition-window strategy from the open_question: carry both key:NodeKey and display_path on NodeView, intents accept either during migration, incremental cutover. Tenet 1 and the requirement note this; effort stays L with a 'migration strategy required' note.",
+        "changed": true
+      }
+    ],
+    "open_questions": [
+      "NodeKey cutover strategy is now committed to a TRANSITION WINDOW (carry both key + display_path; intents accept either) rather than a big-bang break — but the window's exit criteria and how long dual-addressing is maintained across the projection, intent payloads, SkinState, and walking_skeleton tests still needs a concrete migration plan.",
+      "Per-node published-value epoch: confirm the engine can stamp each node's PUBLISHED value with an epoch distinct from the per-node INPUT epoch. If only a workspace value_epoch + per-node input_epoch exist, value-epoch-keying and value-shape-diff are materially larger than tagged; the delta channel is already decoupled (keys on the invalidated-node set) but skin memoization and per-node staleness still want true per-node value epochs.",
+      "Candidate-overlay reach: candidate-overlay-handle is now tagged NEW-CAPABILITY, but the SIZE of the scheduler rework to go from one per-node publish path + single overlay set to N addressable, layerable (parented), non-publishing contexts is unestimated and is the single largest risk gating the entire speculation band. Needs an engine spike before W4b is schedulable.",
+      "Retained revision graph: revision-graph-retention is now an explicit gating milestone, but the engine today holds only snapshot-IDENTITY hashes ('retained non-table replay missing'). Confirm whether a navigable parent-linked revision store with a cursor is a bounded extension of the existing snapshot machinery or a from-scratch store with its own memory/GC budget.",
+      "Passivity model is committed to (A) — engine single-threaded, host owns the worker and pumps bounded calc slices. Confirm the engine's synchronous calc can be sliced/resumed cooperatively (so the host can pump it without blocking a frame), or whether bounded-slice pumping itself requires engine reentrancy work.",
+      "Per-edge cache outcomes: confirm the scheduler exposes per-edge Hit/Miss/Bypassed, or only an edge-value-cache BASIS fingerprint. per-edge-cache-evidence is tagged extend-existing pending this; if only the basis exists, the per-edge report is new bookkeeping.",
+      "General iterative-convergence engine: confirm whether OxCalc has a general iterative solver producing per-iteration max_change for arbitrary cycles, or only Excel-match cycle FIXTURES. typed-cycle-diagnostics (extend-existing) and goal-seek-substrate (new-capability) both depend on the answer.",
+      "Delta-channel vs full-republish contract: the delta is additive (alongside the full snapshot) today. At 100k nodes skins will want delta-ONLY. Is the synchronous full-republish guarantee mandatory forever, or is there a sanctioned mode where the full snapshot is sent only on resync/gap (projection-version-stamp triggers it)?",
+      "Table as node-rooted structured value vs grid: table-structural-ops and table-cell-readback walk close to constraint 3. Is there an existing engine notion of 'table' that reconciles rows AND columns without reintroducing 2D coordinate addressing, or does treating a table as anything with both dimensions risk back-dooring A1-range semantics?",
+      "Durable scenario store: scenario-persist-migrate keeps names in SkinState and override VALUES in the engine model. Does the engine model have a durable, Excel-round-tripping place for named scenario overrides (scenario-manager parity), or do override values live only in transient runtime overlays — in which case durability is itself a new engine capability, not n/a.",
+      "Collaboration is now an explicit RESEARCH bucket (W7), off the roadmap. Before it can be planned: which conflict model (rebase over the revision DAG vs reject vs merge) does the immutable-revision substrate naturally support, and does NodeKey-keyed structural rebase compose with content/formula and collection-membership rebase without a separate merge algebra?",
+      "Persona source of truth for the per-ORIGIN dispatcher gate: does the persona come from host config, the capability-manifest negotiation, or an external auth layer — and for remote peer intents (W7), how is the originating peer's persona authenticated at the single dispatcher chokepoint?"
+    ]
+  }
+}
