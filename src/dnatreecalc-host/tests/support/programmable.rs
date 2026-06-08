@@ -8,8 +8,8 @@ use dnatreecalc_skin_framework::{
     ActiveNodeDetailProjection, Dispatcher, ErasedSkinContext, IntentReceipt, NodeId,
     RegisteredSkin, SelectionState, SharedSkinState, SharedSkinStateHandle, SkinCapabilities,
     SkinCategory, SkinContext, SkinHandle, SkinId, SkinManifest, SkinState, TableCellInput,
-    WorkspaceIntent, WorkspaceRecalcMode, WorkspaceRevisionProjection, WorkspaceSkin,
-    WorkspaceState,
+    TableRowInput, WorkspaceIntent, WorkspaceRecalcMode, WorkspaceRevisionProjection,
+    WorkspaceSkin, WorkspaceState,
 };
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -187,6 +187,41 @@ impl ProgrammableDriver {
         })
     }
 
+    pub fn add_table_column(
+        &self,
+        table: &str,
+        column_id: &str,
+        name: &str,
+        values: &[(&str, &str)],
+    ) {
+        self.accept(self.add_table_column_intent(table, column_id, name, values));
+    }
+
+    pub fn try_add_table_column(
+        &self,
+        table: &str,
+        column_id: &str,
+        name: &str,
+        values: &[(&str, &str)],
+    ) -> IntentReceipt {
+        self.dispatch
+            .dispatch(self.add_table_column_intent(table, column_id, name, values))
+    }
+
+    pub fn delete_table_column(&self, table: &str, column_id: &str) {
+        self.accept(WorkspaceIntent::DeleteTableColumn {
+            table: NodeId::new(table),
+            column_id: column_id.to_string(),
+        });
+    }
+
+    pub fn try_delete_table_column(&self, table: &str, column_id: &str) -> IntentReceipt {
+        self.dispatch.dispatch(WorkspaceIntent::DeleteTableColumn {
+            table: NodeId::new(table),
+            column_id: column_id.to_string(),
+        })
+    }
+
     pub fn try_new_workspace(&self) -> IntentReceipt {
         self.dispatch.dispatch(WorkspaceIntent::NewWorkspace)
     }
@@ -316,6 +351,27 @@ impl ProgrammableDriver {
                 .iter()
                 .map(|(column_id, content)| TableCellInput {
                     column_id: (*column_id).to_string(),
+                    content: (*content).to_string(),
+                })
+                .collect(),
+        }
+    }
+
+    fn add_table_column_intent(
+        &self,
+        table: &str,
+        column_id: &str,
+        name: &str,
+        values: &[(&str, &str)],
+    ) -> WorkspaceIntent {
+        WorkspaceIntent::AddTableColumn {
+            table: NodeId::new(table),
+            column_id: column_id.to_string(),
+            name: name.to_string(),
+            values: values
+                .iter()
+                .map(|(row_id, content)| TableRowInput {
+                    row_id: (*row_id).to_string(),
                     content: (*content).to_string(),
                 })
                 .collect(),

@@ -557,14 +557,18 @@ pub const SHELL_CSS: &str = r#"
     outline-offset: -2px;
 }
 
-.dtc-table-card__add-row {
+.dtc-table-card__add-row,
+.dtc-table-card__add-column,
+.dtc-table-card__delete-column {
     display: flex;
     flex-wrap: wrap;
     gap: 0.375rem;
     align-items: center;
 }
 
-.dtc-table-card__add-row input {
+.dtc-table-card__add-row input,
+.dtc-table-card__add-column input,
+.dtc-table-card__delete-column select {
     flex: 1 1 7rem;
     min-width: 0;
     border: 1px solid #d8dee8;
@@ -573,13 +577,21 @@ pub const SHELL_CSS: &str = r#"
     font: 0.8125rem ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
-.dtc-table-card__add-row button {
+.dtc-table-card__add-row button,
+.dtc-table-card__add-column button,
+.dtc-table-card__delete-column button {
     border: 1px solid #bfdbfe;
     border-radius: 4px;
     padding: 0.375rem 0.625rem;
     background: #eff6ff;
     color: #1d4ed8;
     font-weight: 700;
+}
+
+.dtc-table-card__delete-column button {
+    border-color: #fed7aa;
+    background: #fff7ed;
+    color: #9a3412;
 }
 
 .dtc-dependency-inspector {

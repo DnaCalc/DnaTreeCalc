@@ -77,6 +77,16 @@ pub enum WorkspaceIntent {
         table: NodeId,
         row_id: String,
     },
+    AddTableColumn {
+        table: NodeId,
+        column_id: String,
+        name: String,
+        values: Vec<TableRowInput>,
+    },
+    DeleteTableColumn {
+        table: NodeId,
+        column_id: String,
+    },
     NewWorkspace,
     SwitchWorkspace {
         workspace_id: String,
@@ -86,6 +96,12 @@ pub enum WorkspaceIntent {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TableCellInput {
     pub column_id: String,
+    pub content: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TableRowInput {
+    pub row_id: String,
     pub content: String,
 }
 
@@ -266,6 +282,8 @@ impl Dispatcher for InMemoryDispatcher {
             | WorkspaceIntent::EditTableCell { .. }
             | WorkspaceIntent::AddTableRow { .. }
             | WorkspaceIntent::DeleteTableRow { .. }
+            | WorkspaceIntent::AddTableColumn { .. }
+            | WorkspaceIntent::DeleteTableColumn { .. }
             | WorkspaceIntent::NewWorkspace
             | WorkspaceIntent::SwitchWorkspace { .. } => IntentReceipt::accepted(),
         }

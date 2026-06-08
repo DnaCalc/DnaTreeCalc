@@ -836,6 +836,123 @@ fn programmable_skin_edits_table_cells_and_adds_rows_from_outside_ir() {
 }
 
 #[test]
+fn programmable_skin_adds_edits_and_deletes_constant_table_columns_from_outside_ir() {
+    let harness = Harness::from_repo_fixture("tables");
+    let skin = harness.driver.clone();
+    skin.recalc();
+
+    let before = skin.state();
+    let before_table = before
+        .tables
+        .get(&NodeId::new("SalesTable"))
+        .expect("table projects");
+    let before_column_identity_version = before_table.column_identity_version.clone();
+    assert_eq!(
+        before_table
+            .columns
+            .iter()
+            .map(|column| column.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["Region", "Amount", "Tax"]
+    );
+
+    let add = skin.try_add_table_column(
+        "SalesTable",
+        "col:discount",
+        "Discount",
+        &[("row:west", "1"), ("row:east", "2"), ("row:north", "3")],
+    );
+    assert!(add.accepted, "{:?}", add.error);
+
+    let added_state = skin.state();
+    let added_table = added_state
+        .tables
+        .get(&NodeId::new("SalesTable"))
+        .expect("table projects after column add");
+    assert_eq!(added_table.column_count, 4);
+    assert_eq!(
+        added_table
+            .columns
+            .iter()
+            .map(|column| column.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["Region", "Amount", "Tax", "Discount"]
+    );
+    assert!(matches!(
+        added_table.columns[3].body,
+        TableColumnBodyProjection::ConstantCells
+    ));
+    assert_eq!(table_body_row(added_table, 0), vec!["West", "10", "1", "1"]);
+    assert_eq!(table_body_row(added_table, 1), vec!["East", "20", "2", "2"]);
+    assert_eq!(
+        table_body_row(added_table, 2),
+        vec!["North", "30", "3", "3"]
+    );
+    assert_eq!(table_totals_row(added_table), vec!["", "60", "", ""]);
+    assert_ne!(
+        before_column_identity_version,
+        added_table.column_identity_version
+    );
+    assert!(!added_state.node_order.iter().any(|node| {
+        node.as_str().contains("__table_body_") || node.as_str().contains("col:discount")
+    }));
+
+    let edit = skin.try_edit_table_cell("SalesTable", "row:east", "col:discount", "5");
+    assert!(edit.accepted, "{:?}", edit.error);
+    let edited_state = skin.state();
+    let edited_table = edited_state
+        .tables
+        .get(&NodeId::new("SalesTable"))
+        .expect("table projects after new column edit");
+    assert_eq!(
+        table_body_row(edited_table, 1),
+        vec!["East", "20", "2", "5"]
+    );
+
+    let duplicate = skin.try_add_table_column("SalesTable", "col:discount", "Discount", &[]);
+    assert!(!duplicate.accepted, "{duplicate:?}");
+
+    let unknown_row =
+        skin.try_add_table_column("SalesTable", "col:bad", "Bad", &[("row:missing", "9")]);
+    assert!(!unknown_row.accepted, "{unknown_row:?}");
+
+    let duplicate_input = skin.try_add_table_column(
+        "SalesTable",
+        "col:bad",
+        "Bad",
+        &[("row:west", "1"), ("row:west", "2")],
+    );
+    assert!(!duplicate_input.accepted, "{duplicate_input:?}");
+
+    let formula_column_delete = skin.try_delete_table_column("SalesTable", "col:tax");
+    assert!(!formula_column_delete.accepted, "{formula_column_delete:?}");
+
+    let delete = skin.try_delete_table_column("SalesTable", "col:discount");
+    assert!(delete.accepted, "{:?}", delete.error);
+    let deleted_state = skin.state();
+    let deleted_table = deleted_state
+        .tables
+        .get(&NodeId::new("SalesTable"))
+        .expect("table projects after column delete");
+    assert_eq!(deleted_table.column_count, 3);
+    assert_eq!(
+        deleted_table
+            .columns
+            .iter()
+            .map(|column| column.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["Region", "Amount", "Tax"]
+    );
+    assert_eq!(table_body_row(deleted_table, 0), vec!["West", "10", "1"]);
+    assert_eq!(table_body_row(deleted_table, 1), vec!["East", "20", "2"]);
+    assert_eq!(table_body_row(deleted_table, 2), vec!["North", "30", "3"]);
+    assert_eq!(table_totals_row(deleted_table), vec!["", "60", ""]);
+
+    let missing_delete = skin.try_delete_table_column("SalesTable", "col:discount");
+    assert!(!missing_delete.accepted, "{missing_delete:?}");
+}
+
+#[test]
 fn programmable_skin_projects_errors_and_diagnostics_after_rejected_recalc() {
     let harness = Harness::empty();
     let skin = harness.driver.clone();

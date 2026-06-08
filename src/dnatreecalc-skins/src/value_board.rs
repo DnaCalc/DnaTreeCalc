@@ -1,7 +1,7 @@
 use dnatreecalc_skin_framework::{
     Dispatcher, NodeId, NodeValueProjection, SkinCapabilities, SkinCategory, SkinContext,
     SkinHandle, SkinId, SkinManifest, SkinState, TableCellInput, TableColumnBodyProjection,
-    TableProjection, WorkspaceIntent, WorkspaceSkin,
+    TableProjection, TableRowInput, WorkspaceIntent, WorkspaceSkin,
 };
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -138,6 +138,24 @@ fn render_table_card(
     let table_node_for_add = table_node.clone();
     let add_dispatch = dispatch.clone();
     let add_inputs = constant_columns.clone();
+    let next_column_id = RwSignal::new(format!("col:new{}", table.column_count + 1));
+    let next_column_name = RwSignal::new(format!("New {}", table.column_count + 1));
+    let column_values = table
+        .rows
+        .iter()
+        .map(|row| (row.row_id.clone(), RwSignal::new(String::new())))
+        .collect::<Vec<_>>();
+    let column_value_inputs = column_values.clone();
+    let column_add_dispatch = dispatch.clone();
+    let table_node_for_column_add = table_node.clone();
+    let delete_column_id = RwSignal::new(
+        constant_columns
+            .first()
+            .map(|(column_id, _, _)| column_id.clone())
+            .unwrap_or_default(),
+    );
+    let delete_column_dispatch = dispatch.clone();
+    let table_node_for_column_delete = table_node.clone();
 
     view! {
         <section class="dtc-table-card">
@@ -192,6 +210,84 @@ fn render_table_card(
                     }
                 >
                     "Add row"
+                </button>
+            </div>
+            <div class="dtc-table-card__add-column">
+                <input
+                    class="dtc-table-card__column-id"
+                    aria-label="New column id"
+                    prop:value=move || next_column_id.get()
+                    on:input=move |ev| next_column_id.set(event_target_value(&ev))
+                />
+                <input
+                    class="dtc-table-card__column-name"
+                    aria-label="New column name"
+                    prop:value=move || next_column_name.get()
+                    on:input=move |ev| next_column_name.set(event_target_value(&ev))
+                />
+                {column_values.iter().map(|(row_id, value)| {
+                    let label = format!("{row_id} value");
+                    let value_signal = *value;
+                    view! {
+                        <input
+                            class="dtc-table-card__cell-input"
+                            aria-label=label
+                            title=row_id.clone()
+                            placeholder=row_id.clone()
+                            prop:value=move || value_signal.get()
+                            on:input=move |ev| value_signal.set(event_target_value(&ev))
+                        />
+                    }
+                }).collect::<Vec<_>>()}
+                <button
+                    type="button"
+                    on:click=move |_| {
+                        let values = column_value_inputs
+                            .iter()
+                            .map(|(row_id, value)| TableRowInput {
+                                row_id: row_id.clone(),
+                                content: value.get_untracked(),
+                            })
+                            .collect::<Vec<_>>();
+                        let receipt = column_add_dispatch.dispatch(table_column_add_intent(
+                            &table_node_for_column_add,
+                            next_column_id.get_untracked(),
+                            next_column_name.get_untracked(),
+                            values,
+                        ));
+                        if receipt.accepted {
+                            for (_, value) in &column_value_inputs {
+                                value.set(String::new());
+                            }
+                        }
+                    }
+                >
+                    "Add column"
+                </button>
+            </div>
+            <div class="dtc-table-card__delete-column">
+                <select
+                    aria-label="Delete column"
+                    prop:value=move || delete_column_id.get()
+                    on:change=move |ev| delete_column_id.set(event_target_value(&ev))
+                >
+                    {constant_columns.iter().map(|(column_id, name, _)| {
+                        view! {
+                            <option value=column_id.clone()>{name.clone()}</option>
+                        }
+                    }).collect::<Vec<_>>()}
+                </select>
+                <button
+                    type="button"
+                    disabled=constant_columns.is_empty()
+                    on:click=move |_| {
+                        delete_column_dispatch.dispatch(table_column_delete_intent(
+                            &table_node_for_column_delete,
+                            &delete_column_id.get_untracked(),
+                        ));
+                    }
+                >
+                    "Delete column"
                 </button>
             </div>
         </section>
@@ -344,6 +440,27 @@ fn table_row_delete_intent(table: &str, row_id: &str) -> WorkspaceIntent {
     }
 }
 
+fn table_column_add_intent(
+    table: &str,
+    column_id: String,
+    name: String,
+    values: Vec<TableRowInput>,
+) -> WorkspaceIntent {
+    WorkspaceIntent::AddTableColumn {
+        table: NodeId::new(table),
+        column_id,
+        name,
+        values,
+    }
+}
+
+fn table_column_delete_intent(table: &str, column_id: &str) -> WorkspaceIntent {
+    WorkspaceIntent::DeleteTableColumn {
+        table: NodeId::new(table),
+        column_id: column_id.to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -384,6 +501,39 @@ mod tests {
             WorkspaceIntent::DeleteTableRow {
                 table: NodeId::new("SalesTable"),
                 row_id: "row:east".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn value_board_table_column_add_uses_skin_ir_intent() {
+        let values = vec![TableRowInput {
+            row_id: "row:east".to_string(),
+            content: "3".to_string(),
+        }];
+        assert_eq!(
+            table_column_add_intent(
+                "SalesTable",
+                "col:discount".to_string(),
+                "Discount".to_string(),
+                values.clone(),
+            ),
+            WorkspaceIntent::AddTableColumn {
+                table: NodeId::new("SalesTable"),
+                column_id: "col:discount".to_string(),
+                name: "Discount".to_string(),
+                values,
+            }
+        );
+    }
+
+    #[test]
+    fn value_board_table_column_delete_uses_skin_ir_intent() {
+        assert_eq!(
+            table_column_delete_intent("SalesTable", "col:discount"),
+            WorkspaceIntent::DeleteTableColumn {
+                table: NodeId::new("SalesTable"),
+                column_id: "col:discount".to_string(),
             }
         );
     }
