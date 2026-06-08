@@ -34,9 +34,9 @@ pub use state::{
     WorkspaceRecalcMode,
 };
 pub use workspace::{
-    CalcRunProjection, CalcRunStateProjection, DependencyDescriptorProjection,
-    DependencyEdgeProjection, DependencyGraphProjection, DependencyKindProjection,
-    DerivationHoleBindingProjection, DerivationInvocationProjection,
+    ActiveNodeDetailProjection, CalcRunProjection, CalcRunStateProjection,
+    DependencyDescriptorProjection, DependencyEdgeProjection, DependencyGraphProjection,
+    DependencyKindProjection, DerivationHoleBindingProjection, DerivationInvocationProjection,
     DerivationOxfmlTraceEventProjection, DerivationPreparedArgumentProjection,
     DerivationTemplateHoleProjection, DerivationTemplateSelectionProjection,
     DerivationTraceProjection, InvalidationReasonProjection, NodeCalcStateProjection,

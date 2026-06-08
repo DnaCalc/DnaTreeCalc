@@ -516,6 +516,47 @@ fn programmable_skin_projects_reference_resolution_map_and_reverse_index() {
 }
 
 #[test]
+fn programmable_skin_reads_active_node_detail_from_workspace_and_selection() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    skin.add_node(Some("Root"), "A", "3");
+    skin.add_node(Some("Root"), "B", "=A+1");
+
+    skin.select(None);
+    assert!(skin.active_detail().is_none());
+    skin.select(Some("Root.B"));
+    let detail = skin
+        .active_detail()
+        .expect("selected projected node has active detail");
+    let state = skin.state();
+    let selected = state.node(&NodeId::new("Root.B")).unwrap();
+    let target = state.node(&NodeId::new("Root.A")).unwrap();
+    assert_eq!(detail.node.as_str(), "Root.B");
+    assert_eq!(detail.node_key, selected.key);
+    assert_eq!(detail.display_name, "B");
+    assert_eq!(detail.content_kind, NodeContentKind::Formula);
+    assert_eq!(detail.content_text, "=A+1");
+    assert_eq!(detail.value.scalar_display_text(), Some("4"));
+    let outgoing = detail
+        .outgoing_references
+        .iter()
+        .find(|reference| {
+            matches!(
+                reference.target,
+                ReferenceTargetProjection::Node { ref key, .. } if key == &target.key
+            )
+        })
+        .expect("active formula detail includes outgoing reference");
+    let outgoing_handle = outgoing.source_reference_handle.clone();
+
+    skin.select(Some("Root.A"));
+    let detail = skin.active_detail().expect("A has active detail");
+    assert!(detail.incoming_reference_handles.contains(&outgoing_handle));
+}
+
+#[test]
 fn programmable_skin_rejects_invalid_structural_intents_without_state_drift() {
     let harness = Harness::empty();
     let skin = harness.driver.clone();

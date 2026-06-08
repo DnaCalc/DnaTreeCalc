@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use crate::identity::{NodeId, NodeKey};
+use crate::selection::SelectionState;
 
 /// Read-side projection of the workspace, as seen by a mounted skin.
 ///
@@ -43,6 +44,50 @@ impl WorkspaceState {
     pub fn len(&self) -> usize {
         self.nodes.len()
     }
+
+    #[must_use]
+    pub fn active_node_detail(
+        &self,
+        selection: &SelectionState,
+    ) -> Option<ActiveNodeDetailProjection> {
+        let node_id = selection.primary.as_ref()?;
+        let node = self.node(node_id)?;
+        Some(ActiveNodeDetailProjection {
+            node: node.id.clone(),
+            node_key: node.key.clone(),
+            display_name: node.display_name.clone(),
+            content_kind: node.content_kind,
+            content_text: node.content_text.clone(),
+            value: node.computed_value.clone(),
+            calc_state: node.calc_state,
+            outgoing_references: self
+                .dependencies
+                .reference_resolutions
+                .values()
+                .filter(|resolution| resolution.owner_key == node.key)
+                .cloned()
+                .collect(),
+            incoming_reference_handles: self
+                .dependencies
+                .reverse_references
+                .get(&node.key)
+                .cloned()
+                .unwrap_or_default(),
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActiveNodeDetailProjection {
+    pub node: NodeId,
+    pub node_key: NodeKey,
+    pub display_name: String,
+    pub content_kind: NodeContentKind,
+    pub content_text: String,
+    pub value: NodeValueProjection,
+    pub calc_state: Option<NodeCalcStateProjection>,
+    pub outgoing_references: Vec<ReferenceResolutionProjection>,
+    pub incoming_reference_handles: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
