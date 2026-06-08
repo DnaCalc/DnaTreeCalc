@@ -719,6 +719,62 @@ impl TreeWorkspaceSession {
         Ok(())
     }
 
+    pub fn edit_table_cell_transaction(
+        &mut self,
+        table: &NodeId,
+        row_id: &str,
+        column_id: &str,
+        content: impl Into<String>,
+    ) -> Result<TreeWorkspaceTransactionEdit<()>, TreeWorkspaceSessionError> {
+        let table_node_id = self.tree_node_id(table.as_str())?;
+        let table_view = self
+            .context
+            .table_view(&self.workspace_id, table_node_id)?
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTable {
+                table: table.to_string(),
+            })?;
+        let column = table_view
+            .snapshot
+            .columns
+            .iter()
+            .find(|column| column.column_id == column_id)
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTableColumn {
+                table: table.to_string(),
+                column_id: column_id.to_string(),
+            })?;
+        if matches!(
+            column.body_metadata,
+            TreeCalcTableColumnBodyMetadata::Formula(_)
+        ) {
+            return Err(TreeWorkspaceSessionError::FormulaTableCellEdit {
+                table: table.to_string(),
+                column_id: column_id.to_string(),
+            });
+        }
+        let binding = table_view
+            .snapshot
+            .body_cell_nodes
+            .iter()
+            .find(|binding| binding.row_id.0 == row_id && binding.column_id == column_id)
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTableCell {
+                table: table.to_string(),
+                row_id: row_id.to_string(),
+                column_id: column_id.to_string(),
+            })?;
+        let transaction_id = self.apply_single_edit_transaction(
+            OxCalcTreeEdit::SetNodeFormulaText {
+                node_id: binding.node_id,
+                formula_text: content.into(),
+            },
+            TransactionRecalcPolicy::ApplyOnly,
+        )?;
+        self.recalculate()?;
+        Ok(TreeWorkspaceTransactionEdit {
+            result: (),
+            transaction_id,
+        })
+    }
+
     pub fn add_table_row(
         &mut self,
         table: &NodeId,
@@ -1010,6 +1066,53 @@ impl TreeWorkspaceSession {
         self.refresh_projection_from_context()?;
         self.last_outcome = None;
         Ok(())
+    }
+
+    pub fn rename_table_transaction(
+        &mut self,
+        table: &NodeId,
+        name: impl Into<String>,
+    ) -> Result<TreeWorkspaceTransactionEdit<()>, TreeWorkspaceSessionError> {
+        let name = name.into().trim().to_string();
+        if name.is_empty() {
+            return Err(TreeWorkspaceSessionError::EmptyTableName {
+                table: table.to_string(),
+            });
+        }
+        let table_node_id = self.tree_node_id(table.as_str())?;
+        let mut table_view = self
+            .context
+            .table_view(&self.workspace_id, table_node_id)?
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTable {
+                table: table.to_string(),
+            })?;
+        if name != table_view.snapshot.table_name
+            && self
+                .context
+                .workspace_table_views(&self.workspace_id)?
+                .iter()
+                .any(|view| view.table_node_id != table_node_id && view.table_name == name)
+        {
+            return Err(TreeWorkspaceSessionError::DuplicateTableName {
+                name,
+                table: table.to_string(),
+            });
+        }
+
+        table_view.snapshot.table_name = name;
+        let transaction_id = self.apply_single_edit_transaction(
+            OxCalcTreeEdit::SetNodeTable {
+                node_id: table_node_id,
+                snapshot: table_view.snapshot,
+            },
+            TransactionRecalcPolicy::ApplyOnly,
+        )?;
+        self.refresh_projection_from_context()?;
+        self.recalculate()?;
+        Ok(TreeWorkspaceTransactionEdit {
+            result: (),
+            transaction_id,
+        })
     }
 
     pub fn add_table_column(

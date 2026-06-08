@@ -246,10 +246,9 @@ impl Dispatcher for HostDispatcher {
                 column_id,
                 content,
             } => self
-                .apply_workspace_edit(
-                    |session| session.edit_table_cell(&table, &row_id, &column_id, content),
-                    WorkspaceEditPublication::Recalculate,
-                )
+                .apply_workspace_transaction_edit(|session| {
+                    session.edit_table_cell_transaction(&table, &row_id, &column_id, content)
+                })
                 .map_or_else(IntentReceipt::rejected, receipt_for_publication),
             WorkspaceIntent::AddTableRow {
                 table,
@@ -288,10 +287,9 @@ impl Dispatcher for HostDispatcher {
                 )
                 .map_or_else(IntentReceipt::rejected, receipt_for_publication),
             WorkspaceIntent::RenameTable { table, name } => self
-                .apply_workspace_edit(
-                    |session| session.rename_table(&table, name),
-                    WorkspaceEditPublication::Recalculate,
-                )
+                .apply_workspace_transaction_edit(|session| {
+                    session.rename_table_transaction(&table, name)
+                })
                 .map_or_else(IntentReceipt::rejected, receipt_for_publication),
             WorkspaceIntent::AddTableColumn {
                 table,

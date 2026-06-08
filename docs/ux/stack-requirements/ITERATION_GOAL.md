@@ -95,8 +95,9 @@ overlay handles.
 ### Gating Engine Workstreams
 
 - [ ] `transaction-scope`: first OxCalc node-edit transaction slice implemented and routed through
-      DnaTreeCalc receipts for add/edit/rename/move/reorder/delete; table/scoped verbs and broader
-      operation families still required.
+      DnaTreeCalc receipts for add/edit/rename/move/reorder/delete plus first table cell-edit and
+      table-rename slice; remaining table row/column/scoped verbs and broader operation families
+      still required.
 - [ ] `revision-graph-retention`: retained parent-linked revision store and cursor; no inverse replay.
 - [ ] `candidate-overlay-handle`: addressable, layerable, non-publishing candidate contexts.
 - [x] `value-epoch-keying`: per-node published-value epoch distinct from input epoch.

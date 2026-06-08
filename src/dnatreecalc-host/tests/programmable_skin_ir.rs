@@ -1474,6 +1474,12 @@ fn programmable_skin_edits_table_cells_and_adds_rows_from_outside_ir() {
 
     let edit = skin.try_edit_table_cell("SalesTable", "row:east", "col:amount", "25");
     assert!(edit.accepted, "{:?}", edit.error);
+    assert!(
+        edit.transaction_id
+            .as_deref()
+            .is_some_and(|id| id.starts_with("transaction:tables:")),
+        "{edit:?}"
+    );
     assert_ne!(
         revision_fingerprint(&skin.state().revision),
         before_revision
@@ -2144,6 +2150,13 @@ fn programmable_skin_renames_table_from_outside_ir() {
 
     let rename = skin.try_rename_table("SalesTable", "Revenue");
     assert!(rename.accepted, "{:?}", rename.error);
+    assert!(
+        rename
+            .transaction_id
+            .as_deref()
+            .is_some_and(|id| id.starts_with("transaction:tables:")),
+        "{rename:?}"
+    );
     let renamed_state = skin.state();
     let renamed_table = renamed_state
         .tables
