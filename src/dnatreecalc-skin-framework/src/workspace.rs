@@ -261,6 +261,8 @@ pub struct DependencyGraphProjection {
     pub descriptors_by_owner: BTreeMap<NodeId, Vec<DependencyDescriptorProjection>>,
     pub edges_by_owner: BTreeMap<NodeId, Vec<DependencyEdgeProjection>>,
     pub reverse_edges: BTreeMap<NodeId, Vec<DependencyEdgeProjection>>,
+    pub reference_resolutions: BTreeMap<String, ReferenceResolutionProjection>,
+    pub reverse_references: BTreeMap<NodeKey, Vec<String>>,
     pub cycle_groups: Vec<Vec<NodeId>>,
     pub diagnostics: Vec<String>,
 }
@@ -287,6 +289,40 @@ pub struct DependencyDescriptorProjection {
     pub carrier_detail: String,
     pub collection: Option<TreeReferenceCollectionProjection>,
     pub requires_rebind_on_structural_change: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReferenceResolutionProjection {
+    pub source_reference_handle: String,
+    pub owner: NodeId,
+    pub owner_key: NodeKey,
+    pub descriptor_ids: Vec<String>,
+    pub token_span: Option<SourceSpanProjection>,
+    pub target: ReferenceTargetProjection,
+    pub primary_kind: DependencyKindProjection,
+    pub requires_rebind_on_structural_change: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SourceSpanProjection {
+    pub start_utf8: usize,
+    pub end_utf8: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReferenceTargetProjection {
+    Node {
+        node: NodeId,
+        key: NodeKey,
+    },
+    Collection {
+        collection: TreeReferenceCollectionProjection,
+        member_keys: Vec<NodeKey>,
+    },
+    External {
+        target: String,
+    },
+    Unresolved,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

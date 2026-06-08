@@ -33,8 +33,9 @@ pub use workspace::{
     CalcRunProjection, CalcRunStateProjection, DependencyDescriptorProjection,
     DependencyEdgeProjection, DependencyGraphProjection, DependencyKindProjection,
     InvalidationReasonProjection, NodeCalcStateProjection, NodeContentKind,
-    NodeInvalidationProjection, NodeValueProjection, NodeView, PhaseKeyProjection, TableProjection,
-    TreeReferenceCollectionFamilyProjection, TreeReferenceCollectionProjection,
+    NodeInvalidationProjection, NodeValueProjection, NodeView, PhaseKeyProjection,
+    ReferenceResolutionProjection, ReferenceTargetProjection, SourceSpanProjection,
+    TableProjection, TreeReferenceCollectionFamilyProjection, TreeReferenceCollectionProjection,
     WorkspaceRevisionProjection, WorkspaceState,
 };
 

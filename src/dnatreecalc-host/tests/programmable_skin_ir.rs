@@ -1,7 +1,8 @@
 mod support;
 
 use dnatreecalc_skin_framework::{
-    CalcRunStateProjection, NodeContentKind, NodeId, NodeValueProjection, WorkspaceRecalcMode,
+    CalcRunStateProjection, NodeContentKind, NodeId, NodeValueProjection,
+    ReferenceTargetProjection, TreeReferenceCollectionFamilyProjection, WorkspaceRecalcMode,
 };
 
 use support::programmable::{Harness, revision_fingerprint};
@@ -279,6 +280,92 @@ fn programmable_skin_structural_edits_recalculate_dependent_formulas() {
     skin.delete("Root.D");
     assert!(skin.state().node(&NodeId::new("Root.D")).is_none());
     skin.assert_scalar("Root.C", "7");
+}
+
+#[test]
+fn programmable_skin_projects_reference_resolution_map_and_reverse_index() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    skin.add_node(Some("Root"), "A", "1");
+    skin.add_node(Some("Root"), "B", "=A+1");
+
+    let state = skin.state();
+    let direct = state
+        .dependencies
+        .reference_resolutions
+        .values()
+        .find(|resolution| resolution.owner.as_str() == "Root.B")
+        .expect("direct reference resolution projects");
+    let ReferenceTargetProjection::Node { node, key } = &direct.target else {
+        panic!(
+            "direct reference should target a node, got {:?}",
+            direct.target
+        );
+    };
+    assert_eq!(node.as_str(), "Root.A");
+    assert_eq!(key, &state.node(&NodeId::new("Root.A")).unwrap().key);
+    assert!(direct.descriptor_ids.iter().any(|id| !id.is_empty()));
+    assert!(
+        state
+            .dependencies
+            .reverse_references
+            .get(key)
+            .is_some_and(|handles| handles.contains(&direct.source_reference_handle))
+    );
+
+    let collection_harness = Harness::from_repo_fixture("children-raw-active");
+    let collection_skin = collection_harness.driver.clone();
+    collection_skin.recalc();
+
+    let collection_state = collection_skin.state();
+    let collection_resolution = collection_state
+        .dependencies
+        .reference_resolutions
+        .values()
+        .find(|resolution| resolution.owner.as_str() == "Root.DirectChildren")
+        .expect("collection reference resolution projects");
+    let ReferenceTargetProjection::Collection {
+        collection,
+        member_keys,
+    } = &collection_resolution.target
+    else {
+        panic!(
+            "children reference should target a collection, got {:?}",
+            collection_resolution.target
+        );
+    };
+    assert_eq!(
+        collection.family,
+        TreeReferenceCollectionFamilyProjection::Children
+    );
+    assert_eq!(
+        collection.members,
+        vec![
+            NodeId::new("Root.DirectChildren.A"),
+            NodeId::new("Root.DirectChildren.B")
+        ]
+    );
+    assert_eq!(
+        member_keys,
+        &collection
+            .members
+            .iter()
+            .map(|member| collection_state.node(member).unwrap().key.clone())
+            .collect::<Vec<_>>()
+    );
+    for member_key in member_keys {
+        assert!(
+            collection_state
+                .dependencies
+                .reverse_references
+                .get(member_key)
+                .is_some_and(|handles| {
+                    handles.contains(&collection_resolution.source_reference_handle)
+                })
+        );
+    }
 }
 
 #[test]

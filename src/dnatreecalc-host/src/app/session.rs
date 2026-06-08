@@ -5,7 +5,8 @@ use dnatreecalc_skin_framework::{
     DependencyEdgeProjection, DependencyGraphProjection, DependencyKindProjection,
     InvalidationReasonProjection, NodeCalcStateProjection, NodeContentKind as FrameworkContentKind,
     NodeId, NodeInvalidationProjection, NodeKey, NodeValueProjection, NodeView, PhaseKeyProjection,
-    TableProjection, TreeReferenceCollectionFamilyProjection, TreeReferenceCollectionProjection,
+    ReferenceResolutionProjection, ReferenceTargetProjection, TableProjection,
+    TreeReferenceCollectionFamilyProjection, TreeReferenceCollectionProjection,
     WorkspaceRevisionProjection, WorkspaceState,
 };
 use oxcalc_core::consumer::OxCalcTreeRunState;
@@ -15,7 +16,8 @@ use oxcalc_core::consumer::{
     OxCalcTreeWorkspaceCreate, OxCalcTreeWorkspaceId, OxCalcTreeWorkspaceSnapshot,
 };
 use oxcalc_core::dependency::{
-    DependencyDescriptorKind, InvalidationReasonKind, TreeReferenceCollectionFamily,
+    DependencyDescriptor, DependencyDescriptorKind, InvalidationReasonKind,
+    TreeReferenceCollectionDependency, TreeReferenceCollectionFamily,
 };
 use oxcalc_core::recalc::NodeCalcState;
 use oxcalc_core::structural::TreeNodeId;
@@ -613,34 +615,7 @@ impl TreeWorkspaceSession {
                         let collection = descriptor
                             .tree_reference_collection
                             .as_ref()
-                            .map(|collection| {
-                                Ok::<TreeReferenceCollectionProjection, TreeWorkspaceSessionError>(
-                                    TreeReferenceCollectionProjection {
-                                        family: tree_collection_family_projection_for(
-                                            collection.family,
-                                        ),
-                                        source_reference_handle: collection.host_ref_handle.clone(),
-                                        base_node: if collection.base_node_id == self.engine_root_id
-                                        {
-                                            None
-                                        } else {
-                                            Some(
-                                                self.node_id_for_tree_node(
-                                                    collection.base_node_id,
-                                                )?,
-                                            )
-                                        },
-                                        membership_version: collection.membership_version.clone(),
-                                        order_version: collection.order_version.clone(),
-                                        members: collection
-                                            .member_node_ids
-                                            .iter()
-                                            .filter(|member| **member != self.engine_root_id)
-                                            .map(|member| self.node_id_for_tree_node(*member))
-                                            .collect::<Result<Vec<_>, _>>()?,
-                                    },
-                                )
-                            })
+                            .map(|collection| self.tree_reference_collection_projection(collection))
                             .transpose()?;
                         Ok(DependencyDescriptorProjection {
                             descriptor_id: descriptor.descriptor_id.clone(),
@@ -710,11 +685,15 @@ impl TreeWorkspaceSession {
                     .collect::<Result<Vec<_>, _>>()
             })
             .collect::<Result<Vec<_>, _>>()?;
+        let (reference_resolutions, reverse_references) =
+            self.reference_resolution_projection(outcome)?;
 
         Ok(DependencyGraphProjection {
             descriptors_by_owner,
             edges_by_owner,
             reverse_edges,
+            reference_resolutions,
+            reverse_references,
             cycle_groups,
             diagnostics: outcome
                 .dependency_graph
@@ -727,6 +706,131 @@ impl TreeWorkspaceSession {
                     )
                 })
                 .collect(),
+        })
+    }
+
+    fn reference_resolution_projection(
+        &self,
+        outcome: &OxCalcTreeCalculationOutcome,
+    ) -> Result<
+        (
+            BTreeMap<String, ReferenceResolutionProjection>,
+            BTreeMap<NodeKey, Vec<String>>,
+        ),
+        TreeWorkspaceSessionError,
+    > {
+        let mut resolutions = BTreeMap::new();
+        for (owner, descriptors) in &outcome.dependency_graph.descriptors_by_owner {
+            if *owner == self.engine_root_id {
+                continue;
+            }
+            let owner_id = self.node_id_for_tree_node(*owner)?;
+            let owner_key = node_key_for_tree_node(*owner);
+            for descriptor in descriptors {
+                let Some(handle) = descriptor.source_reference_handle.as_ref() else {
+                    continue;
+                };
+                let target = self.reference_target_projection(descriptor)?;
+                let entry = resolutions.entry(handle.clone()).or_insert_with(|| {
+                    ReferenceResolutionProjection {
+                        source_reference_handle: handle.clone(),
+                        owner: owner_id.clone(),
+                        owner_key: owner_key.clone(),
+                        descriptor_ids: Vec::new(),
+                        token_span: None,
+                        target: ReferenceTargetProjection::Unresolved,
+                        primary_kind: dependency_kind_projection_for(descriptor.kind),
+                        requires_rebind_on_structural_change: false,
+                    }
+                });
+                if !entry.descriptor_ids.contains(&descriptor.descriptor_id) {
+                    entry.descriptor_ids.push(descriptor.descriptor_id.clone());
+                }
+                if should_replace_reference_target(&entry.target, &target) {
+                    entry.target = target;
+                    entry.primary_kind = dependency_kind_projection_for(descriptor.kind);
+                }
+                entry.requires_rebind_on_structural_change |=
+                    descriptor.requires_rebind_on_structural_change;
+            }
+        }
+
+        let mut reverse_references = BTreeMap::<NodeKey, BTreeSet<String>>::new();
+        for (handle, resolution) in &resolutions {
+            for target_key in reference_target_keys(&resolution.target) {
+                reverse_references
+                    .entry(target_key)
+                    .or_default()
+                    .insert(handle.clone());
+            }
+        }
+
+        Ok((
+            resolutions,
+            reverse_references
+                .into_iter()
+                .map(|(node, handles)| (node, handles.into_iter().collect()))
+                .collect(),
+        ))
+    }
+
+    fn reference_target_projection(
+        &self,
+        descriptor: &DependencyDescriptor,
+    ) -> Result<ReferenceTargetProjection, TreeWorkspaceSessionError> {
+        if let Some(collection) = descriptor.tree_reference_collection.as_ref() {
+            let collection_projection = self.tree_reference_collection_projection(collection)?;
+            let member_keys = collection
+                .member_node_ids
+                .iter()
+                .filter(|member| **member != self.engine_root_id)
+                .map(|member| node_key_for_tree_node(*member))
+                .collect();
+            return Ok(ReferenceTargetProjection::Collection {
+                collection: collection_projection,
+                member_keys,
+            });
+        }
+
+        if let Some(target) = descriptor
+            .target_node_id
+            .filter(|target| *target != self.engine_root_id)
+        {
+            return Ok(ReferenceTargetProjection::Node {
+                node: self.node_id_for_tree_node(target)?,
+                key: node_key_for_tree_node(target),
+            });
+        }
+
+        if let Some(target) = descriptor.workspace_target.as_ref() {
+            return Ok(ReferenceTargetProjection::External {
+                target: target.target_node_handle.clone(),
+            });
+        }
+
+        Ok(ReferenceTargetProjection::Unresolved)
+    }
+
+    fn tree_reference_collection_projection(
+        &self,
+        collection: &TreeReferenceCollectionDependency,
+    ) -> Result<TreeReferenceCollectionProjection, TreeWorkspaceSessionError> {
+        Ok(TreeReferenceCollectionProjection {
+            family: tree_collection_family_projection_for(collection.family),
+            source_reference_handle: collection.host_ref_handle.clone(),
+            base_node: if collection.base_node_id == self.engine_root_id {
+                None
+            } else {
+                Some(self.node_id_for_tree_node(collection.base_node_id)?)
+            },
+            membership_version: collection.membership_version.clone(),
+            order_version: collection.order_version.clone(),
+            members: collection
+                .member_node_ids
+                .iter()
+                .filter(|member| **member != self.engine_root_id)
+                .map(|member| self.node_id_for_tree_node(*member))
+                .collect::<Result<Vec<_>, _>>()?,
         })
     }
 
@@ -1046,6 +1150,29 @@ fn calc_state_projection_for(calc_state: NodeCalcState) -> NodeCalcStateProjecti
 
 fn node_key_for_tree_node(tree_node_id: TreeNodeId) -> NodeKey {
     NodeKey::from_engine_id(tree_node_id.0)
+}
+
+fn should_replace_reference_target(
+    current: &ReferenceTargetProjection,
+    candidate: &ReferenceTargetProjection,
+) -> bool {
+    match (current, candidate) {
+        (ReferenceTargetProjection::Collection { .. }, _) => false,
+        (_, ReferenceTargetProjection::Collection { .. }) => true,
+        (ReferenceTargetProjection::Unresolved, ReferenceTargetProjection::Unresolved) => false,
+        (ReferenceTargetProjection::Unresolved, _) => true,
+        _ => false,
+    }
+}
+
+fn reference_target_keys(target: &ReferenceTargetProjection) -> Vec<NodeKey> {
+    match target {
+        ReferenceTargetProjection::Node { key, .. } => vec![key.clone()],
+        ReferenceTargetProjection::Collection { member_keys, .. } => member_keys.clone(),
+        ReferenceTargetProjection::External { .. } | ReferenceTargetProjection::Unresolved => {
+            Vec::new()
+        }
+    }
 }
 
 fn dependency_kind_projection_for(kind: DependencyDescriptorKind) -> DependencyKindProjection {
