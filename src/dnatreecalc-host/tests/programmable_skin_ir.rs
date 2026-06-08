@@ -3,7 +3,7 @@ mod support;
 use dnatreecalc_skin_framework::{
     CalcRunStateProjection, NodeContentKind, NodeId, NodeValueProjection,
     ReferenceTargetProjection, RuntimeEffectFamilyProjection, RuntimeOverlayKindProjection,
-    TableColumnBodyProjection, TableDependencyFactKindProjection,
+    TableCellRegionProjection, TableColumnBodyProjection, TableDependencyFactKindProjection,
     TableDependencyFactStatusProjection, TreeReferenceCollectionFamilyProjection,
     WorkspaceDeltaChange, WorkspaceRecalcMode,
 };
@@ -159,6 +159,44 @@ fn programmable_skin_selects_table_cells_without_recalculating() {
     );
     assert_eq!(skin.state().projection_seq, before_seq);
     assert_eq!(skin.state().last_run, before_run);
+    let body_detail = skin
+        .active_table_cell_detail()
+        .expect("body table cell has active detail");
+    assert_eq!(body_detail.table, NodeId::new("SalesTable"));
+    assert_eq!(body_detail.table_id, "tree-table:sales");
+    assert_eq!(body_detail.table_name, "SalesTable");
+    assert_eq!(body_detail.row_id.as_deref(), Some("row:east"));
+    assert_eq!(body_detail.row_ordinal, Some(2));
+    assert_eq!(body_detail.column_id, "col:amount");
+    assert_eq!(body_detail.column_name, "Amount");
+    assert_eq!(body_detail.column_ordinal, 2);
+    assert_eq!(body_detail.region, TableCellRegionProjection::Body);
+    let body_state = skin.state();
+    let body_table = body_state
+        .tables
+        .get(&NodeId::new("SalesTable"))
+        .expect("SalesTable projects");
+    let body_column_index = body_table
+        .columns
+        .iter()
+        .position(|column| column.column_id == "col:amount")
+        .expect("Amount column projects");
+    let body_row_index = body_table
+        .rows
+        .iter()
+        .position(|row| row.row_id == "row:east")
+        .expect("East row projects");
+    let body_cell = body_table
+        .cells
+        .as_ref()
+        .expect("SalesTable cells project")
+        .body_rows
+        .get(body_row_index)
+        .and_then(|row| row.get(body_column_index))
+        .and_then(Option::as_ref)
+        .expect("East Amount cell projects");
+    assert_eq!(body_detail.node_key, body_cell.node_key);
+    assert_eq!(body_detail.value.display_text(), "20");
 
     let totals_select = skin.try_select_table_cell("SalesTable", None, "col:amount");
     assert!(totals_select.accepted, "{:?}", totals_select.error);
@@ -166,6 +204,38 @@ fn programmable_skin_selects_table_cells_without_recalculating() {
         skin.selected_table_cell(),
         Some(("SalesTable".to_string(), None, "col:amount".to_string()))
     );
+    let totals_detail = skin
+        .active_table_cell_detail()
+        .expect("totals table cell has active detail");
+    assert_eq!(totals_detail.table, NodeId::new("SalesTable"));
+    assert_eq!(totals_detail.table_id, "tree-table:sales");
+    assert_eq!(totals_detail.table_name, "SalesTable");
+    assert_eq!(totals_detail.row_id, None);
+    assert_eq!(totals_detail.row_ordinal, None);
+    assert_eq!(totals_detail.column_id, "col:amount");
+    assert_eq!(totals_detail.column_name, "Amount");
+    assert_eq!(totals_detail.column_ordinal, 2);
+    assert_eq!(totals_detail.region, TableCellRegionProjection::Totals);
+    let totals_state = skin.state();
+    let totals_table = totals_state
+        .tables
+        .get(&NodeId::new("SalesTable"))
+        .expect("SalesTable projects");
+    let totals_column_index = totals_table
+        .columns
+        .iter()
+        .position(|column| column.column_id == "col:amount")
+        .expect("Amount column projects");
+    let totals_cell = totals_table
+        .cells
+        .as_ref()
+        .expect("SalesTable cells project")
+        .totals_row
+        .get(totals_column_index)
+        .and_then(Option::as_ref)
+        .expect("Amount totals cell projects");
+    assert_eq!(totals_detail.node_key, totals_cell.node_key);
+    assert_eq!(totals_detail.value.display_text(), "60");
 
     let missing_row = skin.try_select_table_cell("SalesTable", Some("row:missing"), "col:amount");
     assert!(!missing_row.accepted, "{missing_row:?}");
@@ -177,6 +247,7 @@ fn programmable_skin_selects_table_cells_without_recalculating() {
     skin.select(Some("SalesTable"));
     assert_eq!(skin.selected(), Some("SalesTable".to_string()));
     assert_eq!(skin.selected_table_cell(), None);
+    assert!(skin.active_table_cell_detail().is_none());
 }
 
 #[test]

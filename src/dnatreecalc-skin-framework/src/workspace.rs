@@ -75,6 +75,57 @@ impl WorkspaceState {
                 .unwrap_or_default(),
         })
     }
+
+    #[must_use]
+    pub fn active_table_cell_detail(
+        &self,
+        selection: &SelectionState,
+    ) -> Option<ActiveTableCellDetailProjection> {
+        let selected = selection.table_cell.as_ref()?;
+        let table = self.tables.get(&selected.table)?;
+        let cells = table.cells.as_ref()?;
+        let column_index = table
+            .columns
+            .iter()
+            .position(|column| column.column_id == selected.column_id)?;
+        let column = &table.columns[column_index];
+
+        let (region, row_ordinal, cell) = match selected.row_id.as_deref() {
+            Some(row_id) => {
+                let row_index = table.rows.iter().position(|row| row.row_id == row_id)?;
+                let row = &table.rows[row_index];
+                let cell = cells
+                    .body_rows
+                    .get(row_index)?
+                    .get(column_index)?
+                    .as_ref()?;
+                (TableCellRegionProjection::Body, Some(row.ordinal), cell)
+            }
+            None => {
+                let cell = cells.totals_row.get(column_index)?.as_ref()?;
+                (TableCellRegionProjection::Totals, None, cell)
+            }
+        };
+        if cell.row_id.as_deref() != selected.row_id.as_deref()
+            || cell.column_id != selected.column_id
+        {
+            return None;
+        }
+
+        Some(ActiveTableCellDetailProjection {
+            table: selected.table.clone(),
+            table_id: table.table_id.clone(),
+            table_name: table.table_name.clone(),
+            row_id: cell.row_id.clone(),
+            row_ordinal,
+            column_id: column.column_id.clone(),
+            column_name: column.name.clone(),
+            column_ordinal: column.ordinal,
+            region,
+            node_key: cell.node_key.clone(),
+            value: cell.value.clone(),
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -88,6 +139,27 @@ pub struct ActiveNodeDetailProjection {
     pub calc_state: Option<NodeCalcStateProjection>,
     pub outgoing_references: Vec<ReferenceResolutionProjection>,
     pub incoming_reference_handles: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActiveTableCellDetailProjection {
+    pub table: NodeId,
+    pub table_id: String,
+    pub table_name: String,
+    pub row_id: Option<String>,
+    pub row_ordinal: Option<usize>,
+    pub column_id: String,
+    pub column_name: String,
+    pub column_ordinal: u32,
+    pub region: TableCellRegionProjection,
+    pub node_key: NodeKey,
+    pub value: NodeValueProjection,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TableCellRegionProjection {
+    Body,
+    Totals,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

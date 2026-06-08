@@ -5,11 +5,11 @@ use std::sync::{Arc, Mutex};
 use dnatreecalc_host::app::{HostDispatcher, TreeWorkspaceSession};
 use dnatreecalc_host::model::{WorkspaceFixture, WorkspaceModel};
 use dnatreecalc_skin_framework::{
-    ActiveNodeDetailProjection, Dispatcher, ErasedSkinContext, IntentError, IntentReceipt, NodeId,
-    RegisteredSkin, SelectionState, SharedSkinState, SharedSkinStateHandle, SkinCapabilities,
-    SkinCategory, SkinContext, SkinHandle, SkinId, SkinManifest, SkinState, TableCellInput,
-    TableRowInput, WorkspaceIntent, WorkspaceRecalcMode, WorkspaceRevisionProjection,
-    WorkspaceSkin, WorkspaceState,
+    ActiveNodeDetailProjection, ActiveTableCellDetailProjection, Dispatcher, ErasedSkinContext,
+    IntentError, IntentReceipt, NodeId, RegisteredSkin, SelectionState, SharedSkinState,
+    SharedSkinStateHandle, SkinCapabilities, SkinCategory, SkinContext, SkinHandle, SkinId,
+    SkinManifest, SkinState, TableCellInput, TableRowInput, WorkspaceIntent, WorkspaceRecalcMode,
+    WorkspaceRevisionProjection, WorkspaceSkin, WorkspaceState,
 };
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -554,6 +554,12 @@ impl ProgrammableDriver {
         self.workspace
             .get_untracked()
             .active_node_detail(&self.selection.get_untracked())
+    }
+
+    pub fn active_table_cell_detail(&self) -> Option<ActiveTableCellDetailProjection> {
+        self.workspace
+            .get_untracked()
+            .active_table_cell_detail(&self.selection.get_untracked())
     }
 
     pub fn set_recalc_mode(&self, mode: WorkspaceRecalcMode) {
