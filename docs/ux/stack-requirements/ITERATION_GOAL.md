@@ -104,8 +104,9 @@ overlay handles.
       mutation or evaluation. First joined node-content legality-impact preview now combines that
       dry-bind verdict with OxCalc committed-graph invalidation planning in Skin IR. Table body and
       totals formula edit previews now dry-bind through OxCalc's table formula context and project as
-      typed table subjects in Skin IR. Profile-violation taxonomy plus broader scoped/new-column and
-      legality-impact preview coverage remain required before closing the item.
+      typed table subjects in Skin IR. Profile violations now have a typed `FunctionUnavailable`
+      taxonomy from OxFml capability overlays and are threaded through OxCalc and Skin IR. Broader
+      scoped/new-column and legality-impact preview coverage remain required before closing the item.
 
 ### Gating Engine Workstreams
 

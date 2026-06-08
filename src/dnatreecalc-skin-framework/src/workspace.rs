@@ -695,7 +695,17 @@ pub struct FormulaBindPreviewDiagnosticProjection {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FormulaBindPreviewProfileViolationKindProjection {
+    FunctionUnavailable {
+        function_id: String,
+        function_name: String,
+        reason: String,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FormulaBindPreviewProfileViolationProjection {
+    pub kind: FormulaBindPreviewProfileViolationKindProjection,
     pub feature: String,
     pub message: String,
     pub span: SourceSpanProjection,

@@ -8,17 +8,18 @@ use dnatreecalc_skin_framework::{
     DerivationTemplateHoleProjection, DerivationTemplateSelectionProjection,
     DerivationTraceProjection, EffectiveFormatProjection, FormatSourceProjection,
     FormulaBindPreviewDiagnosticProjection, FormulaBindPreviewDiagnosticStage,
-    FormulaBindPreviewInputKind, FormulaBindPreviewProfileViolationProjection,
-    FormulaBindPreviewProjection, InvalidationReasonProjection,
-    MutationImpactBlockedReasonProjection, MutationImpactIntentProjection,
-    MutationImpactProjection, NodeCalcStateProjection, NodeContentKind as FrameworkContentKind,
-    NodeId, NodeInvalidationProjection, NodeKey, NodeValueProjection, NodeView, PhaseKeyProjection,
-    RecalcPlanInvalidationProjection, RecalcPlanMutation, RecalcPlanProjection,
-    ReferenceResolutionProjection, ReferenceTargetProjection, RuntimeEffectFamilyProjection,
-    RuntimeEffectProjection, RuntimeOverlayKindProjection, RuntimeOverlayProjection,
-    SourceSpanProjection, TableAnchorProjection, TableCellInput, TableCellProjection,
-    TableCellRegionProjection, TableCellsProjection, TableColumnBodyProjection,
-    TableColumnProjection, TableDependencyFactBlockerProjection, TableDependencyFactKindProjection,
+    FormulaBindPreviewInputKind, FormulaBindPreviewProfileViolationKindProjection,
+    FormulaBindPreviewProfileViolationProjection, FormulaBindPreviewProjection,
+    InvalidationReasonProjection, MutationImpactBlockedReasonProjection,
+    MutationImpactIntentProjection, MutationImpactProjection, NodeCalcStateProjection,
+    NodeContentKind as FrameworkContentKind, NodeId, NodeInvalidationProjection, NodeKey,
+    NodeValueProjection, NodeView, PhaseKeyProjection, RecalcPlanInvalidationProjection,
+    RecalcPlanMutation, RecalcPlanProjection, ReferenceResolutionProjection,
+    ReferenceTargetProjection, RuntimeEffectFamilyProjection, RuntimeEffectProjection,
+    RuntimeOverlayKindProjection, RuntimeOverlayProjection, SourceSpanProjection,
+    TableAnchorProjection, TableCellInput, TableCellProjection, TableCellRegionProjection,
+    TableCellsProjection, TableColumnBodyProjection, TableColumnProjection,
+    TableDependencyFactBlockerProjection, TableDependencyFactKindProjection,
     TableDependencyFactProjection, TableDependencyFactStatusProjection,
     TableFormulaBindPreviewProjection, TableFormulaMetadataProjection, TableProjection,
     TableRowInput, TableRowProjection, TreeReferenceCollectionFamilyProjection,
@@ -28,10 +29,11 @@ use oxcalc_core::consumer::OxCalcTreeRunState;
 use oxcalc_core::consumer::{
     OxCalcTreeCalculationOutcome, OxCalcTreeContext, OxCalcTreeContextError,
     OxCalcTreeContextOptions, OxCalcTreeDryBindDiagnosticStage, OxCalcTreeDryBindInputKind,
-    OxCalcTreeDryBindVerdict, OxCalcTreeEdit, OxCalcTreeEditResult, OxCalcTreeEditTransaction,
-    OxCalcTreeHostCapabilitySnapshot, OxCalcTreeNodeCreate, OxCalcTreeNodeView,
-    OxCalcTreePreviewMutation, OxCalcTreeRuntimePolicy, OxCalcTreeWorkspaceCreate,
-    OxCalcTreeWorkspaceId, OxCalcTreeWorkspaceSnapshot, TransactionRecalcPolicy,
+    OxCalcTreeDryBindProfileViolationKind, OxCalcTreeDryBindVerdict, OxCalcTreeEdit,
+    OxCalcTreeEditResult, OxCalcTreeEditTransaction, OxCalcTreeHostCapabilitySnapshot,
+    OxCalcTreeNodeCreate, OxCalcTreeNodeView, OxCalcTreePreviewMutation, OxCalcTreeRuntimePolicy,
+    OxCalcTreeWorkspaceCreate, OxCalcTreeWorkspaceId, OxCalcTreeWorkspaceSnapshot,
+    TransactionRecalcPolicy,
 };
 use oxcalc_core::coordinator::{RuntimeEffect, RuntimeEffectFamily};
 use oxcalc_core::dependency::{
@@ -2986,6 +2988,17 @@ fn formula_bind_preview_from_oxcalc_verdict(
             .profile_violations
             .into_iter()
             .map(|violation| FormulaBindPreviewProfileViolationProjection {
+                kind: match violation.kind {
+                    OxCalcTreeDryBindProfileViolationKind::FunctionUnavailable {
+                        function_id,
+                        function_name,
+                        reason,
+                    } => FormulaBindPreviewProfileViolationKindProjection::FunctionUnavailable {
+                        function_id,
+                        function_name,
+                        reason,
+                    },
+                },
                 feature: violation.feature,
                 message: violation.message,
                 span: SourceSpanProjection {

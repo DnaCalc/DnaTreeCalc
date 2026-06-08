@@ -49,7 +49,6 @@ First node-formula dry-bind slice is now available across the stack:
 
 Still open before this handover can be closed:
 
-- typed profile-violation taxonomy and non-empty profile-gating evidence;
 - scoped authoring subjects and table new-column preflight subjects beyond existing body/totals
   formula edits;
 - broader legality-impact preview coverage for structural, table, scoped, and collision/orphan cases.
@@ -67,3 +66,16 @@ Existing table body and totals formula edit previews now run through the same dr
   violations.
 - Programmable Skin IR tests exercise valid body current-row syntax, valid totals syntax, syntax
   diagnostics, and no workspace mutation.
+
+## 2026-06-09 Profile Taxonomy Update
+
+The first typed profile-violation taxonomy slice is now present:
+
+- OxFml emits `RuntimeDryBindProfileViolationKind::FunctionUnavailable` when a dry-bound formula
+  calls a function denied by the active `CapabilityOverlay`.
+- The violation includes function id, function name, reason, stable compatibility feature string,
+  message, and callee span.
+- OxCalc maps that into `OxCalcTreeDryBindProfileViolationKind::FunctionUnavailable`.
+- DnaTreeCalc maps it into `FormulaBindPreviewProfileViolationKindProjection::FunctionUnavailable`
+  in the Skin IR projection.
+- OxFml `authored_input_tests` include non-empty profile-gating evidence for a denied `SUM`.
