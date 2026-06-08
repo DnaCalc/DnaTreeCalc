@@ -82,12 +82,13 @@ overlay handles.
       reference-collection subjects, with host-owned projection expansion and Skin IR tests; mutating
       multi-target verbs remain gated on transaction scope.
 - [ ] Add edit transaction ids with real semantics once OxCalc transaction scope exists.
-- [ ] Spike OxCalc `transaction-scope`: batch edit boundary, rollback, schedule once, publish once.
+- [x] Spike OxCalc `transaction-scope`: go for an OxCalc-owned Stage 1 batch edit API with rollback
+      and optional recalc/publish-once; implementation remains open.
 - [ ] Add dry-bind and recalc-plan preview only after OxFml/OxCalc readiness is confirmed.
 
 ### Gating Engine Workstreams
 
-- [ ] `transaction-scope`: design spike, then engine implementation if go.
+- [ ] `transaction-scope`: design spike complete; engine implementation still required.
 - [ ] `revision-graph-retention`: retained parent-linked revision store and cursor; no inverse replay.
 - [ ] `candidate-overlay-handle`: addressable, layerable, non-publishing candidate contexts.
 - [x] `value-epoch-keying`: per-node published-value epoch distinct from input epoch.
