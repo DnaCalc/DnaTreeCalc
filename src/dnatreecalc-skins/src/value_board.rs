@@ -1,9 +1,10 @@
 use dnatreecalc_skin_framework::{
-    ActiveSelectionDetailProjection, ActiveTableCellDetailProjection, Dispatcher, NodeId,
-    NodeValueProjection, ReferenceResolutionProjection, ReferenceTargetProjection, SelectionState,
-    SkinCapabilities, SkinCategory, SkinContext, SkinHandle, SkinId, SkinManifest, SkinState,
-    TableCellEditabilityProjection, TableCellInput, TableColumnBodyProjection, TableProjection,
-    TableRowInput, WorkspaceIntent, WorkspaceSkin, WorkspaceState,
+    ActiveSelectionDetailProjection, ActiveTableCellDetailProjection, CalcRunStateProjection,
+    Dispatcher, NodeId, NodeKey, NodeValueProjection, ReferenceResolutionProjection,
+    ReferenceTargetProjection, SelectionState, SkinCapabilities, SkinCategory, SkinContext,
+    SkinHandle, SkinId, SkinManifest, SkinState, TableCellEditabilityProjection, TableCellInput,
+    TableColumnBodyProjection, TableProjection, TableRowInput, WorkspaceIntent, WorkspaceSkin,
+    WorkspaceState,
 };
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -240,6 +241,7 @@ fn active_selection_detail_rows(
             if let Some(handles) = handle_summary(detail.incoming_reference_handles) {
                 rows.push(("in handles", handles));
             }
+            append_run_context_rows(&mut rows, workspace, &detail.node_key);
             Some(rows)
         }
         ActiveSelectionDetailProjection::TableCell(detail) => {
@@ -282,8 +284,63 @@ fn active_selection_detail_rows(
             if let Some(handles) = handle_summary(detail.incoming_reference_handles) {
                 rows.push(("in handles", handles));
             }
+            append_run_context_rows(&mut rows, workspace, &detail.node_key);
             Some(rows)
         }
+    }
+}
+
+fn append_run_context_rows(
+    rows: &mut Vec<(&'static str, String)>,
+    workspace: &WorkspaceState,
+    node_key: &NodeKey,
+) {
+    let Some(last_run) = workspace.last_run.as_ref() else {
+        return;
+    };
+
+    rows.push((
+        "run state",
+        calc_run_state_label(last_run.run_state).to_string(),
+    ));
+    if let Some(invalidation) = last_run
+        .invalidated_nodes
+        .iter()
+        .find(|invalidation| &invalidation.node_key == node_key)
+    {
+        rows.push(("last invalidated", "true".to_string()));
+        rows.push(("last state", invalidation.calc_state.to_string()));
+        rows.push(("last rebind", invalidation.requires_rebind.to_string()));
+        if let Some(reasons) = handle_summary(
+            invalidation
+                .reasons
+                .iter()
+                .map(|reason| reason.stable_id().to_string()),
+        ) {
+            rows.push(("last reasons", reasons));
+        }
+    } else {
+        rows.push(("last invalidated", "false".to_string()));
+    }
+
+    let traces = last_run
+        .derivation_traces
+        .iter()
+        .filter(|trace| &trace.owner_key == node_key)
+        .collect::<Vec<_>>();
+    rows.push(("trace count", traces.len().to_string()));
+    if let Some(trace_ids) =
+        handle_summary(traces.iter().map(|trace| trace.formula_stable_id.clone()))
+    {
+        rows.push(("trace formulas", trace_ids));
+    }
+}
+
+fn calc_run_state_label(state: CalcRunStateProjection) -> &'static str {
+    match state {
+        CalcRunStateProjection::Published => "published",
+        CalcRunStateProjection::VerifiedClean => "verified_clean",
+        CalcRunStateProjection::Rejected => "rejected",
     }
 }
 
@@ -1475,8 +1532,10 @@ fn table_totals_row_visible_intent(table: &str, visible: bool) -> WorkspaceInten
 mod tests {
     use super::*;
     use dnatreecalc_skin_framework::{
-        DependencyGraphProjection, DependencyKindProjection, NodeCalcStateProjection,
-        NodeContentKind, NodeKey, NodeView, ReferenceResolutionProjection,
+        CalcRunProjection, CalcRunStateProjection, DependencyGraphProjection,
+        DependencyKindProjection, DerivationTemplateSelectionProjection, DerivationTraceProjection,
+        InvalidationReasonProjection, NodeCalcStateProjection, NodeContentKind,
+        NodeInvalidationProjection, NodeKey, NodeView, ReferenceResolutionProjection,
         ReferenceTargetProjection, SourceSpanProjection, TableAnchorProjection,
         TableCellProjection, TableCellRegionProjection, TableCellsProjection,
         TableColumnProjection, TableFormulaMetadataProjection, TableRowProjection,
@@ -1688,6 +1747,9 @@ mod tests {
                 ("refs out", "0".to_string()),
                 ("refs in", "1".to_string()),
                 ("in handles", "ref:Root.B:A".to_string()),
+                ("run state", "published".to_string()),
+                ("last invalidated", "false".to_string()),
+                ("trace count", "0".to_string()),
             ])
         );
 
@@ -1718,6 +1780,13 @@ mod tests {
                     "ref:Root.B:A -> node Root.A [node:root:a]".to_string(),
                 ),
                 ("out spans", "ref:Root.B:A 1..2".to_string()),
+                ("run state", "published".to_string()),
+                ("last invalidated", "true".to_string()),
+                ("last state", "verified_clean".to_string()),
+                ("last rebind", "false".to_string()),
+                ("last reasons", "dependency_added".to_string()),
+                ("trace count", "1".to_string()),
+                ("trace formulas", "formula:Root.B:v1".to_string()),
             ])
         );
     }
@@ -1904,6 +1973,44 @@ mod tests {
 
         WorkspaceState {
             nodes,
+            last_run: Some(CalcRunProjection {
+                run_state: CalcRunStateProjection::Published,
+                evaluation_order: vec![NodeId::new("Root.A"), NodeId::new("Root.B")],
+                runtime_effect_count: 0,
+                runtime_effects: vec![],
+                runtime_overlay_count: 0,
+                runtime_overlays: vec![],
+                derivation_trace_count: 1,
+                derivation_traces: vec![DerivationTraceProjection {
+                    trace_schema_id: "trace-schema:v1".to_string(),
+                    owner: NodeId::new("Root.B"),
+                    owner_key: NodeKey::new("node:root:b"),
+                    formula_artifact_id: "formula:Root.B".to_string(),
+                    bind_artifact_id: Some("bind:Root.B".to_string()),
+                    formula_stable_id: "formula:Root.B:v1".to_string(),
+                    trace_mode: "standard".to_string(),
+                    template_selection: DerivationTemplateSelectionProjection {
+                        prepared_formula_key: "prepared:Root.B".to_string(),
+                        shape_key: "shape:scalar".to_string(),
+                        dispatch_skeleton_key: "dispatch:Root.B".to_string(),
+                        plan_template_key: "plan:Root.B".to_string(),
+                        template_holes: vec![],
+                    },
+                    hole_bindings: vec![],
+                    sub_invocation_tree: vec![],
+                    kernel_returned_value: "4".to_string(),
+                    oxfml_trace_events: vec![],
+                }],
+                invalidated_nodes: vec![NodeInvalidationProjection {
+                    node: NodeId::new("Root.B"),
+                    node_key: NodeKey::new("node:root:b"),
+                    calc_state: NodeCalcStateProjection::VerifiedClean,
+                    requires_rebind: false,
+                    reasons: vec![InvalidationReasonProjection::DependencyAdded],
+                }],
+                phase_timings_micros: BTreeMap::new(),
+                diagnostics: vec![],
+            }),
             dependencies: DependencyGraphProjection {
                 reference_resolutions,
                 reverse_references,
