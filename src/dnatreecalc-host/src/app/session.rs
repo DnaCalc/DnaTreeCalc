@@ -730,6 +730,111 @@ impl TreeWorkspaceSession {
         Ok(())
     }
 
+    pub fn add_table_formula_column(
+        &mut self,
+        table: &NodeId,
+        column_id: impl Into<String>,
+        name: impl Into<String>,
+        formula_text: impl Into<String>,
+    ) -> Result<(), TreeWorkspaceSessionError> {
+        let column_id = column_id.into();
+        let name = name.into();
+        let formula_text = formula_text.into();
+        let table_node_id = self.tree_node_id(table.as_str())?;
+        let mut table_view = self
+            .context
+            .table_view(&self.workspace_id, table_node_id)?
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTable {
+                table: table.to_string(),
+            })?;
+        if table_view
+            .snapshot
+            .columns
+            .iter()
+            .any(|column| column.column_id == column_id)
+        {
+            return Err(TreeWorkspaceSessionError::DuplicateTableColumn {
+                table: table.to_string(),
+                column_id,
+            });
+        }
+
+        let column_ordinal = table_view
+            .snapshot
+            .columns
+            .iter()
+            .map(|column| column.ordinal)
+            .max()
+            .unwrap_or(0)
+            .saturating_add(1);
+        table_view
+            .snapshot
+            .columns
+            .push(TreeCalcTableColumnSnapshot {
+                column_id: column_id.clone(),
+                column_name: name,
+                ordinal: column_ordinal,
+                body_metadata: TreeCalcTableColumnBodyMetadata::Formula(
+                    table_formula_metadata_for_column(table.as_str(), &column_id, formula_text),
+                ),
+                totals_metadata: None,
+            });
+
+        table_view.snapshot.column_identity_version = bumped_table_version(
+            &table_view.snapshot.column_identity_version,
+            "formula-column",
+            &column_id,
+        );
+        self.context
+            .set_node_table(&self.workspace_id, table_node_id, table_view.snapshot)?;
+        self.refresh_projection_from_context()?;
+        self.last_outcome = None;
+        Ok(())
+    }
+
+    pub fn edit_table_column_formula(
+        &mut self,
+        table: &NodeId,
+        column_id: &str,
+        formula_text: impl Into<String>,
+    ) -> Result<(), TreeWorkspaceSessionError> {
+        let table_node_id = self.tree_node_id(table.as_str())?;
+        let mut table_view = self
+            .context
+            .table_view(&self.workspace_id, table_node_id)?
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTable {
+                table: table.to_string(),
+            })?;
+        let column = table_view
+            .snapshot
+            .columns
+            .iter_mut()
+            .find(|column| column.column_id == column_id)
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTableColumn {
+                table: table.to_string(),
+                column_id: column_id.to_string(),
+            })?;
+        let TreeCalcTableColumnBodyMetadata::Formula(formula) = &mut column.body_metadata else {
+            return Err(TreeWorkspaceSessionError::ConstantTableColumnFormulaEdit {
+                table: table.to_string(),
+                column_id: column_id.to_string(),
+            });
+        };
+        formula.formula_text = formula_text.into();
+        formula.formula_text_version = bumped_formula_text_version(&formula.formula_text_version);
+
+        table_view.snapshot.column_identity_version = bumped_table_version(
+            &table_view.snapshot.column_identity_version,
+            "formula-edited",
+            column_id,
+        );
+        self.context
+            .set_node_table(&self.workspace_id, table_node_id, table_view.snapshot)?;
+        self.refresh_projection_from_context()?;
+        self.last_outcome = None;
+        Ok(())
+    }
+
     pub fn delete_table_column(
         &mut self,
         table: &NodeId,
@@ -751,16 +856,6 @@ impl TreeWorkspaceSession {
                 table: table.to_string(),
                 column_id: column_id.to_string(),
             })?;
-        if matches!(
-            table_view.snapshot.columns[column_index].body_metadata,
-            TreeCalcTableColumnBodyMetadata::Formula(_)
-        ) {
-            return Err(TreeWorkspaceSessionError::FormulaTableColumnEdit {
-                table: table.to_string(),
-                column_id: column_id.to_string(),
-            });
-        }
-
         let removed_body_node_ids = table_view
             .snapshot
             .body_cell_nodes
@@ -1521,6 +1616,36 @@ fn bumped_table_version(current: &str, kind: &str, id: &str) -> String {
     format!("{current};{kind}+={id}")
 }
 
+fn bumped_formula_text_version(current: &str) -> String {
+    let next = parse_formula_text_version(current).saturating_add(1);
+    format!("v{next}")
+}
+
+fn table_formula_metadata_for_column(
+    table_path: &str,
+    column_id: &str,
+    formula_text: String,
+) -> TreeCalcTableFormulaMetadata {
+    let identity = format!(
+        "{}.Columns.{}",
+        table_formula_identity_segment(table_path),
+        table_formula_identity_segment(column_id)
+    );
+    TreeCalcTableFormulaMetadata {
+        formula_artifact_id: format!("formula:{identity}"),
+        bind_artifact_id: Some(format!("bind:{identity}")),
+        formula_text_version: "v1".to_string(),
+        formula_text,
+    }
+}
+
+fn table_formula_identity_segment(value: &str) -> String {
+    value
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' })
+        .collect()
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum TreeWorkspaceSessionError {
     #[error(transparent)]
@@ -1555,10 +1680,8 @@ pub enum TreeWorkspaceSessionError {
         "table formula column {column_id} in table {table} is calculated, not directly editable"
     )]
     FormulaTableCellEdit { table: String, column_id: String },
-    #[error(
-        "table formula column {column_id} in table {table} is calculated, not structurally editable in this skin scope"
-    )]
-    FormulaTableColumnEdit { table: String, column_id: String },
+    #[error("table constant column {column_id} in table {table} does not carry formula metadata")]
+    ConstantTableColumnFormulaEdit { table: String, column_id: String },
     #[error("OxCalc context projection is out of sync for {node}")]
     ProjectionOutOfSync { node: String },
 }

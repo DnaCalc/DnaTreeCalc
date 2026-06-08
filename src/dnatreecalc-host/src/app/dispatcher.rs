@@ -278,6 +278,35 @@ impl Dispatcher for HostDispatcher {
                     |error| IntentReceipt::rejected(IntentError::Rejected(error)),
                     receipt_for_publication,
                 ),
+            WorkspaceIntent::AddTableFormulaColumn {
+                table,
+                column_id,
+                name,
+                formula_text,
+            } => self
+                .apply_workspace_edit(
+                    |session| {
+                        session.add_table_formula_column(&table, column_id, name, formula_text)
+                    },
+                    WorkspaceEditPublication::Recalculate,
+                )
+                .map_or_else(
+                    |error| IntentReceipt::rejected(IntentError::Rejected(error)),
+                    receipt_for_publication,
+                ),
+            WorkspaceIntent::EditTableColumnFormula {
+                table,
+                column_id,
+                formula_text,
+            } => self
+                .apply_workspace_edit(
+                    |session| session.edit_table_column_formula(&table, &column_id, formula_text),
+                    WorkspaceEditPublication::Recalculate,
+                )
+                .map_or_else(
+                    |error| IntentReceipt::rejected(IntentError::Rejected(error)),
+                    receipt_for_publication,
+                ),
             WorkspaceIntent::DeleteTableColumn { table, column_id } => self
                 .apply_workspace_edit(
                     |session| session.delete_table_column(&table, &column_id),

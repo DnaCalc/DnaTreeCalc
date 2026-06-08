@@ -208,6 +208,59 @@ impl ProgrammableDriver {
             .dispatch(self.add_table_column_intent(table, column_id, name, values))
     }
 
+    pub fn add_table_formula_column(
+        &self,
+        table: &str,
+        column_id: &str,
+        name: &str,
+        formula_text: &str,
+    ) {
+        self.accept(WorkspaceIntent::AddTableFormulaColumn {
+            table: NodeId::new(table),
+            column_id: column_id.to_string(),
+            name: name.to_string(),
+            formula_text: formula_text.to_string(),
+        });
+    }
+
+    pub fn try_add_table_formula_column(
+        &self,
+        table: &str,
+        column_id: &str,
+        name: &str,
+        formula_text: &str,
+    ) -> IntentReceipt {
+        self.dispatch
+            .dispatch(WorkspaceIntent::AddTableFormulaColumn {
+                table: NodeId::new(table),
+                column_id: column_id.to_string(),
+                name: name.to_string(),
+                formula_text: formula_text.to_string(),
+            })
+    }
+
+    pub fn edit_table_column_formula(&self, table: &str, column_id: &str, formula_text: &str) {
+        self.accept(WorkspaceIntent::EditTableColumnFormula {
+            table: NodeId::new(table),
+            column_id: column_id.to_string(),
+            formula_text: formula_text.to_string(),
+        });
+    }
+
+    pub fn try_edit_table_column_formula(
+        &self,
+        table: &str,
+        column_id: &str,
+        formula_text: &str,
+    ) -> IntentReceipt {
+        self.dispatch
+            .dispatch(WorkspaceIntent::EditTableColumnFormula {
+                table: NodeId::new(table),
+                column_id: column_id.to_string(),
+                formula_text: formula_text.to_string(),
+            })
+    }
+
     pub fn delete_table_column(&self, table: &str, column_id: &str) {
         self.accept(WorkspaceIntent::DeleteTableColumn {
             table: NodeId::new(table),

@@ -559,6 +559,7 @@ pub const SHELL_CSS: &str = r#"
 
 .dtc-table-card__add-row,
 .dtc-table-card__add-column,
+.dtc-table-card__add-formula-column,
 .dtc-table-card__delete-column {
     display: flex;
     flex-wrap: wrap;
@@ -568,6 +569,7 @@ pub const SHELL_CSS: &str = r#"
 
 .dtc-table-card__add-row input,
 .dtc-table-card__add-column input,
+.dtc-table-card__add-formula-column input,
 .dtc-table-card__delete-column select {
     flex: 1 1 7rem;
     min-width: 0;
@@ -579,6 +581,7 @@ pub const SHELL_CSS: &str = r#"
 
 .dtc-table-card__add-row button,
 .dtc-table-card__add-column button,
+.dtc-table-card__add-formula-column button,
 .dtc-table-card__delete-column button {
     border: 1px solid #bfdbfe;
     border-radius: 4px;
@@ -592,6 +595,20 @@ pub const SHELL_CSS: &str = r#"
     border-color: #fed7aa;
     background: #fff7ed;
     color: #9a3412;
+}
+
+.dtc-table-card__formula-edits {
+    display: grid;
+    gap: 0.375rem;
+}
+
+.dtc-table-card__formula-edit {
+    display: grid;
+    grid-template-columns: minmax(5rem, 8rem) minmax(12rem, 1fr);
+    gap: 0.375rem;
+    align-items: center;
+    font-size: 0.8125rem;
+    color: #475569;
 }
 
 .dtc-dependency-inspector {

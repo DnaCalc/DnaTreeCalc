@@ -924,9 +924,6 @@ fn programmable_skin_adds_edits_and_deletes_constant_table_columns_from_outside_
     );
     assert!(!duplicate_input.accepted, "{duplicate_input:?}");
 
-    let formula_column_delete = skin.try_delete_table_column("SalesTable", "col:tax");
-    assert!(!formula_column_delete.accepted, "{formula_column_delete:?}");
-
     let delete = skin.try_delete_table_column("SalesTable", "col:discount");
     assert!(delete.accepted, "{:?}", delete.error);
     let deleted_state = skin.state();
@@ -950,6 +947,129 @@ fn programmable_skin_adds_edits_and_deletes_constant_table_columns_from_outside_
 
     let missing_delete = skin.try_delete_table_column("SalesTable", "col:discount");
     assert!(!missing_delete.accepted, "{missing_delete:?}");
+}
+
+#[test]
+fn programmable_skin_authors_formula_table_columns_from_outside_ir() {
+    let harness = Harness::from_repo_fixture("tables");
+    let skin = harness.driver.clone();
+    skin.recalc();
+
+    let add =
+        skin.try_add_table_formula_column("SalesTable", "col:double", "Double", "=[@Amount] * 2");
+    assert!(add.accepted, "{:?}", add.error);
+    let added_state = skin.state();
+    let added_table = added_state
+        .tables
+        .get(&NodeId::new("SalesTable"))
+        .expect("table projects after formula column add");
+    assert_eq!(added_table.column_count, 4);
+    assert_eq!(
+        added_table
+            .columns
+            .iter()
+            .map(|column| column.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["Region", "Amount", "Tax", "Double"]
+    );
+    let TableColumnBodyProjection::Formula(double_formula) = &added_table.columns[3].body else {
+        panic!("Double column should project formula metadata");
+    };
+    assert_eq!(double_formula.formula_text, "=[@Amount] * 2");
+    assert_eq!(double_formula.formula_text_version, "v1");
+    assert_eq!(
+        double_formula.formula_artifact_id,
+        "formula:SalesTable.Columns.col_double"
+    );
+    assert_eq!(
+        double_formula.bind_artifact_id.as_deref(),
+        Some("bind:SalesTable.Columns.col_double")
+    );
+    assert_eq!(
+        table_body_row(added_table, 0),
+        vec!["West", "10", "1", "20"]
+    );
+    assert_eq!(
+        table_body_row(added_table, 1),
+        vec!["East", "20", "2", "40"]
+    );
+    assert_eq!(
+        table_body_row(added_table, 2),
+        vec!["North", "30", "3", "60"]
+    );
+    assert_eq!(table_totals_row(added_table), vec!["", "60", "", ""]);
+
+    let edit = skin.try_edit_table_column_formula("SalesTable", "col:double", "=[@Amount] + 5");
+    assert!(edit.accepted, "{:?}", edit.error);
+    let edited_state = skin.state();
+    let edited_table = edited_state
+        .tables
+        .get(&NodeId::new("SalesTable"))
+        .expect("table projects after formula edit");
+    let TableColumnBodyProjection::Formula(edited_formula) = &edited_table.columns[3].body else {
+        panic!("Double column should stay formula metadata");
+    };
+    assert_eq!(edited_formula.formula_text, "=[@Amount] + 5");
+    assert_eq!(edited_formula.formula_text_version, "v2");
+    assert_eq!(
+        table_body_row(edited_table, 0),
+        vec!["West", "10", "1", "15"]
+    );
+    assert_eq!(
+        table_body_row(edited_table, 1),
+        vec!["East", "20", "2", "25"]
+    );
+    assert_eq!(
+        table_body_row(edited_table, 2),
+        vec!["North", "30", "3", "35"]
+    );
+
+    let constant_edit = skin.try_edit_table_column_formula("SalesTable", "col:amount", "=[@Tax]");
+    assert!(!constant_edit.accepted, "{constant_edit:?}");
+
+    let duplicate =
+        skin.try_add_table_formula_column("SalesTable", "col:double", "Double", "=[@Amount]");
+    assert!(!duplicate.accepted, "{duplicate:?}");
+
+    let delete_formula = skin.try_delete_table_column("SalesTable", "col:double");
+    assert!(delete_formula.accepted, "{:?}", delete_formula.error);
+    let deleted_state = skin.state();
+    let deleted_table = deleted_state
+        .tables
+        .get(&NodeId::new("SalesTable"))
+        .expect("table projects after formula column delete");
+    assert_eq!(deleted_table.column_count, 3);
+    assert_eq!(
+        deleted_table
+            .columns
+            .iter()
+            .map(|column| column.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["Region", "Amount", "Tax"]
+    );
+    assert_eq!(table_body_row(deleted_table, 0), vec!["West", "10", "1"]);
+
+    let delete_existing_formula = skin.try_delete_table_column("SalesTable", "col:tax");
+    assert!(
+        delete_existing_formula.accepted,
+        "{:?}",
+        delete_existing_formula.error
+    );
+    let tax_deleted_state = skin.state();
+    let tax_deleted_table = tax_deleted_state
+        .tables
+        .get(&NodeId::new("SalesTable"))
+        .expect("table projects after existing formula column delete");
+    assert_eq!(
+        tax_deleted_table
+            .columns
+            .iter()
+            .map(|column| column.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["Region", "Amount"]
+    );
+    assert_eq!(table_body_row(tax_deleted_table, 0), vec!["West", "10"]);
+    assert_eq!(table_totals_row(tax_deleted_table), vec!["", "60"]);
 }
 
 #[test]

@@ -83,6 +83,17 @@ pub enum WorkspaceIntent {
         name: String,
         values: Vec<TableRowInput>,
     },
+    AddTableFormulaColumn {
+        table: NodeId,
+        column_id: String,
+        name: String,
+        formula_text: String,
+    },
+    EditTableColumnFormula {
+        table: NodeId,
+        column_id: String,
+        formula_text: String,
+    },
     DeleteTableColumn {
         table: NodeId,
         column_id: String,
@@ -283,6 +294,8 @@ impl Dispatcher for InMemoryDispatcher {
             | WorkspaceIntent::AddTableRow { .. }
             | WorkspaceIntent::DeleteTableRow { .. }
             | WorkspaceIntent::AddTableColumn { .. }
+            | WorkspaceIntent::AddTableFormulaColumn { .. }
+            | WorkspaceIntent::EditTableColumnFormula { .. }
             | WorkspaceIntent::DeleteTableColumn { .. }
             | WorkspaceIntent::NewWorkspace
             | WorkspaceIntent::SwitchWorkspace { .. } => IntentReceipt::accepted(),

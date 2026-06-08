@@ -134,6 +134,26 @@ fn render_table_card(
             )
         })
         .collect::<Vec<_>>();
+    let formula_columns = table
+        .columns
+        .iter()
+        .filter_map(|column| {
+            let TableColumnBodyProjection::Formula(formula) = &column.body else {
+                return None;
+            };
+            Some((
+                column.column_id.clone(),
+                column.name.clone(),
+                formula.formula_text.clone(),
+                RwSignal::new(formula.formula_text.clone()),
+            ))
+        })
+        .collect::<Vec<_>>();
+    let deletable_columns = table
+        .columns
+        .iter()
+        .map(|column| (column.column_id.clone(), column.name.clone()))
+        .collect::<Vec<_>>();
     let next_row_id = RwSignal::new(format!("row:new{}", table.row_count + 1));
     let table_node_for_add = table_node.clone();
     let add_dispatch = dispatch.clone();
@@ -149,13 +169,20 @@ fn render_table_card(
     let column_add_dispatch = dispatch.clone();
     let table_node_for_column_add = table_node.clone();
     let delete_column_id = RwSignal::new(
-        constant_columns
+        deletable_columns
             .first()
-            .map(|(column_id, _, _)| column_id.clone())
+            .map(|(column_id, _)| column_id.clone())
             .unwrap_or_default(),
     );
     let delete_column_dispatch = dispatch.clone();
     let table_node_for_column_delete = table_node.clone();
+    let next_formula_column_id = RwSignal::new(format!("col:formula{}", table.column_count + 1));
+    let next_formula_column_name = RwSignal::new(format!("Formula {}", table.column_count + 1));
+    let next_formula_column_text = RwSignal::new("=[@Amount]".to_string());
+    let formula_column_add_dispatch = dispatch.clone();
+    let table_node_for_formula_column_add = table_node.clone();
+    let formula_edit_dispatch = dispatch.clone();
+    let table_node_for_formula_edit = table_node.clone();
 
     view! {
         <section class="dtc-table-card">
@@ -265,13 +292,78 @@ fn render_table_card(
                     "Add column"
                 </button>
             </div>
+            <div class="dtc-table-card__add-formula-column">
+                <input
+                    class="dtc-table-card__column-id"
+                    aria-label="New formula column id"
+                    prop:value=move || next_formula_column_id.get()
+                    on:input=move |ev| next_formula_column_id.set(event_target_value(&ev))
+                />
+                <input
+                    class="dtc-table-card__column-name"
+                    aria-label="New formula column name"
+                    prop:value=move || next_formula_column_name.get()
+                    on:input=move |ev| next_formula_column_name.set(event_target_value(&ev))
+                />
+                <input
+                    class="dtc-table-card__formula-input"
+                    aria-label="New formula column formula"
+                    prop:value=move || next_formula_column_text.get()
+                    on:input=move |ev| next_formula_column_text.set(event_target_value(&ev))
+                />
+                <button
+                    type="button"
+                    on:click=move |_| {
+                        formula_column_add_dispatch.dispatch(table_formula_column_add_intent(
+                            &table_node_for_formula_column_add,
+                            next_formula_column_id.get_untracked(),
+                            next_formula_column_name.get_untracked(),
+                            next_formula_column_text.get_untracked(),
+                        ));
+                    }
+                >
+                    "Add formula"
+                </button>
+            </div>
+            {if formula_columns.is_empty() {
+                view! { <span></span> }.into_any()
+            } else {
+                view! {
+                    <div class="dtc-table-card__formula-edits">
+                        {formula_columns.iter().map(|(column_id, name, original_formula, value)| {
+                            let value_signal = *value;
+                            let table_node = table_node_for_formula_edit.clone();
+                            let column_id_for_edit = column_id.clone();
+                            let edit_dispatch = formula_edit_dispatch.clone();
+                            view! {
+                                <label class="dtc-table-card__formula-edit">
+                                    <span>{name.clone()}</span>
+                                    <input
+                                        class="dtc-table-card__formula-input"
+                                        aria-label=format!("{name} formula")
+                                        title=original_formula.clone()
+                                        prop:value=move || value_signal.get()
+                                        on:change=move |ev| {
+                                            edit_dispatch.dispatch(table_formula_column_edit_intent(
+                                                &table_node,
+                                                &column_id_for_edit,
+                                                event_target_value(&ev),
+                                            ));
+                                        }
+                                    />
+                                </label>
+                            }
+                        }).collect::<Vec<_>>()}
+                    </div>
+                }.into_any()
+            }}
             <div class="dtc-table-card__delete-column">
                 <select
                     aria-label="Delete column"
                     prop:value=move || delete_column_id.get()
                     on:change=move |ev| delete_column_id.set(event_target_value(&ev))
                 >
-                    {constant_columns.iter().map(|(column_id, name, _)| {
+                    {deletable_columns.iter().map(|(column_id, name)| {
                         view! {
                             <option value=column_id.clone()>{name.clone()}</option>
                         }
@@ -279,7 +371,7 @@ fn render_table_card(
                 </select>
                 <button
                     type="button"
-                    disabled=constant_columns.is_empty()
+                    disabled=deletable_columns.is_empty()
                     on:click=move |_| {
                         delete_column_dispatch.dispatch(table_column_delete_intent(
                             &table_node_for_column_delete,
@@ -461,6 +553,32 @@ fn table_column_delete_intent(table: &str, column_id: &str) -> WorkspaceIntent {
     }
 }
 
+fn table_formula_column_add_intent(
+    table: &str,
+    column_id: String,
+    name: String,
+    formula_text: String,
+) -> WorkspaceIntent {
+    WorkspaceIntent::AddTableFormulaColumn {
+        table: NodeId::new(table),
+        column_id,
+        name,
+        formula_text,
+    }
+}
+
+fn table_formula_column_edit_intent(
+    table: &str,
+    column_id: &str,
+    formula_text: String,
+) -> WorkspaceIntent {
+    WorkspaceIntent::EditTableColumnFormula {
+        table: NodeId::new(table),
+        column_id: column_id.to_string(),
+        formula_text,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -534,6 +652,40 @@ mod tests {
             WorkspaceIntent::DeleteTableColumn {
                 table: NodeId::new("SalesTable"),
                 column_id: "col:discount".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn value_board_table_formula_column_add_uses_skin_ir_intent() {
+        assert_eq!(
+            table_formula_column_add_intent(
+                "SalesTable",
+                "col:double".to_string(),
+                "Double".to_string(),
+                "=[@Amount] * 2".to_string(),
+            ),
+            WorkspaceIntent::AddTableFormulaColumn {
+                table: NodeId::new("SalesTable"),
+                column_id: "col:double".to_string(),
+                name: "Double".to_string(),
+                formula_text: "=[@Amount] * 2".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn value_board_table_formula_column_edit_uses_skin_ir_intent() {
+        assert_eq!(
+            table_formula_column_edit_intent(
+                "SalesTable",
+                "col:tax",
+                "=[@Amount] * 0.2".to_string()
+            ),
+            WorkspaceIntent::EditTableColumnFormula {
+                table: NodeId::new("SalesTable"),
+                column_id: "col:tax".to_string(),
+                formula_text: "=[@Amount] * 0.2".to_string(),
             }
         );
     }
