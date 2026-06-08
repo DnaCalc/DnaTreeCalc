@@ -2,8 +2,8 @@
   "schema_version": "treecalc-corpus-v1",
   "theme": "formatting/format-inheritance",
   "workset": "W007",
-  "status": "pending",
-  "description": "Per-node formatting via meta-flagged 'Format' children with subtree inheritance (CORE_MODEL_SPEC §6 item 10, §7b; META_NODES). The format MODEL + inheritance walk is TreeCalc's; the Excel RENDERING of a number/CF format is Excel-anchored (verified via OxReplay display-faithful views), not asserted here. `node` is the content node; expect.resolved_format is its effective format and inherited_from names the source.",
+  "status": "active",
+  "description": "Per-node number formatting via meta-flagged 'Format' children with subtree inheritance (CORE_MODEL_SPEC §6 item 10, §7b; META_NODES). The format MODEL + inheritance walk is TreeCalc's; numeric display rendering is delegated to OxFml. Conditional formatting and broader style rendering remain outside this first active slice. `node` is the content node; expect.resolved_format is its effective format and inherited_from names the source.",
   "cases": [
     { "id": "fmt-own-override", "name": "a node's own Format wins", "spec": "§6 item 10", "kind": "format", "workspace": "formatting", "node": "Book.Margin", "expect": { "resolved_format": { "NumberFormat": "0%" }, "inherited_from": "self" }, "note": "Book.Margin.Format.NumberFormat = 0% overrides the book-level default." },
     { "id": "fmt-inherited", "name": "a node with no own Format inherits an ancestor default", "spec": "§6 item 10", "kind": "format", "workspace": "formatting", "node": "Book.Sales", "expect": { "resolved_format": { "NumberFormat": "0.00" }, "inherited_from": "Book.Format" }, "note": "Book.Sales has no Format child; the inheritance walk picks up the book-level Book.Format (0.00)." },

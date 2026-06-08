@@ -59,7 +59,8 @@ roadmap item; it is not the default next move.
       bindings, typed root result, typed child-call results, and typed prepared argument values.
 - [x] Add typed binding diagnostics intake from OxFml `BindDiagnostic` through OxCalc outcome,
       `NodeView`, `CalcRunProjection`, and active-node detail.
-- [ ] Add per-node effective format and OxFml-backed render entrypoint plumbing.
+- [x] Add per-node effective number-format projection from `Format.NumberFormat` meta nodes and
+      OxFml-backed numeric display rendering through `NodeView` and active-node detail.
 - [ ] Confirm or implement per-node published-value epochs; keep delta work decoupled until then.
 
 ### W2 Structural Authoring Tranche

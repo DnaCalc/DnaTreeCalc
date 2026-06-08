@@ -1132,6 +1132,52 @@ fn programmable_skin_reads_table_and_dependency_ir_from_fixture() {
 }
 
 #[test]
+fn programmable_skin_projects_effective_format_and_oxfml_rendered_display() {
+    let harness = Harness::from_repo_fixture("formatting");
+    let skin = harness.driver.clone();
+    skin.recalc();
+
+    let state = skin.state();
+    let sales = state.node(&NodeId::new("Book.Sales")).unwrap();
+    let sales_format = sales
+        .effective_format
+        .as_ref()
+        .expect("Sales inherits book format");
+    assert_eq!(sales_format.number_format_code.as_deref(), Some("0.00"));
+    assert_eq!(
+        sales_format
+            .inherited_from
+            .as_ref()
+            .map(|source| &source.node),
+        Some(&NodeId::new("Book.Format"))
+    );
+    assert_eq!(sales.computed_value.display_text(), "1000.00");
+
+    let margin = state.node(&NodeId::new("Book.Margin")).unwrap();
+    let margin_format = margin
+        .effective_format
+        .as_ref()
+        .expect("Margin has own format override");
+    assert_eq!(margin_format.number_format_code.as_deref(), Some("0%"));
+    assert_eq!(
+        margin_format
+            .inherited_from
+            .as_ref()
+            .map(|source| &source.node),
+        Some(&NodeId::new("Book.Margin.Format"))
+    );
+    assert_eq!(margin.computed_value.display_text(), "20%");
+
+    let detail = state
+        .active_node_detail(&dnatreecalc_skin_framework::SelectionState::with_primary(
+            Some(NodeId::new("Book.Margin")),
+        ))
+        .expect("active detail projects selected formatted node");
+    assert_eq!(detail.effective_format, margin.effective_format);
+    assert_eq!(detail.value.display_text(), "20%");
+}
+
+#[test]
 fn programmable_skin_edits_table_cells_and_adds_rows_from_outside_ir() {
     let harness = Harness::from_repo_fixture("tables");
     let skin = harness.driver.clone();

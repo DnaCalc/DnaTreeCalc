@@ -73,6 +73,7 @@ impl WorkspaceState {
             content_text: node.content_text.clone(),
             value: node.computed_value.clone(),
             calc_state: node.calc_state,
+            effective_format: node.effective_format.clone(),
             binding_diagnostics: node.binding_diagnostics.clone(),
             outgoing_references: self
                 .dependencies
@@ -178,6 +179,7 @@ pub struct ActiveNodeDetailProjection {
     pub content_text: String,
     pub value: NodeValueProjection,
     pub calc_state: Option<NodeCalcStateProjection>,
+    pub effective_format: Option<EffectiveFormatProjection>,
     pub binding_diagnostics: Vec<BindingDiagnosticProjection>,
     pub outgoing_references: Vec<ReferenceResolutionProjection>,
     pub incoming_reference_handles: Vec<String>,
@@ -310,9 +312,22 @@ pub struct NodeView {
     pub content_text: String,
     pub computed_value: NodeValueProjection,
     pub calc_state: Option<NodeCalcStateProjection>,
+    pub effective_format: Option<EffectiveFormatProjection>,
     pub binding_diagnostics: Vec<BindingDiagnosticProjection>,
     pub is_meta: bool,
     pub table: Option<TableProjection>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EffectiveFormatProjection {
+    pub number_format_code: Option<String>,
+    pub inherited_from: Option<FormatSourceProjection>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FormatSourceProjection {
+    pub node: NodeId,
+    pub node_key: NodeKey,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

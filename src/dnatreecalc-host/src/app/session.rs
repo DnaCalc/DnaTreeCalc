@@ -6,17 +6,18 @@ use dnatreecalc_skin_framework::{
     DependencyKindProjection, DerivationHoleBindingProjection, DerivationInvocationProjection,
     DerivationOxfmlTraceEventProjection, DerivationPreparedArgumentProjection,
     DerivationTemplateHoleProjection, DerivationTemplateSelectionProjection,
-    DerivationTraceProjection, InvalidationReasonProjection, NodeCalcStateProjection,
-    NodeContentKind as FrameworkContentKind, NodeId, NodeInvalidationProjection, NodeKey,
-    NodeValueProjection, NodeView, PhaseKeyProjection, ReferenceResolutionProjection,
-    ReferenceTargetProjection, RuntimeEffectFamilyProjection, RuntimeEffectProjection,
-    RuntimeOverlayKindProjection, RuntimeOverlayProjection, SourceSpanProjection,
-    TableAnchorProjection, TableCellInput, TableCellProjection, TableCellsProjection,
-    TableColumnBodyProjection, TableColumnProjection, TableDependencyFactBlockerProjection,
-    TableDependencyFactKindProjection, TableDependencyFactProjection,
-    TableDependencyFactStatusProjection, TableFormulaMetadataProjection, TableProjection,
-    TableRowInput, TableRowProjection, TreeReferenceCollectionFamilyProjection,
-    TreeReferenceCollectionProjection, WorkspaceRevisionProjection, WorkspaceState,
+    DerivationTraceProjection, EffectiveFormatProjection, FormatSourceProjection,
+    InvalidationReasonProjection, NodeCalcStateProjection, NodeContentKind as FrameworkContentKind,
+    NodeId, NodeInvalidationProjection, NodeKey, NodeValueProjection, NodeView, PhaseKeyProjection,
+    ReferenceResolutionProjection, ReferenceTargetProjection, RuntimeEffectFamilyProjection,
+    RuntimeEffectProjection, RuntimeOverlayKindProjection, RuntimeOverlayProjection,
+    SourceSpanProjection, TableAnchorProjection, TableCellInput, TableCellProjection,
+    TableCellsProjection, TableColumnBodyProjection, TableColumnProjection,
+    TableDependencyFactBlockerProjection, TableDependencyFactKindProjection,
+    TableDependencyFactProjection, TableDependencyFactStatusProjection,
+    TableFormulaMetadataProjection, TableProjection, TableRowInput, TableRowProjection,
+    TreeReferenceCollectionFamilyProjection, TreeReferenceCollectionProjection,
+    WorkspaceRevisionProjection, WorkspaceState,
 };
 use oxcalc_core::consumer::OxCalcTreeRunState;
 use oxcalc_core::consumer::{
@@ -48,6 +49,8 @@ use oxcalc_core::treecalc::{
     DerivationInvocationTraceNode, DerivationPreparedArgumentTrace, DerivationTraceRecord,
     LocalTreeCalcPhaseKey,
 };
+use oxfml_core::format::{oxfml_en_us_format_profile, render_with_code};
+use oxfunc_core::locale_format::WorkbookDateSystem;
 use oxfunc_core::value::{CalcValue, CoreValue, ExcelText};
 use serde::{Deserialize, Serialize};
 
@@ -1286,10 +1289,12 @@ impl TreeWorkspaceSession {
                 .as_ref()
                 .and_then(|outcome| outcome.published_calc_values.get(&tree_node_id));
             let calc_value = tree_view.calc_value.as_ref().or(outcome_calc_value);
+            let effective_format = self.effective_format_for_node(node_id, &views_by_tree_id)?;
             let computed_value = value_projection_for(
                 tree_view.value_text.clone(),
                 tree_view.calc_state,
                 calc_value,
+                effective_format.as_ref(),
             );
             let table = table_views_by_tree_id.get(&tree_node_id).cloned();
             let binding_diagnostics = binding_diagnostics_by_tree_id
@@ -1309,6 +1314,7 @@ impl TreeWorkspaceSession {
                     content_text: tree_view.formula_text.clone(),
                     computed_value,
                     calc_state: tree_view.calc_state.map(calc_state_projection_for),
+                    effective_format,
                     binding_diagnostics,
                     is_meta: tree_view.is_meta,
                     table,
@@ -1685,6 +1691,50 @@ impl TreeWorkspaceSession {
         Ok(diagnostics)
     }
 
+    fn effective_format_for_node(
+        &self,
+        node_id: &NodeId,
+        views_by_tree_id: &BTreeMap<TreeNodeId, OxCalcTreeNodeView>,
+    ) -> Result<Option<EffectiveFormatProjection>, TreeWorkspaceSessionError> {
+        let tree_node_id = self.tree_node_id(node_id.as_str())?;
+        if views_by_tree_id
+            .get(&tree_node_id)
+            .is_some_and(|view| view.is_meta)
+        {
+            return Ok(None);
+        }
+
+        let mut cursor = Some(node_id.as_str().to_string());
+        while let Some(path) = cursor {
+            let number_format_node_id = NodeId::new(format!("{path}.Format.NumberFormat"));
+            if let Some(number_format_tree_id) = self.node_ids.get(&number_format_node_id) {
+                if let Some(format_code) = views_by_tree_id
+                    .get(number_format_tree_id)
+                    .filter(|view| view.is_meta)
+                    .map(|view| view.formula_text.trim().to_string())
+                    .filter(|format_code| !format_code.is_empty())
+                {
+                    let format_node_id = NodeId::new(format!("{path}.Format"));
+                    let source_tree_id = self
+                        .node_ids
+                        .get(&format_node_id)
+                        .copied()
+                        .unwrap_or(*number_format_tree_id);
+                    return Ok(Some(EffectiveFormatProjection {
+                        number_format_code: Some(format_code),
+                        inherited_from: Some(FormatSourceProjection {
+                            node: self.node_id_for_tree_node(source_tree_id)?,
+                            node_key: node_key_for_tree_node(source_tree_id),
+                        }),
+                    }));
+                }
+            }
+            cursor = parent_path(&path);
+        }
+
+        Ok(None)
+    }
+
     fn reference_resolution_projection(
         &self,
         outcome: &OxCalcTreeCalculationOutcome,
@@ -1949,7 +1999,7 @@ impl TreeWorkspaceSession {
             kernel_returned_value_typed: trace
                 .kernel_returned_calc_value
                 .as_ref()
-                .map(calc_value_projection),
+                .map(|value| calc_value_projection(value, None)),
             oxfml_trace_events: trace
                 .oxfml_trace_events
                 .iter()
@@ -2251,6 +2301,7 @@ fn value_projection_for(
     value_text: Option<String>,
     calc_state: Option<NodeCalcState>,
     calc_value: Option<&CalcValue>,
+    effective_format: Option<&EffectiveFormatProjection>,
 ) -> NodeValueProjection {
     match calc_state {
         Some(NodeCalcState::RejectedPendingRepair | NodeCalcState::CycleBlocked) => {
@@ -2265,12 +2316,15 @@ fn value_projection_for(
                     NodeValueProjection::Scalar,
                 )
             },
-            calc_value_projection,
+            |value| calc_value_projection(value, effective_format),
         ),
     }
 }
 
-fn calc_value_projection(value: &CalcValue) -> NodeValueProjection {
+fn calc_value_projection(
+    value: &CalcValue,
+    effective_format: Option<&EffectiveFormatProjection>,
+) -> NodeValueProjection {
     match value.core() {
         CoreValue::Array(array) => {
             let shape = array.shape();
@@ -2280,7 +2334,7 @@ fn calc_value_projection(value: &CalcValue) -> NodeValueProjection {
                         .map(|col| {
                             array
                                 .get(row, col)
-                                .map(calc_value_projection)
+                                .map(|value| calc_value_projection(value, effective_format))
                                 .unwrap_or(NodeValueProjection::Empty)
                         })
                         .collect::<Vec<_>>()
@@ -2297,7 +2351,8 @@ fn calc_value_projection(value: &CalcValue) -> NodeValueProjection {
             let display = number.to_string();
             NodeValueProjection::Number {
                 raw: display.clone(),
-                display,
+                display: render_number_with_effective_format(*number, effective_format)
+                    .unwrap_or(display),
             }
         }
         CoreValue::Text(text) => NodeValueProjection::Text(text.to_string_lossy()),
@@ -2314,6 +2369,25 @@ fn calc_value_projection(value: &CalcValue) -> NodeValueProjection {
             target: reference.target().to_string(),
         },
     }
+}
+
+fn render_number_with_effective_format(
+    number: f64,
+    effective_format: Option<&EffectiveFormatProjection>,
+) -> Option<String> {
+    let code = effective_format
+        .and_then(|format| format.number_format_code.as_deref())?
+        .trim();
+    if code.is_empty() {
+        return None;
+    }
+    render_with_code(
+        &oxfml_en_us_format_profile(),
+        WorkbookDateSystem::System1900,
+        number,
+        code,
+    )
+    .ok()
 }
 
 fn calc_value_display_text(value: &CalcValue) -> String {
@@ -2390,7 +2464,7 @@ fn derivation_invocation_projection(
         kernel_returned_value_typed: invocation
             .kernel_returned_calc_value
             .as_ref()
-            .map(calc_value_projection),
+            .map(|value| calc_value_projection(value, None)),
         children: invocation
             .children
             .iter()
@@ -2415,7 +2489,7 @@ fn derivation_prepared_argument_projection(
         resolved_value_typed: argument
             .resolved_calc_value
             .as_ref()
-            .map(calc_value_projection),
+            .map(|value| calc_value_projection(value, None)),
     }
 }
 
@@ -3049,7 +3123,7 @@ fn table_cell_calc_value(
 }
 
 fn value_projection_from_calc_value(value: &CalcValue) -> NodeValueProjection {
-    calc_value_projection(value)
+    calc_value_projection(value, None)
 }
 
 fn calc_value_from_display_text(value: &str) -> CalcValue {
@@ -3084,6 +3158,7 @@ fn table_cell_projection(
             node_view.value_text.clone(),
             node_view.calc_state,
             calc_value,
+            None,
         ),
     })
 }
@@ -3334,7 +3409,7 @@ mod tests {
         );
 
         assert_eq!(
-            calc_value_projection(&CalcValue::reference(reference)),
+            calc_value_projection(&CalcValue::reference(reference), None),
             NodeValueProjection::Reference {
                 target: "Tree!A1".to_string()
             }
