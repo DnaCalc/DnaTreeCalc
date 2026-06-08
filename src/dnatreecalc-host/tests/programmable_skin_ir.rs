@@ -1,7 +1,7 @@
 mod support;
 
 use dnatreecalc_skin_framework::{
-    ActiveSelectionDetailProjection, CalcRunStateProjection, NodeContentKind, NodeId,
+    ActiveSelectionDetailProjection, CalcRunStateProjection, IntentError, NodeContentKind, NodeId,
     NodeValueProjection, ReferenceTargetProjection, RuntimeEffectFamilyProjection,
     RuntimeOverlayKindProjection, TableCellEditabilityProjection, TableCellRegionProjection,
     TableColumnBodyProjection, TableDependencyFactKindProjection,
@@ -386,10 +386,34 @@ fn programmable_skin_selects_table_cells_without_recalculating() {
 
     let missing_row = skin.try_select_table_cell("SalesTable", Some("row:missing"), "col:amount");
     assert!(!missing_row.accepted, "{missing_row:?}");
+    assert!(matches!(
+        missing_row.error,
+        Some(IntentError::UnknownTableCell {
+            ref table,
+            ref row_id,
+            ref column_id
+        }) if table == "SalesTable" && row_id == "row:missing" && column_id == "col:amount"
+    ));
     let missing_column = skin.try_select_table_cell("SalesTable", Some("row:east"), "col:missing");
     assert!(!missing_column.accepted, "{missing_column:?}");
+    assert!(matches!(
+        missing_column.error,
+        Some(IntentError::UnknownTableCell {
+            ref table,
+            ref row_id,
+            ref column_id
+        }) if table == "SalesTable" && row_id == "row:east" && column_id == "col:missing"
+    ));
     let missing_table = skin.try_select_table_cell("MissingTable", Some("row:east"), "col:amount");
     assert!(!missing_table.accepted, "{missing_table:?}");
+    assert!(matches!(
+        missing_table.error,
+        Some(IntentError::UnknownTableCell {
+            ref table,
+            ref row_id,
+            ref column_id
+        }) if table == "MissingTable" && row_id == "row:east" && column_id == "col:amount"
+    ));
 
     skin.select(Some("SalesTable"));
     assert_eq!(skin.selected(), Some("SalesTable".to_string()));
@@ -1029,10 +1053,22 @@ fn programmable_skin_rejects_invalid_structural_intents_without_state_drift() {
 
     let duplicate = skin.try_add_node(Some("Root"), "A", "2");
     assert!(!duplicate.accepted, "{duplicate:?}");
+    assert!(matches!(
+        duplicate.error,
+        Some(IntentError::DuplicateNode { ref node }) if node == "Root.A"
+    ));
     let unknown_edit = skin.try_edit("Root.Missing", "3");
     assert!(!unknown_edit.accepted, "{unknown_edit:?}");
+    assert!(matches!(
+        unknown_edit.error,
+        Some(IntentError::UnknownNode { ref node }) if node == "Root.Missing"
+    ));
     let unknown_delete = skin.try_delete("Root.Missing");
     assert!(!unknown_delete.accepted, "{unknown_delete:?}");
+    assert!(matches!(
+        unknown_delete.error,
+        Some(IntentError::UnknownNode { ref node }) if node == "Root.Missing"
+    ));
 
     let after_state = skin.state();
     assert_eq!(revision_fingerprint(&after_state.revision), before_revision);
@@ -1272,6 +1308,13 @@ fn programmable_skin_edits_table_cells_and_adds_rows_from_outside_ir() {
 
     let formula_edit = skin.try_edit_table_cell("SalesTable", "row:east", "col:tax", "99");
     assert!(!formula_edit.accepted, "{formula_edit:?}");
+    assert!(matches!(
+        formula_edit.error,
+        Some(IntentError::FormulaTableCellEdit {
+            ref table,
+            ref column_id
+        }) if table == "SalesTable" && column_id == "col:tax"
+    ));
     assert_eq!(
         table_body_row(
             skin.state()
@@ -1316,9 +1359,23 @@ fn programmable_skin_edits_table_cells_and_adds_rows_from_outside_ir() {
 
     let duplicate = skin.try_add_table_row("SalesTable", "row:south", &[]);
     assert!(!duplicate.accepted, "{duplicate:?}");
+    assert!(matches!(
+        duplicate.error,
+        Some(IntentError::DuplicateTableRow {
+            ref table,
+            ref row_id
+        }) if table == "SalesTable" && row_id == "row:south"
+    ));
 
     let formula_input = skin.try_add_table_row("SalesTable", "row:formula", &[("col:tax", "9")]);
     assert!(!formula_input.accepted, "{formula_input:?}");
+    assert!(matches!(
+        formula_input.error,
+        Some(IntentError::FormulaTableCellEdit {
+            ref table,
+            ref column_id
+        }) if table == "SalesTable" && column_id == "col:tax"
+    ));
 
     let duplicate_input = skin.try_add_table_row(
         "SalesTable",
@@ -1326,6 +1383,13 @@ fn programmable_skin_edits_table_cells_and_adds_rows_from_outside_ir() {
         &[("col:amount", "1"), ("col:amount", "2")],
     );
     assert!(!duplicate_input.accepted, "{duplicate_input:?}");
+    assert!(matches!(
+        duplicate_input.error,
+        Some(IntentError::DuplicateTableCellInput {
+            ref table,
+            ref column_id
+        }) if table == "SalesTable" && column_id == "col:amount"
+    ));
 
     let delete = skin.try_delete_table_row("SalesTable", "row:east");
     assert!(delete.accepted, "{:?}", delete.error);

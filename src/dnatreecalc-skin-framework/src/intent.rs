@@ -219,8 +219,46 @@ impl IntentReceipt {
 pub enum IntentError {
     #[error("intent variant not yet supported by this dispatcher")]
     Unsupported,
-    #[error("dispatcher rejected the intent: {0}")]
-    Rejected(String),
+    #[error("unknown node {node}")]
+    UnknownNode { node: String },
+    #[error("duplicate node {node}")]
+    DuplicateNode { node: String },
+    #[error("unknown table {table}")]
+    UnknownTable { table: String },
+    #[error("table {table} requires a non-empty name")]
+    EmptyTableName { table: String },
+    #[error("table name {name} is already used while renaming {table}")]
+    DuplicateTableName { table: String, name: String },
+    #[error("unknown row {row_id} in table {table}")]
+    UnknownTableRow { table: String, row_id: String },
+    #[error("duplicate row {row_id} in table {table}")]
+    DuplicateTableRow { table: String, row_id: String },
+    #[error("unknown column {column_id} in table {table}")]
+    UnknownTableColumn { table: String, column_id: String },
+    #[error("duplicate column {column_id} in table {table}")]
+    DuplicateTableColumn { table: String, column_id: String },
+    #[error("unknown cell {row_id}/{column_id} in table {table}")]
+    UnknownTableCell {
+        table: String,
+        row_id: String,
+        column_id: String,
+    },
+    #[error("duplicate input for column {column_id} in table {table}")]
+    DuplicateTableCellInput { table: String, column_id: String },
+    #[error("duplicate input for row {row_id} in table {table}")]
+    DuplicateTableRowInput { table: String, row_id: String },
+    #[error(
+        "table formula column {column_id} in table {table} is calculated, not directly editable"
+    )]
+    FormulaTableCellEdit { table: String, column_id: String },
+    #[error("table constant column {column_id} in table {table} does not carry formula metadata")]
+    ConstantTableColumnFormulaEdit { table: String, column_id: String },
+    #[error("host projection is out of sync for {node}")]
+    ProjectionOutOfSync { node: String },
+    #[error("engine rejected the intent: {0}")]
+    EngineRejected(String),
+    #[error("host failed to dispatch the intent: {0}")]
+    HostFailure(String),
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

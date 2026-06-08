@@ -488,13 +488,13 @@ impl ProgrammableDriver {
     ) -> IntentReceipt {
         let selection = self.selection.get_untracked();
         let Some(cell) = selection.table_cell else {
-            return IntentReceipt::rejected(IntentError::Rejected(
+            return IntentReceipt::rejected(IntentError::HostFailure(
                 "no table cell is focused".to_string(),
             ));
         };
         let state = self.workspace.get_untracked();
         let Some(table) = state.tables.get(&cell.table) else {
-            return IntentReceipt::rejected(IntentError::Rejected(format!(
+            return IntentReceipt::rejected(IntentError::HostFailure(format!(
                 "unknown focused table {}",
                 cell.table
             )));
@@ -506,7 +506,7 @@ impl ProgrammableDriver {
             row_delta,
             column_delta,
         ) else {
-            return IntentReceipt::rejected(IntentError::Rejected(
+            return IntentReceipt::rejected(IntentError::HostFailure(
                 "table cell focus cannot move".to_string(),
             ));
         };

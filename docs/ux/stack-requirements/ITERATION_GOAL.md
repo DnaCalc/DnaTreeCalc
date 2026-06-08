@@ -23,6 +23,15 @@ An iteration is complete only when downstream consumers can observe the capabili
 the exact roadmap item advanced. Incidental UI polish is allowed only when it supports the active
 roadmap item; it is not the default next move.
 
+The current working target is the W2 structural-authoring tranche. W0/W1 exposure work has already
+established the stable identity spine, typed engine facts, reference-resolution visibility,
+binding diagnostics, effective formatting, derivation/runtime detail, and per-node published-value
+epochs. The next iterations should therefore advance first-class authoring subjects and typed
+intent receipts, then stop at the `transaction-scope` gate unless OxCalc has a verified spike path
+for atomic accumulate-and-publish-once semantics. Larger time/speculation features stay queued
+behind the explicit engine workstreams: transaction scope, retained revision graph, and candidate
+overlay handles.
+
 ## Iteration Rule
 
 1. Start from the earliest unmet roadmap wave, not from incidental UI polish.
@@ -66,8 +75,9 @@ roadmap item; it is not the default next move.
 
 ### W2 Structural Authoring Tranche
 
-- [ ] Replace remaining `Rejected(String)` receipt paths with typed `IntentError` variants where the
-      host or engine already has typed truth.
+- [x] Replace legacy `Rejected(String)` receipt paths with typed `IntentError` variants for
+      host/session structural and table errors; keep named `EngineRejected` / `HostFailure`
+      fallbacks for genuinely untyped failures.
 - [ ] Define `AuthoringScope` use for multi-node, subtree, and collection subjects.
 - [ ] Add edit transaction ids with real semantics once OxCalc transaction scope exists.
 - [ ] Spike OxCalc `transaction-scope`: batch edit boundary, rollback, schedule once, publish once.
