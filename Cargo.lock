@@ -334,6 +334,8 @@ version = "0.1.0"
 dependencies = [
  "dnatreecalc-skin-framework",
  "leptos",
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]

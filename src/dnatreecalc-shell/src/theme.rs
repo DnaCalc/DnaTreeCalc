@@ -43,6 +43,37 @@ pub const SHELL_CSS: &str = r#"
     flex: 1;
 }
 
+.dtc-workspace-control {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+}
+
+.dtc-workspace-control__select {
+    min-width: 10rem;
+    max-width: 16rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    background: #ffffff;
+    padding: 0.25rem 0.5rem;
+    color: inherit;
+    font: inherit;
+}
+
+.dtc-workspace-control__new {
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    background: #ffffff;
+    padding: 0.25rem 0.625rem;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+}
+
+.dtc-workspace-control__new:hover {
+    background: #eef2f7;
+}
+
 .dtc-skin-switcher {
     display: inline-flex;
     gap: 0.25rem;
@@ -281,6 +312,29 @@ pub const SHELL_CSS: &str = r#"
     background: #dbeafe;
 }
 
+.dtc-outline-table__content-input {
+    width: 100%;
+    min-width: 10rem;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    background: transparent;
+    padding: 0.1875rem 0.25rem;
+    font: inherit;
+    color: inherit;
+}
+
+.dtc-outline-table__content-input:hover {
+    border-color: #cbd5e1;
+    background: #ffffff;
+}
+
+.dtc-outline-table__content-input:focus {
+    outline: 2px solid #93c5fd;
+    outline-offset: 1px;
+    border-color: #2563eb;
+    background: #ffffff;
+}
+
 .dtc-formula-tree {
     display: grid;
     grid-template-columns: minmax(220px, 320px) minmax(320px, 1fr);
@@ -501,5 +555,282 @@ pub const SHELL_CSS: &str = r#"
 
 .dtc-empty-detail {
     color: #64748b;
+}
+
+/* UX polish pass: denser, clearer, keyboard-friendly chrome and skins. */
+.dtc-shell {
+    grid-template-rows: auto auto 1fr auto;
+    color: #18212f;
+    background: #eef3f8;
+}
+
+.dtc-shell:focus {
+    outline: none;
+}
+
+.dtc-context-strip {
+    gap: 0.75rem;
+    padding: 0.625rem 0.875rem;
+    border-bottom-color: #ccd6e2;
+    background: #fbfcfe;
+}
+
+.dtc-brand-block {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+}
+
+.dtc-context-strip__title {
+    max-width: 18rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.dtc-context-strip__profile {
+    border: 1px solid #d6dde7;
+    border-radius: 6px;
+    background: #f4f7fb;
+    color: #4b647c;
+    letter-spacing: 0;
+}
+
+.dtc-workspace-control__select {
+    border-color: #bdc9d8;
+}
+
+.dtc-workspace-control__new,
+.dtc-recalc-mode button,
+.dtc-skin-switcher__tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+}
+
+.dtc-workspace-control__new {
+    border-color: #7aa37d;
+    background: #f4fbf4;
+    color: #245c2a;
+}
+
+.dtc-workspace-control__new:hover {
+    background: #e8f5e8;
+}
+
+.dtc-skin-switcher {
+    gap: 0.1875rem;
+    padding: 0.1875rem;
+    border: 1px solid #d6dde7;
+    border-radius: 8px;
+    background: #f4f7fb;
+}
+
+.dtc-skin-switcher__tab {
+    padding: 0.3125rem 0.625rem;
+}
+
+.dtc-skin-switcher__tab:hover {
+    background: #ffffff;
+}
+
+.dtc-skin-switcher__tab--active {
+    border-color: #1f4f83;
+    background: #245f9c;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.16);
+}
+
+.dtc-shortcut-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 2rem;
+    padding: 0.3125rem 0.875rem;
+    border-bottom: 1px solid #dce3ec;
+    background: #f5f8fc;
+    color: #52677d;
+    font-size: 0.75rem;
+}
+
+.dtc-shortcut-hint {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3125rem;
+}
+
+.dtc-shell kbd {
+    display: inline-flex;
+    align-items: center;
+    min-height: 1.125rem;
+    padding: 0 0.3125rem;
+    border: 1px solid #c4cfdc;
+    border-bottom-color: #aab7c7;
+    border-radius: 4px;
+    background: #ffffff;
+    color: #33485f;
+    font: 0.6875rem ui-monospace, SFMono-Regular, Menlo, monospace;
+    white-space: nowrap;
+}
+
+.dtc-main-slot {
+    background: #f9fbfd;
+    border-bottom-color: #ccd6e2;
+}
+
+.dtc-status-foot {
+    border-top: 1px solid #d6dde7;
+    background: #f7f9fc;
+}
+
+.dtc-status-pill {
+    padding: 0.125rem 0.5rem;
+    border: 1px solid #b9d5bb;
+    border-radius: 999px;
+    background: #eef8ef;
+    color: #2f6b35;
+}
+
+.dtc-recalc-mode__button--active {
+    border-color: #245f9c;
+    background: #e7f0f9 !important;
+    color: #245f9c;
+}
+
+.dtc-recalc-mode__calculate--pending {
+    border-color: #b7791f !important;
+    background: #fff7e6 !important;
+    color: #8a5a12 !important;
+}
+
+.dtc-triple-editor {
+    grid-template-columns: minmax(240px, 300px) minmax(300px, 1fr) minmax(300px, 1fr);
+}
+
+.dtc-triple-editor__nav,
+.dtc-formula-tree__nav,
+.dtc-dependency-inspector__list {
+    border-right-color: #dce3ec;
+    background: #f6f9fc;
+}
+
+.dtc-triple-editor__editor,
+.dtc-formula-tree__workbench {
+    background: #ffffff;
+}
+
+.dtc-triple-editor__value {
+    background: #fbfcfe;
+}
+
+.dtc-tree-row {
+    width: 100%;
+    border: 1px solid transparent;
+    background: transparent;
+    padding: 0.1875rem 0.375rem;
+    color: inherit;
+    text-align: left;
+}
+
+.dtc-tree-row:hover,
+.dtc-node-management button:hover,
+.dtc-formula-tree__commands button:hover,
+.dtc-dependency-row:hover {
+    background: #eef4fa;
+}
+
+.dtc-tree-row--selected,
+.dtc-dependency-row--selected,
+.dtc-outline-table tbody tr.dtc-outline-row--selected {
+    border-color: #8bb7dd;
+    background: #e5f1fb;
+    color: #20537f;
+}
+
+.dtc-tree-row:focus-visible,
+.dtc-skin-switcher__tab:focus-visible,
+.dtc-workspace-control__new:focus-visible,
+.dtc-recalc-mode button:focus-visible,
+.dtc-node-management button:focus-visible,
+.dtc-formula-tree__commands button:focus-visible,
+.dtc-outline-table__content-input:focus-visible,
+.dtc-dependency-row:focus-visible {
+    outline: 2px solid #3c7fb1;
+    outline-offset: 2px;
+}
+
+.dtc-formula-tree {
+    grid-template-columns: minmax(240px, 320px) minmax(340px, 1fr);
+}
+
+.dtc-formula-tree__input {
+    border-color: #bdc9d8;
+    background: #ffffff;
+    color: #172033;
+    box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.dtc-node-management,
+.dtc-value-card,
+.dtc-dependency-card {
+    border-color: #d4dde8;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+}
+
+.dtc-node-management {
+    background: #f7fafc;
+}
+
+.dtc-node-management input,
+.dtc-node-management button,
+.dtc-formula-tree__commands button {
+    border-color: #bdc9d8;
+}
+
+.dtc-outline-table {
+    border-collapse: separate;
+    border-spacing: 0;
+    background: #ffffff;
+}
+
+.dtc-outline-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding: 0.5rem 0.625rem;
+    border-bottom-color: #cbd7e5;
+    background: #eef4fa;
+    color: #3d5268;
+}
+
+.dtc-outline-table tbody td {
+    padding: 0.3125rem 0.625rem;
+    border-bottom-color: #edf2f7;
+}
+
+.dtc-outline-table tbody tr:hover {
+    background: #f3f8fc;
+}
+
+.dtc-array-value {
+    border-color: #bdc9d8;
+    background: #bdc9d8;
+}
+
+.dtc-array-value__cell {
+    text-align: right;
+}
+
+.dtc-value-display {
+    overflow-wrap: anywhere;
+}
+
+.dtc-value-card,
+.dtc-dependency-card {
+    background: #ffffff;
+}
+
+.dtc-dependency-row {
+    color: inherit;
 }
 "#;
