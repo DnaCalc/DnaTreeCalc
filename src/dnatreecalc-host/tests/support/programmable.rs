@@ -134,8 +134,23 @@ impl ProgrammableDriver {
         })
     }
 
+    pub fn try_new_workspace(&self) -> IntentReceipt {
+        self.dispatch.dispatch(WorkspaceIntent::NewWorkspace)
+    }
+
+    pub fn try_switch_workspace(&self, workspace_id: &str) -> IntentReceipt {
+        self.dispatch.dispatch(WorkspaceIntent::SwitchWorkspace {
+            workspace_id: workspace_id.to_string(),
+        })
+    }
+
     pub fn select(&self, node: Option<&str>) {
         self.accept(WorkspaceIntent::SelectNode(node.map(NodeId::new)));
+    }
+
+    pub fn try_select(&self, node: Option<&str>) -> IntentReceipt {
+        self.dispatch
+            .dispatch(WorkspaceIntent::SelectNode(node.map(NodeId::new)))
     }
 
     pub fn collapse(&self, node: &str) {

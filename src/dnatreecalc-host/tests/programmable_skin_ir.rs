@@ -3,7 +3,8 @@ mod support;
 use dnatreecalc_skin_framework::{
     CalcRunStateProjection, NodeContentKind, NodeId, NodeValueProjection,
     ReferenceTargetProjection, RuntimeEffectFamilyProjection, RuntimeOverlayKindProjection,
-    TableColumnBodyProjection, TreeReferenceCollectionFamilyProjection, WorkspaceRecalcMode,
+    TableColumnBodyProjection, TreeReferenceCollectionFamilyProjection, WorkspaceDeltaChange,
+    WorkspaceRecalcMode,
 };
 
 use support::programmable::{Harness, revision_fingerprint};
@@ -69,6 +70,69 @@ fn programmable_skin_projection_refreshes_after_each_calc_affecting_intent() {
     );
     skin.assert_scalar("Root.A", "4");
     assert!(skin.state().last_run.is_some());
+}
+
+#[test]
+fn programmable_skin_receipts_carry_projection_deltas() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    let add_root = skin.try_add_node(None, "Root", "");
+    assert!(add_root.accepted, "{:?}", add_root.error);
+    assert_eq!(add_root.delta.from_seq, 0);
+    assert_eq!(add_root.delta.to_seq, 1);
+    assert!(add_root.produced_revision.is_some());
+    assert!(add_root
+        .delta
+        .changes
+        .iter()
+        .any(|change| matches!(change, WorkspaceDeltaChange::Structural(delta) if !delta.added.is_empty())));
+    assert_eq!(skin.state().projection_seq, add_root.delta.to_seq);
+
+    skin.add_node(Some("Root"), "A", "3");
+    skin.add_node(Some("Root"), "B", "=A+1");
+    let edit = skin.try_edit("Root.A", "4");
+    assert!(edit.accepted, "{:?}", edit.error);
+    assert_eq!(edit.delta.from_seq + 1, edit.delta.to_seq);
+    assert!(edit.delta.changes.iter().any(
+        |change| matches!(change, WorkspaceDeltaChange::ValuesChanged(values) if values
+            .iter()
+            .any(|value| value.value.scalar_display_text() == Some("4")))
+    ));
+    assert!(edit
+        .delta
+        .changes
+        .iter()
+        .any(|change| matches!(change, WorkspaceDeltaChange::CalcRun(run) if !run.invalidated_nodes.is_empty())));
+
+    let before_select_seq = skin.state().projection_seq;
+    let select = skin.try_select(Some("Root.B"));
+    assert!(select.accepted, "{:?}", select.error);
+    assert_eq!(select.delta.from_seq, before_select_seq);
+    assert_eq!(select.delta.to_seq, before_select_seq);
+    assert!(select.delta.changes.is_empty());
+
+    let new_workspace = skin.try_new_workspace();
+    assert!(new_workspace.accepted, "{:?}", new_workspace.error);
+    assert!(
+        new_workspace
+            .delta
+            .changes
+            .iter()
+            .any(|change| matches!(change, WorkspaceDeltaChange::FullReset))
+    );
+    assert_eq!(skin.state().workspace_id, "Workspace 1");
+
+    let switch_back = skin.try_switch_workspace("programmable-skin-ir");
+    assert!(switch_back.accepted, "{:?}", switch_back.error);
+    assert!(
+        switch_back
+            .delta
+            .changes
+            .iter()
+            .any(|change| matches!(change, WorkspaceDeltaChange::FullReset))
+    );
+    assert_eq!(skin.state().workspace_id, "programmable-skin-ir");
 }
 
 #[test]

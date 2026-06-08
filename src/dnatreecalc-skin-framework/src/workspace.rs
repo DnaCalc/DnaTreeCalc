@@ -16,6 +16,7 @@ use crate::identity::{NodeId, NodeKey};
 pub struct WorkspaceState {
     pub workspace_id: String,
     pub profile: &'static str,
+    pub projection_seq: u64,
     pub revision: WorkspaceRevisionProjection,
     pub last_run: Option<CalcRunProjection>,
     pub node_order: Vec<NodeId>,

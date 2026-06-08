@@ -54,6 +54,7 @@ pub fn workspace_state_from_model(model: &WorkspaceModel) -> WorkspaceState {
     WorkspaceState {
         workspace_id: model.workspace_id.clone(),
         profile: model.profile.as_str(),
+        projection_seq: 0,
         revision: WorkspaceRevisionProjection::default(),
         last_run: None,
         node_order: model

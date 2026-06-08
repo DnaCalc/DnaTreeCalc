@@ -1,7 +1,8 @@
 use std::sync::{Arc, Mutex};
 
-use crate::identity::NodeId;
+use crate::identity::{NodeId, NodeKey};
 use crate::selection::SelectionState;
+use crate::workspace::{CalcRunProjection, DependencyKindProjection, NodeValueProjection};
 use leptos::prelude::*;
 
 /// The closed set of asks a skin may make of the host.
@@ -78,6 +79,9 @@ pub enum WorkspaceIntent {
 pub struct IntentReceipt {
     pub accepted: bool,
     pub error: Option<IntentError>,
+    pub transaction_id: Option<String>,
+    pub produced_revision: Option<String>,
+    pub delta: WorkspaceDelta,
 }
 
 impl IntentReceipt {
@@ -86,6 +90,9 @@ impl IntentReceipt {
         Self {
             accepted: true,
             error: None,
+            transaction_id: None,
+            produced_revision: None,
+            delta: WorkspaceDelta::unchanged(0),
         }
     }
 
@@ -94,7 +101,22 @@ impl IntentReceipt {
         Self {
             accepted: false,
             error: Some(error),
+            transaction_id: None,
+            produced_revision: None,
+            delta: WorkspaceDelta::unchanged(0),
         }
+    }
+
+    #[must_use]
+    pub fn with_delta(mut self, delta: WorkspaceDelta) -> Self {
+        self.delta = delta;
+        self
+    }
+
+    #[must_use]
+    pub fn with_produced_revision(mut self, produced_revision: Option<String>) -> Self {
+        self.produced_revision = produced_revision;
+        self
     }
 }
 
@@ -104,6 +126,53 @@ pub enum IntentError {
     Unsupported,
     #[error("dispatcher rejected the intent: {0}")]
     Rejected(String),
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct WorkspaceDelta {
+    pub from_seq: u64,
+    pub to_seq: u64,
+    pub changes: Vec<WorkspaceDeltaChange>,
+}
+
+impl WorkspaceDelta {
+    #[must_use]
+    pub fn unchanged(seq: u64) -> Self {
+        Self {
+            from_seq: seq,
+            to_seq: seq,
+            changes: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WorkspaceDeltaChange {
+    FullReset,
+    Structural(StructuralDeltaProjection),
+    NodesChanged(Vec<NodeKey>),
+    ValuesChanged(Vec<NodeValueDeltaProjection>),
+    DepsChanged(Vec<DependencyDeltaProjection>),
+    CalcRun(CalcRunProjection),
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct StructuralDeltaProjection {
+    pub added: Vec<NodeKey>,
+    pub removed: Vec<NodeKey>,
+    pub changed: Vec<NodeKey>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NodeValueDeltaProjection {
+    pub node: NodeKey,
+    pub value: NodeValueProjection,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DependencyDeltaProjection {
+    pub owner: NodeKey,
+    pub kinds: Vec<DependencyKindProjection>,
 }
 
 /// The only path through which a skin may ask the host to change anything

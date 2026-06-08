@@ -18,7 +18,11 @@ pub mod state;
 pub mod workspace;
 
 pub use identity::{NodeId, NodeKey, SkinId, SkinMountSlot};
-pub use intent::{Dispatcher, InMemoryDispatcher, IntentError, IntentReceipt, WorkspaceIntent};
+pub use intent::{
+    DependencyDeltaProjection, Dispatcher, InMemoryDispatcher, IntentError, IntentReceipt,
+    NodeValueDeltaProjection, StructuralDeltaProjection, WorkspaceDelta, WorkspaceDeltaChange,
+    WorkspaceIntent,
+};
 pub use manifest::{SkinCapabilities, SkinCategory, SkinManifest};
 pub use registry::SkinRegistry;
 pub use selection::SelectionState;

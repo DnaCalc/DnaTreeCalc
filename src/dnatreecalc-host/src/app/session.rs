@@ -454,6 +454,7 @@ impl TreeWorkspaceSession {
         Ok(WorkspaceState {
             workspace_id: self.workspace_id.as_str().to_string(),
             profile: self.profile,
+            projection_seq: 0,
             revision,
             last_run,
             node_order: self.display_order.clone(),
