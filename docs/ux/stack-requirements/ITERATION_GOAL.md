@@ -105,7 +105,9 @@ supports the active roadmap item; it is not the default next move while W2 is op
       taxonomy and carries typed table invalidation/dependent seeds into Skin IR legality-impact
       preview. Scoped content-edit legality-impact preview now expands `AuthoringScope` through
       projected host state, dry-binds each target through OxCalc/OxFml, and plans the combined
-      invalidation through OxCalc without mutating state. Broader structural/drop/collision scoped
+      invalidation through OxCalc without mutating state. Rename legality-impact preview now joins
+      host-owned same-parent name collision detection with OxCalc structural invalidation planning
+      and projects typed `NameCollision` blockers through Skin IR. Broader structural/drop scoped
       coverage remains required before closing the item.
 
 ### Gating Engine Workstreams

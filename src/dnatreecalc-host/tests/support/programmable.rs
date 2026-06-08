@@ -917,6 +917,18 @@ impl Harness {
             .unwrap()
     }
 
+    pub fn preview_rename_node_impact(
+        &self,
+        node: &str,
+        new_symbol: &str,
+    ) -> MutationImpactProjection {
+        self.session
+            .lock()
+            .unwrap()
+            .preview_rename_node_impact(&NodeId::new(node), new_symbol)
+            .unwrap()
+    }
+
     pub fn preview_new_table_column_formula_impact(
         &self,
         table: &str,

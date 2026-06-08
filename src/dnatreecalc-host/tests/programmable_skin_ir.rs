@@ -470,6 +470,57 @@ fn programmable_skin_previews_scoped_content_edit_legality_impact_from_projectio
 }
 
 #[test]
+fn programmable_skin_previews_rename_legality_impact_and_collisions() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    skin.add_node(Some("Root"), "A", "1");
+    skin.add_node(Some("Root"), "B", "=A+1");
+    skin.add_node(Some("Root"), "C", "=B+1");
+    let before_revision = revision_fingerprint(&skin.state().revision);
+
+    let impact = harness.preview_rename_node_impact("Root.A", "AA");
+    assert!(impact.legal, "{impact:?}");
+    assert!(impact.blocked_reason.is_none());
+    assert!(impact.bind_diagnostics.is_empty());
+    assert!(impact.profile_violations.is_empty());
+    assert!(impact.collisions.is_empty());
+    assert!(impact.requires_rebind.contains(&NodeId::new("Root.A")));
+    assert_eq!(
+        impact.affected_refs,
+        vec![NodeId::new("Root.B"), NodeId::new("Root.C")]
+    );
+    let MutationImpactIntentProjection::RenameNode { node, new_symbol } = &impact.intent else {
+        panic!("expected rename impact intent");
+    };
+    assert_eq!(node, &NodeId::new("Root.A"));
+    assert_eq!(new_symbol, "AA");
+    assert_eq!(
+        revision_fingerprint(&skin.state().revision),
+        before_revision
+    );
+    assert!(skin.state().node(&NodeId::new("Root.A")).is_some());
+    skin.assert_scalar("Root.C", "3");
+
+    let collision = harness.preview_rename_node_impact("Root.B", "A");
+    assert!(!collision.legal);
+    assert_eq!(
+        collision.blocked_reason,
+        Some(MutationImpactBlockedReasonProjection::NameCollision)
+    );
+    assert_eq!(collision.collisions.len(), 1);
+    assert_eq!(collision.collisions[0].attempted, "Root.A");
+    assert_eq!(collision.collisions[0].existing, NodeId::new("Root.A"));
+    assert!(collision.requires_rebind.contains(&NodeId::new("Root.B")));
+    assert_eq!(collision.affected_refs, vec![NodeId::new("Root.C")]);
+    assert_eq!(
+        revision_fingerprint(&skin.state().revision),
+        before_revision
+    );
+}
+
+#[test]
 fn programmable_skin_receipts_carry_projection_deltas() {
     let harness = Harness::empty();
     let skin = harness.driver.clone();

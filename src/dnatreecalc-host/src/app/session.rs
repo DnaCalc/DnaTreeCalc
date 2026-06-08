@@ -11,15 +11,15 @@ use dnatreecalc_skin_framework::{
     FormulaBindPreviewInputKind, FormulaBindPreviewProfileViolationKindProjection,
     FormulaBindPreviewProfileViolationProjection, FormulaBindPreviewProjection,
     InvalidationReasonProjection, MutationImpactBlockedReasonProjection,
-    MutationImpactIntentProjection, MutationImpactProjection, NodeCalcStateProjection,
-    NodeContentKind as FrameworkContentKind, NodeId, NodeInvalidationProjection, NodeKey,
-    NodeValueProjection, NodeView, PhaseKeyProjection, RecalcPlanInvalidationProjection,
-    RecalcPlanMutation, RecalcPlanProjection, ReferenceResolutionProjection,
-    ReferenceTargetProjection, RuntimeEffectFamilyProjection, RuntimeEffectProjection,
-    RuntimeOverlayKindProjection, RuntimeOverlayProjection, SourceSpanProjection,
-    TableAnchorProjection, TableCellInput, TableCellProjection, TableCellRegionProjection,
-    TableCellsProjection, TableColumnBodyProjection, TableColumnProjection,
-    TableDependencyFactBlockerProjection, TableDependencyFactKindProjection,
+    MutationImpactIntentProjection, MutationImpactProjection, NameCollisionProjection,
+    NodeCalcStateProjection, NodeContentKind as FrameworkContentKind, NodeId,
+    NodeInvalidationProjection, NodeKey, NodeValueProjection, NodeView, PhaseKeyProjection,
+    RecalcPlanInvalidationProjection, RecalcPlanMutation, RecalcPlanProjection,
+    ReferenceResolutionProjection, ReferenceTargetProjection, RuntimeEffectFamilyProjection,
+    RuntimeEffectProjection, RuntimeOverlayKindProjection, RuntimeOverlayProjection,
+    SourceSpanProjection, TableAnchorProjection, TableCellInput, TableCellProjection,
+    TableCellRegionProjection, TableCellsProjection, TableColumnBodyProjection,
+    TableColumnProjection, TableDependencyFactBlockerProjection, TableDependencyFactKindProjection,
     TableDependencyFactProjection, TableDependencyFactStatusProjection,
     TableFormulaBindPreviewProjection, TableFormulaMetadataProjection, TableProjection,
     TableRowInput, TableRowProjection, TreeReferenceCollectionFamilyProjection,
@@ -584,6 +584,41 @@ impl TreeWorkspaceSession {
                 .collect(),
             orphaned_dependents: Vec::new(),
             collisions: Vec::new(),
+            invalidation_plan,
+        })
+    }
+
+    pub fn preview_rename_node_impact(
+        &self,
+        node: &NodeId,
+        new_symbol: impl Into<String>,
+    ) -> Result<MutationImpactProjection, TreeWorkspaceSessionError> {
+        let new_symbol = new_symbol.into();
+        self.tree_node_id(node.as_str())?;
+        let attempted = renamed_node_path(node, &new_symbol);
+        let collisions = self.name_collisions_for_attempt(node, &attempted);
+        let invalidation_plan =
+            self.preview_recalc_plan(&[RecalcPlanMutation::RenameNode { node: node.clone() }])?;
+        let blocked_reason = (!collisions.is_empty())
+            .then_some(MutationImpactBlockedReasonProjection::NameCollision);
+        Ok(MutationImpactProjection {
+            intent: MutationImpactIntentProjection::RenameNode {
+                node: node.clone(),
+                new_symbol,
+            },
+            legal: blocked_reason.is_none(),
+            blocked_reason,
+            profile_violations: Vec::new(),
+            bind_diagnostics: Vec::new(),
+            requires_rebind: invalidation_plan.requires_rebind.clone(),
+            affected_refs: invalidation_plan
+                .invalidated_nodes
+                .iter()
+                .filter(|entry| entry.node != *node)
+                .map(|entry| entry.node.clone())
+                .collect(),
+            orphaned_dependents: Vec::new(),
+            collisions,
             invalidation_plan,
         })
     }
@@ -2111,6 +2146,24 @@ impl TreeWorkspaceSession {
             })
     }
 
+    fn name_collisions_for_attempt(
+        &self,
+        node: &NodeId,
+        attempted: &NodeId,
+    ) -> Vec<NameCollisionProjection> {
+        self.node_ids
+            .get(attempted)
+            .filter(|_| *attempted != *node)
+            .map(|tree_node_id| {
+                vec![NameCollisionProjection {
+                    attempted: attempted.to_string(),
+                    existing: attempted.clone(),
+                    existing_key: node_key_for_tree_node(*tree_node_id),
+                }]
+            })
+            .unwrap_or_default()
+    }
+
     fn engine_preview_mutations(
         &self,
         mutation: &RecalcPlanMutation,
@@ -3020,6 +3073,13 @@ fn node_id_from_canonical_path(canonical_path: &str) -> Result<NodeId, TreeWorks
 
 fn parent_path(path: &str) -> Option<String> {
     path.rsplit_once('.').map(|(parent, _)| parent.to_string())
+}
+
+fn renamed_node_path(node: &NodeId, new_symbol: &str) -> NodeId {
+    match parent_path(node.as_str()) {
+        Some(parent) => NodeId::new(format!("{parent}.{new_symbol}")),
+        None => NodeId::new(new_symbol.to_string()),
+    }
 }
 
 fn depth_of(path: &str) -> u32 {

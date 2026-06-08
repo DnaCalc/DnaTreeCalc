@@ -754,6 +754,10 @@ pub enum MutationImpactIntentProjection {
         scope: AuthoringScope,
         content: String,
     },
+    RenameNode {
+        node: NodeId,
+        new_symbol: String,
+    },
     AddTableFormulaColumn {
         table: NodeId,
         column_id: String,
@@ -768,6 +772,7 @@ impl MutationImpactIntentProjection {
         match self {
             Self::EditContent { .. } => "edit_content",
             Self::EditScopedContent { .. } => "edit_scoped_content",
+            Self::RenameNode { .. } => "rename_node",
             Self::AddTableFormulaColumn { .. } => "add_table_formula_column",
         }
     }
@@ -778,6 +783,7 @@ pub enum MutationImpactBlockedReasonProjection {
     SyntaxDiagnostics,
     BindDiagnostics,
     ProfileViolation,
+    NameCollision,
 }
 
 impl MutationImpactBlockedReasonProjection {
@@ -787,6 +793,7 @@ impl MutationImpactBlockedReasonProjection {
             Self::SyntaxDiagnostics => "syntax_diagnostics",
             Self::BindDiagnostics => "bind_diagnostics",
             Self::ProfileViolation => "profile_violation",
+            Self::NameCollision => "name_collision",
         }
     }
 }
