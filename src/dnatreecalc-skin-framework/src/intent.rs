@@ -87,6 +87,10 @@ pub enum WorkspaceIntent {
         row_id: String,
         new_index: usize,
     },
+    RenameTable {
+        table: NodeId,
+        name: String,
+    },
     AddTableColumn {
         table: NodeId,
         column_id: String,
@@ -332,6 +336,7 @@ impl Dispatcher for InMemoryDispatcher {
             | WorkspaceIntent::DeleteTableRow { .. }
             | WorkspaceIntent::RenameTableRow { .. }
             | WorkspaceIntent::ReorderTableRow { .. }
+            | WorkspaceIntent::RenameTable { .. }
             | WorkspaceIntent::AddTableColumn { .. }
             | WorkspaceIntent::AddTableFormulaColumn { .. }
             | WorkspaceIntent::EditTableColumnFormula { .. }

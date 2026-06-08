@@ -1356,6 +1356,55 @@ fn programmable_skin_toggles_table_header_row_from_outside_ir() {
 }
 
 #[test]
+fn programmable_skin_renames_table_from_outside_ir() {
+    let harness = Harness::from_repo_fixture("tables");
+    let skin = harness.driver.clone();
+    skin.recalc();
+
+    let before = skin.state();
+    let before_table = before
+        .tables
+        .get(&NodeId::new("SalesTable"))
+        .expect("table projects");
+    let before_namespace_version = before_table.table_namespace_version.clone();
+    let before_display_path = before_table.display_path.clone();
+    let before_canonical_path = before_table.canonical_path.clone();
+    let before_first_body_row = table_body_row(before_table, 0);
+    assert_eq!(before_table.table_name, "SalesTable");
+    assert!(before_display_path.ends_with("SalesTable"));
+    assert!(before_canonical_path.ends_with("SalesTable"));
+
+    let rename = skin.try_rename_table("SalesTable", "Revenue");
+    assert!(rename.accepted, "{:?}", rename.error);
+    let renamed_state = skin.state();
+    let renamed_table = renamed_state
+        .tables
+        .get(&NodeId::new("SalesTable"))
+        .expect("table remains keyed by node after logical table rename");
+    assert_eq!(renamed_table.table_name, "Revenue");
+    assert_eq!(renamed_table.display_path, before_display_path);
+    assert_eq!(renamed_table.canonical_path, before_canonical_path);
+    assert_ne!(
+        renamed_table.table_namespace_version,
+        before_namespace_version
+    );
+    assert_eq!(table_body_row(renamed_table, 0), before_first_body_row);
+
+    skin.rename_table("SalesTable", " Revenue ");
+    let trimmed_state = skin.state();
+    let trimmed_table = trimmed_state
+        .tables
+        .get(&NodeId::new("SalesTable"))
+        .expect("table projects after trimmed rename");
+    assert_eq!(trimmed_table.table_name, "Revenue");
+
+    let empty = skin.try_rename_table("SalesTable", " ");
+    assert!(!empty.accepted, "{empty:?}");
+    let missing = skin.try_rename_table("MissingTable", "Other");
+    assert!(!missing.accepted, "{missing:?}");
+}
+
+#[test]
 fn programmable_skin_renames_and_reorders_table_columns_from_outside_ir() {
     let harness = Harness::from_repo_fixture("tables");
     let skin = harness.driver.clone();

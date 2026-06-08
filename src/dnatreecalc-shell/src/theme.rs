@@ -496,12 +496,18 @@ pub const SHELL_CSS: &str = r#"
 }
 
 .dtc-table-card__header-toggle,
-.dtc-table-card__totals-toggle {
+.dtc-table-card__totals-toggle,
+.dtc-table-card__table-rename {
     display: inline-flex;
+    flex-wrap: wrap;
     gap: 0.375rem;
     align-items: center;
     font-size: 0.75rem;
     color: #475569;
+}
+
+.dtc-table-card__table-name {
+    min-width: 8rem;
 }
 
 .dtc-table-card__grid {

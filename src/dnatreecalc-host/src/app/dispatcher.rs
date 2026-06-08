@@ -290,6 +290,15 @@ impl Dispatcher for HostDispatcher {
                     |error| IntentReceipt::rejected(IntentError::Rejected(error)),
                     receipt_for_publication,
                 ),
+            WorkspaceIntent::RenameTable { table, name } => self
+                .apply_workspace_edit(
+                    |session| session.rename_table(&table, name),
+                    WorkspaceEditPublication::Recalculate,
+                )
+                .map_or_else(
+                    |error| IntentReceipt::rejected(IntentError::Rejected(error)),
+                    receipt_for_publication,
+                ),
             WorkspaceIntent::AddTableColumn {
                 table,
                 column_id,

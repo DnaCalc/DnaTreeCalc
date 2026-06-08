@@ -710,6 +710,45 @@ impl TreeWorkspaceSession {
         Ok(())
     }
 
+    pub fn rename_table(
+        &mut self,
+        table: &NodeId,
+        name: impl Into<String>,
+    ) -> Result<(), TreeWorkspaceSessionError> {
+        let name = name.into().trim().to_string();
+        if name.is_empty() {
+            return Err(TreeWorkspaceSessionError::EmptyTableName {
+                table: table.to_string(),
+            });
+        }
+        let table_node_id = self.tree_node_id(table.as_str())?;
+        let mut table_view = self
+            .context
+            .table_view(&self.workspace_id, table_node_id)?
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTable {
+                table: table.to_string(),
+            })?;
+        if name != table_view.snapshot.table_name
+            && self
+                .context
+                .workspace_table_views(&self.workspace_id)?
+                .iter()
+                .any(|view| view.table_node_id != table_node_id && view.table_name == name)
+        {
+            return Err(TreeWorkspaceSessionError::DuplicateTableName {
+                name,
+                table: table.to_string(),
+            });
+        }
+
+        table_view.snapshot.table_name = name;
+        self.context
+            .set_node_table(&self.workspace_id, table_node_id, table_view.snapshot)?;
+        self.refresh_projection_from_context()?;
+        self.last_outcome = None;
+        Ok(())
+    }
+
     pub fn add_table_column(
         &mut self,
         table: &NodeId,
@@ -1961,6 +2000,10 @@ pub enum TreeWorkspaceSessionError {
     DuplicateNodePath { node: String },
     #[error("unknown table {table}")]
     UnknownTable { table: String },
+    #[error("table {table} requires a non-empty name")]
+    EmptyTableName { table: String },
+    #[error("table name {name} is already used while renaming {table}")]
+    DuplicateTableName { table: String, name: String },
     #[error("duplicate row {row_id} in table {table}")]
     DuplicateTableRow { table: String, row_id: String },
     #[error("duplicate column {column_id} in table {table}")]

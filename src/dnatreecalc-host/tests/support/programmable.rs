@@ -229,6 +229,20 @@ impl ProgrammableDriver {
         })
     }
 
+    pub fn rename_table(&self, table: &str, name: &str) {
+        self.accept(WorkspaceIntent::RenameTable {
+            table: NodeId::new(table),
+            name: name.to_string(),
+        });
+    }
+
+    pub fn try_rename_table(&self, table: &str, name: &str) -> IntentReceipt {
+        self.dispatch.dispatch(WorkspaceIntent::RenameTable {
+            table: NodeId::new(table),
+            name: name.to_string(),
+        })
+    }
+
     pub fn add_table_column(
         &self,
         table: &str,

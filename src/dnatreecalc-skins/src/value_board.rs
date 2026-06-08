@@ -188,6 +188,9 @@ fn render_table_card(
         .iter()
         .map(|row| (row.row_id.clone(), RwSignal::new(row.row_id.clone())))
         .collect::<Vec<_>>();
+    let table_name = RwSignal::new(table.table_name.clone());
+    let table_rename_dispatch = dispatch.clone();
+    let table_node_for_table_rename = table_node.clone();
     let table_node_for_add = table_node.clone();
     let add_dispatch = dispatch.clone();
     let add_inputs = constant_columns.clone();
@@ -258,6 +261,26 @@ fn render_table_card(
                 <dt>"rows"</dt><dd>{table.row_count}</dd>
                 <dt>"columns"</dt><dd>{table.column_count}</dd>
             </dl>
+            <label class="dtc-table-card__table-rename">
+                <span>"Table name"</span>
+                <input
+                    class="dtc-table-card__table-name"
+                    aria-label="Table name"
+                    prop:value=move || table_name.get()
+                    on:input=move |ev| table_name.set(event_target_value(&ev))
+                />
+                <button
+                    type="button"
+                    on:click=move |_| {
+                        table_rename_dispatch.dispatch(table_rename_intent(
+                            &table_node_for_table_rename,
+                            table_name.get_untracked(),
+                        ));
+                    }
+                >
+                    "Rename table"
+                </button>
+            </label>
             <label class="dtc-table-card__header-toggle">
                 <input
                     type="checkbox"
@@ -819,6 +842,13 @@ fn table_row_reorder_intent(table: &str, row_id: &str, new_index: usize) -> Work
     }
 }
 
+fn table_rename_intent(table: &str, name: String) -> WorkspaceIntent {
+    WorkspaceIntent::RenameTable {
+        table: NodeId::new(table),
+        name,
+    }
+}
+
 fn table_column_add_intent(
     table: &str,
     column_id: String,
@@ -979,6 +1009,17 @@ mod tests {
                 table: NodeId::new("SalesTable"),
                 row_id: "row:north".to_string(),
                 new_index: 0,
+            }
+        );
+    }
+
+    #[test]
+    fn value_board_table_rename_uses_skin_ir_intent() {
+        assert_eq!(
+            table_rename_intent("SalesTable", "Revenue".to_string()),
+            WorkspaceIntent::RenameTable {
+                table: NodeId::new("SalesTable"),
+                name: "Revenue".to_string(),
             }
         );
     }
