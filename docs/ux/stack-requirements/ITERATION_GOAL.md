@@ -87,7 +87,10 @@ overlay handles.
       coverage.
 - [x] Spike OxCalc `transaction-scope`: go for an OxCalc-owned Stage 1 batch edit API with rollback
       and optional recalc/publish-once; first node-edit engine slice implemented upstream.
-- [ ] Add dry-bind and recalc-plan preview only after OxFml/OxCalc readiness is confirmed.
+- [x] Add OxCalc committed-graph recalc-plan preview for node-level preview mutations, and project it
+      through host/Skin IR tests without evaluation, candidate creation, publication, or mutation.
+- [ ] Add OxFml dry-bind verdicts for uncommitted formula edits; DnaTreeCalc handover filed because
+      this is a new OxFml-owned parse/bind/profile-gating API.
 
 ### Gating Engine Workstreams
 

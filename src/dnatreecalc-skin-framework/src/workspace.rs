@@ -600,6 +600,50 @@ pub struct CalcRunProjection {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RecalcPlanMutation {
+    SetNodeInput {
+        node: NodeId,
+    },
+    EditContent {
+        node: NodeId,
+        content: String,
+    },
+    RenameNode {
+        node: NodeId,
+    },
+    MoveNode {
+        node: NodeId,
+    },
+    ReorderNode {
+        node: NodeId,
+    },
+    DeleteNode {
+        node: NodeId,
+    },
+    InvalidateNode {
+        node: NodeId,
+        reason: InvalidationReasonProjection,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecalcPlanInvalidationProjection {
+    pub node: NodeId,
+    pub node_key: NodeKey,
+    pub requires_rebind: bool,
+    pub reasons: Vec<InvalidationReasonProjection>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RecalcPlanProjection {
+    pub invalidated_nodes: Vec<RecalcPlanInvalidationProjection>,
+    pub evaluation_order: Vec<NodeId>,
+    pub requires_rebind: Vec<NodeId>,
+    pub estimated_node_count: usize,
+    pub cycle_risk: Vec<Vec<NodeId>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuntimeEffectProjection {
     pub kind: String,
     pub family: RuntimeEffectFamilyProjection,

@@ -9,6 +9,7 @@ use dnatreecalc_skin_framework::{
     DerivationTraceProjection, EffectiveFormatProjection, FormatSourceProjection,
     InvalidationReasonProjection, NodeCalcStateProjection, NodeContentKind as FrameworkContentKind,
     NodeId, NodeInvalidationProjection, NodeKey, NodeValueProjection, NodeView, PhaseKeyProjection,
+    RecalcPlanInvalidationProjection, RecalcPlanMutation, RecalcPlanProjection,
     ReferenceResolutionProjection, ReferenceTargetProjection, RuntimeEffectFamilyProjection,
     RuntimeEffectProjection, RuntimeOverlayKindProjection, RuntimeOverlayProjection,
     SourceSpanProjection, TableAnchorProjection, TableCellInput, TableCellProjection,
@@ -24,8 +25,8 @@ use oxcalc_core::consumer::{
     OxCalcTreeCalculationOutcome, OxCalcTreeContext, OxCalcTreeContextError,
     OxCalcTreeContextOptions, OxCalcTreeEdit, OxCalcTreeEditResult, OxCalcTreeEditTransaction,
     OxCalcTreeHostCapabilitySnapshot, OxCalcTreeNodeCreate, OxCalcTreeNodeView,
-    OxCalcTreeRuntimePolicy, OxCalcTreeWorkspaceCreate, OxCalcTreeWorkspaceId,
-    OxCalcTreeWorkspaceSnapshot, TransactionRecalcPolicy,
+    OxCalcTreePreviewMutation, OxCalcTreeRuntimePolicy, OxCalcTreeWorkspaceCreate,
+    OxCalcTreeWorkspaceId, OxCalcTreeWorkspaceSnapshot, TransactionRecalcPolicy,
 };
 use oxcalc_core::coordinator::{RuntimeEffect, RuntimeEffectFamily};
 use oxcalc_core::dependency::{
@@ -300,6 +301,66 @@ impl TreeWorkspaceSession {
         self.recalc_count += 1;
         self.last_outcome = Some(outcome.clone());
         Ok(outcome)
+    }
+
+    pub fn preview_recalc_plan(
+        &self,
+        mutations: &[RecalcPlanMutation],
+    ) -> Result<RecalcPlanProjection, TreeWorkspaceSessionError> {
+        let engine_mutations = mutations
+            .iter()
+            .map(|mutation| self.engine_preview_mutation(mutation))
+            .collect::<Result<Vec<_>, _>>()?;
+        let plan = self
+            .context
+            .plan_invalidation(&self.workspace_id, &engine_mutations)?;
+        let invalidated_nodes = plan
+            .invalidated_nodes
+            .into_iter()
+            .filter(|entry| entry.node_id != self.engine_root_id)
+            .map(|entry| {
+                Ok(RecalcPlanInvalidationProjection {
+                    node: self.node_id_for_tree_node(entry.node_id)?,
+                    node_key: node_key_for_tree_node(entry.node_id),
+                    requires_rebind: entry.requires_rebind,
+                    reasons: entry
+                        .reasons
+                        .into_iter()
+                        .map(invalidation_reason_projection_for)
+                        .collect(),
+                })
+            })
+            .collect::<Result<Vec<_>, TreeWorkspaceSessionError>>()?;
+        let evaluation_order = plan
+            .evaluation_order
+            .into_iter()
+            .filter(|node_id| *node_id != self.engine_root_id)
+            .map(|node_id| self.node_id_for_tree_node(node_id))
+            .collect::<Result<Vec<_>, _>>()?;
+        let requires_rebind = plan
+            .requires_rebind
+            .into_iter()
+            .filter(|node_id| *node_id != self.engine_root_id)
+            .map(|node_id| self.node_id_for_tree_node(node_id))
+            .collect::<Result<Vec<_>, _>>()?;
+        let cycle_risk = plan
+            .cycle_risk
+            .into_iter()
+            .map(|group| {
+                group
+                    .into_iter()
+                    .filter(|node_id| *node_id != self.engine_root_id)
+                    .map(|node_id| self.node_id_for_tree_node(node_id))
+                    .collect::<Result<Vec<_>, _>>()
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(RecalcPlanProjection {
+            estimated_node_count: invalidated_nodes.len(),
+            invalidated_nodes,
+            evaluation_order,
+            requires_rebind,
+            cycle_risk,
+        })
     }
 
     fn apply_single_edit_transaction(
@@ -1656,6 +1717,45 @@ impl TreeWorkspaceSession {
             })
     }
 
+    fn engine_preview_mutation(
+        &self,
+        mutation: &RecalcPlanMutation,
+    ) -> Result<OxCalcTreePreviewMutation, TreeWorkspaceSessionError> {
+        match mutation {
+            RecalcPlanMutation::SetNodeInput { node } => {
+                Ok(OxCalcTreePreviewMutation::SetNodeInput {
+                    node_id: self.tree_node_id(node.as_str())?,
+                })
+            }
+            RecalcPlanMutation::EditContent { node, content } => {
+                Ok(OxCalcTreePreviewMutation::SetNodeFormulaText {
+                    node_id: self.tree_node_id(node.as_str())?,
+                    formula_text: content.clone(),
+                })
+            }
+            RecalcPlanMutation::RenameNode { node } => Ok(OxCalcTreePreviewMutation::RenameNode {
+                node_id: self.tree_node_id(node.as_str())?,
+            }),
+            RecalcPlanMutation::MoveNode { node } => Ok(OxCalcTreePreviewMutation::MoveNode {
+                node_id: self.tree_node_id(node.as_str())?,
+            }),
+            RecalcPlanMutation::ReorderNode { node } => {
+                Ok(OxCalcTreePreviewMutation::ReorderNode {
+                    node_id: self.tree_node_id(node.as_str())?,
+                })
+            }
+            RecalcPlanMutation::DeleteNode { node } => Ok(OxCalcTreePreviewMutation::DeleteNode {
+                node_id: self.tree_node_id(node.as_str())?,
+            }),
+            RecalcPlanMutation::InvalidateNode { node, reason } => {
+                Ok(OxCalcTreePreviewMutation::InvalidateNode {
+                    node_id: self.tree_node_id(node.as_str())?,
+                    reason: invalidation_reason_kind_for_projection(*reason),
+                })
+            }
+        }
+    }
+
     fn node_id_for_tree_node(
         &self,
         tree_node_id: TreeNodeId,
@@ -2834,6 +2934,65 @@ fn invalidation_reason_projection_for(
         }
         InvalidationReasonKind::DynamicDependencyReclassified => {
             InvalidationReasonProjection::DynamicDependencyReclassified
+        }
+    }
+}
+
+fn invalidation_reason_kind_for_projection(
+    reason: InvalidationReasonProjection,
+) -> InvalidationReasonKind {
+    match reason {
+        InvalidationReasonProjection::StructuralRebindRequired => {
+            InvalidationReasonKind::StructuralRebindRequired
+        }
+        InvalidationReasonProjection::StructuralRecalcOnly => {
+            InvalidationReasonKind::StructuralRecalcOnly
+        }
+        InvalidationReasonProjection::UpstreamPublication => {
+            InvalidationReasonKind::UpstreamPublication
+        }
+        InvalidationReasonProjection::ExternallyInvalidated => {
+            InvalidationReasonKind::ExternallyInvalidated
+        }
+        InvalidationReasonProjection::TreeReferenceMembershipChanged => {
+            InvalidationReasonKind::TreeReferenceMembershipChanged
+        }
+        InvalidationReasonProjection::TreeReferenceOrderChanged => {
+            InvalidationReasonKind::TreeReferenceOrderChanged
+        }
+        InvalidationReasonProjection::StructuredTableContextChanged => {
+            InvalidationReasonKind::StructuredTableContextChanged
+        }
+        InvalidationReasonProjection::StructuredTableRowMembershipChanged => {
+            InvalidationReasonKind::StructuredTableRowMembershipChanged
+        }
+        InvalidationReasonProjection::StructuredTableRowOrderChanged => {
+            InvalidationReasonKind::StructuredTableRowOrderChanged
+        }
+        InvalidationReasonProjection::StructuredTableColumnChanged => {
+            InvalidationReasonKind::StructuredTableColumnChanged
+        }
+        InvalidationReasonProjection::StructuredTableRegionChanged => {
+            InvalidationReasonKind::StructuredTableRegionChanged
+        }
+        InvalidationReasonProjection::StructuredTableCallerContextChanged => {
+            InvalidationReasonKind::StructuredTableCallerContextChanged
+        }
+        InvalidationReasonProjection::DependencyAdded => InvalidationReasonKind::DependencyAdded,
+        InvalidationReasonProjection::DependencyRemoved => {
+            InvalidationReasonKind::DependencyRemoved
+        }
+        InvalidationReasonProjection::DependencyReclassified => {
+            InvalidationReasonKind::DependencyReclassified
+        }
+        InvalidationReasonProjection::DynamicDependencyActivated => {
+            InvalidationReasonKind::DynamicDependencyActivated
+        }
+        InvalidationReasonProjection::DynamicDependencyReleased => {
+            InvalidationReasonKind::DynamicDependencyReleased
+        }
+        InvalidationReasonProjection::DynamicDependencyReclassified => {
+            InvalidationReasonKind::DynamicDependencyReclassified
         }
     }
 }

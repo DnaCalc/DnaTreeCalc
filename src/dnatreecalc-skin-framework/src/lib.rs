@@ -43,6 +43,7 @@ pub use workspace::{
     DerivationTemplateSelectionProjection, DerivationTraceProjection, EffectiveFormatProjection,
     FormatSourceProjection, InvalidationReasonProjection, NodeCalcStateProjection, NodeContentKind,
     NodeInvalidationProjection, NodeValueProjection, NodeView, PhaseKeyProjection,
+    RecalcPlanInvalidationProjection, RecalcPlanMutation, RecalcPlanProjection,
     ReferenceResolutionProjection, ReferenceTargetProjection, RuntimeEffectFamilyProjection,
     RuntimeEffectProjection, RuntimeOverlayKindProjection, RuntimeOverlayProjection,
     SourceSpanProjection, TableAnchorProjection, TableCellEditabilityProjection,

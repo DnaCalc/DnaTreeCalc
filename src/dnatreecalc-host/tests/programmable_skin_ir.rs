@@ -2,11 +2,11 @@ mod support;
 
 use dnatreecalc_skin_framework::{
     ActiveSelectionDetailProjection, AuthoringScope, CalcRunStateProjection, IntentError,
-    NodeContentKind, NodeId, NodeValueProjection, ReferenceTargetProjection,
-    RuntimeEffectFamilyProjection, RuntimeOverlayKindProjection, TableCellEditabilityProjection,
-    TableCellRegionProjection, TableColumnBodyProjection, TableDependencyFactKindProjection,
-    TableDependencyFactStatusProjection, TreeReferenceCollectionFamilyProjection,
-    WorkspaceDeltaChange, WorkspaceRecalcMode,
+    InvalidationReasonProjection, NodeContentKind, NodeId, NodeValueProjection, RecalcPlanMutation,
+    ReferenceTargetProjection, RuntimeEffectFamilyProjection, RuntimeOverlayKindProjection,
+    TableCellEditabilityProjection, TableCellRegionProjection, TableColumnBodyProjection,
+    TableDependencyFactKindProjection, TableDependencyFactStatusProjection,
+    TreeReferenceCollectionFamilyProjection, WorkspaceDeltaChange, WorkspaceRecalcMode,
 };
 
 use support::programmable::{Harness, revision_fingerprint};
@@ -132,6 +132,61 @@ fn programmable_skin_projects_per_node_published_value_epochs() {
         detail.value_epoch,
         edited.node(&NodeId::new("Root.B")).unwrap().value_epoch
     );
+}
+
+#[test]
+fn programmable_skin_previews_recalc_plan_from_host_projection() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    skin.add_node(Some("Root"), "A", "1");
+    skin.add_node(Some("Root"), "B", "=A+1");
+    skin.add_node(Some("Root"), "C", "=B+1");
+    let before_revision = revision_fingerprint(&skin.state().revision);
+
+    let value_plan = harness.preview_recalc_plan(&[RecalcPlanMutation::SetNodeInput {
+        node: NodeId::new("Root.A"),
+    }]);
+    assert_eq!(value_plan.estimated_node_count, 3);
+    assert_eq!(
+        value_plan
+            .invalidated_nodes
+            .iter()
+            .map(|entry| entry.node.as_str())
+            .collect::<Vec<_>>(),
+        vec!["Root.A", "Root.B", "Root.C"]
+    );
+    assert!(value_plan.requires_rebind.is_empty());
+    assert_eq!(
+        value_plan
+            .evaluation_order
+            .iter()
+            .map(NodeId::as_str)
+            .collect::<Vec<_>>(),
+        vec!["Root.B", "Root.C"]
+    );
+
+    let formula_plan = harness.preview_recalc_plan(&[RecalcPlanMutation::EditContent {
+        node: NodeId::new("Root.B"),
+        content: "=A+2".to_string(),
+    }]);
+    assert_eq!(formula_plan.estimated_node_count, 2);
+    assert_eq!(formula_plan.requires_rebind, vec![NodeId::new("Root.B")]);
+    assert!(
+        formula_plan
+            .invalidated_nodes
+            .iter()
+            .find(|entry| entry.node == NodeId::new("Root.B"))
+            .is_some_and(|entry| entry
+                .reasons
+                .contains(&InvalidationReasonProjection::StructuralRebindRequired))
+    );
+    assert_eq!(
+        revision_fingerprint(&skin.state().revision),
+        before_revision
+    );
+    skin.assert_scalar("Root.C", "3");
 }
 
 #[test]

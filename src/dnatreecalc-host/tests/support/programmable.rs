@@ -6,11 +6,11 @@ use dnatreecalc_host::app::{HostDispatcher, TreeWorkspaceSession};
 use dnatreecalc_host::model::{WorkspaceFixture, WorkspaceModel};
 use dnatreecalc_skin_framework::{
     ActiveNodeDetailProjection, ActiveSelectionDetailProjection, ActiveTableCellDetailProjection,
-    Dispatcher, ErasedSkinContext, IntentError, IntentReceipt, NodeId, RegisteredSkin,
-    SelectionState, SharedSkinState, SharedSkinStateHandle, SkinCapabilities, SkinCategory,
-    SkinContext, SkinHandle, SkinId, SkinManifest, SkinState, TableCellInput, TableRowInput,
-    WorkspaceIntent, WorkspaceRecalcMode, WorkspaceRevisionProjection, WorkspaceSkin,
-    WorkspaceState,
+    Dispatcher, ErasedSkinContext, IntentError, IntentReceipt, NodeId, RecalcPlanMutation,
+    RecalcPlanProjection, RegisteredSkin, SelectionState, SharedSkinState, SharedSkinStateHandle,
+    SkinCapabilities, SkinCategory, SkinContext, SkinHandle, SkinId, SkinManifest, SkinState,
+    TableCellInput, TableRowInput, WorkspaceIntent, WorkspaceRecalcMode,
+    WorkspaceRevisionProjection, WorkspaceSkin, WorkspaceState,
 };
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -829,6 +829,14 @@ impl Harness {
 
     pub fn recalc_count(&self) -> usize {
         self.session.lock().unwrap().recalc_count()
+    }
+
+    pub fn preview_recalc_plan(&self, mutations: &[RecalcPlanMutation]) -> RecalcPlanProjection {
+        self.session
+            .lock()
+            .unwrap()
+            .preview_recalc_plan(mutations)
+            .unwrap()
     }
 }
 
