@@ -135,9 +135,12 @@ fn render_active_selection_summary(
             .map(|rows| {
                 view! {
                     <dl class="dtc-value-board__active-selection">
-                        {rows.into_iter().map(|row| view! {
-                            <dt>{row.label}</dt>
-                            <dd>{row.value}</dd>
+                        {rows.into_iter().map(|row| {
+                            let row_id = row.row_id.clone();
+                            view! {
+                                <dt data-dtc-row-id=row_id.clone()>{row.label}</dt>
+                                <dd data-dtc-row-id=row_id>{row.value}</dd>
+                            }
                         }).collect::<Vec<_>>()}
                     </dl>
                 }
@@ -177,6 +180,7 @@ fn active_selection_summary_rows(
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ActiveInfoRow {
+    row_id: String,
     label: &'static str,
     value: String,
 }
@@ -184,6 +188,7 @@ struct ActiveInfoRow {
 impl ActiveInfoRow {
     fn new(label: &'static str, value: impl Into<String>) -> Self {
         Self {
+            row_id: active_info_row_id(label),
             label,
             value: value.into(),
         }
@@ -192,6 +197,10 @@ impl ActiveInfoRow {
 
 fn active_info_row(label: &'static str, value: impl Into<String>) -> ActiveInfoRow {
     ActiveInfoRow::new(label, value)
+}
+
+fn active_info_row_id(label: &str) -> String {
+    label.replace(' ', "_")
 }
 
 fn render_active_selection_detail_panel(
@@ -207,9 +216,12 @@ fn render_active_selection_detail_panel(
                 view! {
                     <section class="dtc-value-board__active-detail" aria-label="Active selection detail">
                         <dl>
-                            {rows.into_iter().map(|row| view! {
-                                <dt>{row.label}</dt>
-                                <dd>{row.value}</dd>
+                            {rows.into_iter().map(|row| {
+                                let row_id = row.row_id.clone();
+                                view! {
+                                    <dt data-dtc-row-id=row_id.clone()>{row.label}</dt>
+                                    <dd data-dtc-row-id=row_id>{row.value}</dd>
+                                }
                             }).collect::<Vec<_>>()}
                         </dl>
                     </section>
@@ -1658,6 +1670,10 @@ mod tests {
         rows.map(|rows| rows.into_iter().map(|row| (row.label, row.value)).collect())
     }
 
+    fn row_ids(rows: Option<Vec<ActiveInfoRow>>) -> Option<Vec<String>> {
+        rows.map(|rows| rows.into_iter().map(|row| row.row_id).collect())
+    }
+
     #[test]
     fn value_board_table_cell_edit_uses_skin_ir_intent() {
         assert_eq!(
@@ -1812,6 +1828,23 @@ mod tests {
                 ("value", "3".to_string()),
                 ("refs out", "0".to_string()),
                 ("refs in", "0".to_string()),
+            ])
+        );
+        assert_eq!(
+            row_ids(active_selection_detail_rows(
+                &node_workspace,
+                &node_selection
+            )),
+            Some(vec![
+                "focus".to_string(),
+                "name".to_string(),
+                "key".to_string(),
+                "kind".to_string(),
+                "state".to_string(),
+                "input".to_string(),
+                "value".to_string(),
+                "refs_out".to_string(),
+                "refs_in".to_string(),
             ])
         );
 
@@ -2013,6 +2046,16 @@ mod tests {
             ),
             Some("a, b, c, d, +2 more".to_string())
         );
+    }
+
+    #[test]
+    fn value_board_active_info_row_ids_are_stable_label_ids() {
+        assert_eq!(active_info_row_id("refs out"), "refs_out");
+        assert_eq!(active_info_row_id("trace detail"), "trace_detail");
+        let row = active_info_row("run state", "published");
+        assert_eq!(row.row_id, "run_state");
+        assert_eq!(row.label, "run state");
+        assert_eq!(row.value, "published");
     }
 
     #[test]
