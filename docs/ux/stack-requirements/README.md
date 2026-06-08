@@ -123,12 +123,14 @@ inverse replay; `is_meta` subtrees are invisible to formulas.
    the complete catalog index of every requirement (id, layer, readiness, effort, tier, dependencies).
 3. [`ROADMAP.md`](ROADMAP.md) — the dependency-sequenced waves (W0–W7), the **minimum foundational
    set**, the **four gating engine workstreams**, and the open questions/spikes.
-4. [`ENGINE_REQUIREMENTS.md`](ENGINE_REQUIREMENTS.md) — full detail (Rust shape + justification +
+4. [`ITERATION_GOAL.md`](ITERATION_GOAL.md) — the working goal statement, iteration rule, and
+   checklist for keeping implementation passes tied to the roadmap rather than incidental polish.
+5. [`ENGINE_REQUIREMENTS.md`](ENGINE_REQUIREMENTS.md) — full detail (Rust shape + justification +
    readiness + deps) for every **OxCalc** and **OxFml** ask. *This is the doc to roll out to the
    sibling lanes.*
-5. [`HOST_AND_SKIN_IR_REQUIREMENTS.md`](HOST_AND_SKIN_IR_REQUIREMENTS.md) — full detail for every
+6. [`HOST_AND_SKIN_IR_REQUIREMENTS.md`](HOST_AND_SKIN_IR_REQUIREMENTS.md) — full detail for every
    **Host-projection**, **Host-intent**, and **Skin-IR-contract** ask. *Implemented here.*
-6. [`reference/REQUIREMENTS_SYNTHESIS.raw.json`](reference/REQUIREMENTS_SYNTHESIS.raw.json) — the raw
+7. [`reference/REQUIREMENTS_SYNTHESIS.raw.json`](reference/REQUIREMENTS_SYNTHESIS.raw.json) — the raw
    multi-agent synthesis, verbatim, for provenance.
 
 ---
