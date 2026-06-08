@@ -763,6 +763,9 @@ pub enum MutationImpactIntentProjection {
         new_parent: Option<NodeId>,
         new_index: Option<usize>,
     },
+    DeleteNode {
+        node: NodeId,
+    },
     AddTableFormulaColumn {
         table: NodeId,
         column_id: String,
@@ -779,6 +782,7 @@ impl MutationImpactIntentProjection {
             Self::EditScopedContent { .. } => "edit_scoped_content",
             Self::RenameNode { .. } => "rename_node",
             Self::MoveNode { .. } => "move_node",
+            Self::DeleteNode { .. } => "delete_node",
             Self::AddTableFormulaColumn { .. } => "add_table_formula_column",
         }
     }

@@ -585,6 +585,39 @@ fn programmable_skin_previews_move_drop_legality_impact_and_collisions() {
 }
 
 #[test]
+fn programmable_skin_previews_delete_orphan_impact_without_mutating() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    skin.add_node(Some("Root"), "A", "1");
+    skin.add_node(Some("Root"), "B", "=A+1");
+    skin.add_node(Some("Root"), "C", "=B+1");
+    let before_revision = revision_fingerprint(&skin.state().revision);
+
+    let impact = harness.preview_delete_node_impact("Root.A");
+    assert!(impact.legal, "{impact:?}");
+    assert!(impact.blocked_reason.is_none());
+    assert!(impact.collisions.is_empty());
+    assert_eq!(impact.orphaned_dependents, vec![NodeId::new("Root.B")]);
+    assert_eq!(
+        impact.affected_refs,
+        vec![NodeId::new("Root.B"), NodeId::new("Root.C")]
+    );
+    assert!(impact.requires_rebind.contains(&NodeId::new("Root.A")));
+    let MutationImpactIntentProjection::DeleteNode { node } = &impact.intent else {
+        panic!("expected delete impact intent");
+    };
+    assert_eq!(node, &NodeId::new("Root.A"));
+    assert_eq!(
+        revision_fingerprint(&skin.state().revision),
+        before_revision
+    );
+    assert!(skin.state().node(&NodeId::new("Root.A")).is_some());
+    skin.assert_scalar("Root.C", "3");
+}
+
+#[test]
 fn programmable_skin_receipts_carry_projection_deltas() {
     let harness = Harness::empty();
     let skin = harness.driver.clone();

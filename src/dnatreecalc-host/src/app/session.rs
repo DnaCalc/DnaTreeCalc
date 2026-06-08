@@ -669,6 +669,39 @@ impl TreeWorkspaceSession {
         })
     }
 
+    pub fn preview_delete_node_impact(
+        &self,
+        node: &NodeId,
+    ) -> Result<MutationImpactProjection, TreeWorkspaceSessionError> {
+        self.tree_node_id(node.as_str())?;
+        let state = self.workspace_state()?;
+        let deleted_keys = self.subtree_keys_for_state(&state, node)?;
+        let deleted_nodes = deleted_keys
+            .iter()
+            .filter_map(|key| state.node_by_key(key).map(|node| node.id.clone()))
+            .collect::<BTreeSet<_>>();
+        let orphaned_dependents = orphaned_dependents_for_deleted_keys(&state, &deleted_keys);
+        let invalidation_plan =
+            self.preview_recalc_plan(&[RecalcPlanMutation::DeleteNode { node: node.clone() }])?;
+        Ok(MutationImpactProjection {
+            intent: MutationImpactIntentProjection::DeleteNode { node: node.clone() },
+            legal: true,
+            blocked_reason: None,
+            profile_violations: Vec::new(),
+            bind_diagnostics: Vec::new(),
+            requires_rebind: invalidation_plan.requires_rebind.clone(),
+            affected_refs: invalidation_plan
+                .invalidated_nodes
+                .iter()
+                .filter(|entry| !deleted_nodes.contains(&entry.node))
+                .map(|entry| entry.node.clone())
+                .collect(),
+            orphaned_dependents,
+            collisions: Vec::new(),
+            invalidation_plan,
+        })
+    }
+
     pub fn preview_new_table_column_formula_impact(
         &self,
         table: &NodeId,
@@ -2242,6 +2275,24 @@ impl TreeWorkspaceSession {
         Ok(subtree.contains(&new_parent_key))
     }
 
+    fn subtree_keys_for_state(
+        &self,
+        state: &WorkspaceState,
+        node: &NodeId,
+    ) -> Result<Vec<NodeKey>, TreeWorkspaceSessionError> {
+        let node_key = state
+            .node(node)
+            .map(|node| node.key.clone())
+            .ok_or_else(|| TreeWorkspaceSessionError::ProjectionOutOfSync {
+                node: node.to_string(),
+            })?;
+        state
+            .expand_authoring_scope(&AuthoringScope::Subtree(node_key))
+            .map_err(|error| TreeWorkspaceSessionError::ProjectionOutOfSync {
+                node: error.to_string(),
+            })
+    }
+
     fn engine_preview_mutations(
         &self,
         mutation: &RecalcPlanMutation,
@@ -3438,6 +3489,32 @@ fn mutation_impact_blocked_reason_for_table_bind(
         return Some(MutationImpactBlockedReasonProjection::BindDiagnostics);
     }
     None
+}
+
+fn orphaned_dependents_for_deleted_keys(
+    state: &WorkspaceState,
+    deleted_keys: &[NodeKey],
+) -> Vec<NodeId> {
+    let deleted_key_set = deleted_keys.iter().cloned().collect::<BTreeSet<_>>();
+    let mut seen = BTreeSet::new();
+    let mut dependents = Vec::new();
+    for deleted_key in deleted_keys {
+        let Some(handles) = state.dependencies.reverse_references.get(deleted_key) else {
+            continue;
+        };
+        for handle in handles {
+            let Some(resolution) = state.dependencies.reference_resolutions.get(handle) else {
+                continue;
+            };
+            if deleted_key_set.contains(&resolution.owner_key) {
+                continue;
+            }
+            if seen.insert(resolution.owner.clone()) {
+                dependents.push(resolution.owner.clone());
+            }
+        }
+    }
+    dependents
 }
 
 fn should_replace_reference_target(

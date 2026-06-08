@@ -943,6 +943,14 @@ impl Harness {
             .unwrap()
     }
 
+    pub fn preview_delete_node_impact(&self, node: &str) -> MutationImpactProjection {
+        self.session
+            .lock()
+            .unwrap()
+            .preview_delete_node_impact(&NodeId::new(node))
+            .unwrap()
+    }
+
     pub fn preview_new_table_column_formula_impact(
         &self,
         table: &str,

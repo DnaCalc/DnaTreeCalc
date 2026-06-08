@@ -2,11 +2,30 @@
 
 ## Goal Statement
 
-Drive the DNA TreeCalc stack-requirements roadmap as an engine-first delivery loop, not as skin
-polish. Each iteration starts at the earliest unmet roadmap wave item, verifies the roadmap's
-readiness claim against real code, implements or exposes the capability in the repo that owns the
-truth, and then proves it from the outside through the host projection, closed intent seam, Skin IR
-tests, or a real skin.
+Execute the DNA TreeCalc stack-requirements roadmap in dependency order, with each iteration tied to
+the earliest unmet wave item rather than to incidental UI polish. The purpose of the loop is to move
+semantic truth upward from the owning engine or language layer into the host projection and Skin IR,
+so skins can become richer without parsing formulas, inventing values, reinterpreting dependency
+facts, or owning calculation behavior.
+
+Each iteration must do four things:
+
+1. identify the active roadmap slice and the exact requirement it advances,
+2. verify the readiness tag against the current OxCalc, OxFml, and DnaTreeCalc code,
+3. implement or expose the capability in the repo that owns the truth, and
+4. prove the downstream behavior through host receipts/projection, programmable Skin IR tests, or a
+   real skin.
+
+The current cursor is W2 safe structural authoring. W0/W1 established the identity spine and typed
+published facts; the next work should continue closing W2 legality, dry-bind, transaction, and
+impact-preview scope before advancing to W3 authoring verbs or W4/W5 substrate consumers. When a
+requirement depends on one of the real engine gates (`transaction-scope`,
+`revision-graph-retention`, `candidate-overlay-handle`, or remaining value-epoch shape work), the
+iteration stops being host/Skin IR projection work and becomes an OxCalc spike or implementation
+until that substrate is genuinely available.
+
+For a compact execution checklist, use
+[`ROADMAP_EXECUTION_CHECKLIST.md`](ROADMAP_EXECUTION_CHECKLIST.md).
 
 The roadmap alignment rule is:
 
@@ -18,19 +37,6 @@ The roadmap alignment rule is:
 | W3 | Reference/content authoring verbs | Authoring commands carry ids, handles, scopes, and profile-aware requests; OxFml recomposes formula text and OxCalc rebinds and schedules. |
 | W4a/W4b/W4c | Revision history and speculation | Dependent UI work waits for OxCalc-owned revision graph retention and addressable candidate overlays; skins never fake undo, time travel, or what-if state. |
 | W5+ | Platform and frontier capabilities | Delta channels, worker hosting, composition, table operations, import/export, sweeps, RTD, and onboarding ride only on the earlier engine substrate that makes them truthful. |
-
-The current working target is W2 structural authoring. W0/W1 exposure work has established the
-stable identity spine, typed engine facts, reference-resolution visibility, binding diagnostics,
-effective formatting, derivation/runtime detail, and per-node published-value epochs. The immediate
-cursor is W2 `engine-dry-bind` plus joined legality/impact preview coverage: finish typed dry-bind
-verdicts for node, table, and scoped subjects; join those verdicts with OxCalc committed-graph
-invalidation planning; prove the result through Skin IR tests; then advance to the next W2 item.
-
-When a wave item hits a real engine gate, stop treating it as projection work. The substrate gates
-are `transaction-scope`, `revision-graph-retention`, `candidate-overlay-handle`, and any remaining
-value-epoch-dependent shape work. Each gate needs an OxCalc spike or implementation before
-dependent host, Skin IR, or UI work is scheduled. Incidental UI polish is allowed only when it
-supports the active roadmap item; it is not the default next move while W2 is open.
 
 ## Iteration Rule
 
@@ -109,8 +115,10 @@ supports the active roadmap item; it is not the default next move while W2 is op
       host-owned same-parent name collision detection with OxCalc structural invalidation planning
       and projects typed `NameCollision` blockers through Skin IR. Move/drop legality-impact preview
       now joins host-owned drop validity and destination collision checks with OxCalc structural
-      invalidation planning. Delete/orphan-style structural preview coverage remains required before
-      closing the item.
+      invalidation planning. Delete/orphan structural preview now reports outside dependents from
+      engine-published reference-resolution maps and OxCalc delete invalidation planning without
+      mutating state. Remaining closure is add/default-content policy preview, broader table
+      row/column structural preview breadth, and a final W2 ownership review.
 
 ### Gating Engine Workstreams
 
