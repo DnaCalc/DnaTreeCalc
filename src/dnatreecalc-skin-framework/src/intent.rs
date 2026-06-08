@@ -73,6 +73,10 @@ pub enum WorkspaceIntent {
         row_id: String,
         values: Vec<TableCellInput>,
     },
+    DeleteTableRow {
+        table: NodeId,
+        row_id: String,
+    },
     NewWorkspace,
     SwitchWorkspace {
         workspace_id: String,
@@ -261,6 +265,7 @@ impl Dispatcher for InMemoryDispatcher {
             | WorkspaceIntent::DeleteNode { .. }
             | WorkspaceIntent::EditTableCell { .. }
             | WorkspaceIntent::AddTableRow { .. }
+            | WorkspaceIntent::DeleteTableRow { .. }
             | WorkspaceIntent::NewWorkspace
             | WorkspaceIntent::SwitchWorkspace { .. } => IntentReceipt::accepted(),
         }

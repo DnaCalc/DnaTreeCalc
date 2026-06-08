@@ -207,7 +207,7 @@ fn render_table_grid(
     let Some(cells) = table.cells.as_ref() else {
         return view! { <div class="dtc-table-card__empty">"No cell values"</div> }.into_any();
     };
-    let grid_style = format!("--dtc-table-cols: {};", table.column_count.max(1));
+    let grid_style = format!("--dtc-table-cols: {};", table.column_count.max(1) + 1);
 
     view! {
         <div class="dtc-table-card__grid" role="table" style=grid_style>
@@ -219,9 +219,13 @@ fn render_table_grid(
                         </span>
                     }
                 }).collect::<Vec<_>>()}
+                <span class="dtc-table-card__header-cell" role="columnheader"></span>
             </div>
             {cells.body_rows.iter().enumerate().map(|(row_index, row)| {
                 let fallback_row_id = table.rows.get(row_index).map(|row| row.row_id.clone());
+                let row_id_for_delete = fallback_row_id.clone().unwrap_or_default();
+                let table_node_for_delete = table_node.to_string();
+                let delete_dispatch = dispatch.clone();
                 view! {
                     <div class="dtc-table-card__row" role="row">
                         {row.iter().enumerate().map(|(column_index, cell)| {
@@ -269,6 +273,19 @@ fn render_table_grid(
                                 .into_any()
                             }
                         }).collect::<Vec<_>>()}
+                        <button
+                            type="button"
+                            class="dtc-table-card__row-action"
+                            disabled=row_id_for_delete.is_empty()
+                            on:click=move |_| {
+                                delete_dispatch.dispatch(table_row_delete_intent(
+                                    &table_node_for_delete,
+                                    &row_id_for_delete,
+                                ));
+                            }
+                        >
+                            "Delete"
+                        </button>
                     </div>
                 }
             }).collect::<Vec<_>>()}
@@ -282,6 +299,7 @@ fn render_table_grid(
                                 </span>
                             }
                         }).collect::<Vec<_>>()}
+                        <span class="dtc-table-card__formula-cell" role="cell"></span>
                     </div>
                 }
                 .into_any()
@@ -319,6 +337,13 @@ fn table_row_add_intent(
     }
 }
 
+fn table_row_delete_intent(table: &str, row_id: &str) -> WorkspaceIntent {
+    WorkspaceIntent::DeleteTableRow {
+        table: NodeId::new(table),
+        row_id: row_id.to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -348,6 +373,17 @@ mod tests {
                 table: NodeId::new("SalesTable"),
                 row_id: "row:south".to_string(),
                 values,
+            }
+        );
+    }
+
+    #[test]
+    fn value_board_table_row_delete_uses_skin_ir_intent() {
+        assert_eq!(
+            table_row_delete_intent("SalesTable", "row:east"),
+            WorkspaceIntent::DeleteTableRow {
+                table: NodeId::new("SalesTable"),
+                row_id: "row:east".to_string(),
             }
         );
     }

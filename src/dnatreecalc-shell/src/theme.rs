@@ -512,7 +512,8 @@ pub const SHELL_CSS: &str = r#"
 
 .dtc-table-card__header-cell,
 .dtc-table-card__formula-cell,
-.dtc-table-card__cell-input {
+.dtc-table-card__cell-input,
+.dtc-table-card__row-action {
     min-width: 0;
     min-height: 2rem;
     border: 0;
@@ -521,6 +522,23 @@ pub const SHELL_CSS: &str = r#"
     background: #ffffff;
     font: 0.8125rem ui-monospace, SFMono-Regular, Menlo, monospace;
     color: #1f2937;
+}
+
+.dtc-table-card__row-action {
+    background: #fff7ed;
+    color: #9a3412;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.dtc-table-card__row-action:hover {
+    background: #ffedd5;
+}
+
+.dtc-table-card__row-action:disabled {
+    cursor: default;
+    color: #94a3b8;
+    background: #f8fafc;
 }
 
 .dtc-table-card__header-cell {

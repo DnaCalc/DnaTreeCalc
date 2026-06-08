@@ -173,6 +173,20 @@ impl ProgrammableDriver {
             .dispatch(self.add_table_row_intent(table, row_id, values))
     }
 
+    pub fn delete_table_row(&self, table: &str, row_id: &str) {
+        self.accept(WorkspaceIntent::DeleteTableRow {
+            table: NodeId::new(table),
+            row_id: row_id.to_string(),
+        });
+    }
+
+    pub fn try_delete_table_row(&self, table: &str, row_id: &str) -> IntentReceipt {
+        self.dispatch.dispatch(WorkspaceIntent::DeleteTableRow {
+            table: NodeId::new(table),
+            row_id: row_id.to_string(),
+        })
+    }
+
     pub fn try_new_workspace(&self) -> IntentReceipt {
         self.dispatch.dispatch(WorkspaceIntent::NewWorkspace)
     }

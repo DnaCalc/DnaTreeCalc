@@ -564,6 +564,61 @@ impl TreeWorkspaceSession {
         Ok(())
     }
 
+    pub fn delete_table_row(
+        &mut self,
+        table: &NodeId,
+        row_id: &str,
+    ) -> Result<(), TreeWorkspaceSessionError> {
+        let table_node_id = self.tree_node_id(table.as_str())?;
+        let mut table_view = self
+            .context
+            .table_view(&self.workspace_id, table_node_id)?
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTable {
+                table: table.to_string(),
+            })?;
+        let row_index = table_view
+            .snapshot
+            .rows
+            .iter()
+            .position(|row| row.0 == row_id)
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTableRow {
+                table: table.to_string(),
+                row_id: row_id.to_string(),
+            })?;
+
+        let removed_body_node_ids = table_view
+            .snapshot
+            .body_cell_nodes
+            .iter()
+            .filter(|binding| binding.row_id.0 == row_id)
+            .map(|binding| binding.node_id)
+            .collect::<Vec<_>>();
+
+        table_view.snapshot.rows.remove(row_index);
+        table_view
+            .snapshot
+            .body_cell_nodes
+            .retain(|binding| binding.row_id.0 != row_id);
+        table_view.snapshot.row_membership_version = bumped_table_version(
+            &table_view.snapshot.row_membership_version,
+            "row-removed",
+            row_id,
+        );
+        table_view.snapshot.row_order_version = bumped_table_version(
+            &table_view.snapshot.row_order_version,
+            "row-removed",
+            row_id,
+        );
+        self.context
+            .set_node_table(&self.workspace_id, table_node_id, table_view.snapshot)?;
+        for node_id in removed_body_node_ids {
+            self.context.delete_node(&self.workspace_id, node_id)?;
+        }
+        self.refresh_projection_from_context()?;
+        self.last_outcome = None;
+        Ok(())
+    }
+
     pub fn workspace_state(&self) -> Result<WorkspaceState, TreeWorkspaceSessionError> {
         let workspace_view = self.context.workspace_view(&self.workspace_id)?;
         let revision = WorkspaceRevisionProjection {
@@ -1310,6 +1365,8 @@ pub enum TreeWorkspaceSessionError {
     UnknownTable { table: String },
     #[error("duplicate row {row_id} in table {table}")]
     DuplicateTableRow { table: String, row_id: String },
+    #[error("unknown row {row_id} in table {table}")]
+    UnknownTableRow { table: String, row_id: String },
     #[error("unknown column {column_id} in table {table}")]
     UnknownTableColumn { table: String, column_id: String },
     #[error("duplicate input for column {column_id} in table {table}")]

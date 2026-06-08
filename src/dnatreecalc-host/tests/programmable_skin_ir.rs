@@ -806,6 +806,33 @@ fn programmable_skin_edits_table_cells_and_adds_rows_from_outside_ir() {
         &[("col:amount", "1"), ("col:amount", "2")],
     );
     assert!(!duplicate_input.accepted, "{duplicate_input:?}");
+
+    let delete = skin.try_delete_table_row("SalesTable", "row:east");
+    assert!(delete.accepted, "{:?}", delete.error);
+    let deleted_state = skin.state();
+    let deleted_table = deleted_state
+        .tables
+        .get(&NodeId::new("SalesTable"))
+        .expect("table projects after row delete");
+    assert_eq!(deleted_table.row_count, 3);
+    assert_eq!(
+        deleted_table
+            .rows
+            .iter()
+            .map(|row| row.row_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["row:west", "row:north", "row:south"]
+    );
+    assert_eq!(table_body_row(deleted_table, 0), vec!["West", "10", "1"]);
+    assert_eq!(table_body_row(deleted_table, 1), vec!["North", "30", "3"]);
+    assert_eq!(table_body_row(deleted_table, 2), vec!["South", "40", "4"]);
+    assert_eq!(table_totals_row(deleted_table), vec!["", "80", ""]);
+    assert!(!deleted_state.node_order.iter().any(|node| {
+        node.as_str().contains("__table_body_") || node.as_str().contains("row:east")
+    }));
+
+    let missing_delete = skin.try_delete_table_row("SalesTable", "row:east");
+    assert!(!missing_delete.accepted, "{missing_delete:?}");
 }
 
 #[test]

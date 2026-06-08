@@ -255,6 +255,15 @@ impl Dispatcher for HostDispatcher {
                     |error| IntentReceipt::rejected(IntentError::Rejected(error)),
                     receipt_for_publication,
                 ),
+            WorkspaceIntent::DeleteTableRow { table, row_id } => self
+                .apply_workspace_edit(
+                    |session| session.delete_table_row(&table, &row_id),
+                    WorkspaceEditPublication::Recalculate,
+                )
+                .map_or_else(
+                    |error| IntentReceipt::rejected(IntentError::Rejected(error)),
+                    receipt_for_publication,
+                ),
             WorkspaceIntent::NewWorkspace => self.create_workspace().map_or_else(
                 |error| IntentReceipt::rejected(IntentError::Rejected(error)),
                 receipt_for_publication,
