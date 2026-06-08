@@ -1530,6 +1530,31 @@ mod tests {
         );
     }
 
+    #[test]
+    fn value_board_active_selection_summary_omits_formula_row_for_direct_table_cells() {
+        let workspace = workspace_with_direct_table_cell();
+        let selection =
+            SelectionState::with_table_cell(dnatreecalc_skin_framework::TableCellSelection {
+                table: NodeId::new("SalesTable"),
+                row_id: Some("row:east".to_string()),
+                column_id: "col:amount".to_string(),
+            });
+
+        assert_eq!(
+            active_selection_summary_rows(&workspace, &selection),
+            Some(vec![
+                ("focus", "table_cell".to_string()),
+                ("table", "SalesTable".to_string()),
+                ("cell", "row:east / Amount".to_string()),
+                ("key", "cell:east:amount".to_string()),
+                ("edit", "direct".to_string()),
+                ("value", "20".to_string()),
+                ("refs out", "0".to_string()),
+                ("refs in", "0".to_string()),
+            ])
+        );
+    }
+
     fn workspace_with_single_node() -> WorkspaceState {
         let mut nodes = BTreeMap::new();
         nodes.insert(
@@ -1627,6 +1652,59 @@ mod tests {
                 reverse_references,
                 ..DependencyGraphProjection::default()
             },
+            ..WorkspaceState::default()
+        }
+    }
+
+    fn workspace_with_direct_table_cell() -> WorkspaceState {
+        let mut tables = BTreeMap::new();
+        tables.insert(
+            NodeId::new("SalesTable"),
+            TableProjection {
+                table_id: "tree-table:sales".to_string(),
+                table_name: "SalesTable".to_string(),
+                display_path: "SalesTable".to_string(),
+                canonical_path: "SalesTable".to_string(),
+                virtual_anchor: TableAnchorProjection {
+                    workbook_scope_ref: "SalesTable".to_string(),
+                    sheet_scope_ref: "SalesTable".to_string(),
+                    start_row: 1,
+                    start_col: 1,
+                },
+                rows: vec![TableRowProjection {
+                    row_id: "row:east".to_string(),
+                    ordinal: 1,
+                }],
+                columns: vec![TableColumnProjection {
+                    column_id: "col:amount".to_string(),
+                    name: "Amount".to_string(),
+                    ordinal: 1,
+                    body: TableColumnBodyProjection::ConstantCells,
+                    totals_formula: None,
+                }],
+                cells: Some(TableCellsProjection {
+                    body_rows: vec![vec![Some(TableCellProjection {
+                        row_id: Some("row:east".to_string()),
+                        column_id: "col:amount".to_string(),
+                        node_key: NodeKey::new("cell:east:amount"),
+                        value: NodeValueProjection::Scalar("20".to_string()),
+                    })]],
+                    totals_row: vec![],
+                }),
+                row_count: 1,
+                column_count: 1,
+                header_row_present: true,
+                totals_row_present: false,
+                table_namespace_version: "table-namespace:v1".to_string(),
+                row_membership_version: "rows:v1".to_string(),
+                row_order_version: "row-order:v1".to_string(),
+                column_identity_version: "columns:v1".to_string(),
+                dependency_inventory: vec![],
+            },
+        );
+
+        WorkspaceState {
+            tables,
             ..WorkspaceState::default()
         }
     }
