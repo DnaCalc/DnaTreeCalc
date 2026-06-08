@@ -135,9 +135,9 @@ fn render_active_selection_summary(
             .map(|rows| {
                 view! {
                     <dl class="dtc-value-board__active-selection">
-                        {rows.into_iter().map(|(label, value)| view! {
-                            <dt>{label}</dt>
-                            <dd>{value}</dd>
+                        {rows.into_iter().map(|row| view! {
+                            <dt>{row.label}</dt>
+                            <dd>{row.value}</dd>
                         }).collect::<Vec<_>>()}
                     </dl>
                 }
@@ -150,14 +150,14 @@ fn render_active_selection_summary(
 fn active_selection_summary_rows(
     workspace: &WorkspaceState,
     selection: &SelectionState,
-) -> Option<Vec<(&'static str, String)>> {
+) -> Option<Vec<ActiveInfoRow>> {
     let active_selection = workspace.active_selection_detail(selection)?;
     let focus = active_selection.stable_id().to_string();
     match active_selection {
         ActiveSelectionDetailProjection::Node(detail) => Some(vec![
-            ("focus", focus),
-            ("name", detail.display_name),
-            ("value", detail.value.display_text()),
+            active_info_row("focus", focus),
+            active_info_row("name", detail.display_name),
+            active_info_row("value", detail.value.display_text()),
         ]),
         ActiveSelectionDetailProjection::TableCell(detail) => {
             let row = detail
@@ -166,22 +166,22 @@ fn active_selection_summary_rows(
                 .map(str::to_string)
                 .unwrap_or_else(|| "totals".to_string());
             Some(vec![
-                ("focus", focus),
-                ("table", detail.table_name),
-                ("cell", format!("{} / {}", row, detail.column_name)),
-                ("value", detail.value.display_text()),
+                active_info_row("focus", focus),
+                active_info_row("table", detail.table_name),
+                active_info_row("cell", format!("{} / {}", row, detail.column_name)),
+                active_info_row("value", detail.value.display_text()),
             ])
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct DetailRow {
+struct ActiveInfoRow {
     label: &'static str,
     value: String,
 }
 
-impl DetailRow {
+impl ActiveInfoRow {
     fn new(label: &'static str, value: impl Into<String>) -> Self {
         Self {
             label,
@@ -190,8 +190,8 @@ impl DetailRow {
     }
 }
 
-fn detail_row(label: &'static str, value: impl Into<String>) -> DetailRow {
-    DetailRow::new(label, value)
+fn active_info_row(label: &'static str, value: impl Into<String>) -> ActiveInfoRow {
+    ActiveInfoRow::new(label, value)
 }
 
 fn render_active_selection_detail_panel(
@@ -223,42 +223,42 @@ fn render_active_selection_detail_panel(
 fn active_selection_detail_rows(
     workspace: &WorkspaceState,
     selection: &SelectionState,
-) -> Option<Vec<DetailRow>> {
+) -> Option<Vec<ActiveInfoRow>> {
     let active_selection = workspace.active_selection_detail(selection)?;
     let focus = active_selection.stable_id().to_string();
     match active_selection {
         ActiveSelectionDetailProjection::Node(detail) => {
             let mut rows = vec![
-                detail_row("focus", focus),
-                detail_row("name", detail.display_name),
-                detail_row("key", detail.node_key.to_string()),
-                detail_row("kind", detail.content_kind.stable_id()),
-                detail_row(
+                active_info_row("focus", focus),
+                active_info_row("name", detail.display_name),
+                active_info_row("key", detail.node_key.to_string()),
+                active_info_row("kind", detail.content_kind.stable_id()),
+                active_info_row(
                     "state",
                     detail
                         .calc_state
                         .map(|state| state.stable_id().to_string())
                         .unwrap_or_else(|| "unknown".to_string()),
                 ),
-                detail_row("input", detail.content_text),
-                detail_row("value", detail.value.display_text()),
-                detail_row("refs out", detail.outgoing_references.len().to_string()),
-                detail_row(
+                active_info_row("input", detail.content_text),
+                active_info_row("value", detail.value.display_text()),
+                active_info_row("refs out", detail.outgoing_references.len().to_string()),
+                active_info_row(
                     "refs in",
                     detail.incoming_reference_handles.len().to_string(),
                 ),
             ];
             if let Some(handles) = outgoing_reference_summary(&detail.outgoing_references) {
-                rows.push(detail_row("out handles", handles));
+                rows.push(active_info_row("out handles", handles));
             }
             if let Some(targets) = outgoing_target_summary(&detail.outgoing_references) {
-                rows.push(detail_row("out targets", targets));
+                rows.push(active_info_row("out targets", targets));
             }
             if let Some(spans) = outgoing_source_span_summary(&detail.outgoing_references) {
-                rows.push(detail_row("out spans", spans));
+                rows.push(active_info_row("out spans", spans));
             }
             if let Some(handles) = handle_summary(detail.incoming_reference_handles) {
-                rows.push(detail_row("in handles", handles));
+                rows.push(active_info_row("in handles", handles));
             }
             append_run_context_rows(&mut rows, workspace, &detail.node_key);
             Some(rows)
@@ -270,38 +270,38 @@ fn active_selection_detail_rows(
                 .map(str::to_string)
                 .unwrap_or_else(|| "totals".to_string());
             let mut rows = vec![
-                detail_row("focus", focus),
-                detail_row("table", detail.table_name),
-                detail_row("cell", format!("{} / {}", row, detail.column_name)),
-                detail_row("key", detail.node_key.to_string()),
-                detail_row("region", detail.region.stable_id()),
-                detail_row(
+                active_info_row("focus", focus),
+                active_info_row("table", detail.table_name),
+                active_info_row("cell", format!("{} / {}", row, detail.column_name)),
+                active_info_row("key", detail.node_key.to_string()),
+                active_info_row("region", detail.region.stable_id()),
+                active_info_row(
                     "edit",
                     table_cell_editability_label(detail.editability).to_string(),
                 ),
             ];
             if let Some(formula) = detail.formula {
-                rows.push(detail_row("formula", formula.formula_text));
+                rows.push(active_info_row("formula", formula.formula_text));
             }
             rows.extend([
-                detail_row("value", detail.value.display_text()),
-                detail_row("refs out", detail.outgoing_references.len().to_string()),
-                detail_row(
+                active_info_row("value", detail.value.display_text()),
+                active_info_row("refs out", detail.outgoing_references.len().to_string()),
+                active_info_row(
                     "refs in",
                     detail.incoming_reference_handles.len().to_string(),
                 ),
             ]);
             if let Some(handles) = outgoing_reference_summary(&detail.outgoing_references) {
-                rows.push(detail_row("out handles", handles));
+                rows.push(active_info_row("out handles", handles));
             }
             if let Some(targets) = outgoing_target_summary(&detail.outgoing_references) {
-                rows.push(detail_row("out targets", targets));
+                rows.push(active_info_row("out targets", targets));
             }
             if let Some(spans) = outgoing_source_span_summary(&detail.outgoing_references) {
-                rows.push(detail_row("out spans", spans));
+                rows.push(active_info_row("out spans", spans));
             }
             if let Some(handles) = handle_summary(detail.incoming_reference_handles) {
-                rows.push(detail_row("in handles", handles));
+                rows.push(active_info_row("in handles", handles));
             }
             append_run_context_rows(&mut rows, workspace, &detail.node_key);
             Some(rows)
@@ -310,7 +310,7 @@ fn active_selection_detail_rows(
 }
 
 fn append_run_context_rows(
-    rows: &mut Vec<DetailRow>,
+    rows: &mut Vec<ActiveInfoRow>,
     workspace: &WorkspaceState,
     node_key: &NodeKey,
 ) {
@@ -318,11 +318,11 @@ fn append_run_context_rows(
         return;
     };
 
-    rows.push(detail_row(
+    rows.push(active_info_row(
         "run state",
         calc_run_state_label(last_run.run_state).to_string(),
     ));
-    rows.push(detail_row(
+    rows.push(active_info_row(
         "run effects",
         last_run.runtime_effect_count.to_string(),
     ));
@@ -332,34 +332,34 @@ fn append_run_context_rows(
             .iter()
             .map(|effect| effect.family.to_string()),
     ) {
-        rows.push(detail_row("run effect families", families));
+        rows.push(active_info_row("run effect families", families));
     }
-    rows.push(detail_row(
+    rows.push(active_info_row(
         "run overlays",
         last_run.runtime_overlay_count.to_string(),
     ));
-    rows.push(detail_row(
+    rows.push(active_info_row(
         "run diagnostics",
         last_run.diagnostics.len().to_string(),
     ));
-    rows.push(detail_row(
+    rows.push(active_info_row(
         "phase count",
         last_run.phase_timings_micros.len().to_string(),
     ));
     if let Some(phases) = phase_timing_summary(&last_run.phase_timings_micros) {
-        rows.push(detail_row("slow phases", phases));
+        rows.push(active_info_row("slow phases", phases));
     }
     if let Some(invalidation) = last_run
         .invalidated_nodes
         .iter()
         .find(|invalidation| &invalidation.node_key == node_key)
     {
-        rows.push(detail_row("last invalidated", "true"));
-        rows.push(detail_row(
+        rows.push(active_info_row("last invalidated", "true"));
+        rows.push(active_info_row(
             "last state",
             invalidation.calc_state.to_string(),
         ));
-        rows.push(detail_row(
+        rows.push(active_info_row(
             "last rebind",
             invalidation.requires_rebind.to_string(),
         ));
@@ -369,10 +369,10 @@ fn append_run_context_rows(
                 .iter()
                 .map(|reason| reason.stable_id().to_string()),
         ) {
-            rows.push(detail_row("last reasons", reasons));
+            rows.push(active_info_row("last reasons", reasons));
         }
     } else {
-        rows.push(detail_row("last invalidated", "false"));
+        rows.push(active_info_row("last invalidated", "false"));
     }
 
     let traces = last_run
@@ -380,11 +380,11 @@ fn append_run_context_rows(
         .iter()
         .filter(|trace| &trace.owner_key == node_key)
         .collect::<Vec<_>>();
-    rows.push(detail_row("trace count", traces.len().to_string()));
+    rows.push(active_info_row("trace count", traces.len().to_string()));
     if let Some(trace_ids) =
         handle_summary(traces.iter().map(|trace| trace.formula_stable_id.clone()))
     {
-        rows.push(detail_row("trace formulas", trace_ids));
+        rows.push(active_info_row("trace formulas", trace_ids));
     }
     if let Some(trace_details) = handle_summary(traces.iter().map(|trace| {
         format!(
@@ -397,7 +397,7 @@ fn append_run_context_rows(
             trace.oxfml_trace_events.len()
         )
     })) {
-        rows.push(detail_row("trace detail", trace_details));
+        rows.push(active_info_row("trace detail", trace_details));
     }
 
     let overlays = last_run
@@ -405,16 +405,16 @@ fn append_run_context_rows(
         .iter()
         .filter(|overlay| &overlay.owner_key == node_key)
         .collect::<Vec<_>>();
-    rows.push(detail_row("overlay count", overlays.len().to_string()));
+    rows.push(active_info_row("overlay count", overlays.len().to_string()));
     if let Some(kinds) = handle_summary(overlays.iter().map(|overlay| overlay.kind.to_string())) {
-        rows.push(detail_row("overlay kinds", kinds));
+        rows.push(active_info_row("overlay kinds", kinds));
     }
     if let Some(payloads) = handle_summary(
         overlays
             .iter()
             .filter_map(|overlay| overlay.payload_identity.clone()),
     ) {
-        rows.push(detail_row("overlay payloads", payloads));
+        rows.push(active_info_row("overlay payloads", payloads));
     }
 }
 
@@ -1654,7 +1654,7 @@ mod tests {
     };
     use std::collections::BTreeMap;
 
-    fn row_pairs(rows: Option<Vec<DetailRow>>) -> Option<Vec<(&'static str, String)>> {
+    fn row_pairs(rows: Option<Vec<ActiveInfoRow>>) -> Option<Vec<(&'static str, String)>> {
         rows.map(|rows| rows.into_iter().map(|row| (row.label, row.value)).collect())
     }
 
@@ -1771,7 +1771,10 @@ mod tests {
     fn value_board_active_selection_summary_reads_unified_skin_ir_projection() {
         let node_workspace = workspace_with_single_node();
         assert_eq!(
-            active_selection_summary_rows(&node_workspace, &SelectionState::default()),
+            row_pairs(active_selection_summary_rows(
+                &node_workspace,
+                &SelectionState::default()
+            )),
             None
         );
         assert_eq!(
@@ -1784,7 +1787,10 @@ mod tests {
 
         let node_selection = SelectionState::with_primary(Some(NodeId::new("Root.A")));
         assert_eq!(
-            active_selection_summary_rows(&node_workspace, &node_selection),
+            row_pairs(active_selection_summary_rows(
+                &node_workspace,
+                &node_selection
+            )),
             Some(vec![
                 ("focus", "node".to_string()),
                 ("name", "A".to_string()),
@@ -1817,7 +1823,10 @@ mod tests {
                 column_id: "col:tax".to_string(),
             });
         assert_eq!(
-            active_selection_summary_rows(&table_workspace, &table_selection),
+            row_pairs(active_selection_summary_rows(
+                &table_workspace,
+                &table_selection
+            )),
             Some(vec![
                 ("focus", "table_cell".to_string()),
                 ("table", "SalesTable".to_string()),
@@ -1851,7 +1860,10 @@ mod tests {
 
         let precedent_selection = SelectionState::with_primary(Some(NodeId::new("Root.A")));
         assert_eq!(
-            active_selection_summary_rows(&workspace, &precedent_selection),
+            row_pairs(active_selection_summary_rows(
+                &workspace,
+                &precedent_selection
+            )),
             Some(vec![
                 ("focus", "node".to_string()),
                 ("name", "A".to_string()),
@@ -1892,7 +1904,10 @@ mod tests {
 
         let formula_selection = SelectionState::with_primary(Some(NodeId::new("Root.B")));
         assert_eq!(
-            active_selection_summary_rows(&workspace, &formula_selection),
+            row_pairs(active_selection_summary_rows(
+                &workspace,
+                &formula_selection
+            )),
             Some(vec![
                 ("focus", "node".to_string()),
                 ("name", "B".to_string()),
@@ -1959,7 +1974,7 @@ mod tests {
             });
 
         assert_eq!(
-            active_selection_summary_rows(&workspace, &selection),
+            row_pairs(active_selection_summary_rows(&workspace, &selection)),
             Some(vec![
                 ("focus", "table_cell".to_string()),
                 ("table", "SalesTable".to_string()),
