@@ -833,8 +833,11 @@ fn programmable_skin_reads_unified_active_selection_detail() {
     assert!(skin.active_selection_detail().is_none());
 
     skin.select(Some("Root.A"));
-    let Some(ActiveSelectionDetailProjection::Node(node_detail)) = skin.active_selection_detail()
-    else {
+    let active_node_selection = skin
+        .active_selection_detail()
+        .expect("node selection projects active detail");
+    assert_eq!(active_node_selection.stable_id(), "node");
+    let ActiveSelectionDetailProjection::Node(node_detail) = active_node_selection else {
         panic!("node selection should project active node detail");
     };
     assert_eq!(node_detail.node, NodeId::new("Root.A"));
@@ -844,14 +847,18 @@ fn programmable_skin_reads_unified_active_selection_detail() {
     let table_skin = table_harness.driver.clone();
     table_skin.recalc();
     table_skin.select_table_cell("SalesTable", Some("row:east"), "col:tax");
-    let Some(ActiveSelectionDetailProjection::TableCell(cell_detail)) =
-        table_skin.active_selection_detail()
-    else {
+    let active_cell_selection = table_skin
+        .active_selection_detail()
+        .expect("table cell selection projects active detail");
+    assert_eq!(active_cell_selection.stable_id(), "table_cell");
+    let ActiveSelectionDetailProjection::TableCell(cell_detail) = active_cell_selection else {
         panic!("table cell selection should project active table cell detail");
     };
     assert_eq!(cell_detail.table, NodeId::new("SalesTable"));
     assert_eq!(cell_detail.row_id.as_deref(), Some("row:east"));
     assert_eq!(cell_detail.column_id, "col:tax");
+    assert_eq!(cell_detail.region.stable_id(), "body");
+    assert_eq!(cell_detail.editability.stable_id(), "formula_backed");
     assert_eq!(cell_detail.value.display_text(), "2");
     assert_eq!(
         cell_detail

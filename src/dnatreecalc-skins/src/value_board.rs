@@ -1,9 +1,8 @@
 use dnatreecalc_skin_framework::{
     ActiveTableCellDetailProjection, Dispatcher, NodeId, NodeValueProjection, SelectionState,
     SkinCapabilities, SkinCategory, SkinContext, SkinHandle, SkinId, SkinManifest, SkinState,
-    TableCellEditabilityProjection, TableCellInput, TableCellRegionProjection,
-    TableColumnBodyProjection, TableProjection, TableRowInput, WorkspaceIntent, WorkspaceSkin,
-    WorkspaceState,
+    TableCellEditabilityProjection, TableCellInput, TableColumnBodyProjection, TableProjection,
+    TableRowInput, WorkspaceIntent, WorkspaceSkin, WorkspaceState,
 };
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -711,7 +710,7 @@ fn render_active_table_cell_summary(
                 })
             })
             .map(|detail| {
-                let region = table_cell_region_label(detail.region);
+                let region = detail.region.stable_id();
                 let row = detail
                     .row_id
                     .as_deref()
@@ -748,13 +747,6 @@ fn active_table_cell_detail_for_table(
 ) -> Option<ActiveTableCellDetailProjection> {
     let detail = workspace.active_table_cell_detail(selection)?;
     (detail.table.as_str() == table_node).then_some(detail)
-}
-
-fn table_cell_region_label(region: TableCellRegionProjection) -> &'static str {
-    match region {
-        TableCellRegionProjection::Body => "body",
-        TableCellRegionProjection::Totals => "totals",
-    }
 }
 
 fn table_cell_editability_label(editability: TableCellEditabilityProjection) -> &'static str {
@@ -1252,8 +1244,9 @@ fn table_totals_row_visible_intent(table: &str, visible: bool) -> WorkspaceInten
 mod tests {
     use super::*;
     use dnatreecalc_skin_framework::{
-        NodeKey, TableAnchorProjection, TableCellProjection, TableCellsProjection,
-        TableColumnProjection, TableFormulaMetadataProjection, TableRowProjection,
+        NodeKey, TableAnchorProjection, TableCellProjection, TableCellRegionProjection,
+        TableCellsProjection, TableColumnProjection, TableFormulaMetadataProjection,
+        TableRowProjection,
     };
     use std::collections::BTreeMap;
 
@@ -1349,10 +1342,12 @@ mod tests {
         assert_eq!(detail.column_name, "Tax");
         assert_eq!(detail.column_ordinal, 3);
         assert_eq!(detail.region, TableCellRegionProjection::Body);
+        assert_eq!(detail.region.stable_id(), "body");
         assert_eq!(
             detail.editability,
             TableCellEditabilityProjection::FormulaBacked
         );
+        assert_eq!(detail.editability.stable_id(), "formula_backed");
         assert_eq!(table_cell_editability_label(detail.editability), "formula");
         let formula = detail
             .formula

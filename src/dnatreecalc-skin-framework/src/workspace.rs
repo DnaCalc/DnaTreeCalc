@@ -174,6 +174,16 @@ pub enum ActiveSelectionDetailProjection {
     TableCell(ActiveTableCellDetailProjection),
 }
 
+impl ActiveSelectionDetailProjection {
+    #[must_use]
+    pub const fn stable_id(&self) -> &'static str {
+        match self {
+            Self::Node(_) => "node",
+            Self::TableCell(_) => "table_cell",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActiveTableCellDetailProjection {
     pub table: NodeId,
@@ -199,12 +209,46 @@ pub enum TableCellRegionProjection {
     Totals,
 }
 
+impl TableCellRegionProjection {
+    #[must_use]
+    pub const fn stable_id(self) -> &'static str {
+        match self {
+            Self::Body => "body",
+            Self::Totals => "totals",
+        }
+    }
+}
+
+impl fmt::Display for TableCellRegionProjection {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.stable_id())
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TableCellEditabilityProjection {
     DirectInput,
     FormulaBacked,
     TotalsFormula,
     ReadOnly,
+}
+
+impl TableCellEditabilityProjection {
+    #[must_use]
+    pub const fn stable_id(self) -> &'static str {
+        match self {
+            Self::DirectInput => "direct_input",
+            Self::FormulaBacked => "formula_backed",
+            Self::TotalsFormula => "totals_formula",
+            Self::ReadOnly => "read_only",
+        }
+    }
+}
+
+impl fmt::Display for TableCellEditabilityProjection {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.stable_id())
+    }
 }
 
 fn active_table_cell_formula(
