@@ -472,6 +472,26 @@ pub enum RuntimeOverlayKindProjection {
     ObserverPriorityMetadata,
 }
 
+impl RuntimeOverlayKindProjection {
+    #[must_use]
+    pub const fn stable_id(self) -> &'static str {
+        match self {
+            Self::InvalidationExecutionState => "invalidation_execution_state",
+            Self::DynamicDependency => "dynamic_dependency",
+            Self::ExecutionRestriction => "execution_restriction",
+            Self::ShapeTopology => "shape_topology",
+            Self::CapabilityFenceAttachment => "capability_fence_attachment",
+            Self::ObserverPriorityMetadata => "observer_priority_metadata",
+        }
+    }
+}
+
+impl fmt::Display for RuntimeOverlayKindProjection {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.stable_id())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DerivationTraceProjection {
     pub trace_schema_id: String,

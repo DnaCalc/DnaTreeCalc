@@ -334,6 +334,23 @@ fn append_run_context_rows(
     {
         rows.push(("trace formulas", trace_ids));
     }
+
+    let overlays = last_run
+        .runtime_overlays
+        .iter()
+        .filter(|overlay| &overlay.owner_key == node_key)
+        .collect::<Vec<_>>();
+    rows.push(("overlay count", overlays.len().to_string()));
+    if let Some(kinds) = handle_summary(overlays.iter().map(|overlay| overlay.kind.to_string())) {
+        rows.push(("overlay kinds", kinds));
+    }
+    if let Some(payloads) = handle_summary(
+        overlays
+            .iter()
+            .filter_map(|overlay| overlay.payload_identity.clone()),
+    ) {
+        rows.push(("overlay payloads", payloads));
+    }
 }
 
 fn calc_run_state_label(state: CalcRunStateProjection) -> &'static str {
@@ -1536,9 +1553,10 @@ mod tests {
         DependencyKindProjection, DerivationTemplateSelectionProjection, DerivationTraceProjection,
         InvalidationReasonProjection, NodeCalcStateProjection, NodeContentKind,
         NodeInvalidationProjection, NodeKey, NodeView, ReferenceResolutionProjection,
-        ReferenceTargetProjection, SourceSpanProjection, TableAnchorProjection,
-        TableCellProjection, TableCellRegionProjection, TableCellsProjection,
-        TableColumnProjection, TableFormulaMetadataProjection, TableRowProjection,
+        ReferenceTargetProjection, RuntimeOverlayKindProjection, RuntimeOverlayProjection,
+        SourceSpanProjection, TableAnchorProjection, TableCellProjection,
+        TableCellRegionProjection, TableCellsProjection, TableColumnProjection,
+        TableFormulaMetadataProjection, TableRowProjection,
         TreeReferenceCollectionFamilyProjection, TreeReferenceCollectionProjection,
     };
     use std::collections::BTreeMap;
@@ -1750,6 +1768,7 @@ mod tests {
                 ("run state", "published".to_string()),
                 ("last invalidated", "false".to_string()),
                 ("trace count", "0".to_string()),
+                ("overlay count", "0".to_string()),
             ])
         );
 
@@ -1787,6 +1806,9 @@ mod tests {
                 ("last reasons", "dependency_added".to_string()),
                 ("trace count", "1".to_string()),
                 ("trace formulas", "formula:Root.B:v1".to_string()),
+                ("overlay count", "1".to_string()),
+                ("overlay kinds", "dynamic_dependency".to_string()),
+                ("overlay payloads", "overlay:Root.B:dyn".to_string()),
             ])
         );
     }
@@ -1875,6 +1897,18 @@ mod tests {
         assert_eq!(
             reference_target_label(&ReferenceTargetProjection::Unresolved),
             "unresolved"
+        );
+    }
+
+    #[test]
+    fn value_board_active_detail_runtime_overlay_kind_labels_are_stable() {
+        assert_eq!(
+            RuntimeOverlayKindProjection::InvalidationExecutionState.stable_id(),
+            "invalidation_execution_state"
+        );
+        assert_eq!(
+            RuntimeOverlayKindProjection::DynamicDependency.to_string(),
+            "dynamic_dependency"
         );
     }
 
@@ -1978,8 +2012,18 @@ mod tests {
                 evaluation_order: vec![NodeId::new("Root.A"), NodeId::new("Root.B")],
                 runtime_effect_count: 0,
                 runtime_effects: vec![],
-                runtime_overlay_count: 0,
-                runtime_overlays: vec![],
+                runtime_overlay_count: 1,
+                runtime_overlays: vec![RuntimeOverlayProjection {
+                    owner: NodeId::new("Root.B"),
+                    owner_key: NodeKey::new("node:root:b"),
+                    kind: RuntimeOverlayKindProjection::DynamicDependency,
+                    structural_snapshot_id: "snapshot:structure:v1".to_string(),
+                    compatibility_basis: "compatible:v1".to_string(),
+                    payload_identity: Some("overlay:Root.B:dyn".to_string()),
+                    is_protected: false,
+                    is_eviction_eligible: true,
+                    detail: "dynamic dependency overlay".to_string(),
+                }],
                 derivation_trace_count: 1,
                 derivation_traces: vec![DerivationTraceProjection {
                     trace_schema_id: "trace-schema:v1".to_string(),
