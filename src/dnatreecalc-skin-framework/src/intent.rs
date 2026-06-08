@@ -5,6 +5,22 @@ use crate::selection::{SelectionState, TableCellSelection};
 use crate::workspace::{CalcRunProjection, DependencyKindProjection, NodeValueProjection};
 use leptos::prelude::*;
 
+/// Typed subject for authoring verbs.
+///
+/// Skins may carry this value through commands, palettes, previews, and future
+/// mutating intents, but scope expansion is host-owned because subtree
+/// membership and reference-collection membership are projection/engine truth.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AuthoringScope {
+    Node(NodeKey),
+    Nodes(Vec<NodeKey>),
+    Subtree(NodeKey),
+    Collection {
+        owner: NodeKey,
+        source_reference_handle: String,
+    },
+}
+
 /// The closed set of asks a skin may make of the host.
 ///
 /// Per `docs/ux/SKINS.md` §2.6 this is intended to be the canonical

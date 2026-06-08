@@ -1,8 +1,9 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use std::fmt;
 
 use crate::identity::{NodeId, NodeKey};
+use crate::intent::AuthoringScope;
 use crate::selection::SelectionState;
 
 /// Read-side projection of the workspace, as seen by a mounted skin.
@@ -169,6 +170,127 @@ impl WorkspaceState {
                 .unwrap_or_default(),
         })
     }
+
+    pub fn expand_authoring_scope(
+        &self,
+        scope: &AuthoringScope,
+    ) -> Result<Vec<NodeKey>, AuthoringScopeExpansionError> {
+        match scope {
+            AuthoringScope::Node(node) => {
+                self.require_node_key(node)?;
+                Ok(vec![node.clone()])
+            }
+            AuthoringScope::Nodes(nodes) => nodes
+                .iter()
+                .map(|node| {
+                    self.require_node_key(node)?;
+                    Ok(node.clone())
+                })
+                .collect::<Result<Vec<_>, _>>()
+                .map(dedupe_preserving_order),
+            AuthoringScope::Subtree(root) => self.expand_subtree_scope(root),
+            AuthoringScope::Collection {
+                owner,
+                source_reference_handle,
+            } => self.expand_collection_scope(owner, source_reference_handle),
+        }
+    }
+
+    fn require_node_key(&self, node: &NodeKey) -> Result<&NodeView, AuthoringScopeExpansionError> {
+        self.node_by_key(node)
+            .ok_or_else(|| AuthoringScopeExpansionError::UnknownNode { node: node.clone() })
+    }
+
+    fn expand_subtree_scope(
+        &self,
+        root: &NodeKey,
+    ) -> Result<Vec<NodeKey>, AuthoringScopeExpansionError> {
+        self.require_node_key(root)?;
+        let mut expanded = Vec::new();
+        let mut seen = BTreeSet::new();
+        let mut stack = vec![root.clone()];
+        while let Some(node_key) = stack.pop() {
+            if !seen.insert(node_key.clone()) {
+                continue;
+            }
+            let node = self.require_node_key(&node_key)?;
+            expanded.push(node.key.clone());
+            for child_id in node.children.iter().rev() {
+                let child = self.node(child_id).ok_or_else(|| {
+                    AuthoringScopeExpansionError::ProjectionOutOfSync {
+                        detail: format!(
+                            "node {} lists child {} that is not in the projection",
+                            node.key, child_id
+                        ),
+                    }
+                })?;
+                stack.push(child.key.clone());
+            }
+        }
+        Ok(expanded)
+    }
+
+    fn expand_collection_scope(
+        &self,
+        owner: &NodeKey,
+        source_reference_handle: &str,
+    ) -> Result<Vec<NodeKey>, AuthoringScopeExpansionError> {
+        self.require_node_key(owner)?;
+        let resolution = self
+            .dependencies
+            .reference_resolutions
+            .get(source_reference_handle)
+            .ok_or_else(|| AuthoringScopeExpansionError::UnknownCollection {
+                owner: owner.clone(),
+                source_reference_handle: source_reference_handle.to_string(),
+            })?;
+        if &resolution.owner_key != owner {
+            return Err(AuthoringScopeExpansionError::UnknownCollection {
+                owner: owner.clone(),
+                source_reference_handle: source_reference_handle.to_string(),
+            });
+        }
+        let ReferenceTargetProjection::Collection { member_keys, .. } = &resolution.target else {
+            return Err(AuthoringScopeExpansionError::NotCollection {
+                owner: owner.clone(),
+                source_reference_handle: source_reference_handle.to_string(),
+            });
+        };
+        member_keys
+            .iter()
+            .map(|node| {
+                self.require_node_key(node)?;
+                Ok(node.clone())
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .map(dedupe_preserving_order)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum AuthoringScopeExpansionError {
+    #[error("unknown authoring-scope node {node}")]
+    UnknownNode { node: NodeKey },
+    #[error("unknown collection handle {source_reference_handle} on owner {owner}")]
+    UnknownCollection {
+        owner: NodeKey,
+        source_reference_handle: String,
+    },
+    #[error("reference handle {source_reference_handle} on owner {owner} is not a collection")]
+    NotCollection {
+        owner: NodeKey,
+        source_reference_handle: String,
+    },
+    #[error("workspace projection is out of sync: {detail}")]
+    ProjectionOutOfSync { detail: String },
+}
+
+fn dedupe_preserving_order(nodes: Vec<NodeKey>) -> Vec<NodeKey> {
+    let mut seen = BTreeSet::new();
+    nodes
+        .into_iter()
+        .filter(|node| seen.insert(node.clone()))
+        .collect()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

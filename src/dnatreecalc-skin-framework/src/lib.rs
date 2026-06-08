@@ -19,9 +19,9 @@ pub mod workspace;
 
 pub use identity::{NodeId, NodeKey, SkinId, SkinMountSlot};
 pub use intent::{
-    DependencyDeltaProjection, Dispatcher, InMemoryDispatcher, IntentError, IntentReceipt,
-    NodeValueDeltaProjection, StructuralDeltaProjection, TableCellInput, TableRowInput,
-    WorkspaceDelta, WorkspaceDeltaChange, WorkspaceIntent,
+    AuthoringScope, DependencyDeltaProjection, Dispatcher, InMemoryDispatcher, IntentError,
+    IntentReceipt, NodeValueDeltaProjection, StructuralDeltaProjection, TableCellInput,
+    TableRowInput, WorkspaceDelta, WorkspaceDeltaChange, WorkspaceIntent,
 };
 pub use manifest::{SkinCapabilities, SkinCategory, SkinManifest};
 pub use registry::SkinRegistry;
@@ -35,13 +35,13 @@ pub use state::{
 };
 pub use workspace::{
     ActiveNodeDetailProjection, ActiveSelectionDetailProjection, ActiveTableCellDetailProjection,
-    BindingDiagnosticProjection, CalcRunProjection, CalcRunStateProjection,
-    DependencyDescriptorProjection, DependencyEdgeProjection, DependencyGraphProjection,
-    DependencyKindProjection, DerivationHoleBindingProjection, DerivationInvocationProjection,
-    DerivationOxfmlTraceEventProjection, DerivationPreparedArgumentProjection,
-    DerivationTemplateHoleProjection, DerivationTemplateSelectionProjection,
-    DerivationTraceProjection, EffectiveFormatProjection, FormatSourceProjection,
-    InvalidationReasonProjection, NodeCalcStateProjection, NodeContentKind,
+    AuthoringScopeExpansionError, BindingDiagnosticProjection, CalcRunProjection,
+    CalcRunStateProjection, DependencyDescriptorProjection, DependencyEdgeProjection,
+    DependencyGraphProjection, DependencyKindProjection, DerivationHoleBindingProjection,
+    DerivationInvocationProjection, DerivationOxfmlTraceEventProjection,
+    DerivationPreparedArgumentProjection, DerivationTemplateHoleProjection,
+    DerivationTemplateSelectionProjection, DerivationTraceProjection, EffectiveFormatProjection,
+    FormatSourceProjection, InvalidationReasonProjection, NodeCalcStateProjection, NodeContentKind,
     NodeInvalidationProjection, NodeValueProjection, NodeView, PhaseKeyProjection,
     ReferenceResolutionProjection, ReferenceTargetProjection, RuntimeEffectFamilyProjection,
     RuntimeEffectProjection, RuntimeOverlayKindProjection, RuntimeOverlayProjection,

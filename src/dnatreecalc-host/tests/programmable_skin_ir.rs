@@ -1,10 +1,10 @@
 mod support;
 
 use dnatreecalc_skin_framework::{
-    ActiveSelectionDetailProjection, CalcRunStateProjection, IntentError, NodeContentKind, NodeId,
-    NodeValueProjection, ReferenceTargetProjection, RuntimeEffectFamilyProjection,
-    RuntimeOverlayKindProjection, TableCellEditabilityProjection, TableCellRegionProjection,
-    TableColumnBodyProjection, TableDependencyFactKindProjection,
+    ActiveSelectionDetailProjection, AuthoringScope, CalcRunStateProjection, IntentError,
+    NodeContentKind, NodeId, NodeValueProjection, ReferenceTargetProjection,
+    RuntimeEffectFamilyProjection, RuntimeOverlayKindProjection, TableCellEditabilityProjection,
+    TableCellRegionProjection, TableColumnBodyProjection, TableDependencyFactKindProjection,
     TableDependencyFactStatusProjection, TreeReferenceCollectionFamilyProjection,
     WorkspaceDeltaChange, WorkspaceRecalcMode,
 };
@@ -949,6 +949,84 @@ fn programmable_skin_projects_reference_resolution_map_and_reverse_index() {
                 })
         );
     }
+}
+
+#[test]
+fn programmable_skin_expands_authoring_scope_subjects_from_projection() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    skin.add_node(Some("Root"), "A", "1");
+    skin.add_node(Some("Root"), "B", "");
+    skin.add_node(Some("Root.B"), "B1", "2");
+    skin.add_node(Some("Root.B"), "B2", "3");
+    skin.add_node(Some("Root"), "C", "4");
+    skin.add_node(Some("Root"), "D", "=A");
+
+    let state = skin.state();
+    let a_key = state.node(&NodeId::new("Root.A")).unwrap().key.clone();
+    let b_key = state.node(&NodeId::new("Root.B")).unwrap().key.clone();
+    let b1_key = state.node(&NodeId::new("Root.B.B1")).unwrap().key.clone();
+    let b2_key = state.node(&NodeId::new("Root.B.B2")).unwrap().key.clone();
+
+    assert_eq!(
+        state.expand_authoring_scope(&AuthoringScope::Node(a_key.clone())),
+        Ok(vec![a_key.clone()])
+    );
+    assert_eq!(
+        state.expand_authoring_scope(&AuthoringScope::Nodes(vec![
+            b_key.clone(),
+            a_key.clone(),
+            b_key.clone()
+        ])),
+        Ok(vec![b_key.clone(), a_key.clone()])
+    );
+    assert_eq!(
+        state.expand_authoring_scope(&AuthoringScope::Subtree(b_key.clone())),
+        Ok(vec![b_key, b1_key, b2_key])
+    );
+
+    let collection_harness = Harness::from_repo_fixture("children-raw-active");
+    let collection_skin = collection_harness.driver.clone();
+    collection_skin.recalc();
+
+    let collection_state = collection_skin.state();
+    let collection_resolution = collection_state
+        .dependencies
+        .reference_resolutions
+        .values()
+        .find(|resolution| resolution.owner.as_str() == "Root.DirectChildren")
+        .expect("collection reference resolution projects");
+    let expected_members = match &collection_resolution.target {
+        ReferenceTargetProjection::Collection { member_keys, .. } => member_keys.clone(),
+        other => panic!("expected collection target, got {other:?}"),
+    };
+    assert_eq!(
+        collection_state.expand_authoring_scope(&AuthoringScope::Collection {
+            owner: collection_resolution.owner_key.clone(),
+            source_reference_handle: collection_resolution.source_reference_handle.clone(),
+        }),
+        Ok(expected_members)
+    );
+
+    let direct_resolution = state
+        .dependencies
+        .reference_resolutions
+        .values()
+        .find(|resolution| {
+            resolution.owner.as_str() == "Root.D"
+                && matches!(resolution.target, ReferenceTargetProjection::Node { .. })
+        })
+        .expect("direct node reference projects");
+    assert!(
+        state
+            .expand_authoring_scope(&AuthoringScope::Collection {
+                owner: direct_resolution.owner_key.clone(),
+                source_reference_handle: direct_resolution.source_reference_handle.clone(),
+            })
+            .is_err()
+    );
 }
 
 #[test]

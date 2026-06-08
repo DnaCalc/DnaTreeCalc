@@ -78,7 +78,9 @@ overlay handles.
 - [x] Replace legacy `Rejected(String)` receipt paths with typed `IntentError` variants for
       host/session structural and table errors; keep named `EngineRejected` / `HostFailure`
       fallbacks for genuinely untyped failures.
-- [ ] Define `AuthoringScope` use for multi-node, subtree, and collection subjects.
+- [x] Define `AuthoringScope` as the typed subject model for node, ordered multi-node, subtree, and
+      reference-collection subjects, with host-owned projection expansion and Skin IR tests; mutating
+      multi-target verbs remain gated on transaction scope.
 - [ ] Add edit transaction ids with real semantics once OxCalc transaction scope exists.
 - [ ] Spike OxCalc `transaction-scope`: batch edit boundary, rollback, schedule once, publish once.
 - [ ] Add dry-bind and recalc-plan preview only after OxFml/OxCalc readiness is confirmed.
