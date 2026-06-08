@@ -449,6 +449,24 @@ pub enum RuntimeEffectFamilyProjection {
     ShapeTopology,
 }
 
+impl RuntimeEffectFamilyProjection {
+    #[must_use]
+    pub const fn stable_id(self) -> &'static str {
+        match self {
+            Self::DynamicDependency => "dynamic_dependency",
+            Self::ExecutionRestriction => "execution_restriction",
+            Self::CapabilitySensitive => "capability_sensitive",
+            Self::ShapeTopology => "shape_topology",
+        }
+    }
+}
+
+impl fmt::Display for RuntimeEffectFamilyProjection {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.stable_id())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuntimeOverlayProjection {
     pub owner: NodeId,

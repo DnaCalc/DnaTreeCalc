@@ -303,6 +303,17 @@ fn append_run_context_rows(
         "run state",
         calc_run_state_label(last_run.run_state).to_string(),
     ));
+    rows.push(("run effects", last_run.runtime_effect_count.to_string()));
+    if let Some(families) = handle_summary(
+        last_run
+            .runtime_effects
+            .iter()
+            .map(|effect| effect.family.to_string()),
+    ) {
+        rows.push(("run effect families", families));
+    }
+    rows.push(("run overlays", last_run.runtime_overlay_count.to_string()));
+    rows.push(("run diagnostics", last_run.diagnostics.len().to_string()));
     if let Some(invalidation) = last_run
         .invalidated_nodes
         .iter()
@@ -1553,11 +1564,12 @@ mod tests {
         DependencyKindProjection, DerivationTemplateSelectionProjection, DerivationTraceProjection,
         InvalidationReasonProjection, NodeCalcStateProjection, NodeContentKind,
         NodeInvalidationProjection, NodeKey, NodeView, ReferenceResolutionProjection,
-        ReferenceTargetProjection, RuntimeOverlayKindProjection, RuntimeOverlayProjection,
-        SourceSpanProjection, TableAnchorProjection, TableCellProjection,
-        TableCellRegionProjection, TableCellsProjection, TableColumnProjection,
-        TableFormulaMetadataProjection, TableRowProjection,
-        TreeReferenceCollectionFamilyProjection, TreeReferenceCollectionProjection,
+        ReferenceTargetProjection, RuntimeEffectFamilyProjection, RuntimeEffectProjection,
+        RuntimeOverlayKindProjection, RuntimeOverlayProjection, SourceSpanProjection,
+        TableAnchorProjection, TableCellProjection, TableCellRegionProjection,
+        TableCellsProjection, TableColumnProjection, TableFormulaMetadataProjection,
+        TableRowProjection, TreeReferenceCollectionFamilyProjection,
+        TreeReferenceCollectionProjection,
     };
     use std::collections::BTreeMap;
 
@@ -1766,6 +1778,13 @@ mod tests {
                 ("refs in", "1".to_string()),
                 ("in handles", "ref:Root.B:A".to_string()),
                 ("run state", "published".to_string()),
+                ("run effects", "2".to_string()),
+                (
+                    "run effect families",
+                    "dynamic_dependency, execution_restriction".to_string(),
+                ),
+                ("run overlays", "1".to_string()),
+                ("run diagnostics", "1".to_string()),
                 ("last invalidated", "false".to_string()),
                 ("trace count", "0".to_string()),
                 ("overlay count", "0".to_string()),
@@ -1800,6 +1819,13 @@ mod tests {
                 ),
                 ("out spans", "ref:Root.B:A 1..2".to_string()),
                 ("run state", "published".to_string()),
+                ("run effects", "2".to_string()),
+                (
+                    "run effect families",
+                    "dynamic_dependency, execution_restriction".to_string(),
+                ),
+                ("run overlays", "1".to_string()),
+                ("run diagnostics", "1".to_string()),
                 ("last invalidated", "true".to_string()),
                 ("last state", "verified_clean".to_string()),
                 ("last rebind", "false".to_string()),
@@ -1912,6 +1938,18 @@ mod tests {
         );
     }
 
+    #[test]
+    fn value_board_active_detail_runtime_effect_family_labels_are_stable() {
+        assert_eq!(
+            RuntimeEffectFamilyProjection::DynamicDependency.stable_id(),
+            "dynamic_dependency"
+        );
+        assert_eq!(
+            RuntimeEffectFamilyProjection::ExecutionRestriction.to_string(),
+            "execution_restriction"
+        );
+    }
+
     fn workspace_with_single_node() -> WorkspaceState {
         let mut nodes = BTreeMap::new();
         nodes.insert(
@@ -2010,8 +2048,19 @@ mod tests {
             last_run: Some(CalcRunProjection {
                 run_state: CalcRunStateProjection::Published,
                 evaluation_order: vec![NodeId::new("Root.A"), NodeId::new("Root.B")],
-                runtime_effect_count: 0,
-                runtime_effects: vec![],
+                runtime_effect_count: 2,
+                runtime_effects: vec![
+                    RuntimeEffectProjection {
+                        kind: "dynamic-reference".to_string(),
+                        family: RuntimeEffectFamilyProjection::DynamicDependency,
+                        detail: "dynamic dependency observed".to_string(),
+                    },
+                    RuntimeEffectProjection {
+                        kind: "restriction".to_string(),
+                        family: RuntimeEffectFamilyProjection::ExecutionRestriction,
+                        detail: "execution restriction observed".to_string(),
+                    },
+                ],
                 runtime_overlay_count: 1,
                 runtime_overlays: vec![RuntimeOverlayProjection {
                     owner: NodeId::new("Root.B"),
@@ -2053,7 +2102,7 @@ mod tests {
                     reasons: vec![InvalidationReasonProjection::DependencyAdded],
                 }],
                 phase_timings_micros: BTreeMap::new(),
-                diagnostics: vec![],
+                diagnostics: vec!["diagnostic:sample".to_string()],
             }),
             dependencies: DependencyGraphProjection {
                 reference_resolutions,
