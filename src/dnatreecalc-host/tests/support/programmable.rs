@@ -459,6 +459,27 @@ impl ProgrammableDriver {
             .dispatch(WorkspaceIntent::SelectNode(node.map(NodeId::new)))
     }
 
+    pub fn select_table_cell(&self, table: &str, row_id: Option<&str>, column_id: &str) {
+        self.accept(WorkspaceIntent::SelectTableCell {
+            table: NodeId::new(table),
+            row_id: row_id.map(str::to_string),
+            column_id: column_id.to_string(),
+        });
+    }
+
+    pub fn try_select_table_cell(
+        &self,
+        table: &str,
+        row_id: Option<&str>,
+        column_id: &str,
+    ) -> IntentReceipt {
+        self.dispatch.dispatch(WorkspaceIntent::SelectTableCell {
+            table: NodeId::new(table),
+            row_id: row_id.map(str::to_string),
+            column_id: column_id.to_string(),
+        })
+    }
+
     pub fn collapse(&self, node: &str) {
         let node = NodeId::new(node);
         self.shared.update(|state| {
@@ -488,6 +509,13 @@ impl ProgrammableDriver {
             .get_untracked()
             .primary
             .map(|node| node.as_str().to_string())
+    }
+
+    pub fn selected_table_cell(&self) -> Option<(String, Option<String>, String)> {
+        self.selection
+            .get_untracked()
+            .table_cell
+            .map(|cell| (cell.table.as_str().to_string(), cell.row_id, cell.column_id))
     }
 
     pub fn active_detail(&self) -> Option<ActiveNodeDetailProjection> {

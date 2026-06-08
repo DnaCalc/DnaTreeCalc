@@ -25,7 +25,7 @@ pub use intent::{
 };
 pub use manifest::{SkinCapabilities, SkinCategory, SkinManifest};
 pub use registry::SkinRegistry;
-pub use selection::SelectionState;
+pub use selection::{SelectionState, TableCellSelection};
 pub use skin::{
     ErasedSkinContext, ErasedSkinFactory, RegisteredSkin, SkinContext, SkinHandle, WorkspaceSkin,
 };

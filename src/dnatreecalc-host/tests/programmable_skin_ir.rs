@@ -137,6 +137,49 @@ fn programmable_skin_receipts_carry_projection_deltas() {
 }
 
 #[test]
+fn programmable_skin_selects_table_cells_without_recalculating() {
+    let harness = Harness::from_repo_fixture("tables");
+    let skin = harness.driver.clone();
+    skin.recalc();
+
+    let before_seq = skin.state().projection_seq;
+    let before_run = skin.state().last_run.clone();
+    let body_select = skin.try_select_table_cell("SalesTable", Some("row:east"), "col:amount");
+    assert!(body_select.accepted, "{:?}", body_select.error);
+    assert_eq!(body_select.delta.from_seq, before_seq);
+    assert_eq!(body_select.delta.to_seq, before_seq);
+    assert_eq!(skin.selected(), Some("SalesTable".to_string()));
+    assert_eq!(
+        skin.selected_table_cell(),
+        Some((
+            "SalesTable".to_string(),
+            Some("row:east".to_string()),
+            "col:amount".to_string()
+        ))
+    );
+    assert_eq!(skin.state().projection_seq, before_seq);
+    assert_eq!(skin.state().last_run, before_run);
+
+    let totals_select = skin.try_select_table_cell("SalesTable", None, "col:amount");
+    assert!(totals_select.accepted, "{:?}", totals_select.error);
+    assert_eq!(
+        skin.selected_table_cell(),
+        Some(("SalesTable".to_string(), None, "col:amount".to_string()))
+    );
+
+    let missing_row = skin.try_select_table_cell("SalesTable", Some("row:missing"), "col:amount");
+    assert!(!missing_row.accepted, "{missing_row:?}");
+    let missing_column = skin.try_select_table_cell("SalesTable", Some("row:east"), "col:missing");
+    assert!(!missing_column.accepted, "{missing_column:?}");
+    let missing_table = skin.try_select_table_cell("MissingTable", Some("row:east"), "col:amount");
+    assert!(!missing_table.accepted, "{missing_table:?}");
+
+    skin.select(Some("SalesTable"));
+    assert_eq!(skin.selected(), Some("SalesTable".to_string()));
+    assert_eq!(skin.selected_table_cell(), None);
+}
+
+#[test]
 fn programmable_skin_builds_interrelated_tree_and_reads_results() {
     let harness = Harness::empty();
     let skin = harness.driver.clone();

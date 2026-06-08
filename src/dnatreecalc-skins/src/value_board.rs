@@ -1,7 +1,7 @@
 use dnatreecalc_skin_framework::{
-    Dispatcher, NodeId, NodeValueProjection, SkinCapabilities, SkinCategory, SkinContext,
-    SkinHandle, SkinId, SkinManifest, SkinState, TableCellInput, TableColumnBodyProjection,
-    TableProjection, TableRowInput, WorkspaceIntent, WorkspaceSkin,
+    Dispatcher, NodeId, NodeValueProjection, SelectionState, SkinCapabilities, SkinCategory,
+    SkinContext, SkinHandle, SkinId, SkinManifest, SkinState, TableCellInput,
+    TableColumnBodyProjection, TableProjection, TableRowInput, WorkspaceIntent, WorkspaceSkin,
 };
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -66,6 +66,7 @@ impl WorkspaceSkin for ValueBoard {
 #[component]
 fn ValueBoardView(cx: SkinContext<ValueBoardState>) -> impl IntoView {
     let workspace = cx.workspace;
+    let selection = cx.selection;
     let dispatch = cx.dispatch.clone();
 
     let cards = Memo::new(move |_| {
@@ -107,7 +108,7 @@ fn ValueBoardView(cx: SkinContext<ValueBoardState>) -> impl IntoView {
                             <div class="dtc-value-card__formula">{content.clone()}</div>
                             <div title=value_text(value)>{render_value(value)}</div>
                             {table.as_ref().map(|table| {
-                                render_table_card(path.clone(), table.clone(), dispatch.clone())
+                                render_table_card(path.clone(), table.clone(), selection, dispatch.clone())
                             })}
                         </article>
                     }
@@ -120,6 +121,7 @@ fn ValueBoardView(cx: SkinContext<ValueBoardState>) -> impl IntoView {
 fn render_table_card(
     table_node: String,
     table: TableProjection,
+    selection: ReadSignal<SelectionState>,
     dispatch: Arc<dyn Dispatcher>,
 ) -> AnyView {
     let constant_columns = table
@@ -317,7 +319,7 @@ fn render_table_card(
                 />
                 <span>"Totals row"</span>
             </label>
-            {render_table_grid(&table_node, &table, dispatch)}
+            {render_table_grid(&table_node, &table, selection, dispatch)}
             <div class="dtc-table-card__add-row">
                 <input
                     class="dtc-table-card__row-id"
@@ -695,6 +697,7 @@ fn render_table_card(
 fn render_table_grid(
     table_node: &str,
     table: &TableProjection,
+    selection: ReadSignal<SelectionState>,
     dispatch: Arc<dyn Dispatcher>,
 ) -> AnyView {
     let Some(cells) = table.cells.as_ref() else {
@@ -742,12 +745,32 @@ fn render_table_grid(
                             let table_node = table_node.to_string();
                             let column_id = column.column_id.clone();
                             let edit_dispatch = dispatch.clone();
+                            let focus_dispatch = dispatch.clone();
+                            let focus_table = table_node.clone();
+                            let focus_row = row_id.clone();
+                            let focus_column = column_id.clone();
+                            let selected_table = focus_table.clone();
+                            let selected_row = focus_row.clone();
+                            let selected_column = focus_column.clone();
                             if matches!(column.body, TableColumnBodyProjection::ConstantCells) {
                                 view! {
                                     <input
                                         class="dtc-table-card__cell-input"
+                                        class:dtc-table-card__cell--selected=move || table_cell_selected(
+                                            selection,
+                                            &selected_table,
+                                            Some(&selected_row),
+                                            &selected_column,
+                                        )
                                         aria-label=format!("{} {}", row_id, column.name)
                                         prop:value=value
+                                        on:focus=move |_| {
+                                            focus_dispatch.dispatch(table_cell_select_intent(
+                                                &focus_table,
+                                                Some(&focus_row),
+                                                &focus_column,
+                                            ));
+                                        }
                                         on:change=move |ev| {
                                             edit_dispatch.dispatch(table_cell_edit_intent(
                                                 &table_node,
@@ -761,7 +784,24 @@ fn render_table_grid(
                                 .into_any()
                             } else {
                                 view! {
-                                    <span class="dtc-table-card__formula-cell" role="cell">
+                                    <span
+                                        class="dtc-table-card__formula-cell"
+                                        class:dtc-table-card__cell--selected=move || table_cell_selected(
+                                            selection,
+                                            &selected_table,
+                                            Some(&selected_row),
+                                            &selected_column,
+                                        )
+                                        role="cell"
+                                        tabindex="0"
+                                        on:focus=move |_| {
+                                            focus_dispatch.dispatch(table_cell_select_intent(
+                                                &focus_table,
+                                                Some(&focus_row),
+                                                &focus_column,
+                                            ));
+                                        }
+                                    >
                                         {value}
                                     </span>
                                 }
@@ -786,9 +826,36 @@ fn render_table_grid(
             }).collect::<Vec<_>>()}
             {table.totals_row_present.then(|| view! {
                 <div class="dtc-table-card__row dtc-table-card__row--totals" role="row">
-                    {cells.totals_row.iter().map(|cell| {
+                    {cells.totals_row.iter().enumerate().map(|(column_index, cell)| {
+                        let column_id = table
+                            .columns
+                            .get(column_index)
+                            .map(|column| column.column_id.clone())
+                            .unwrap_or_default();
+                        let focus_dispatch = dispatch.clone();
+                        let focus_table = table_node.to_string();
+                        let focus_column = column_id.clone();
+                        let selected_table = focus_table.clone();
+                        let selected_column = focus_column.clone();
                         view! {
-                            <span class="dtc-table-card__formula-cell" role="cell">
+                            <span
+                                class="dtc-table-card__formula-cell"
+                                class:dtc-table-card__cell--selected=move || table_cell_selected(
+                                    selection,
+                                    &selected_table,
+                                    None,
+                                    &selected_column,
+                                )
+                                role="cell"
+                                tabindex="0"
+                                on:focus=move |_| {
+                                    focus_dispatch.dispatch(table_cell_select_intent(
+                                        &focus_table,
+                                        None,
+                                        &focus_column,
+                                    ));
+                                }
+                            >
                                 {cell.as_ref().map(|cell| cell.value.display_text()).unwrap_or_default()}
                             </span>
                         }
@@ -799,6 +866,30 @@ fn render_table_grid(
         </div>
     }
     .into_any()
+}
+
+fn table_cell_selected(
+    selection: ReadSignal<SelectionState>,
+    table: &str,
+    row_id: Option<&str>,
+    column_id: &str,
+) -> bool {
+    selection.with(|selection| {
+        let Some(cell) = selection.table_cell.as_ref() else {
+            return false;
+        };
+        cell.table.as_str() == table
+            && cell.row_id.as_deref() == row_id
+            && cell.column_id == column_id
+    })
+}
+
+fn table_cell_select_intent(table: &str, row_id: Option<&str>, column_id: &str) -> WorkspaceIntent {
+    WorkspaceIntent::SelectTableCell {
+        table: NodeId::new(table),
+        row_id: row_id.map(str::to_string),
+        column_id: column_id.to_string(),
+    }
 }
 
 fn table_cell_edit_intent(
@@ -966,6 +1057,26 @@ mod tests {
                 row_id: "row:east".to_string(),
                 column_id: "col:amount".to_string(),
                 content: "25".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn value_board_table_cell_select_uses_skin_ir_intent() {
+        assert_eq!(
+            table_cell_select_intent("SalesTable", Some("row:east"), "col:amount"),
+            WorkspaceIntent::SelectTableCell {
+                table: NodeId::new("SalesTable"),
+                row_id: Some("row:east".to_string()),
+                column_id: "col:amount".to_string(),
+            }
+        );
+        assert_eq!(
+            table_cell_select_intent("SalesTable", None, "col:amount"),
+            WorkspaceIntent::SelectTableCell {
+                table: NodeId::new("SalesTable"),
+                row_id: None,
+                column_id: "col:amount".to_string(),
             }
         );
     }

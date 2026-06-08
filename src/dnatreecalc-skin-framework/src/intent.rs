@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use crate::identity::{NodeId, NodeKey};
-use crate::selection::SelectionState;
+use crate::selection::{SelectionState, TableCellSelection};
 use crate::workspace::{CalcRunProjection, DependencyKindProjection, NodeValueProjection};
 use leptos::prelude::*;
 
@@ -18,6 +18,12 @@ use leptos::prelude::*;
 pub enum WorkspaceIntent {
     /// Replace the host-wide primary selection. `None` clears.
     SelectNode(Option<NodeId>),
+    /// Focus a table cell without changing calculation state.
+    SelectTableCell {
+        table: NodeId,
+        row_id: Option<String>,
+        column_id: String,
+    },
     /// Force the host to run calculation and publish a fresh projection.
     Recalculate,
     /// Replace the content text of a node. Empty -> Empty kind;
@@ -314,6 +320,19 @@ impl Dispatcher for InMemoryDispatcher {
             WorkspaceIntent::SelectNode(target) => {
                 self.selection
                     .set(SelectionState::with_primary(target.clone()));
+                IntentReceipt::accepted()
+            }
+            WorkspaceIntent::SelectTableCell {
+                table,
+                row_id,
+                column_id,
+            } => {
+                self.selection
+                    .set(SelectionState::with_table_cell(TableCellSelection {
+                        table: table.clone(),
+                        row_id: row_id.clone(),
+                        column_id: column_id.clone(),
+                    }));
                 IntentReceipt::accepted()
             }
             WorkspaceIntent::EditFormula { .. } => {

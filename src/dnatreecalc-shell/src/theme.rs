@@ -572,6 +572,10 @@ pub const SHELL_CSS: &str = r#"
     outline-offset: -2px;
 }
 
+.dtc-table-card__cell--selected {
+    box-shadow: inset 0 0 0 2px #2563eb;
+}
+
 .dtc-table-card__add-row,
 .dtc-table-card__row-reorder,
 .dtc-table-card__add-column,

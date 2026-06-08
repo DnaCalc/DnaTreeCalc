@@ -3,8 +3,8 @@ use std::sync::{Arc, Mutex};
 use dnatreecalc_skin_framework::{
     DependencyDeltaProjection, Dispatcher, IntentError, IntentReceipt, NodeId, NodeKey,
     NodeValueDeltaProjection, NodeView, SelectionState, SharedSkinStateHandle,
-    StructuralDeltaProjection, WorkspaceDelta, WorkspaceDeltaChange, WorkspaceIntent,
-    WorkspaceState,
+    StructuralDeltaProjection, TableCellSelection, WorkspaceDelta, WorkspaceDeltaChange,
+    WorkspaceIntent, WorkspaceState,
 };
 use leptos::prelude::*;
 use std::cell::RefCell;
@@ -121,6 +121,29 @@ impl Dispatcher for HostDispatcher {
         match intent {
             WorkspaceIntent::SelectNode(target) => {
                 self.selection.set(SelectionState::with_primary(target));
+                IntentReceipt::accepted()
+                    .with_delta(WorkspaceDelta::unchanged(self.current_projection_seq()))
+            }
+            WorkspaceIntent::SelectTableCell {
+                table,
+                row_id,
+                column_id,
+            } => {
+                let table_cell = TableCellSelection {
+                    table: table.clone(),
+                    row_id,
+                    column_id,
+                };
+                if let Some(workspace) = self.workspace {
+                    if !table_cell_exists(&workspace.get_untracked(), &table_cell) {
+                        return IntentReceipt::rejected(IntentError::Rejected(format!(
+                            "unknown table cell selection {} {:?}/{}",
+                            table_cell.table, table_cell.row_id, table_cell.column_id
+                        )));
+                    }
+                }
+                self.selection
+                    .set(SelectionState::with_table_cell(table_cell));
                 IntentReceipt::accepted()
                     .with_delta(WorkspaceDelta::unchanged(self.current_projection_seq()))
             }
@@ -434,6 +457,31 @@ impl Dispatcher for HostDispatcher {
             // rather than silently ignore.
             _ => IntentReceipt::rejected(IntentError::Unsupported),
         }
+    }
+}
+
+fn table_cell_exists(workspace: &WorkspaceState, selection: &TableCellSelection) -> bool {
+    let Some(table) = workspace.tables.get(&selection.table) else {
+        return false;
+    };
+    let Some(cells) = table.cells.as_ref() else {
+        return false;
+    };
+    let column_index = table
+        .columns
+        .iter()
+        .position(|column| column.column_id == selection.column_id);
+    let Some(column_index) = column_index else {
+        return false;
+    };
+    match selection.row_id.as_ref() {
+        Some(row_id) => cells.body_rows.iter().any(|row| {
+            row.get(column_index)
+                .and_then(Option::as_ref)
+                .and_then(|cell| cell.row_id.as_ref())
+                == Some(row_id)
+        }),
+        None => table.totals_row_present && cells.totals_row.get(column_index).is_some(),
     }
 }
 
