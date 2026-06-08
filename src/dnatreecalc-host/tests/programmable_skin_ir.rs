@@ -614,6 +614,12 @@ fn programmable_skin_reads_table_and_dependency_ir_from_fixture() {
     assert_eq!(table.table_id, "tree-table:sales");
     assert_eq!(table.row_count, 3);
     assert_eq!(table.column_count, 3);
+    assert!(
+        !state
+            .node_order
+            .iter()
+            .any(|node| node.as_str().contains("__table_body_"))
+    );
     assert!(table.header_row_present);
     assert_eq!(
         table
@@ -652,6 +658,53 @@ fn programmable_skin_reads_table_and_dependency_ir_from_fixture() {
             .as_ref()
             .map(|formula| formula.formula_artifact_id.as_str()),
         Some("formula:SalesTable.Totals.Amount")
+    );
+    let cells = table.cells.as_ref().expect("table cell values project");
+    assert_eq!(cells.body_rows.len(), 3);
+    assert_eq!(
+        cells.body_rows[0]
+            .iter()
+            .map(|cell| {
+                cell.as_ref()
+                    .map(|cell| cell.value.display_text())
+                    .unwrap_or_default()
+            })
+            .collect::<Vec<_>>(),
+        vec!["West", "10", ""]
+    );
+    assert_eq!(
+        cells.body_rows[1]
+            .iter()
+            .map(|cell| {
+                cell.as_ref()
+                    .map(|cell| cell.value.display_text())
+                    .unwrap_or_default()
+            })
+            .collect::<Vec<_>>(),
+        vec!["East", "20", ""]
+    );
+    assert_eq!(
+        cells.body_rows[2]
+            .iter()
+            .map(|cell| {
+                cell.as_ref()
+                    .map(|cell| cell.value.display_text())
+                    .unwrap_or_default()
+            })
+            .collect::<Vec<_>>(),
+        vec!["North", "30", ""]
+    );
+    assert_eq!(
+        cells
+            .totals_row
+            .iter()
+            .map(|cell| {
+                cell.as_ref()
+                    .map(|cell| cell.value.display_text())
+                    .unwrap_or_default()
+            })
+            .collect::<Vec<_>>(),
+        vec!["", "", ""]
     );
     assert!(!table.dependency_inventory_summary.is_empty());
 }

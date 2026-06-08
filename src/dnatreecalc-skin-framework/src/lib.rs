@@ -43,8 +43,8 @@ pub use workspace::{
     NodeContentKind, NodeInvalidationProjection, NodeValueProjection, NodeView, PhaseKeyProjection,
     ReferenceResolutionProjection, ReferenceTargetProjection, RuntimeEffectFamilyProjection,
     RuntimeEffectProjection, RuntimeOverlayKindProjection, RuntimeOverlayProjection,
-    SourceSpanProjection, TableColumnBodyProjection, TableColumnProjection,
-    TableFormulaMetadataProjection, TableProjection, TableRowProjection,
+    SourceSpanProjection, TableCellProjection, TableCellsProjection, TableColumnBodyProjection,
+    TableColumnProjection, TableFormulaMetadataProjection, TableProjection, TableRowProjection,
     TreeReferenceCollectionFamilyProjection, TreeReferenceCollectionProjection,
     WorkspaceRevisionProjection, WorkspaceState,
 };

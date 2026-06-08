@@ -10,8 +10,9 @@ use dnatreecalc_skin_framework::{
     NodeContentKind as FrameworkContentKind, NodeId, NodeInvalidationProjection, NodeKey,
     NodeValueProjection, NodeView, PhaseKeyProjection, ReferenceResolutionProjection,
     ReferenceTargetProjection, RuntimeEffectFamilyProjection, RuntimeEffectProjection,
-    RuntimeOverlayKindProjection, RuntimeOverlayProjection, TableColumnBodyProjection,
-    TableColumnProjection, TableFormulaMetadataProjection, TableProjection, TableRowProjection,
+    RuntimeOverlayKindProjection, RuntimeOverlayProjection, TableCellProjection,
+    TableCellsProjection, TableColumnBodyProjection, TableColumnProjection,
+    TableFormulaMetadataProjection, TableProjection, TableRowProjection,
     TreeReferenceCollectionFamilyProjection, TreeReferenceCollectionProjection,
     WorkspaceRevisionProjection, WorkspaceState,
 };
@@ -19,7 +20,7 @@ use oxcalc_core::consumer::OxCalcTreeRunState;
 use oxcalc_core::consumer::{
     OxCalcTreeCalculationOutcome, OxCalcTreeContext, OxCalcTreeContextError,
     OxCalcTreeContextOptions, OxCalcTreeHostCapabilitySnapshot, OxCalcTreeNodeCreate,
-    OxCalcTreeRuntimePolicy, OxCalcTreeWorkspaceCreate, OxCalcTreeWorkspaceId,
+    OxCalcTreeNodeView, OxCalcTreeRuntimePolicy, OxCalcTreeWorkspaceCreate, OxCalcTreeWorkspaceId,
     OxCalcTreeWorkspaceSnapshot,
 };
 use oxcalc_core::coordinator::{RuntimeEffect, RuntimeEffectFamily};
@@ -32,8 +33,9 @@ use oxcalc_core::recalc::{OverlayEntry, OverlayKind};
 use oxcalc_core::structural::TreeNodeId;
 use oxcalc_core::structured_table::{
     TreeCalcDynamicTableRebindReport, TreeCalcDynamicTableRebindRequest,
-    TreeCalcTableColumnBodyMetadata, TreeCalcTableColumnSnapshot, TreeCalcTableFormulaMetadata,
-    TreeCalcTableNodeSnapshot, TreeCalcTableRowId, TreeCalcTableVirtualAnchor,
+    TreeCalcTableBodyCellNodeBinding, TreeCalcTableColumnBodyMetadata, TreeCalcTableColumnSnapshot,
+    TreeCalcTableFormulaMetadata, TreeCalcTableNodeSnapshot, TreeCalcTableRowId,
+    TreeCalcTableTotalsCellNodeBinding, TreeCalcTableVirtualAnchor,
 };
 use oxcalc_core::treecalc::{
     DerivationInvocationTraceNode, DerivationPreparedArgumentTrace, DerivationTraceRecord,
@@ -123,11 +125,15 @@ impl TreeWorkspaceSession {
             session.display_order.push(node_id.clone());
 
             if let Some(table) = &node.table {
+                let (body_cell_nodes, totals_cell_nodes) =
+                    session.create_table_cell_nodes_from_fixture(&node_id, tree_node_id, table)?;
                 let snapshot = table_snapshot_from_fixture(
                     model.workspace_id.as_str(),
                     tree_node_id,
                     path.as_str(),
                     table,
+                    body_cell_nodes,
+                    totals_cell_nodes,
                 );
                 session
                     .context
@@ -194,6 +200,60 @@ impl TreeWorkspaceSession {
             .map(|node| NodeId::new(node.clone()));
         let session = Self::from_workspace_snapshot(document.oxcalc_workspace, profile)?;
         Ok((session, selection))
+    }
+
+    fn create_table_cell_nodes_from_fixture(
+        &mut self,
+        table_path: &NodeId,
+        table_node_id: TreeNodeId,
+        table: &TableNodeFixture,
+    ) -> Result<
+        (
+            Vec<TreeCalcTableBodyCellNodeBinding>,
+            Vec<TreeCalcTableTotalsCellNodeBinding>,
+        ),
+        TreeWorkspaceSessionError,
+    > {
+        let mut rows = table.rows.clone();
+        rows.sort_by_key(|row| row.ordinal);
+        let mut columns = table.columns.clone();
+        columns.sort_by_key(|column| column.ordinal);
+
+        let mut body_cell_nodes = Vec::new();
+        for column in &columns {
+            for row in &rows {
+                let content = table_body_cell_content(column, row.row_id.as_str());
+                let Some(content) = content else {
+                    continue;
+                };
+                let symbol = table_body_cell_symbol(row.ordinal, column.ordinal);
+                let node_id = self.context.add_node(
+                    &self.workspace_id,
+                    OxCalcTreeNodeCreate::new(symbol.clone(), content)
+                        .with_meta(true)
+                        .under(table_node_id),
+                )?;
+                self.register_generated_node(table_path, &symbol, node_id);
+                body_cell_nodes.push(TreeCalcTableBodyCellNodeBinding {
+                    row_id: TreeCalcTableRowId(row.row_id.clone()),
+                    column_id: column.column_id.clone(),
+                    node_id,
+                });
+            }
+        }
+
+        Ok((body_cell_nodes, Vec::new()))
+    }
+
+    fn register_generated_node(
+        &mut self,
+        parent_path: &NodeId,
+        symbol: &str,
+        tree_node_id: TreeNodeId,
+    ) {
+        let node_id = NodeId::new(format!("{}.{}", parent_path.as_str(), symbol));
+        self.node_ids.insert(node_id.clone(), tree_node_id);
+        self.node_paths_by_tree_id.insert(tree_node_id, node_id);
     }
 
     pub fn table_context_identity(
@@ -362,15 +422,26 @@ impl TreeWorkspaceSession {
             runtime_overlay_set_id: Some(workspace_view.runtime_overlay_set_id.to_string()),
             value_epoch: workspace_view.value_epoch,
         };
-        let table_views_by_tree_id = workspace_view
-            .tables
-            .iter()
-            .map(|view| (view.table_node_id, table_projection_for(view)))
-            .collect::<BTreeMap<_, _>>();
         let views_by_tree_id = workspace_view
             .nodes
             .into_iter()
             .map(|view| (view.node_id, view))
+            .collect::<BTreeMap<_, _>>();
+        let table_views_by_tree_id = workspace_view
+            .tables
+            .iter()
+            .map(|view| {
+                (
+                    view.table_node_id,
+                    table_projection_for(
+                        view,
+                        &views_by_tree_id,
+                        self.last_outcome
+                            .as_ref()
+                            .map(|outcome| &outcome.published_calc_values),
+                    ),
+                )
+            })
             .collect::<BTreeMap<_, _>>();
 
         let known_ids = self.display_order.iter().cloned().collect::<BTreeSet<_>>();
@@ -575,11 +646,15 @@ impl TreeWorkspaceSession {
             })
             .collect::<Vec<_>>();
         let mut refreshed = BTreeMap::new();
+        let mut visible_refreshed = BTreeSet::new();
         for view in workspace_view.nodes {
             if view.node_id == self.engine_root_id {
                 continue;
             }
             let node_id = node_id_from_canonical_path(&view.canonical_path)?;
+            if !view.is_meta {
+                visible_refreshed.insert(view.node_id);
+            }
             refreshed.insert(view.node_id, node_id);
         }
 
@@ -587,13 +662,16 @@ impl TreeWorkspaceSession {
         let mut display_order = old_order
             .into_iter()
             .filter_map(|(tree_node_id, _)| {
+                if !visible_refreshed.contains(&tree_node_id) {
+                    return None;
+                }
                 refreshed
                     .get(&tree_node_id)
                     .and_then(|node_id| seen.insert(tree_node_id).then(|| node_id.clone()))
             })
             .collect::<Vec<_>>();
         for (tree_node_id, node_id) in &refreshed {
-            if seen.insert(*tree_node_id) {
+            if visible_refreshed.contains(tree_node_id) && seen.insert(*tree_node_id) {
                 display_order.push(node_id.clone());
             }
         }
@@ -1037,6 +1115,24 @@ fn leaked_profile(profile: String) -> &'static str {
     }
 }
 
+fn table_body_cell_content(column: &TableColumnFixture, row_id: &str) -> Option<String> {
+    match column.body.kind {
+        TableColumnBodyKind::ConstantCells => column
+            .body
+            .constants
+            .iter()
+            .find(|cell| cell.row_id == row_id)
+            .map(|cell| cell.value.clone()),
+        // Row-context table formulas need the table formula runtime path;
+        // generating ordinary child formulas here rejects in current OxCalc.
+        TableColumnBodyKind::Formula => None,
+    }
+}
+
+fn table_body_cell_symbol(row_ordinal: u32, column_ordinal: u32) -> String {
+    format!("__table_body_r{row_ordinal}_c{column_ordinal}")
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum TreeWorkspaceSessionError {
     #[error(transparent)]
@@ -1056,6 +1152,8 @@ fn table_snapshot_from_fixture(
     tree_node_id: TreeNodeId,
     path: &str,
     table: &TableNodeFixture,
+    body_cell_nodes: Vec<TreeCalcTableBodyCellNodeBinding>,
+    totals_cell_nodes: Vec<TreeCalcTableTotalsCellNodeBinding>,
 ) -> TreeCalcTableNodeSnapshot {
     let mut rows = table.rows.clone();
     rows.sort_by_key(|row| row.ordinal);
@@ -1088,8 +1186,8 @@ fn table_snapshot_from_fixture(
             .iter()
             .map(table_column_snapshot_from_fixture)
             .collect(),
-        body_cell_nodes: Vec::new(),
-        totals_cell_nodes: Vec::new(),
+        body_cell_nodes,
+        totals_cell_nodes,
         header_row_present: table.header.present,
         totals_row_present: table.totals.present,
         table_namespace_version: table.table_namespace_version.clone(),
@@ -1544,7 +1642,11 @@ fn phase_key_projection_for(phase: &LocalTreeCalcPhaseKey) -> PhaseKeyProjection
     }
 }
 
-fn table_projection_for(view: &oxcalc_core::consumer::OxCalcTreeTableView) -> TableProjection {
+fn table_projection_for(
+    view: &oxcalc_core::consumer::OxCalcTreeTableView,
+    node_views: &BTreeMap<TreeNodeId, OxCalcTreeNodeView>,
+    published_calc_values: Option<&BTreeMap<TreeNodeId, CalcValue>>,
+) -> TableProjection {
     TableProjection {
         table_id: view.table_id.clone(),
         table_name: view.table_name.clone(),
@@ -1566,6 +1668,7 @@ fn table_projection_for(view: &oxcalc_core::consumer::OxCalcTreeTableView) -> Ta
             .iter()
             .map(table_column_projection)
             .collect(),
+        cells: table_cells_projection_for(view, node_views, published_calc_values),
         row_count: view.snapshot.rows.len(),
         column_count: view.snapshot.columns.len(),
         header_row_present: view.snapshot.header_row_present,
@@ -1581,6 +1684,96 @@ fn table_projection_for(view: &oxcalc_core::consumer::OxCalcTreeTableView) -> Ta
             .map(|fact| format!("{:?}", fact.kind))
             .collect(),
     }
+}
+
+fn table_cells_projection_for(
+    view: &oxcalc_core::consumer::OxCalcTreeTableView,
+    node_views: &BTreeMap<TreeNodeId, OxCalcTreeNodeView>,
+    published_calc_values: Option<&BTreeMap<TreeNodeId, CalcValue>>,
+) -> Option<TableCellsProjection> {
+    if view.snapshot.body_cell_nodes.is_empty() && view.snapshot.totals_cell_nodes.is_empty() {
+        return None;
+    }
+
+    let body_bindings = view
+        .snapshot
+        .body_cell_nodes
+        .iter()
+        .map(|cell| ((cell.row_id.clone(), cell.column_id.clone()), cell.node_id))
+        .collect::<BTreeMap<_, _>>();
+    let totals_bindings = view
+        .snapshot
+        .totals_cell_nodes
+        .iter()
+        .map(|cell| (cell.column_id.clone(), cell.node_id))
+        .collect::<BTreeMap<_, _>>();
+
+    let body_rows = view
+        .snapshot
+        .rows
+        .iter()
+        .map(|row| {
+            view.snapshot
+                .columns
+                .iter()
+                .map(|column| {
+                    body_bindings
+                        .get(&(row.clone(), column.column_id.clone()))
+                        .and_then(|node_id| {
+                            table_cell_projection(
+                                Some(row.0.clone()),
+                                column.column_id.clone(),
+                                *node_id,
+                                node_views,
+                                published_calc_values,
+                            )
+                        })
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    let totals_row = view
+        .snapshot
+        .columns
+        .iter()
+        .map(|column| {
+            totals_bindings.get(&column.column_id).and_then(|node_id| {
+                table_cell_projection(
+                    None,
+                    column.column_id.clone(),
+                    *node_id,
+                    node_views,
+                    published_calc_values,
+                )
+            })
+        })
+        .collect();
+
+    Some(TableCellsProjection {
+        body_rows,
+        totals_row,
+    })
+}
+
+fn table_cell_projection(
+    row_id: Option<String>,
+    column_id: String,
+    node_id: TreeNodeId,
+    node_views: &BTreeMap<TreeNodeId, OxCalcTreeNodeView>,
+    published_calc_values: Option<&BTreeMap<TreeNodeId, CalcValue>>,
+) -> Option<TableCellProjection> {
+    let node_view = node_views.get(&node_id)?;
+    let calc_value = published_calc_values.and_then(|values| values.get(&node_id));
+    Some(TableCellProjection {
+        row_id,
+        column_id,
+        node_key: node_key_for_tree_node(node_id),
+        value: value_projection_for(
+            node_view.value_text.clone(),
+            node_view.calc_state,
+            calc_value,
+        ),
+    })
 }
 
 fn table_column_projection(column: &TreeCalcTableColumnSnapshot) -> TableColumnProjection {

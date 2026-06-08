@@ -656,6 +656,7 @@ pub struct TableProjection {
     pub canonical_path: String,
     pub rows: Vec<TableRowProjection>,
     pub columns: Vec<TableColumnProjection>,
+    pub cells: Option<TableCellsProjection>,
     pub row_count: usize,
     pub column_count: usize,
     pub header_row_present: bool,
@@ -665,6 +666,20 @@ pub struct TableProjection {
     pub row_order_version: String,
     pub column_identity_version: String,
     pub dependency_inventory_summary: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TableCellsProjection {
+    pub body_rows: Vec<Vec<Option<TableCellProjection>>>,
+    pub totals_row: Vec<Option<TableCellProjection>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TableCellProjection {
+    pub row_id: Option<String>,
+    pub column_id: String,
+    pub node_key: NodeKey,
+    pub value: NodeValueProjection,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
