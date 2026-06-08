@@ -1,6 +1,8 @@
 use std::collections::BTreeMap;
 
-use crate::identity::NodeId;
+use std::fmt;
+
+use crate::identity::{NodeId, NodeKey};
 
 /// Read-side projection of the workspace, as seen by a mounted skin.
 ///
@@ -17,6 +19,7 @@ pub struct WorkspaceState {
     pub revision: WorkspaceRevisionProjection,
     pub last_run: Option<CalcRunProjection>,
     pub node_order: Vec<NodeId>,
+    pub key_order: Vec<NodeKey>,
     pub root_paths: Vec<NodeId>,
     pub nodes: BTreeMap<NodeId, NodeView>,
     pub dependencies: DependencyGraphProjection,
@@ -43,6 +46,7 @@ impl WorkspaceState {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NodeView {
+    pub key: NodeKey,
     pub id: NodeId,
     pub display_name: String,
     pub parent: Option<NodeId>,
@@ -113,7 +117,7 @@ pub struct CalcRunProjection {
     pub runtime_overlay_count: usize,
     pub derivation_trace_count: usize,
     pub invalidated_nodes: Vec<NodeInvalidationProjection>,
-    pub phase_timings_micros: BTreeMap<String, u128>,
+    pub phase_timings_micros: BTreeMap<PhaseKeyProjection, u128>,
     pub diagnostics: Vec<String>,
 }
 
@@ -129,12 +133,73 @@ pub enum NodeCalcStateProjection {
     CycleBlocked,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum PhaseKeyProjection {
+    OxfmlPrepareFormulas,
+    DependencyDescriptorLowering,
+    DependencyDescriptorOwnerIndex,
+    DependencyGraphBuildAndCycleScan,
+    InvalidationClosureDerivation,
+    RuntimeSetup,
+    DiagnosticSeedCollection,
+    RecalcTrackerMarkDirtyNeeded,
+    TopologicalFormulaOrder,
+    RebindGateScan,
+    DependencyDiagnosticRejectScan,
+    EdgeValueCacheLookup,
+    OxfmlFormulaEvaluation,
+    DerivationTraceRecord,
+    EdgeValueCacheStore,
+    EvaluationLoopTotal,
+    VerifiedCleanFinalize,
+    CandidatePublication,
+    RejectionRecording,
+    TotalEngineExecute,
+    Other(String),
+}
+
+impl PhaseKeyProjection {
+    #[must_use]
+    pub fn stable_id(&self) -> &str {
+        match self {
+            Self::OxfmlPrepareFormulas => "oxfml_prepare_formulas",
+            Self::DependencyDescriptorLowering => "dependency_descriptor_lowering",
+            Self::DependencyDescriptorOwnerIndex => "dependency_descriptor_owner_index",
+            Self::DependencyGraphBuildAndCycleScan => "dependency_graph_build_and_cycle_scan",
+            Self::InvalidationClosureDerivation => "invalidation_closure_derivation",
+            Self::RuntimeSetup => "runtime_setup",
+            Self::DiagnosticSeedCollection => "diagnostic_seed_collection",
+            Self::RecalcTrackerMarkDirtyNeeded => "recalc_tracker_mark_dirty_needed",
+            Self::TopologicalFormulaOrder => "topological_formula_order",
+            Self::RebindGateScan => "rebind_gate_scan",
+            Self::DependencyDiagnosticRejectScan => "dependency_diagnostic_reject_scan",
+            Self::EdgeValueCacheLookup => "edge_value_cache_lookup",
+            Self::OxfmlFormulaEvaluation => "oxfml_formula_evaluation",
+            Self::DerivationTraceRecord => "derivation_trace_record",
+            Self::EdgeValueCacheStore => "edge_value_cache_store",
+            Self::EvaluationLoopTotal => "evaluation_loop_total",
+            Self::VerifiedCleanFinalize => "verified_clean_finalize",
+            Self::CandidatePublication => "candidate_publication",
+            Self::RejectionRecording => "rejection_recording",
+            Self::TotalEngineExecute => "total_engine_execute",
+            Self::Other(value) => value.as_str(),
+        }
+    }
+}
+
+impl fmt::Display for PhaseKeyProjection {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.stable_id())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NodeInvalidationProjection {
     pub node: NodeId,
+    pub node_key: NodeKey,
     pub calc_state: NodeCalcStateProjection,
     pub requires_rebind: bool,
-    pub reasons: Vec<String>,
+    pub reasons: Vec<InvalidationReasonProjection>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -164,7 +229,7 @@ pub struct DependencyDescriptorProjection {
     pub source_reference_handle: Option<String>,
     pub target: Option<NodeId>,
     pub workspace_target: Option<String>,
-    pub kind: String,
+    pub kind: DependencyKindProjection,
     pub carrier_detail: String,
     pub collection: Option<TreeReferenceCollectionProjection>,
     pub requires_rebind_on_structural_change: bool,
@@ -176,17 +241,159 @@ pub struct DependencyEdgeProjection {
     pub descriptor_id: String,
     pub owner: NodeId,
     pub target: NodeId,
-    pub kind: String,
+    pub kind: DependencyKindProjection,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TreeReferenceCollectionProjection {
-    pub family: String,
+    pub family: TreeReferenceCollectionFamilyProjection,
     pub source_reference_handle: String,
     pub base_node: Option<NodeId>,
     pub membership_version: String,
     pub order_version: String,
     pub members: Vec<NodeId>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum DependencyKindProjection {
+    StaticDirect,
+    RelativeBound,
+    TreeReferenceCollectionMembership,
+    TreeReferenceCollectionMemberValue,
+    StructuredTableIdentity,
+    StructuredTableRowMembership,
+    StructuredTableRowOrder,
+    StructuredTableColumnIdentity,
+    StructuredTableHeaderText,
+    StructuredTableHeaderRegion,
+    StructuredTableDataRegion,
+    StructuredTableTotalsRegion,
+    StructuredTableCallerContext,
+    StructuredTableEnclosingTable,
+    DynamicPotential,
+    HostSensitive,
+    CapabilitySensitive,
+    ShapeTopology,
+    Unresolved,
+}
+
+impl DependencyKindProjection {
+    #[must_use]
+    pub const fn stable_id(self) -> &'static str {
+        match self {
+            Self::StaticDirect => "static_direct",
+            Self::RelativeBound => "relative_bound",
+            Self::TreeReferenceCollectionMembership => "tree_reference_collection_membership",
+            Self::TreeReferenceCollectionMemberValue => "tree_reference_collection_member_value",
+            Self::StructuredTableIdentity => "structured_table_identity",
+            Self::StructuredTableRowMembership => "structured_table_row_membership",
+            Self::StructuredTableRowOrder => "structured_table_row_order",
+            Self::StructuredTableColumnIdentity => "structured_table_column_identity",
+            Self::StructuredTableHeaderText => "structured_table_header_text",
+            Self::StructuredTableHeaderRegion => "structured_table_header_region",
+            Self::StructuredTableDataRegion => "structured_table_data_region",
+            Self::StructuredTableTotalsRegion => "structured_table_totals_region",
+            Self::StructuredTableCallerContext => "structured_table_caller_context",
+            Self::StructuredTableEnclosingTable => "structured_table_enclosing_table",
+            Self::DynamicPotential => "dynamic_potential",
+            Self::HostSensitive => "host_sensitive",
+            Self::CapabilitySensitive => "capability_sensitive",
+            Self::ShapeTopology => "shape_topology",
+            Self::Unresolved => "unresolved",
+        }
+    }
+}
+
+impl fmt::Display for DependencyKindProjection {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.stable_id())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum InvalidationReasonProjection {
+    StructuralRebindRequired,
+    StructuralRecalcOnly,
+    UpstreamPublication,
+    ExternallyInvalidated,
+    TreeReferenceMembershipChanged,
+    TreeReferenceOrderChanged,
+    StructuredTableContextChanged,
+    StructuredTableRowMembershipChanged,
+    StructuredTableRowOrderChanged,
+    StructuredTableColumnChanged,
+    StructuredTableRegionChanged,
+    StructuredTableCallerContextChanged,
+    DependencyAdded,
+    DependencyRemoved,
+    DependencyReclassified,
+    DynamicDependencyActivated,
+    DynamicDependencyReleased,
+    DynamicDependencyReclassified,
+}
+
+impl InvalidationReasonProjection {
+    #[must_use]
+    pub const fn stable_id(self) -> &'static str {
+        match self {
+            Self::StructuralRebindRequired => "structural_rebind_required",
+            Self::StructuralRecalcOnly => "structural_recalc_only",
+            Self::UpstreamPublication => "upstream_publication",
+            Self::ExternallyInvalidated => "externally_invalidated",
+            Self::TreeReferenceMembershipChanged => "tree_reference_membership_changed",
+            Self::TreeReferenceOrderChanged => "tree_reference_order_changed",
+            Self::StructuredTableContextChanged => "structured_table_context_changed",
+            Self::StructuredTableRowMembershipChanged => "structured_table_row_membership_changed",
+            Self::StructuredTableRowOrderChanged => "structured_table_row_order_changed",
+            Self::StructuredTableColumnChanged => "structured_table_column_changed",
+            Self::StructuredTableRegionChanged => "structured_table_region_changed",
+            Self::StructuredTableCallerContextChanged => "structured_table_caller_context_changed",
+            Self::DependencyAdded => "dependency_added",
+            Self::DependencyRemoved => "dependency_removed",
+            Self::DependencyReclassified => "dependency_reclassified",
+            Self::DynamicDependencyActivated => "dynamic_dependency_activated",
+            Self::DynamicDependencyReleased => "dynamic_dependency_released",
+            Self::DynamicDependencyReclassified => "dynamic_dependency_reclassified",
+        }
+    }
+}
+
+impl fmt::Display for InvalidationReasonProjection {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.stable_id())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum TreeReferenceCollectionFamilyProjection {
+    Children,
+    ReferenceLiteralArray,
+    Siblings,
+    Preceding,
+    Following,
+    Ancestors,
+    RecursiveDescendants,
+}
+
+impl TreeReferenceCollectionFamilyProjection {
+    #[must_use]
+    pub const fn stable_id(self) -> &'static str {
+        match self {
+            Self::Children => "children",
+            Self::ReferenceLiteralArray => "reference_literal_array",
+            Self::Siblings => "siblings",
+            Self::Preceding => "preceding",
+            Self::Following => "following",
+            Self::Ancestors => "ancestors",
+            Self::RecursiveDescendants => "recursive_descendants",
+        }
+    }
+}
+
+impl fmt::Display for TreeReferenceCollectionFamilyProjection {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.stable_id())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

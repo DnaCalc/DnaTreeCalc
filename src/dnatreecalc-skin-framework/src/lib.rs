@@ -17,7 +17,7 @@ pub mod skin;
 pub mod state;
 pub mod workspace;
 
-pub use identity::{NodeId, SkinId, SkinMountSlot};
+pub use identity::{NodeId, NodeKey, SkinId, SkinMountSlot};
 pub use intent::{Dispatcher, InMemoryDispatcher, IntentError, IntentReceipt, WorkspaceIntent};
 pub use manifest::{SkinCapabilities, SkinCategory, SkinManifest};
 pub use registry::SkinRegistry;
@@ -31,9 +31,11 @@ pub use state::{
 };
 pub use workspace::{
     CalcRunProjection, CalcRunStateProjection, DependencyDescriptorProjection,
-    DependencyEdgeProjection, DependencyGraphProjection, NodeCalcStateProjection, NodeContentKind,
-    NodeInvalidationProjection, NodeValueProjection, NodeView, TableProjection,
-    TreeReferenceCollectionProjection, WorkspaceRevisionProjection, WorkspaceState,
+    DependencyEdgeProjection, DependencyGraphProjection, DependencyKindProjection,
+    InvalidationReasonProjection, NodeCalcStateProjection, NodeContentKind,
+    NodeInvalidationProjection, NodeValueProjection, NodeView, PhaseKeyProjection, TableProjection,
+    TreeReferenceCollectionFamilyProjection, TreeReferenceCollectionProjection,
+    WorkspaceRevisionProjection, WorkspaceState,
 };
 
 #[cfg(test)]

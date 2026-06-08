@@ -119,12 +119,12 @@ fn DependencyInspectorView(cx: SkinContext<DependencyInspectorState>) -> impl In
                                 {descriptors.iter().map(|descriptor| {
                                     view! {
                                         <article class="dtc-dependency-card">
-                                            <div>{descriptor.kind.clone()}</div>
+                                            <div>{descriptor.kind.to_string()}</div>
                                             <code>{descriptor.carrier_detail.clone()}</code>
                                             {descriptor.collection.as_ref().map(|collection| {
                                                 view! {
                                                     <div class="dtc-dependency-card__collection">
-                                                        <span>{collection.family.clone()}</span>
+                                                        <span>{collection.family.to_string()}</span>
                                                         <span>{format!("members: {}", collection.members.len())}</span>
                                                     </div>
                                                 }

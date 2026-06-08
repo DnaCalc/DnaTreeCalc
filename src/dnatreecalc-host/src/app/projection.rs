@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use dnatreecalc_skin_framework::{
-    DependencyGraphProjection, NodeContentKind as FrameworkContentKind, NodeId,
+    DependencyGraphProjection, NodeContentKind as FrameworkContentKind, NodeId, NodeKey,
     NodeValueProjection, NodeView, WorkspaceRevisionProjection, WorkspaceState,
 };
 
@@ -34,6 +34,7 @@ pub fn workspace_state_from_model(model: &WorkspaceModel) -> WorkspaceState {
         };
 
         let view = NodeView {
+            key: NodeKey::new(format!("model-path:{path}")),
             id: id.clone(),
             display_name: node.name.clone(),
             parent,
@@ -59,6 +60,11 @@ pub fn workspace_state_from_model(model: &WorkspaceModel) -> WorkspaceState {
             .node_order
             .iter()
             .map(|p| NodeId::new(p.clone()))
+            .collect(),
+        key_order: model
+            .node_order
+            .iter()
+            .map(|p| NodeKey::new(format!("model-path:{p}")))
             .collect(),
         root_paths: model
             .root_paths

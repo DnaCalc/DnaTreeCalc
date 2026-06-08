@@ -2,9 +2,10 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use dnatreecalc_skin_framework::{
     CalcRunProjection, CalcRunStateProjection, DependencyDescriptorProjection,
-    DependencyEdgeProjection, DependencyGraphProjection, NodeCalcStateProjection,
-    NodeContentKind as FrameworkContentKind, NodeId, NodeInvalidationProjection,
-    NodeValueProjection, NodeView, TableProjection, TreeReferenceCollectionProjection,
+    DependencyEdgeProjection, DependencyGraphProjection, DependencyKindProjection,
+    InvalidationReasonProjection, NodeCalcStateProjection, NodeContentKind as FrameworkContentKind,
+    NodeId, NodeInvalidationProjection, NodeKey, NodeValueProjection, NodeView, PhaseKeyProjection,
+    TableProjection, TreeReferenceCollectionFamilyProjection, TreeReferenceCollectionProjection,
     WorkspaceRevisionProjection, WorkspaceState,
 };
 use oxcalc_core::consumer::OxCalcTreeRunState;
@@ -13,7 +14,9 @@ use oxcalc_core::consumer::{
     OxCalcTreeContextOptions, OxCalcTreeHostCapabilitySnapshot, OxCalcTreeNodeCreate,
     OxCalcTreeWorkspaceCreate, OxCalcTreeWorkspaceId, OxCalcTreeWorkspaceSnapshot,
 };
-use oxcalc_core::dependency::DependencyDescriptorKind;
+use oxcalc_core::dependency::{
+    DependencyDescriptorKind, InvalidationReasonKind, TreeReferenceCollectionFamily,
+};
 use oxcalc_core::recalc::NodeCalcState;
 use oxcalc_core::structural::TreeNodeId;
 use oxcalc_core::structured_table::{
@@ -21,6 +24,7 @@ use oxcalc_core::structured_table::{
     TreeCalcTableColumnBodyMetadata, TreeCalcTableColumnSnapshot, TreeCalcTableFormulaMetadata,
     TreeCalcTableNodeSnapshot, TreeCalcTableRowId, TreeCalcTableVirtualAnchor,
 };
+use oxcalc_core::treecalc::LocalTreeCalcPhaseKey;
 use oxfunc_core::value::{CalcValue, CoreValue};
 use serde::{Deserialize, Serialize};
 
@@ -57,6 +61,7 @@ pub struct TreeWorkspaceSession {
     profile: &'static str,
     engine_root_id: TreeNodeId,
     node_ids: BTreeMap<NodeId, TreeNodeId>,
+    node_paths_by_tree_id: BTreeMap<TreeNodeId, NodeId>,
     display_order: Vec<NodeId>,
     recalc_count: usize,
     last_outcome: Option<OxCalcTreeCalculationOutcome>,
@@ -76,6 +81,7 @@ impl TreeWorkspaceSession {
             profile: model.profile.as_str(),
             engine_root_id,
             node_ids: BTreeMap::new(),
+            node_paths_by_tree_id: BTreeMap::new(),
             display_order: Vec::new(),
             recalc_count: 0,
             last_outcome: None,
@@ -97,6 +103,9 @@ impl TreeWorkspaceSession {
             )?;
             let node_id = NodeId::new(path.clone());
             session.node_ids.insert(node_id.clone(), tree_node_id);
+            session
+                .node_paths_by_tree_id
+                .insert(tree_node_id, node_id.clone());
             session.display_order.push(node_id.clone());
 
             if let Some(table) = &node.table {
@@ -129,6 +138,7 @@ impl TreeWorkspaceSession {
             profile,
             engine_root_id,
             node_ids: BTreeMap::new(),
+            node_paths_by_tree_id: BTreeMap::new(),
             display_order: Vec::new(),
             recalc_count: 0,
             last_outcome: None,
@@ -253,6 +263,8 @@ impl TreeWorkspaceSession {
             OxCalcTreeNodeCreate::new(symbol, content).under(parent_tree_node_id),
         )?;
         self.node_ids.insert(node_id.clone(), tree_node_id);
+        self.node_paths_by_tree_id
+            .insert(tree_node_id, node_id.clone());
         self.display_order.push(node_id.clone());
         self.last_outcome = None;
         Ok(node_id)
@@ -386,6 +398,7 @@ impl TreeWorkspaceSession {
             nodes.insert(
                 node_id.clone(),
                 NodeView {
+                    key: node_key_for_tree_node(tree_node_id),
                     id: node_id.clone(),
                     display_name: tree_view.symbol.clone(),
                     parent,
@@ -430,6 +443,14 @@ impl TreeWorkspaceSession {
             revision,
             last_run,
             node_order: self.display_order.clone(),
+            key_order: self
+                .display_order
+                .iter()
+                .map(|node_id| {
+                    self.tree_node_id(node_id.as_str())
+                        .map(node_key_for_tree_node)
+                })
+                .collect::<Result<Vec<_>, _>>()?,
             root_paths,
             nodes,
             dependencies,
@@ -518,9 +539,9 @@ impl TreeWorkspaceSession {
         &self,
         tree_node_id: TreeNodeId,
     ) -> Result<NodeId, TreeWorkspaceSessionError> {
-        self.node_ids
-            .iter()
-            .find_map(|(node_id, candidate)| (*candidate == tree_node_id).then(|| node_id.clone()))
+        self.node_paths_by_tree_id
+            .get(&tree_node_id)
+            .cloned()
             .ok_or(TreeWorkspaceSessionError::ProjectionOutOfSync {
                 node: format!("tree node {tree_node_id}"),
             })
@@ -566,6 +587,11 @@ impl TreeWorkspaceSession {
             .into_iter()
             .map(|(tree_node_id, node_id)| (node_id, tree_node_id))
             .collect();
+        self.node_paths_by_tree_id = self
+            .node_ids
+            .iter()
+            .map(|(node_id, tree_node_id)| (*tree_node_id, node_id.clone()))
+            .collect();
         self.display_order = display_order;
         Ok(())
     }
@@ -590,7 +616,9 @@ impl TreeWorkspaceSession {
                             .map(|collection| {
                                 Ok::<TreeReferenceCollectionProjection, TreeWorkspaceSessionError>(
                                     TreeReferenceCollectionProjection {
-                                        family: collection.family.stable_id().to_string(),
+                                        family: tree_collection_family_projection_for(
+                                            collection.family,
+                                        ),
                                         source_reference_handle: collection.host_ref_handle.clone(),
                                         base_node: if collection.base_node_id == self.engine_root_id
                                         {
@@ -626,7 +654,7 @@ impl TreeWorkspaceSession {
                                 .workspace_target
                                 .as_ref()
                                 .map(|target| target.target_node_handle.clone()),
-                            kind: format!("{:?}", descriptor.kind),
+                            kind: dependency_kind_projection_for(descriptor.kind),
                             carrier_detail: descriptor.carrier_detail.clone(),
                             collection,
                             requires_rebind_on_structural_change: descriptor
@@ -711,7 +739,7 @@ impl TreeWorkspaceSession {
             descriptor_id: edge.descriptor_id.clone(),
             owner: self.node_id_for_tree_node(edge.owner_node_id)?,
             target: self.node_id_for_tree_node(edge.target_node_id)?,
-            kind: format!("{:?}", edge.kind),
+            kind: dependency_kind_projection_for(edge.kind),
         })
     }
 
@@ -728,12 +756,14 @@ impl TreeWorkspaceSession {
             .map(|record| {
                 Ok(NodeInvalidationProjection {
                     node: self.node_id_for_tree_node(record.node_id)?,
+                    node_key: node_key_for_tree_node(record.node_id),
                     calc_state: calc_state_projection_for(record.calc_state),
                     requires_rebind: record.requires_rebind,
                     reasons: record
                         .reasons
                         .iter()
-                        .map(|reason| format!("{reason:?}"))
+                        .copied()
+                        .map(invalidation_reason_projection_for)
                         .collect(),
                 })
             })
@@ -754,7 +784,11 @@ impl TreeWorkspaceSession {
             runtime_overlay_count: outcome.runtime_effect_overlays.len(),
             derivation_trace_count: outcome.derivation_traces.len(),
             invalidated_nodes,
-            phase_timings_micros: outcome.phase_timings_micros.clone(),
+            phase_timings_micros: outcome
+                .phase_timings_micros
+                .iter()
+                .map(|(phase, micros)| (phase_key_projection_for(phase), *micros))
+                .collect(),
             diagnostics: outcome.diagnostics.clone(),
         })
     }
@@ -987,6 +1021,189 @@ fn calc_state_projection_for(calc_state: NodeCalcState) -> NodeCalcStateProjecti
     }
 }
 
+fn node_key_for_tree_node(tree_node_id: TreeNodeId) -> NodeKey {
+    NodeKey::from_engine_id(tree_node_id.0)
+}
+
+fn dependency_kind_projection_for(kind: DependencyDescriptorKind) -> DependencyKindProjection {
+    match kind {
+        DependencyDescriptorKind::StaticDirect => DependencyKindProjection::StaticDirect,
+        DependencyDescriptorKind::RelativeBound => DependencyKindProjection::RelativeBound,
+        DependencyDescriptorKind::TreeReferenceCollectionMembership => {
+            DependencyKindProjection::TreeReferenceCollectionMembership
+        }
+        DependencyDescriptorKind::TreeReferenceCollectionMemberValue => {
+            DependencyKindProjection::TreeReferenceCollectionMemberValue
+        }
+        DependencyDescriptorKind::StructuredTableIdentity => {
+            DependencyKindProjection::StructuredTableIdentity
+        }
+        DependencyDescriptorKind::StructuredTableRowMembership => {
+            DependencyKindProjection::StructuredTableRowMembership
+        }
+        DependencyDescriptorKind::StructuredTableRowOrder => {
+            DependencyKindProjection::StructuredTableRowOrder
+        }
+        DependencyDescriptorKind::StructuredTableColumnIdentity => {
+            DependencyKindProjection::StructuredTableColumnIdentity
+        }
+        DependencyDescriptorKind::StructuredTableHeaderText => {
+            DependencyKindProjection::StructuredTableHeaderText
+        }
+        DependencyDescriptorKind::StructuredTableHeaderRegion => {
+            DependencyKindProjection::StructuredTableHeaderRegion
+        }
+        DependencyDescriptorKind::StructuredTableDataRegion => {
+            DependencyKindProjection::StructuredTableDataRegion
+        }
+        DependencyDescriptorKind::StructuredTableTotalsRegion => {
+            DependencyKindProjection::StructuredTableTotalsRegion
+        }
+        DependencyDescriptorKind::StructuredTableCallerContext => {
+            DependencyKindProjection::StructuredTableCallerContext
+        }
+        DependencyDescriptorKind::StructuredTableEnclosingTable => {
+            DependencyKindProjection::StructuredTableEnclosingTable
+        }
+        DependencyDescriptorKind::DynamicPotential => DependencyKindProjection::DynamicPotential,
+        DependencyDescriptorKind::HostSensitive => DependencyKindProjection::HostSensitive,
+        DependencyDescriptorKind::CapabilitySensitive => {
+            DependencyKindProjection::CapabilitySensitive
+        }
+        DependencyDescriptorKind::ShapeTopology => DependencyKindProjection::ShapeTopology,
+        DependencyDescriptorKind::Unresolved => DependencyKindProjection::Unresolved,
+    }
+}
+
+fn invalidation_reason_projection_for(
+    reason: InvalidationReasonKind,
+) -> InvalidationReasonProjection {
+    match reason {
+        InvalidationReasonKind::StructuralRebindRequired => {
+            InvalidationReasonProjection::StructuralRebindRequired
+        }
+        InvalidationReasonKind::StructuralRecalcOnly => {
+            InvalidationReasonProjection::StructuralRecalcOnly
+        }
+        InvalidationReasonKind::UpstreamPublication => {
+            InvalidationReasonProjection::UpstreamPublication
+        }
+        InvalidationReasonKind::ExternallyInvalidated => {
+            InvalidationReasonProjection::ExternallyInvalidated
+        }
+        InvalidationReasonKind::TreeReferenceMembershipChanged => {
+            InvalidationReasonProjection::TreeReferenceMembershipChanged
+        }
+        InvalidationReasonKind::TreeReferenceOrderChanged => {
+            InvalidationReasonProjection::TreeReferenceOrderChanged
+        }
+        InvalidationReasonKind::StructuredTableContextChanged => {
+            InvalidationReasonProjection::StructuredTableContextChanged
+        }
+        InvalidationReasonKind::StructuredTableRowMembershipChanged => {
+            InvalidationReasonProjection::StructuredTableRowMembershipChanged
+        }
+        InvalidationReasonKind::StructuredTableRowOrderChanged => {
+            InvalidationReasonProjection::StructuredTableRowOrderChanged
+        }
+        InvalidationReasonKind::StructuredTableColumnChanged => {
+            InvalidationReasonProjection::StructuredTableColumnChanged
+        }
+        InvalidationReasonKind::StructuredTableRegionChanged => {
+            InvalidationReasonProjection::StructuredTableRegionChanged
+        }
+        InvalidationReasonKind::StructuredTableCallerContextChanged => {
+            InvalidationReasonProjection::StructuredTableCallerContextChanged
+        }
+        InvalidationReasonKind::DependencyAdded => InvalidationReasonProjection::DependencyAdded,
+        InvalidationReasonKind::DependencyRemoved => {
+            InvalidationReasonProjection::DependencyRemoved
+        }
+        InvalidationReasonKind::DependencyReclassified => {
+            InvalidationReasonProjection::DependencyReclassified
+        }
+        InvalidationReasonKind::DynamicDependencyActivated => {
+            InvalidationReasonProjection::DynamicDependencyActivated
+        }
+        InvalidationReasonKind::DynamicDependencyReleased => {
+            InvalidationReasonProjection::DynamicDependencyReleased
+        }
+        InvalidationReasonKind::DynamicDependencyReclassified => {
+            InvalidationReasonProjection::DynamicDependencyReclassified
+        }
+    }
+}
+
+fn tree_collection_family_projection_for(
+    family: TreeReferenceCollectionFamily,
+) -> TreeReferenceCollectionFamilyProjection {
+    match family {
+        TreeReferenceCollectionFamily::ChildrenV1 => {
+            TreeReferenceCollectionFamilyProjection::Children
+        }
+        TreeReferenceCollectionFamily::ReferenceLiteralArrayV1 => {
+            TreeReferenceCollectionFamilyProjection::ReferenceLiteralArray
+        }
+        TreeReferenceCollectionFamily::SiblingSetV1 => {
+            TreeReferenceCollectionFamilyProjection::Siblings
+        }
+        TreeReferenceCollectionFamily::PrecedingV1 => {
+            TreeReferenceCollectionFamilyProjection::Preceding
+        }
+        TreeReferenceCollectionFamily::FollowingV1 => {
+            TreeReferenceCollectionFamilyProjection::Following
+        }
+        TreeReferenceCollectionFamily::AncestorsV1 => {
+            TreeReferenceCollectionFamilyProjection::Ancestors
+        }
+        TreeReferenceCollectionFamily::RecursiveDescendantsV1 => {
+            TreeReferenceCollectionFamilyProjection::RecursiveDescendants
+        }
+    }
+}
+
+fn phase_key_projection_for(phase: &LocalTreeCalcPhaseKey) -> PhaseKeyProjection {
+    match phase {
+        LocalTreeCalcPhaseKey::OxfmlPrepareFormulas => PhaseKeyProjection::OxfmlPrepareFormulas,
+        LocalTreeCalcPhaseKey::DependencyDescriptorLowering => {
+            PhaseKeyProjection::DependencyDescriptorLowering
+        }
+        LocalTreeCalcPhaseKey::DependencyDescriptorOwnerIndex => {
+            PhaseKeyProjection::DependencyDescriptorOwnerIndex
+        }
+        LocalTreeCalcPhaseKey::DependencyGraphBuildAndCycleScan => {
+            PhaseKeyProjection::DependencyGraphBuildAndCycleScan
+        }
+        LocalTreeCalcPhaseKey::InvalidationClosureDerivation => {
+            PhaseKeyProjection::InvalidationClosureDerivation
+        }
+        LocalTreeCalcPhaseKey::RuntimeSetup => PhaseKeyProjection::RuntimeSetup,
+        LocalTreeCalcPhaseKey::DiagnosticSeedCollection => {
+            PhaseKeyProjection::DiagnosticSeedCollection
+        }
+        LocalTreeCalcPhaseKey::RecalcTrackerMarkDirtyNeeded => {
+            PhaseKeyProjection::RecalcTrackerMarkDirtyNeeded
+        }
+        LocalTreeCalcPhaseKey::TopologicalFormulaOrder => {
+            PhaseKeyProjection::TopologicalFormulaOrder
+        }
+        LocalTreeCalcPhaseKey::RebindGateScan => PhaseKeyProjection::RebindGateScan,
+        LocalTreeCalcPhaseKey::DependencyDiagnosticRejectScan => {
+            PhaseKeyProjection::DependencyDiagnosticRejectScan
+        }
+        LocalTreeCalcPhaseKey::EdgeValueCacheLookup => PhaseKeyProjection::EdgeValueCacheLookup,
+        LocalTreeCalcPhaseKey::OxfmlFormulaEvaluation => PhaseKeyProjection::OxfmlFormulaEvaluation,
+        LocalTreeCalcPhaseKey::DerivationTraceRecord => PhaseKeyProjection::DerivationTraceRecord,
+        LocalTreeCalcPhaseKey::EdgeValueCacheStore => PhaseKeyProjection::EdgeValueCacheStore,
+        LocalTreeCalcPhaseKey::EvaluationLoopTotal => PhaseKeyProjection::EvaluationLoopTotal,
+        LocalTreeCalcPhaseKey::VerifiedCleanFinalize => PhaseKeyProjection::VerifiedCleanFinalize,
+        LocalTreeCalcPhaseKey::CandidatePublication => PhaseKeyProjection::CandidatePublication,
+        LocalTreeCalcPhaseKey::RejectionRecording => PhaseKeyProjection::RejectionRecording,
+        LocalTreeCalcPhaseKey::TotalEngineExecute => PhaseKeyProjection::TotalEngineExecute,
+        LocalTreeCalcPhaseKey::Other(value) => PhaseKeyProjection::Other(value.clone()),
+    }
+}
+
 fn table_projection_for(view: &oxcalc_core::consumer::OxCalcTreeTableView) -> TableProjection {
     TableProjection {
         table_id: view.table_id.clone(),
@@ -1145,6 +1362,72 @@ mod tests {
             state.node(&NodeId::new("Root")).unwrap().children[0].as_str(),
             "Root.B"
         );
+    }
+
+    #[test]
+    fn session_projects_stable_node_keys_and_typed_engine_classifications() {
+        let fixture = WorkspaceFixture {
+            schema_version: "treecalc-workspace-v1".to_string(),
+            workspace_id: "stable-keys".to_string(),
+            description: None,
+            profile: None,
+            nodes: vec![
+                WorkspaceNodeFixture {
+                    node_id: "Root".to_string(),
+                    formula: String::new(),
+                    is_meta: false,
+                    table: None,
+                },
+                WorkspaceNodeFixture {
+                    node_id: "Root.A".to_string(),
+                    formula: "=3".to_string(),
+                    is_meta: false,
+                    table: None,
+                },
+                WorkspaceNodeFixture {
+                    node_id: "Root.B".to_string(),
+                    formula: "=A+1".to_string(),
+                    is_meta: false,
+                    table: None,
+                },
+            ],
+        };
+        let model = WorkspaceModel::try_from(fixture).unwrap();
+        let mut session = TreeWorkspaceSession::from_model(&model).unwrap();
+        session.recalculate().unwrap();
+
+        let before = session.workspace_state().unwrap();
+        let original_b_key = before.node(&NodeId::new("Root.B")).unwrap().key.clone();
+        assert_eq!(
+            before.dependencies.descriptors_by_owner[&NodeId::new("Root.B")][0].kind,
+            DependencyKindProjection::StaticDirect
+        );
+        assert!(
+            before
+                .last_run
+                .as_ref()
+                .unwrap()
+                .invalidated_nodes
+                .iter()
+                .any(|record| record
+                    .reasons
+                    .contains(&InvalidationReasonProjection::UpstreamPublication))
+        );
+
+        let renamed = session
+            .rename_node(&NodeId::new("Root.B"), "Renamed")
+            .unwrap();
+        let moved = session.move_node(&renamed, None, None).unwrap();
+        session.recalculate().unwrap();
+
+        let after = session.workspace_state().unwrap();
+        assert_eq!(
+            after.node(&moved).unwrap().key,
+            original_b_key,
+            "NodeKey should be OxCalc identity, not display path"
+        );
+        assert_ne!(moved.as_str(), "Root.B");
+        assert!(after.key_order.contains(&original_b_key));
     }
 
     #[test]

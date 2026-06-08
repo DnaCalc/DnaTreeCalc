@@ -2,13 +2,11 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-/// Stable identifier for a tree node.
+/// Display-path identifier for a tree node during the NodeKey transition window.
 ///
 /// In the walking skeleton this wraps the workspace path (`Accounts.2005.Q1.Margin`)
-/// emitted by [`crate::workspace::WorkspaceState`]. The newtype exists so the
-/// skin contract has a single typed identity that survives future identity-policy
-/// changes (e.g., separating display path from canonical node id when structural
-/// edits land in W003).
+/// emitted by [`crate::workspace::WorkspaceState`]. It remains as the cosmetic
+/// path key while [`NodeKey`] carries the stable OxCalc node identity.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct NodeId(String);
 
@@ -37,6 +35,49 @@ impl From<String> for NodeId {
 }
 
 impl From<&str> for NodeId {
+    fn from(value: &str) -> Self {
+        Self(value.to_string())
+    }
+}
+
+/// Stable engine identity for a tree node.
+///
+/// This wraps OxCalc's `TreeNodeId` as a host/skin-safe string so skins can
+/// preserve selection, expansion, pins, and reference correlations across
+/// display-path changes without depending on OxCalc internals.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct NodeKey(String);
+
+impl NodeKey {
+    #[must_use]
+    pub fn new(value: impl Into<String>) -> Self {
+        Self(value.into())
+    }
+
+    #[must_use]
+    pub fn from_engine_id(value: u64) -> Self {
+        Self(format!("tree-node:{value}"))
+    }
+
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for NodeKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl From<String> for NodeKey {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for NodeKey {
     fn from(value: &str) -> Self {
         Self(value.to_string())
     }
