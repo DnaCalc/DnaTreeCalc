@@ -224,6 +224,27 @@ fn programmable_skin_selects_table_cells_without_recalculating() {
     );
     assert_eq!(formula.formula_text, "=[@Amount] * 0.1");
     assert_eq!(formula_detail.value.display_text(), "2");
+    let formula_state = skin.state();
+    let expected_formula_outgoing = formula_state
+        .dependencies
+        .reference_resolutions
+        .values()
+        .filter(|resolution| resolution.owner_key == formula_detail.node_key)
+        .cloned()
+        .collect::<Vec<_>>();
+    assert_eq!(
+        formula_detail.outgoing_references,
+        expected_formula_outgoing
+    );
+    assert_eq!(
+        formula_detail.incoming_reference_handles,
+        formula_state
+            .dependencies
+            .reverse_references
+            .get(&formula_detail.node_key)
+            .cloned()
+            .unwrap_or_default()
+    );
 
     let totals_select = skin.try_select_table_cell("SalesTable", None, "col:amount");
     assert!(totals_select.accepted, "{:?}", totals_select.error);
@@ -272,6 +293,23 @@ fn programmable_skin_selects_table_cells_without_recalculating() {
         .expect("Amount totals cell projects");
     assert_eq!(totals_detail.node_key, totals_cell.node_key);
     assert_eq!(totals_detail.value.display_text(), "60");
+    let expected_totals_outgoing = totals_state
+        .dependencies
+        .reference_resolutions
+        .values()
+        .filter(|resolution| resolution.owner_key == totals_detail.node_key)
+        .cloned()
+        .collect::<Vec<_>>();
+    assert_eq!(totals_detail.outgoing_references, expected_totals_outgoing);
+    assert_eq!(
+        totals_detail.incoming_reference_handles,
+        totals_state
+            .dependencies
+            .reverse_references
+            .get(&totals_detail.node_key)
+            .cloned()
+            .unwrap_or_default()
+    );
 
     let missing_row = skin.try_select_table_cell("SalesTable", Some("row:missing"), "col:amount");
     assert!(!missing_row.accepted, "{missing_row:?}");

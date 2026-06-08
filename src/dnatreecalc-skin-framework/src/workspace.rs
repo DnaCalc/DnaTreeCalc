@@ -137,6 +137,19 @@ impl WorkspaceState {
             formula: active_table_cell_formula(region, column),
             node_key: cell.node_key.clone(),
             value: cell.value.clone(),
+            outgoing_references: self
+                .dependencies
+                .reference_resolutions
+                .values()
+                .filter(|resolution| resolution.owner_key == cell.node_key)
+                .cloned()
+                .collect(),
+            incoming_reference_handles: self
+                .dependencies
+                .reverse_references
+                .get(&cell.node_key)
+                .cloned()
+                .unwrap_or_default(),
         })
     }
 }
@@ -174,6 +187,8 @@ pub struct ActiveTableCellDetailProjection {
     pub formula: Option<TableFormulaMetadataProjection>,
     pub node_key: NodeKey,
     pub value: NodeValueProjection,
+    pub outgoing_references: Vec<ReferenceResolutionProjection>,
+    pub incoming_reference_handles: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
