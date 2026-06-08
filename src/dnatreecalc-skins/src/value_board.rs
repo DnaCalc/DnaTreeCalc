@@ -1,7 +1,7 @@
 use dnatreecalc_skin_framework::{
     ActiveSelectionDetailProjection, ActiveTableCellDetailProjection, Dispatcher, NodeId,
-    NodeValueProjection, ReferenceResolutionProjection, SelectionState, SkinCapabilities,
-    SkinCategory, SkinContext, SkinHandle, SkinId, SkinManifest, SkinState,
+    NodeValueProjection, ReferenceResolutionProjection, ReferenceTargetProjection, SelectionState,
+    SkinCapabilities, SkinCategory, SkinContext, SkinHandle, SkinId, SkinManifest, SkinState,
     TableCellEditabilityProjection, TableCellInput, TableColumnBodyProjection, TableProjection,
     TableRowInput, WorkspaceIntent, WorkspaceSkin, WorkspaceState,
 };
@@ -231,6 +231,9 @@ fn active_selection_detail_rows(
             if let Some(handles) = outgoing_reference_summary(&detail.outgoing_references) {
                 rows.push(("out handles", handles));
             }
+            if let Some(targets) = outgoing_target_summary(&detail.outgoing_references) {
+                rows.push(("out targets", targets));
+            }
             if let Some(handles) = handle_summary(detail.incoming_reference_handles) {
                 rows.push(("in handles", handles));
             }
@@ -267,6 +270,9 @@ fn active_selection_detail_rows(
             if let Some(handles) = outgoing_reference_summary(&detail.outgoing_references) {
                 rows.push(("out handles", handles));
             }
+            if let Some(targets) = outgoing_target_summary(&detail.outgoing_references) {
+                rows.push(("out targets", targets));
+            }
             if let Some(handles) = handle_summary(detail.incoming_reference_handles) {
                 rows.push(("in handles", handles));
             }
@@ -283,6 +289,34 @@ fn outgoing_reference_summary(references: &[ReferenceResolutionProjection]) -> O
             reference.primary_kind.stable_id()
         )
     }))
+}
+
+fn outgoing_target_summary(references: &[ReferenceResolutionProjection]) -> Option<String> {
+    handle_summary(references.iter().map(|reference| {
+        format!(
+            "{} -> {}",
+            reference.source_reference_handle,
+            reference_target_label(&reference.target)
+        )
+    }))
+}
+
+fn reference_target_label(target: &ReferenceTargetProjection) -> String {
+    match target {
+        ReferenceTargetProjection::Node { node, key } => {
+            format!("node {} [{}]", node.as_str(), key)
+        }
+        ReferenceTargetProjection::Collection {
+            collection,
+            member_keys,
+        } => format!(
+            "collection {} ({} members)",
+            collection.family.stable_id(),
+            member_keys.len()
+        ),
+        ReferenceTargetProjection::External { target } => format!("external {target}"),
+        ReferenceTargetProjection::Unresolved => "unresolved".to_string(),
+    }
 }
 
 fn handle_summary(handles: impl IntoIterator<Item = String>) -> Option<String> {
@@ -1429,6 +1463,7 @@ mod tests {
         ReferenceTargetProjection, TableAnchorProjection, TableCellProjection,
         TableCellRegionProjection, TableCellsProjection, TableColumnProjection,
         TableFormulaMetadataProjection, TableRowProjection,
+        TreeReferenceCollectionFamilyProjection, TreeReferenceCollectionProjection,
     };
     use std::collections::BTreeMap;
 
@@ -1661,6 +1696,10 @@ mod tests {
                 ("refs out", "1".to_string()),
                 ("refs in", "0".to_string()),
                 ("out handles", "ref:Root.B:A (static_direct)".to_string()),
+                (
+                    "out targets",
+                    "ref:Root.B:A -> node Root.A [node:root:a]".to_string(),
+                ),
             ])
         );
     }
@@ -1714,6 +1753,41 @@ mod tests {
                     .map(str::to_string)
             ),
             Some("a, b, c, d, +2 more".to_string())
+        );
+    }
+
+    #[test]
+    fn value_board_active_detail_reference_targets_are_labeled() {
+        assert_eq!(
+            reference_target_label(&ReferenceTargetProjection::Node {
+                node: NodeId::new("Root.A"),
+                key: NodeKey::new("node:root:a"),
+            }),
+            "node Root.A [node:root:a]"
+        );
+        assert_eq!(
+            reference_target_label(&ReferenceTargetProjection::Collection {
+                collection: TreeReferenceCollectionProjection {
+                    family: TreeReferenceCollectionFamilyProjection::Children,
+                    source_reference_handle: "ref:children".to_string(),
+                    base_node: Some(NodeId::new("Root")),
+                    membership_version: "membership:v1".to_string(),
+                    order_version: "order:v1".to_string(),
+                    members: vec![NodeId::new("Root.A"), NodeId::new("Root.B")],
+                },
+                member_keys: vec![NodeKey::new("node:root:a"), NodeKey::new("node:root:b")],
+            }),
+            "collection children (2 members)"
+        );
+        assert_eq!(
+            reference_target_label(&ReferenceTargetProjection::External {
+                target: "Book.xlsx!Name".to_string(),
+            }),
+            "external Book.xlsx!Name"
+        );
+        assert_eq!(
+            reference_target_label(&ReferenceTargetProjection::Unresolved),
+            "unresolved"
         );
     }
 
