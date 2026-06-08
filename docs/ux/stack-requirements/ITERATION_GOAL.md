@@ -44,7 +44,7 @@ reported against the roadmap with concrete evidence and explicit remaining gaps.
 - [x] Surface current derivation trace records in active skin detail.
 - [ ] Complete host cutover from path-keyed maps to `NodeKey`-keyed maps.
 - [ ] Preserve richer scalar/error/reference value variants through Skin IR, not only arrays and display text.
-- [ ] Add the reference-resolution map: token/source handle to target plus reverse index.
+- [x] Add the reference-resolution map: token/source handle to target plus reverse index.
 - [ ] Audit derivation trace payloads against the full prepared-call tree and hole-binding requirement.
 - [ ] Add typed binding diagnostics intake where OxFml exposes them.
 - [ ] Add per-node effective format and OxFml-backed render entrypoint plumbing.
@@ -77,4 +77,3 @@ Still open: <concrete remaining gaps or blocked dependents>
 Formal status: <spec/proof/model status if relevant, otherwise "not applicable">
 Next roadmap item: <earliest unblocked item>
 ```
-
