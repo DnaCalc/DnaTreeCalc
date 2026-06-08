@@ -144,7 +144,14 @@ fn programmable_skin_receipts_carry_projection_deltas() {
     assert_eq!(add_root.delta.from_seq, 0);
     assert_eq!(add_root.delta.to_seq, 1);
     assert!(add_root.produced_revision.is_some());
-    assert_eq!(add_root.transaction_id, None);
+    let add_root_transaction_id = add_root
+        .transaction_id
+        .as_deref()
+        .expect("add-node receipts carry OxCalc transaction ids");
+    assert!(
+        add_root_transaction_id.starts_with("transaction:programmable-skin-ir:"),
+        "{add_root_transaction_id}"
+    );
     assert!(add_root
         .delta
         .changes

@@ -183,10 +183,9 @@ impl Dispatcher for HostDispatcher {
                 parent,
                 symbol,
                 content,
-            } => match self.apply_workspace_edit(
-                |session| session.add_node(parent.as_ref(), symbol, content),
-                WorkspaceEditPublication::Recalculate,
-            ) {
+            } => match self.apply_workspace_transaction_edit(|session| {
+                session.add_node_transaction(parent.as_ref(), symbol, content)
+            }) {
                 Ok(publication) => {
                     let created = publication.result.clone();
                     self.selection

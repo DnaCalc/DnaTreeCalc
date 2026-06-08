@@ -22,7 +22,7 @@ use dnatreecalc_skin_framework::{
 use oxcalc_core::consumer::OxCalcTreeRunState;
 use oxcalc_core::consumer::{
     OxCalcTreeCalculationOutcome, OxCalcTreeContext, OxCalcTreeContextError,
-    OxCalcTreeContextOptions, OxCalcTreeEdit, OxCalcTreeEditTransaction,
+    OxCalcTreeContextOptions, OxCalcTreeEdit, OxCalcTreeEditResult, OxCalcTreeEditTransaction,
     OxCalcTreeHostCapabilitySnapshot, OxCalcTreeNodeCreate, OxCalcTreeNodeView,
     OxCalcTreeRuntimePolicy, OxCalcTreeWorkspaceCreate, OxCalcTreeWorkspaceId,
     OxCalcTreeWorkspaceSnapshot, TransactionRecalcPolicy,
@@ -398,6 +398,60 @@ impl TreeWorkspaceSession {
         self.display_order.push(node_id.clone());
         self.last_outcome = None;
         Ok(node_id)
+    }
+
+    pub fn add_node_transaction(
+        &mut self,
+        parent: Option<&NodeId>,
+        symbol: impl Into<String>,
+        content: impl Into<String>,
+    ) -> Result<TreeWorkspaceTransactionEdit<NodeId>, TreeWorkspaceSessionError> {
+        let symbol = symbol.into();
+        let parent_tree_node_id = match parent {
+            Some(parent) => self.tree_node_id(parent.as_str())?,
+            None => self.engine_root_id,
+        };
+        let node_id = NodeId::new(match parent {
+            Some(parent) => format!("{}.{}", parent.as_str(), symbol),
+            None => symbol.clone(),
+        });
+        if self.node_ids.contains_key(&node_id) {
+            return Err(TreeWorkspaceSessionError::DuplicateNodePath {
+                node: node_id.to_string(),
+            });
+        }
+
+        let outcome = self.context.apply_edit_transaction(
+            OxCalcTreeEditTransaction::new(self.workspace_id.clone())
+                .with_edit(OxCalcTreeEdit::AddNode {
+                    request: OxCalcTreeNodeCreate::new(symbol, content).under(parent_tree_node_id),
+                })
+                .with_recalc_policy(TransactionRecalcPolicy::ApplyOnly),
+        )?;
+        let tree_node_id = match outcome.edit_results.as_slice() {
+            [OxCalcTreeEditResult::NodeAdded { node_id }] => *node_id,
+            _ => {
+                return Err(TreeWorkspaceSessionError::ProjectionOutOfSync {
+                    node: "OxCalc add-node transaction did not return a created node id"
+                        .to_string(),
+                });
+            }
+        };
+        if let Some(calculation) = outcome.calculation {
+            self.recalc_count += 1;
+            self.last_outcome = Some(calculation);
+        } else {
+            self.last_outcome = None;
+        }
+        self.node_ids.insert(node_id.clone(), tree_node_id);
+        self.node_paths_by_tree_id
+            .insert(tree_node_id, node_id.clone());
+        self.display_order.push(node_id.clone());
+        self.recalculate()?;
+        Ok(TreeWorkspaceTransactionEdit {
+            result: node_id,
+            transaction_id: outcome.transaction_id.to_string(),
+        })
     }
 
     pub fn rename_node(

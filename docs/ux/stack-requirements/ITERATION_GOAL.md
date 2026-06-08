@@ -81,8 +81,8 @@ overlay handles.
 - [x] Define `AuthoringScope` as the typed subject model for node, ordered multi-node, subtree, and
       reference-collection subjects, with host-owned projection expansion and Skin IR tests; mutating
       multi-target verbs remain gated on transaction scope.
-- [x] Add edit transaction ids with real semantics for node edit/rename/move/reorder/delete receipts
-      by threading OxCalc transaction outcomes through host `IntentReceipt`; add-node, table, and
+- [x] Add edit transaction ids with real semantics for node add/edit/rename/move/reorder/delete
+      receipts by threading OxCalc transaction outcomes through host `IntentReceipt`; table and
       scoped multi-target transaction ids remain gated on broader OxCalc transaction operation
       coverage.
 - [x] Spike OxCalc `transaction-scope`: go for an OxCalc-owned Stage 1 batch edit API with rollback
@@ -92,8 +92,8 @@ overlay handles.
 ### Gating Engine Workstreams
 
 - [ ] `transaction-scope`: first OxCalc node-edit transaction slice implemented and routed through
-      DnaTreeCalc receipts for edit/rename/move/reorder/delete; add-node results, table/scoped
-      verbs, and broader operation families still required.
+      DnaTreeCalc receipts for add/edit/rename/move/reorder/delete; table/scoped verbs and broader
+      operation families still required.
 - [ ] `revision-graph-retention`: retained parent-linked revision store and cursor; no inverse replay.
 - [ ] `candidate-overlay-handle`: addressable, layerable, non-publishing candidate contexts.
 - [x] `value-epoch-keying`: per-node published-value epoch distinct from input epoch.
