@@ -904,6 +904,25 @@ impl Harness {
             .preview_content_edit_impact(&NodeId::new(node), content)
             .unwrap()
     }
+
+    pub fn preview_new_table_column_formula_impact(
+        &self,
+        table: &str,
+        column_id: &str,
+        column_name: &str,
+        content: &str,
+    ) -> MutationImpactProjection {
+        self.session
+            .lock()
+            .unwrap()
+            .preview_new_table_column_formula_impact(
+                &NodeId::new(table),
+                column_id,
+                column_name,
+                content,
+            )
+            .unwrap()
+    }
 }
 
 pub fn scalar_value<'a>(state: &'a WorkspaceState, node_id: &str) -> Option<&'a str> {

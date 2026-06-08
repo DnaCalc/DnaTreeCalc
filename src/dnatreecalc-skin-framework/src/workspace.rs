@@ -608,6 +608,12 @@ pub enum RecalcPlanMutation {
         node: NodeId,
         content: String,
     },
+    AddTableFormulaColumn {
+        table: NodeId,
+        column_id: String,
+        name: String,
+        formula_text: String,
+    },
     RenameNode {
         node: NodeId,
     },
@@ -736,7 +742,16 @@ pub struct TableFormulaBindPreviewProjection {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MutationImpactIntentProjection {
-    EditContent { node: NodeId, content: String },
+    EditContent {
+        node: NodeId,
+        content: String,
+    },
+    AddTableFormulaColumn {
+        table: NodeId,
+        column_id: String,
+        name: String,
+        formula_text: String,
+    },
 }
 
 impl MutationImpactIntentProjection {
@@ -744,6 +759,7 @@ impl MutationImpactIntentProjection {
     pub const fn stable_id(&self) -> &'static str {
         match self {
             Self::EditContent { .. } => "edit_content",
+            Self::AddTableFormulaColumn { .. } => "add_table_formula_column",
         }
     }
 }

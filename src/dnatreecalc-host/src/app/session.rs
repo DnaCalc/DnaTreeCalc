@@ -51,8 +51,9 @@ use oxcalc_core::structured_table::{
     TreeCalcTableColumnFormulaRuntimeRequest, TreeCalcTableColumnSnapshot,
     TreeCalcTableFormulaMetadata, TreeCalcTableFormulaRuntimeContext,
     TreeCalcTableFormulaRuntimeReport, TreeCalcTableNodeSnapshot, TreeCalcTableRowId,
-    TreeCalcTableSparseValue, TreeCalcTableTotalsCellNodeBinding, TreeCalcTableVirtualAnchor,
-    evaluate_treecalc_table_column_formula_rows, evaluate_treecalc_table_totals_formula,
+    TreeCalcTableSparseValue, TreeCalcTableTotalsCellNodeBinding, TreeCalcTableUpdateScenarioKind,
+    TreeCalcTableVirtualAnchor, evaluate_treecalc_table_column_formula_rows,
+    evaluate_treecalc_table_totals_formula,
 };
 use oxcalc_core::treecalc::{
     DerivationInvocationTraceNode, DerivationPreparedArgumentTrace, DerivationTraceRecord,
@@ -517,6 +518,54 @@ impl TreeWorkspaceSession {
                 .invalidated_nodes
                 .iter()
                 .filter(|entry| entry.node != *node)
+                .map(|entry| entry.node.clone())
+                .collect(),
+            orphaned_dependents: Vec::new(),
+            collisions: Vec::new(),
+            invalidation_plan,
+        })
+    }
+
+    pub fn preview_new_table_column_formula_impact(
+        &self,
+        table: &NodeId,
+        column_id: impl Into<String>,
+        name: impl Into<String>,
+        formula_text: impl Into<String>,
+    ) -> Result<MutationImpactProjection, TreeWorkspaceSessionError> {
+        let column_id = column_id.into();
+        let name = name.into();
+        let formula_text = formula_text.into();
+        let bind = self.preview_new_table_column_formula_bind(
+            table,
+            &column_id,
+            &name,
+            formula_text.clone(),
+        )?;
+        let invalidation_plan =
+            self.preview_recalc_plan(&[RecalcPlanMutation::AddTableFormulaColumn {
+                table: table.clone(),
+                column_id: column_id.clone(),
+                name: name.clone(),
+                formula_text: formula_text.clone(),
+            }])?;
+        let blocked_reason = mutation_impact_blocked_reason_for_table_bind(&bind);
+        Ok(MutationImpactProjection {
+            intent: MutationImpactIntentProjection::AddTableFormulaColumn {
+                table: table.clone(),
+                column_id,
+                name,
+                formula_text,
+            },
+            legal: blocked_reason.is_none(),
+            blocked_reason,
+            profile_violations: bind.profile_violations,
+            bind_diagnostics: bind.diagnostics,
+            requires_rebind: invalidation_plan.requires_rebind.clone(),
+            affected_refs: invalidation_plan
+                .invalidated_nodes
+                .iter()
+                .filter(|entry| entry.node != *table)
                 .map(|entry| entry.node.clone())
                 .collect(),
             orphaned_dependents: Vec::new(),
@@ -1399,6 +1448,28 @@ impl TreeWorkspaceSession {
         let name = name.into();
         let formula_text = formula_text.into();
         let table_node_id = self.tree_node_id(table.as_str())?;
+        let snapshot = self.preview_formula_column_table_snapshot(
+            table,
+            table_node_id,
+            column_id,
+            name,
+            formula_text,
+        )?;
+        self.context
+            .set_node_table(&self.workspace_id, table_node_id, snapshot)?;
+        self.refresh_projection_from_context()?;
+        self.last_outcome = None;
+        Ok(())
+    }
+
+    fn preview_formula_column_table_snapshot(
+        &self,
+        table: &NodeId,
+        table_node_id: TreeNodeId,
+        column_id: String,
+        name: String,
+        formula_text: String,
+    ) -> Result<TreeCalcTableNodeSnapshot, TreeWorkspaceSessionError> {
         let mut table_view = self
             .context
             .table_view(&self.workspace_id, table_node_id)?
@@ -1443,11 +1514,7 @@ impl TreeWorkspaceSession {
             "formula-column",
             &column_id,
         );
-        self.context
-            .set_node_table(&self.workspace_id, table_node_id, table_view.snapshot)?;
-        self.refresh_projection_from_context()?;
-        self.last_outcome = None;
-        Ok(())
+        Ok(table_view.snapshot)
     }
 
     pub fn edit_table_column_formula(
@@ -1996,6 +2063,25 @@ impl TreeWorkspaceSession {
                 Ok(OxCalcTreePreviewMutation::SetNodeFormulaText {
                     node_id: self.tree_node_id(node.as_str())?,
                     formula_text: content.clone(),
+                })
+            }
+            RecalcPlanMutation::AddTableFormulaColumn {
+                table,
+                column_id,
+                name,
+                formula_text,
+            } => {
+                let table_node_id = self.tree_node_id(table.as_str())?;
+                Ok(OxCalcTreePreviewMutation::SetNodeTable {
+                    node_id: table_node_id,
+                    snapshot: self.preview_formula_column_table_snapshot(
+                        table,
+                        table_node_id,
+                        column_id.clone(),
+                        name.clone(),
+                        formula_text.clone(),
+                    )?,
+                    scenario: TreeCalcTableUpdateScenarioKind::ColumnInsert,
                 })
             }
             RecalcPlanMutation::RenameNode { node } => Ok(OxCalcTreePreviewMutation::RenameNode {
@@ -3047,6 +3133,29 @@ fn formula_bind_preview_from_oxcalc_verdict(
 
 fn mutation_impact_blocked_reason_for_bind(
     bind: &FormulaBindPreviewProjection,
+) -> Option<MutationImpactBlockedReasonProjection> {
+    if !bind.profile_violations.is_empty() {
+        return Some(MutationImpactBlockedReasonProjection::ProfileViolation);
+    }
+    if bind
+        .diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.stage == FormulaBindPreviewDiagnosticStage::Syntax)
+    {
+        return Some(MutationImpactBlockedReasonProjection::SyntaxDiagnostics);
+    }
+    if bind
+        .diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.stage == FormulaBindPreviewDiagnosticStage::Bind)
+    {
+        return Some(MutationImpactBlockedReasonProjection::BindDiagnostics);
+    }
+    None
+}
+
+fn mutation_impact_blocked_reason_for_table_bind(
+    bind: &TableFormulaBindPreviewProjection,
 ) -> Option<MutationImpactBlockedReasonProjection> {
     if !bind.profile_violations.is_empty() {
         return Some(MutationImpactBlockedReasonProjection::ProfileViolation);

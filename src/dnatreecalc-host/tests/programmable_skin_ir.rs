@@ -267,6 +267,57 @@ fn programmable_skin_previews_table_formula_bind_from_table_subjects() {
     assert!(new_column.diagnostics.is_empty(), "{new_column:?}");
     assert!(new_column.profile_violations.is_empty(), "{new_column:?}");
 
+    let new_column_impact = harness.preview_new_table_column_formula_impact(
+        "SalesTable",
+        "col:double",
+        "Double",
+        "=[@Amount]*2",
+    );
+    assert!(new_column_impact.legal, "{new_column_impact:?}");
+    assert!(new_column_impact.blocked_reason.is_none());
+    assert!(new_column_impact.bind_diagnostics.is_empty());
+    assert!(new_column_impact.profile_violations.is_empty());
+    assert!(
+        new_column_impact
+            .requires_rebind
+            .contains(&NodeId::new("SalesTable"))
+    );
+    let MutationImpactIntentProjection::AddTableFormulaColumn {
+        table,
+        column_id,
+        name,
+        formula_text,
+    } = &new_column_impact.intent
+    else {
+        panic!("expected add table formula column impact intent");
+    };
+    assert_eq!(table, &NodeId::new("SalesTable"));
+    assert_eq!(column_id, "col:double");
+    assert_eq!(name, "Double");
+    assert_eq!(formula_text, "=[@Amount]*2");
+    let sales_entry = new_column_impact
+        .invalidation_plan
+        .invalidated_nodes
+        .iter()
+        .find(|entry| entry.node == NodeId::new("SalesTable"))
+        .expect("SalesTable should be invalidated");
+    assert!(sales_entry.requires_rebind);
+    assert!(
+        sales_entry
+            .reasons
+            .contains(&InvalidationReasonProjection::StructuredTableColumnChanged)
+    );
+    assert!(
+        sales_entry
+            .reasons
+            .contains(&InvalidationReasonProjection::StructuredTableRegionChanged)
+    );
+    assert!(
+        sales_entry
+            .reasons
+            .contains(&InvalidationReasonProjection::StructuredTableContextChanged)
+    );
+
     let totals =
         harness.preview_table_totals_formula_bind("SalesTable", "col:amount", "=SUM([Amount])");
     assert_eq!(totals.table, NodeId::new("SalesTable"));
@@ -332,7 +383,9 @@ fn programmable_skin_previews_content_edit_legality_impact_from_host_projection(
     assert!(impact.orphaned_dependents.is_empty());
     assert!(impact.collisions.is_empty());
     assert_eq!(impact.invalidation_plan.estimated_node_count, 2);
-    let MutationImpactIntentProjection::EditContent { node, content } = &impact.intent;
+    let MutationImpactIntentProjection::EditContent { node, content } = &impact.intent else {
+        panic!("expected edit content impact intent");
+    };
     assert_eq!(node, &NodeId::new("Root.B"));
     assert_eq!(content, "=A+2");
     assert_eq!(

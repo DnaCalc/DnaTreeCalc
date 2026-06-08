@@ -2,42 +2,35 @@
 
 ## Goal Statement
 
-Execute the DNA TreeCalc stack-requirements roadmap in dependency order, using each iteration to move
-one durable capability from roadmap intent to observable product surface. Start from the earliest
-unmet wave item, verify its readiness against real code, then put the truth in the repo that owns it:
-OxFml for formula language, binding, rendering, and single-node semantics; OxCalc for multi-node
-calculation, dependency, invalidation, publication, overlays, revisions, and candidate state;
-DnaTreeCalc host for closed intents and projection; skins for rendering and dispatch only.
+Drive the DNA TreeCalc stack-requirements roadmap as an engine-first delivery loop, not as skin
+polish. Each iteration starts at the earliest unmet roadmap wave item, verifies the roadmap's
+readiness claim against real code, implements or exposes the capability in the repo that owns the
+truth, and then proves it from the outside through the host projection, closed intent seam, Skin IR
+tests, or a real skin.
 
-The working loop is: verify the roadmap readiness claim against real code, implement or expose the
-capability at its owning layer, thread it through the host projection or closed intent seam, exercise
-it from outside the engine through Skin IR tests or a real skin, then record product scope, evidence,
-known gaps, and the next roadmap item. W0/W1 should burn down high-leverage `expose`/`extend` work:
-stable node identity, typed invalidation/dependency/run/value facts, reference resolution, binding
-diagnostics, derivation/runtime/overlay detail, effective formatting, and per-node value epochs. W2+
-must not fake missing engine substrates: transaction scope, revision graph retention, candidate
-overlay handles, and value-epoch keying require an explicit spike or implementation before dependent
-host or skin affordances are scheduled.
+The roadmap alignment rule is:
 
-An iteration is complete only when downstream consumers can observe the capability through
-`WorkspaceState`, `WorkspaceIntent`, or the published Skin IR surface, and the checklist below marks
-the exact roadmap item advanced. Incidental UI polish is allowed only when it supports the active
-roadmap item; it is not the default next move.
+| Roadmap slice | Iteration focus | Owning-layer test |
+|---|---|---|
+| W0 | Stable identity and typed engine facts | The host can correlate nodes and read typed dependency, invalidation, run, timing, and value facts without parsing prose. |
+| W1 | Value-faithful display and deep read | Skins can read formatted values, reference-resolution facts, binding diagnostics, runtime effects, derivation traces, cycle facts, and value epochs from published state. |
+| W2 | Safe structural authoring | A skin can ask whether an edit is legal, what it will invalidate, and why it may fail, using typed receipts and previews rather than committing speculative semantics host-side. |
+| W3 | Reference/content authoring verbs | Authoring commands carry ids, handles, scopes, and profile-aware requests; OxFml recomposes formula text and OxCalc rebinds and schedules. |
+| W4a/W4b/W4c | Revision history and speculation | Dependent UI work waits for OxCalc-owned revision graph retention and addressable candidate overlays; skins never fake undo, time travel, or what-if state. |
+| W5+ | Platform and frontier capabilities | Delta channels, worker hosting, composition, table operations, import/export, sweeps, RTD, and onboarding ride only on the earlier engine substrate that makes them truthful. |
 
-The current working target is the W2 structural-authoring tranche. W0/W1 exposure work has already
-established the stable identity spine, typed engine facts, reference-resolution visibility,
-binding diagnostics, effective formatting, derivation/runtime detail, and per-node published-value
-epochs. The immediate cursor is W2 `engine-dry-bind` and joined legality/impact preview coverage:
-finish typed dry-bind verdicts for node, table, and scoped subjects; prove the result from Skin IR
-tests; then continue to the next W2 structural-authoring item. Do not drift into incidental skin
-polish while W2 is open.
+The current working target is W2 structural authoring. W0/W1 exposure work has established the
+stable identity spine, typed engine facts, reference-resolution visibility, binding diagnostics,
+effective formatting, derivation/runtime detail, and per-node published-value epochs. The immediate
+cursor is W2 `engine-dry-bind` plus joined legality/impact preview coverage: finish typed dry-bind
+verdicts for node, table, and scoped subjects; join those verdicts with OxCalc committed-graph
+invalidation planning; prove the result through Skin IR tests; then advance to the next W2 item.
 
-When a wave item hits one of the real engine gates, stop treating it as projection work. The four
-substrate gates are `transaction-scope`, `revision-graph-retention`, `candidate-overlay-handle`, and
-any remaining value-epoch-dependent shape work. Each gate needs an OxCalc spike or implementation
-before dependent host, Skin IR, or UI work is scheduled. Larger time/speculation features stay queued
-behind the explicit engine workstreams: transaction scope, retained revision graph, and candidate
-overlay handles.
+When a wave item hits a real engine gate, stop treating it as projection work. The substrate gates
+are `transaction-scope`, `revision-graph-retention`, `candidate-overlay-handle`, and any remaining
+value-epoch-dependent shape work. Each gate needs an OxCalc spike or implementation before
+dependent host, Skin IR, or UI work is scheduled. Incidental UI polish is allowed only when it
+supports the active roadmap item; it is not the default next move while W2 is open.
 
 ## Iteration Rule
 
@@ -107,8 +100,10 @@ overlay handles.
       typed table subjects in Skin IR. Profile violations now have a typed `FunctionUnavailable`
       taxonomy from OxFml capability overlays and are threaded through OxCalc and Skin IR. New table
       formula-column preflight now dry-binds through an OxCalc-owned preview table context and
-      projects through Skin IR without mutating the table shape. Broader scoped and legality-impact
-      preview coverage remain required before closing the item.
+      projects through Skin IR without mutating the table shape. OxCalc table snapshot preview
+      planning now classifies formula-column insertion through its structured-table update impact
+      taxonomy and carries typed table invalidation/dependent seeds into Skin IR legality-impact
+      preview. Broader scoped coverage remains required before closing the item.
 
 ### Gating Engine Workstreams
 
