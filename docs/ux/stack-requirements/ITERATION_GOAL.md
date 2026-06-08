@@ -105,8 +105,10 @@ overlay handles.
       dry-bind verdict with OxCalc committed-graph invalidation planning in Skin IR. Table body and
       totals formula edit previews now dry-bind through OxCalc's table formula context and project as
       typed table subjects in Skin IR. Profile violations now have a typed `FunctionUnavailable`
-      taxonomy from OxFml capability overlays and are threaded through OxCalc and Skin IR. Broader
-      scoped/new-column and legality-impact preview coverage remain required before closing the item.
+      taxonomy from OxFml capability overlays and are threaded through OxCalc and Skin IR. New table
+      formula-column preflight now dry-binds through an OxCalc-owned preview table context and
+      projects through Skin IR without mutating the table shape. Broader scoped and legality-impact
+      preview coverage remain required before closing the item.
 
 ### Gating Engine Workstreams
 

@@ -49,8 +49,7 @@ First node-formula dry-bind slice is now available across the stack:
 
 Still open before this handover can be closed:
 
-- scoped authoring subjects and table new-column preflight subjects beyond existing body/totals
-  formula edits;
+- scoped authoring subjects beyond table body/totals/new-column formula contexts;
 - broader legality-impact preview coverage for structural, table, scoped, and collision/orphan cases.
 
 ## 2026-06-09 Table Subject Update
@@ -79,3 +78,15 @@ The first typed profile-violation taxonomy slice is now present:
 - DnaTreeCalc maps it into `FormulaBindPreviewProfileViolationKindProjection::FunctionUnavailable`
   in the Skin IR projection.
 - OxFml `authored_input_tests` include non-empty profile-gating evidence for a denied `SUM`.
+
+## 2026-06-09 New Table Formula Column Update
+
+Table formula column preflight now exists for proposed columns that are not yet committed:
+
+- OxCalc exposes `OxCalcTreeContext::dry_bind_new_table_column_formula_text(...)`.
+- The method clones the committed table snapshot, adds the proposed formula column only in the
+  preview copy, projects that copy through OxCalc's table projection, and dry-binds through the same
+  table formula current-row context.
+- DnaTreeCalc exposes this as `preview_new_table_column_formula_bind(...)`.
+- Programmable Skin IR tests assert valid current-row syntax and verify the proposed column is not
+  inserted into the published table projection.

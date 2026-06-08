@@ -423,6 +423,41 @@ impl TreeWorkspaceSession {
         })
     }
 
+    pub fn preview_new_table_column_formula_bind(
+        &self,
+        table: &NodeId,
+        column_id: &str,
+        column_name: &str,
+        content: impl Into<String>,
+    ) -> Result<TableFormulaBindPreviewProjection, TreeWorkspaceSessionError> {
+        let table_node_id = self.tree_node_id(table.as_str())?;
+        let table_view = self
+            .context
+            .table_view(&self.workspace_id, table_node_id)?
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTable {
+                table: table.to_string(),
+            })?;
+        let verdict = self.context.dry_bind_new_table_column_formula_text(
+            &self.workspace_id,
+            table_node_id,
+            column_id,
+            column_name,
+            content,
+        )?;
+        let preview = formula_bind_preview_from_oxcalc_verdict(verdict);
+        Ok(TableFormulaBindPreviewProjection {
+            table: table.clone(),
+            table_key: node_key_for_tree_node(table_node_id),
+            table_id: table_view.table_id,
+            column_id: column_id.to_string(),
+            region: TableCellRegionProjection::Body,
+            input_kind: preview.input_kind,
+            legal: preview.legal,
+            diagnostics: preview.diagnostics,
+            profile_violations: preview.profile_violations,
+        })
+    }
+
     pub fn preview_table_totals_formula_bind(
         &self,
         table: &NodeId,

@@ -861,6 +861,25 @@ impl Harness {
             .unwrap()
     }
 
+    pub fn preview_new_table_column_formula_bind(
+        &self,
+        table: &str,
+        column_id: &str,
+        column_name: &str,
+        content: &str,
+    ) -> TableFormulaBindPreviewProjection {
+        self.session
+            .lock()
+            .unwrap()
+            .preview_new_table_column_formula_bind(
+                &NodeId::new(table),
+                column_id,
+                column_name,
+                content,
+            )
+            .unwrap()
+    }
+
     pub fn preview_table_totals_formula_bind(
         &self,
         table: &str,

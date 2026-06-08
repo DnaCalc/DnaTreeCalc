@@ -252,6 +252,21 @@ fn programmable_skin_previews_table_formula_bind_from_table_subjects() {
     assert!(body.diagnostics.is_empty(), "{body:?}");
     assert!(body.profile_violations.is_empty(), "{body:?}");
 
+    let new_column = harness.preview_new_table_column_formula_bind(
+        "SalesTable",
+        "col:double",
+        "Double",
+        "=[@Amount]*2",
+    );
+    assert_eq!(new_column.table, NodeId::new("SalesTable"));
+    assert_eq!(new_column.table_id, "tree-table:sales");
+    assert_eq!(new_column.column_id, "col:double");
+    assert_eq!(new_column.region, TableCellRegionProjection::Body);
+    assert_eq!(new_column.input_kind, FormulaBindPreviewInputKind::Formula);
+    assert!(new_column.legal, "{new_column:?}");
+    assert!(new_column.diagnostics.is_empty(), "{new_column:?}");
+    assert!(new_column.profile_violations.is_empty(), "{new_column:?}");
+
     let totals =
         harness.preview_table_totals_formula_bind("SalesTable", "col:amount", "=SUM([Amount])");
     assert_eq!(totals.table, NodeId::new("SalesTable"));
@@ -288,6 +303,12 @@ fn programmable_skin_previews_table_formula_bind_from_table_subjects() {
         panic!("tax column remains formula-backed");
     };
     assert_eq!(tax_formula.formula_text, "=[@Amount] * 0.1");
+    assert!(
+        !table
+            .columns
+            .iter()
+            .any(|column| column.column_id == "col:double")
+    );
 }
 
 #[test]
