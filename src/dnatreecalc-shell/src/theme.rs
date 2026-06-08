@@ -606,6 +606,15 @@ pub const SHELL_CSS: &str = r#"
     color: #9a3412;
 }
 
+.dtc-table-card__totals-toggle {
+    display: inline-flex;
+    gap: 0.375rem;
+    align-items: center;
+    width: fit-content;
+    font-size: 0.8125rem;
+    color: #475569;
+}
+
 .dtc-table-card__formula-edits {
     display: grid;
     gap: 0.375rem;

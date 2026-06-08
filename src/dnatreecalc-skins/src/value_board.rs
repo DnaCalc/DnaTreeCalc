@@ -234,6 +234,8 @@ fn render_table_card(
     let totals_clear_dispatch = dispatch.clone();
     let table_node_for_totals_set = table_node.clone();
     let table_node_for_totals_clear = table_node.clone();
+    let totals_visibility_dispatch = dispatch.clone();
+    let table_node_for_totals_visibility = table_node.clone();
     let rename_columns = editable_columns.clone();
     let rename_dispatch = dispatch.clone();
     let table_node_for_rename = table_node.clone();
@@ -254,6 +256,20 @@ fn render_table_card(
                 <dt>"rows"</dt><dd>{table.row_count}</dd>
                 <dt>"columns"</dt><dd>{table.column_count}</dd>
             </dl>
+            <label class="dtc-table-card__totals-toggle">
+                <input
+                    type="checkbox"
+                    aria-label="Show totals row"
+                    prop:checked=table.totals_row_present
+                    on:change=move |ev| {
+                        totals_visibility_dispatch.dispatch(table_totals_row_visible_intent(
+                            &table_node_for_totals_visibility,
+                            event_target_checked(&ev),
+                        ));
+                    }
+                />
+                <span>"Totals row"</span>
+            </label>
             {render_table_grid(&table_node, &table, dispatch)}
             <div class="dtc-table-card__add-row">
                 <input
@@ -872,6 +888,13 @@ fn table_totals_formula_clear_intent(table: &str, column_id: &str) -> WorkspaceI
     }
 }
 
+fn table_totals_row_visible_intent(table: &str, visible: bool) -> WorkspaceIntent {
+    WorkspaceIntent::SetTableTotalsRowVisible {
+        table: NodeId::new(table),
+        visible,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1054,6 +1077,17 @@ mod tests {
             WorkspaceIntent::ClearTableTotalsFormula {
                 table: NodeId::new("SalesTable"),
                 column_id: "col:amount".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn value_board_table_totals_row_visible_uses_skin_ir_intent() {
+        assert_eq!(
+            table_totals_row_visible_intent("SalesTable", false),
+            WorkspaceIntent::SetTableTotalsRowVisible {
+                table: NodeId::new("SalesTable"),
+                visible: false,
             }
         );
     }

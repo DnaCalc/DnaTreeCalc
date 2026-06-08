@@ -1264,6 +1264,51 @@ fn programmable_skin_authors_table_totals_formulas_from_outside_ir() {
 }
 
 #[test]
+fn programmable_skin_toggles_table_totals_row_from_outside_ir() {
+    let harness = Harness::from_repo_fixture("tables");
+    let skin = harness.driver.clone();
+    skin.recalc();
+
+    skin.set_table_totals_formula("SalesTable", "col:tax", "=SUM(SalesTable[Tax])");
+    let before = skin.state();
+    let before_table = before
+        .tables
+        .get(&NodeId::new("SalesTable"))
+        .expect("table projects");
+    assert!(before_table.totals_row_present);
+    assert_eq!(table_totals_row(before_table), vec!["", "60", "6"]);
+
+    let hide = skin.try_set_table_totals_row_visible("SalesTable", false);
+    assert!(hide.accepted, "{:?}", hide.error);
+    let hidden_state = skin.state();
+    let hidden_table = hidden_state
+        .tables
+        .get(&NodeId::new("SalesTable"))
+        .expect("table projects after totals row hide");
+    assert!(!hidden_table.totals_row_present);
+    assert_eq!(
+        hidden_table.columns[2]
+            .totals_formula
+            .as_ref()
+            .map(|formula| formula.formula_text.as_str()),
+        Some("=SUM(SalesTable[Tax])")
+    );
+
+    let show = skin.try_set_table_totals_row_visible("SalesTable", true);
+    assert!(show.accepted, "{:?}", show.error);
+    let shown_state = skin.state();
+    let shown_table = shown_state
+        .tables
+        .get(&NodeId::new("SalesTable"))
+        .expect("table projects after totals row show");
+    assert!(shown_table.totals_row_present);
+    assert_eq!(table_totals_row(shown_table), vec!["", "60", "6"]);
+
+    let missing = skin.try_set_table_totals_row_visible("MissingTable", false);
+    assert!(!missing.accepted, "{missing:?}");
+}
+
+#[test]
 fn programmable_skin_renames_and_reorders_table_columns_from_outside_ir() {
     let harness = Harness::from_repo_fixture("tables");
     let skin = harness.driver.clone();

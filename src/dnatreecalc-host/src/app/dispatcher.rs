@@ -355,6 +355,15 @@ impl Dispatcher for HostDispatcher {
                     |error| IntentReceipt::rejected(IntentError::Rejected(error)),
                     receipt_for_publication,
                 ),
+            WorkspaceIntent::SetTableTotalsRowVisible { table, visible } => self
+                .apply_workspace_edit(
+                    |session| session.set_table_totals_row_visible(&table, visible),
+                    WorkspaceEditPublication::Recalculate,
+                )
+                .map_or_else(
+                    |error| IntentReceipt::rejected(IntentError::Rejected(error)),
+                    receipt_for_publication,
+                ),
             WorkspaceIntent::RenameTableColumn {
                 table,
                 column_id,

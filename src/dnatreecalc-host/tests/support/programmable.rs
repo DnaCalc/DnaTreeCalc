@@ -340,6 +340,21 @@ impl ProgrammableDriver {
             })
     }
 
+    pub fn set_table_totals_row_visible(&self, table: &str, visible: bool) {
+        self.accept(WorkspaceIntent::SetTableTotalsRowVisible {
+            table: NodeId::new(table),
+            visible,
+        });
+    }
+
+    pub fn try_set_table_totals_row_visible(&self, table: &str, visible: bool) -> IntentReceipt {
+        self.dispatch
+            .dispatch(WorkspaceIntent::SetTableTotalsRowVisible {
+                table: NodeId::new(table),
+                visible,
+            })
+    }
+
     pub fn rename_table_column(&self, table: &str, column_id: &str, name: &str) {
         self.accept(WorkspaceIntent::RenameTableColumn {
             table: NodeId::new(table),
