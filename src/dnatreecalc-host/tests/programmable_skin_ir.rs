@@ -1,7 +1,8 @@
 mod support;
 
 use dnatreecalc_skin_framework::{
-    ActiveSelectionDetailProjection, AuthoringScope, CalcRunStateProjection, IntentError,
+    ActiveSelectionDetailProjection, AuthoringScope, CalcRunStateProjection,
+    FormulaBindPreviewDiagnosticStage, FormulaBindPreviewInputKind, IntentError,
     InvalidationReasonProjection, NodeContentKind, NodeId, NodeValueProjection, RecalcPlanMutation,
     ReferenceTargetProjection, RuntimeEffectFamilyProjection, RuntimeOverlayKindProjection,
     TableCellEditabilityProjection, TableCellRegionProjection, TableColumnBodyProjection,
@@ -187,6 +188,50 @@ fn programmable_skin_previews_recalc_plan_from_host_projection() {
         before_revision
     );
     skin.assert_scalar("Root.C", "3");
+}
+
+#[test]
+fn programmable_skin_previews_formula_bind_from_host_projection() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    skin.add_node(Some("Root"), "A", "1");
+    skin.add_node(Some("Root"), "B", "=A+1");
+    let before_revision = revision_fingerprint(&skin.state().revision);
+
+    let valid = harness.preview_formula_bind("Root.B", "=A+2");
+    assert_eq!(valid.node, NodeId::new("Root.B"));
+    assert_eq!(valid.input_kind, FormulaBindPreviewInputKind::Formula);
+    assert!(valid.legal, "{valid:?}");
+    assert!(valid.diagnostics.is_empty());
+    assert!(valid.profile_violations.is_empty());
+    assert_eq!(
+        revision_fingerprint(&skin.state().revision),
+        before_revision
+    );
+    skin.assert_scalar("Root.B", "2");
+
+    let syntax = harness.preview_formula_bind("Root.B", "=1+");
+    assert!(!syntax.legal);
+    assert!(
+        syntax
+            .diagnostics
+            .iter()
+            .any(|diagnostic| { diagnostic.stage == FormulaBindPreviewDiagnosticStage::Syntax })
+    );
+
+    let bind = harness.preview_formula_bind("Root.B", "=LAMBDA(x,x,x)");
+    assert!(!bind.legal);
+    assert!(bind.diagnostics.iter().any(|diagnostic| {
+        diagnostic.stage == FormulaBindPreviewDiagnosticStage::Bind
+            && diagnostic.message == "duplicate LAMBDA parameter name 'x'"
+    }));
+
+    let literal = harness.preview_formula_bind("Root.B", "7");
+    assert_eq!(literal.input_kind, FormulaBindPreviewInputKind::Literal);
+    assert!(literal.legal);
+    assert!(literal.diagnostics.is_empty());
 }
 
 #[test]

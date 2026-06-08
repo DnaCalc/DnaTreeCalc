@@ -643,6 +643,74 @@ pub struct RecalcPlanProjection {
     pub cycle_risk: Vec<Vec<NodeId>>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FormulaBindPreviewInputKind {
+    Literal,
+    Formula,
+}
+
+impl FormulaBindPreviewInputKind {
+    #[must_use]
+    pub const fn stable_id(self) -> &'static str {
+        match self {
+            Self::Literal => "literal",
+            Self::Formula => "formula",
+        }
+    }
+}
+
+impl fmt::Display for FormulaBindPreviewInputKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.stable_id())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FormulaBindPreviewDiagnosticStage {
+    Syntax,
+    Bind,
+}
+
+impl FormulaBindPreviewDiagnosticStage {
+    #[must_use]
+    pub const fn stable_id(self) -> &'static str {
+        match self {
+            Self::Syntax => "syntax",
+            Self::Bind => "bind",
+        }
+    }
+}
+
+impl fmt::Display for FormulaBindPreviewDiagnosticStage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.stable_id())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FormulaBindPreviewDiagnosticProjection {
+    pub stage: FormulaBindPreviewDiagnosticStage,
+    pub message: String,
+    pub span: SourceSpanProjection,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FormulaBindPreviewProfileViolationProjection {
+    pub feature: String,
+    pub message: String,
+    pub span: SourceSpanProjection,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FormulaBindPreviewProjection {
+    pub node: NodeId,
+    pub node_key: NodeKey,
+    pub input_kind: FormulaBindPreviewInputKind,
+    pub legal: bool,
+    pub diagnostics: Vec<FormulaBindPreviewDiagnosticProjection>,
+    pub profile_violations: Vec<FormulaBindPreviewProfileViolationProjection>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuntimeEffectProjection {
     pub kind: String,

@@ -7,23 +7,26 @@ use dnatreecalc_skin_framework::{
     DerivationOxfmlTraceEventProjection, DerivationPreparedArgumentProjection,
     DerivationTemplateHoleProjection, DerivationTemplateSelectionProjection,
     DerivationTraceProjection, EffectiveFormatProjection, FormatSourceProjection,
-    InvalidationReasonProjection, NodeCalcStateProjection, NodeContentKind as FrameworkContentKind,
-    NodeId, NodeInvalidationProjection, NodeKey, NodeValueProjection, NodeView, PhaseKeyProjection,
-    RecalcPlanInvalidationProjection, RecalcPlanMutation, RecalcPlanProjection,
-    ReferenceResolutionProjection, ReferenceTargetProjection, RuntimeEffectFamilyProjection,
-    RuntimeEffectProjection, RuntimeOverlayKindProjection, RuntimeOverlayProjection,
-    SourceSpanProjection, TableAnchorProjection, TableCellInput, TableCellProjection,
-    TableCellsProjection, TableColumnBodyProjection, TableColumnProjection,
-    TableDependencyFactBlockerProjection, TableDependencyFactKindProjection,
-    TableDependencyFactProjection, TableDependencyFactStatusProjection,
-    TableFormulaMetadataProjection, TableProjection, TableRowInput, TableRowProjection,
-    TreeReferenceCollectionFamilyProjection, TreeReferenceCollectionProjection,
-    WorkspaceRevisionProjection, WorkspaceState,
+    FormulaBindPreviewDiagnosticProjection, FormulaBindPreviewDiagnosticStage,
+    FormulaBindPreviewInputKind, FormulaBindPreviewProfileViolationProjection,
+    FormulaBindPreviewProjection, InvalidationReasonProjection, NodeCalcStateProjection,
+    NodeContentKind as FrameworkContentKind, NodeId, NodeInvalidationProjection, NodeKey,
+    NodeValueProjection, NodeView, PhaseKeyProjection, RecalcPlanInvalidationProjection,
+    RecalcPlanMutation, RecalcPlanProjection, ReferenceResolutionProjection,
+    ReferenceTargetProjection, RuntimeEffectFamilyProjection, RuntimeEffectProjection,
+    RuntimeOverlayKindProjection, RuntimeOverlayProjection, SourceSpanProjection,
+    TableAnchorProjection, TableCellInput, TableCellProjection, TableCellsProjection,
+    TableColumnBodyProjection, TableColumnProjection, TableDependencyFactBlockerProjection,
+    TableDependencyFactKindProjection, TableDependencyFactProjection,
+    TableDependencyFactStatusProjection, TableFormulaMetadataProjection, TableProjection,
+    TableRowInput, TableRowProjection, TreeReferenceCollectionFamilyProjection,
+    TreeReferenceCollectionProjection, WorkspaceRevisionProjection, WorkspaceState,
 };
 use oxcalc_core::consumer::OxCalcTreeRunState;
 use oxcalc_core::consumer::{
     OxCalcTreeCalculationOutcome, OxCalcTreeContext, OxCalcTreeContextError,
-    OxCalcTreeContextOptions, OxCalcTreeEdit, OxCalcTreeEditResult, OxCalcTreeEditTransaction,
+    OxCalcTreeContextOptions, OxCalcTreeDryBindDiagnosticStage, OxCalcTreeDryBindInputKind,
+    OxCalcTreeEdit, OxCalcTreeEditResult, OxCalcTreeEditTransaction,
     OxCalcTreeHostCapabilitySnapshot, OxCalcTreeNodeCreate, OxCalcTreeNodeView,
     OxCalcTreePreviewMutation, OxCalcTreeRuntimePolicy, OxCalcTreeWorkspaceCreate,
     OxCalcTreeWorkspaceId, OxCalcTreeWorkspaceSnapshot, TransactionRecalcPolicy,
@@ -360,6 +363,57 @@ impl TreeWorkspaceSession {
             evaluation_order,
             requires_rebind,
             cycle_risk,
+        })
+    }
+
+    pub fn preview_formula_bind(
+        &self,
+        node: &NodeId,
+        content: impl Into<String>,
+    ) -> Result<FormulaBindPreviewProjection, TreeWorkspaceSessionError> {
+        let tree_node_id = self.tree_node_id(node.as_str())?;
+        let verdict =
+            self.context
+                .dry_bind_node_formula_text(&self.workspace_id, tree_node_id, content)?;
+        Ok(FormulaBindPreviewProjection {
+            node: node.clone(),
+            node_key: node_key_for_tree_node(verdict.node_id),
+            input_kind: match verdict.input_kind {
+                OxCalcTreeDryBindInputKind::Literal => FormulaBindPreviewInputKind::Literal,
+                OxCalcTreeDryBindInputKind::Formula => FormulaBindPreviewInputKind::Formula,
+            },
+            legal: verdict.legal,
+            diagnostics: verdict
+                .diagnostics
+                .into_iter()
+                .map(|diagnostic| FormulaBindPreviewDiagnosticProjection {
+                    stage: match diagnostic.stage {
+                        OxCalcTreeDryBindDiagnosticStage::Syntax => {
+                            FormulaBindPreviewDiagnosticStage::Syntax
+                        }
+                        OxCalcTreeDryBindDiagnosticStage::Bind => {
+                            FormulaBindPreviewDiagnosticStage::Bind
+                        }
+                    },
+                    message: diagnostic.message,
+                    span: SourceSpanProjection {
+                        start_utf8: diagnostic.span_start_utf8,
+                        end_utf8: diagnostic.span_start_utf8 + diagnostic.span_len_utf8,
+                    },
+                })
+                .collect(),
+            profile_violations: verdict
+                .profile_violations
+                .into_iter()
+                .map(|violation| FormulaBindPreviewProfileViolationProjection {
+                    feature: violation.feature,
+                    message: violation.message,
+                    span: SourceSpanProjection {
+                        start_utf8: violation.span_start_utf8,
+                        end_utf8: violation.span_start_utf8 + violation.span_len_utf8,
+                    },
+                })
+                .collect(),
         })
     }
 

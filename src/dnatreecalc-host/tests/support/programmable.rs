@@ -6,11 +6,11 @@ use dnatreecalc_host::app::{HostDispatcher, TreeWorkspaceSession};
 use dnatreecalc_host::model::{WorkspaceFixture, WorkspaceModel};
 use dnatreecalc_skin_framework::{
     ActiveNodeDetailProjection, ActiveSelectionDetailProjection, ActiveTableCellDetailProjection,
-    Dispatcher, ErasedSkinContext, IntentError, IntentReceipt, NodeId, RecalcPlanMutation,
-    RecalcPlanProjection, RegisteredSkin, SelectionState, SharedSkinState, SharedSkinStateHandle,
-    SkinCapabilities, SkinCategory, SkinContext, SkinHandle, SkinId, SkinManifest, SkinState,
-    TableCellInput, TableRowInput, WorkspaceIntent, WorkspaceRecalcMode,
-    WorkspaceRevisionProjection, WorkspaceSkin, WorkspaceState,
+    Dispatcher, ErasedSkinContext, FormulaBindPreviewProjection, IntentError, IntentReceipt,
+    NodeId, RecalcPlanMutation, RecalcPlanProjection, RegisteredSkin, SelectionState,
+    SharedSkinState, SharedSkinStateHandle, SkinCapabilities, SkinCategory, SkinContext,
+    SkinHandle, SkinId, SkinManifest, SkinState, TableCellInput, TableRowInput, WorkspaceIntent,
+    WorkspaceRecalcMode, WorkspaceRevisionProjection, WorkspaceSkin, WorkspaceState,
 };
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -836,6 +836,14 @@ impl Harness {
             .lock()
             .unwrap()
             .preview_recalc_plan(mutations)
+            .unwrap()
+    }
+
+    pub fn preview_formula_bind(&self, node: &str, content: &str) -> FormulaBindPreviewProjection {
+        self.session
+            .lock()
+            .unwrap()
+            .preview_formula_bind(&NodeId::new(node), content)
             .unwrap()
     }
 }

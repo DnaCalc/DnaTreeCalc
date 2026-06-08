@@ -89,8 +89,10 @@ overlay handles.
       and optional recalc/publish-once; first node-edit engine slice implemented upstream.
 - [x] Add OxCalc committed-graph recalc-plan preview for node-level preview mutations, and project it
       through host/Skin IR tests without evaluation, candidate creation, publication, or mutation.
-- [ ] Add OxFml dry-bind verdicts for uncommitted formula edits; DnaTreeCalc handover filed because
-      this is a new OxFml-owned parse/bind/profile-gating API.
+- [ ] Add OxFml dry-bind verdicts for uncommitted formula edits; first node-formula edit slice now
+      flows OxFml parse/bind verdicts through OxCalc TreeCalc host context into Skin IR without
+      mutation or evaluation. Profile-violation taxonomy plus table/scoped subject coverage remain
+      required before closing the item.
 
 ### Gating Engine Workstreams
 

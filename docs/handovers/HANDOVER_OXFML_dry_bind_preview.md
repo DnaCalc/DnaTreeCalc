@@ -1,6 +1,6 @@
 # HANDOVER_OXFML_dry_bind_preview
 
-Status: Open
+Status: Partial
 Target: OxFml
 Ask: Add an OxFml-owned dry-bind entrypoint for uncommitted formula edits so DnaTreeCalc can surface profile legality and bind diagnostics in pre-commit previews without mutating or evaluating.
 Context: DnaTreeCalc W2 legality-impact preview is a thin host join over OxFml dry-bind plus OxCalc committed-graph invalidation planning. OxCalc now exposes the recalc-plan half, but there is no current OxFml dry-bind API for an unexecuted TreeCalc edit.
@@ -33,3 +33,20 @@ OxCalc now provides a committed-graph recalc preview:
 - no candidate, evaluation, publication, or workspace mutation.
 
 The missing W2 piece is the OxFml dry-bind verdict for the same uncommitted authoring intent.
+
+## 2026-06-09 Update
+
+First node-formula dry-bind slice is now available across the stack:
+
+- OxFml `RuntimeEnvironment::dry_bind_authored_input(...)` returns parse/bind verdicts without
+  evaluation or publication.
+- OxCalc `OxCalcTreeContext::dry_bind_node_formula_text(...)` runs that verdict through the TreeCalc
+  host-reference syntax, host-name resolver, and table context owned by OxCalc.
+- DnaTreeCalc `TreeWorkspaceSession::preview_formula_bind(...)` projects the verdict into Skin IR.
+
+Still open before this handover can be closed:
+
+- typed profile-violation taxonomy and non-empty profile-gating evidence;
+- table/scoped authoring subjects;
+- the joined legality-impact preview that combines this dry-bind verdict with OxCalc invalidation
+  planning and host-owned collision/scope facts.
