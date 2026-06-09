@@ -30,6 +30,16 @@ Use this decision rule when picking the next item:
 
 Active wave: **W4b - Candidate substrate**.
 
+Feature checkpoint: **usable speculative tree editing** is now landed as a coherent slice. Skins can
+open retained non-publishing candidates, edit/add/rename/move/reorder/delete candidate nodes by
+stable key, evaluate candidate-only values, inspect ordered candidate structure, rebase common
+non-overlapping live/candidate structural edits, receive typed conflicts for ambiguous edits,
+commit/discard/reap/pin candidates, project scenario rails and comparison/series values over
+candidates, use minimal template-bound initial content, and persist workspace/skin state through
+browser `localStorage` or desktop/test stores. Remaining work after this checkpoint is larger-scope:
+richer name-collision merge algebra, direct sweep/goal-seek columns/series, full template
+definition/instantiate/sync, formula rewrite/rebind authoring APIs, and broader real-skin UX polish.
+
 Current objective: continue the addressable, layerable, non-publishing candidate overlay substrate
 without letting skins or the host fabricate what-if semantics. The OxCalc spike is complete and the
 first non-publishing handle slice is implemented under bead `calc-etez`: candidates open on retained
