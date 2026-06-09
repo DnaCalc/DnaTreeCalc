@@ -15,7 +15,7 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use super::session::{TreeWorkspaceSession, TreeWorkspaceSessionError};
+use super::session::{TreeWorkspaceSession, TreeWorkspaceSessionError, node_key_for_tree_node};
 use crate::model::{WorkspaceFixture, WorkspaceModel};
 
 thread_local! {
@@ -1746,6 +1746,23 @@ fn intent_error_from_session(error: TreeWorkspaceSessionError) -> IntentError {
             handle: handle.to_string(),
             basis_revision_id: basis_revision_id.to_string(),
             current_revision_id: current_revision_id.to_string(),
+        },
+        TreeWorkspaceSessionError::OxCalc(
+            oxcalc_core::consumer::OxCalcTreeContextError::CandidateRebaseConflict {
+                handle,
+                basis_revision_id,
+                current_revision_id,
+                overlapping_nodes,
+                ..
+            },
+        ) => IntentError::CandidateRebaseConflict {
+            handle: handle.to_string(),
+            basis_revision_id: basis_revision_id.to_string(),
+            current_revision_id: current_revision_id.to_string(),
+            overlapping_nodes: overlapping_nodes
+                .into_iter()
+                .map(node_key_for_tree_node)
+                .collect(),
         },
         TreeWorkspaceSessionError::OxCalc(
             oxcalc_core::consumer::OxCalcTreeContextError::CandidateHasRetainedChild {

@@ -502,6 +502,15 @@ Use this as the per-tranche goal statement before implementation:
       flattened parented rebase, non-publishing evaluation, commit from the rebased basis, and parent
       lifecycle release after flattening; programmable Skin IR tests prove the same paths from
       outside the engine.
+- [x] `candidate-overlay-handle` live-layering and conservative conflict-policy slice:
+      OxCalc refreshes parented candidates from parent-private edits made after child open, preserving
+      non-publishing semantics while exposing updated candidate values through the existing
+      projection. OxCalc also rejects stale candidate rebase with a typed conflict report when live
+      and candidate private edits overlap on the same stable tree node; non-overlapping stale
+      candidates still rebase. DnaTreeCalc maps the engine report to typed Skin IR
+      `CandidateRebaseConflict` with stable `NodeKey` overlaps. Focused OxCalc candidate tests and
+      programmable Skin IR tests prove same-node conflict rejection, non-overlap rebase, parented
+      flattening, and live child refresh.
 - [x] W4c `scenario-projection` first candidate-backed scenario rail slice:
       DnaTreeCalc projects `WorkspaceState.scenarios` as a host-owned manifest over existing OxCalc
       candidate handles and exposes closed create/activate/delete scenario intents. Creating a
@@ -575,12 +584,10 @@ Use this as the per-tranche goal statement before implementation:
       surfaces publish `aria-selected`, stable active descendants, and one focusable visible item
       when no visible selection exists. Framework tests prove helper output; walking-skeleton and
       programmable Skin IR tests prove the real skins still mount and route host selection/dispatch.
-- [ ] `candidate-overlay-handle`: W4b live-layering tranche is in progress. OxCalc now refreshes
-      parented candidates from parent-private edits made after child open, preserving non-publishing
-      semantics while exposing the updated candidate values through the existing host/Skin IR
-      projection. Remaining scope: optimized merge/rebase conflict policy, candidate add-node
-      template initial content, direct sweep/goal-seek comparison columns, scoped/unit series
-      projection, and broader what-if UX before goal seek or sweeps.
+- [ ] `candidate-overlay-handle`: continue W4b with richer structural merge algebra, add-node
+      parent/order conflict classification, candidate add-node template initial content, direct
+      sweep/goal-seek comparison columns, scoped/unit series projection, and broader what-if UX
+      before goal seek or sweeps.
 - [x] `value-epoch-keying`: per-node published-value epoch is available for projection consumers.
 
 ## Next-Wave Parking Lot

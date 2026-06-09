@@ -72,8 +72,12 @@ parent-layer slice is now landed: OxCalc retains a private candidate edit log, r
 current workspace revision without publishing, flattens parented candidates by replaying their
 captured layered private edits and dropping the parent handle, and DnaTreeCalc exposes a closed
 `RebaseCandidate` intent that projects the rebased candidate without stale values until it is
-explicitly evaluated. Optimized live layering/merge rebase, candidate add-node template policy, and
-full scenario/what-if UX remain open. The first richer host-pin retention slice
+explicitly evaluated. The live layering and first conservative merge/rebase conflict-policy slices
+are also landed: parented candidates refresh from parent-private edits made after child open, and
+stale candidate rebase returns a typed conflict report when live and candidate edits overlap on the
+same stable node while non-overlapping edits still rebase. Richer structural merge algebra,
+candidate add-node template policy, and full scenario/what-if UX remain open. The first richer
+host-pin retention slice
 is also landed: OxCalc exposes explicit candidate retention pins that protect active candidates from
 budget reaping, DnaTreeCalc projects pin counts and pressure reason counts, and Skin IR exposes
 closed pin/unpin intents without owning lifecycle semantics. The first W4c scenario-projection slice
@@ -607,6 +611,17 @@ The roadmap alignment rule is:
       flattened parented rebase, non-publishing evaluation, commit from the rebased basis, and parent
       lifecycle release after flattening; programmable Skin IR tests prove the same paths from
       outside the engine.
+- [x] `candidate-overlay-handle` live-layering and conservative conflict-policy slice:
+      OxCalc refreshes parented candidates from parent-private edits made after a child candidate was
+      opened, preserving non-publishing semantics while keeping child values live with the parent
+      layer. OxCalc also reports typed `CandidateRebaseConflict` details when stale candidate rebase
+      finds overlapping live/candidate node edits against the candidate basis, while non-overlapping
+      edits still rebase. DnaTreeCalc maps the report to a typed Skin IR `IntentError` with stable
+      `NodeKey` overlaps. Focused OxCalc candidate tests prove conflict rejection, clean unparented
+      rebase, clean parented flattening, and live child refresh; programmable Skin IR tests prove the
+      same conflict/success paths from outside the engine. Richer structural merge algebra, add-node
+      parent/order conflict classification, template initial content, and scenario/what-if UX remain
+      open.
 - [x] W4c `scenario-projection` first candidate-backed scenario rail slice:
       DnaTreeCalc projects `WorkspaceState.scenarios` as a host-owned manifest over existing OxCalc
       candidate handles, with closed `CreateScenarioFromCandidate`, `ActivateScenario`, and
@@ -694,9 +709,9 @@ The roadmap alignment rule is:
       a11y helpers for ValueBoard's `TableCellSelection`, focus-boundary helpers for future
       multi-slot composition, and broader screen-reader/browser audits remain later W5 work.
 - [ ] `candidate-overlay-handle`: continue toward fully addressable, layerable, non-publishing
-      candidate contexts with optimized live layering/merge rebase, candidate add-node template
-      initial content, direct sweep/goal-seek comparison columns, scoped/unit series projection, and
-      broader what-if UX.
+      candidate contexts with richer structural merge algebra, candidate add-node template initial
+      content, direct sweep/goal-seek comparison columns, scoped/unit series projection, and broader
+      what-if UX.
 - [x] `value-epoch-keying`: per-node published-value epoch distinct from input epoch.
 
 ## Status Template

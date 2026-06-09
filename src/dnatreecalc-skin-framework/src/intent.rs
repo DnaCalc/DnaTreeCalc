@@ -581,6 +581,15 @@ pub enum IntentError {
         basis_revision_id: String,
         current_revision_id: String,
     },
+    #[error(
+        "candidate {handle} rebase from {basis_revision_id} to {current_revision_id} conflicts on {overlapping_nodes:?}"
+    )]
+    CandidateRebaseConflict {
+        handle: String,
+        basis_revision_id: String,
+        current_revision_id: String,
+        overlapping_nodes: Vec<NodeKey>,
+    },
     #[error("candidate {handle} has retained child candidate {child_handle}")]
     CandidateHasRetainedChild {
         handle: String,

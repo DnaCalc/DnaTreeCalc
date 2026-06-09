@@ -6996,7 +6996,7 @@ fn calc_state_projection_for(calc_state: NodeCalcState) -> NodeCalcStateProjecti
     }
 }
 
-fn node_key_for_tree_node(tree_node_id: TreeNodeId) -> NodeKey {
+pub(crate) fn node_key_for_tree_node(tree_node_id: TreeNodeId) -> NodeKey {
     NodeKey::from_engine_id(tree_node_id.0)
 }
 

@@ -1553,6 +1553,12 @@ fn programmable_skin_rejects_stale_candidate_commit_without_losing_candidate() {
     skin.add_node(None, "Root", "");
     skin.add_node(Some("Root"), "A", "1");
     skin.add_node(Some("Root"), "B", "=A+1");
+    let root_a_key = skin
+        .state()
+        .node(&NodeId::new("Root.A"))
+        .expect("Root.A should project")
+        .key
+        .clone();
     let open = skin.try_open_candidate();
     assert!(open.accepted, "{:?}", open.error);
     let handle = skin
@@ -1579,6 +1585,16 @@ fn programmable_skin_rejects_stale_candidate_commit_without_losing_candidate() {
     assert_eq!(skin.state().candidates.len(), 1);
     assert_eq!(skin.state().candidates[0].handle, handle);
     skin.assert_scalar("Root.B", "10");
+    let rebase = skin.try_rebase_candidate(&handle);
+    assert!(!rebase.accepted);
+    assert!(matches!(
+        rebase.error,
+        Some(IntentError::CandidateRebaseConflict {
+            overlapping_nodes,
+            ..
+        }) if overlapping_nodes == vec![root_a_key.clone()]
+    ));
+    assert_eq!(skin.state().candidates.len(), 1);
 
     let discard = skin.try_discard_candidate(&handle);
     assert!(discard.accepted, "{:?}", discard.error);
@@ -1593,6 +1609,7 @@ fn programmable_skin_rebases_stale_candidate_before_commit() {
     skin.add_node(None, "Root", "");
     skin.add_node(Some("Root"), "A", "1");
     skin.add_node(Some("Root"), "B", "=A+1");
+    skin.add_node(Some("Root"), "C", "10");
     let root_b = skin
         .state()
         .node(&NodeId::new("Root.B"))
@@ -1608,8 +1625,8 @@ fn programmable_skin_rebases_stale_candidate_before_commit() {
         skin.try_edit_candidate_content(&handle, "Root.A", "5")
             .accepted
     );
-    skin.edit("Root.A", "2");
-    skin.assert_scalar("Root.B", "3");
+    skin.edit("Root.C", "20");
+    skin.assert_scalar("Root.B", "2");
     let current_revision = skin
         .state()
         .revision
@@ -1651,7 +1668,7 @@ fn programmable_skin_rebases_stale_candidate_before_commit() {
             .as_deref(),
         Some("6")
     );
-    skin.assert_scalar("Root.B", "3");
+    skin.assert_scalar("Root.B", "2");
 
     let commit = skin.try_commit_candidate(&handle);
     assert!(commit.accepted, "{:?}", commit.error);
@@ -1741,6 +1758,7 @@ fn programmable_skin_rebases_parented_candidate_as_flattened_layer() {
     skin.add_node(None, "Root", "");
     skin.add_node(Some("Root"), "A", "1");
     skin.add_node(Some("Root"), "B", "=A+1");
+    skin.add_node(Some("Root"), "C", "10");
     let b_key = skin
         .state()
         .node(&NodeId::new("Root.B"))
@@ -1771,8 +1789,8 @@ fn programmable_skin_rebases_parented_candidate_as_flattened_layer() {
             .accepted
     );
 
-    skin.edit("Root.A", "2");
-    skin.assert_scalar("Root.B", "3");
+    skin.edit("Root.C", "20");
+    skin.assert_scalar("Root.B", "2");
     assert!(!skin.try_discard_candidate(&parent_handle).accepted);
 
     let rebase = skin.try_rebase_candidate(&child_handle);
@@ -1800,7 +1818,7 @@ fn programmable_skin_rebases_parented_candidate_as_flattened_layer() {
             .as_deref(),
         Some("8")
     );
-    skin.assert_scalar("Root.B", "3");
+    skin.assert_scalar("Root.B", "2");
 
     let commit = skin.try_commit_candidate(&child_handle);
     assert!(commit.accepted, "{:?}", commit.error);
