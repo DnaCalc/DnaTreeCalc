@@ -217,7 +217,12 @@ one-line shape. Every field is verbatim in
 ### High-leverage
 - **`command-palette-metadata`** · new · M — `command_catalog(&WorkspaceState, &SelectionState) ->
   Vec<CommandMeta{intent_kind, title, shortcut, effective_binding, enabled, disabled_reason}>`.
-  *Palette/menus auto-populate with enablement; greyed "Delete" when nothing selected.*
+  First slice landed as `WorkspaceState::command_catalog(&SelectionState)` for the current closed
+  workspace, node, clipboard, candidate, scenario, sweep, revision, and table command surface.
+  The catalog derives from projected host truth only and does not execute commands or fabricate
+  target payloads. *Palette/menus auto-populate with enablement; greyed "Delete" when nothing
+  selected.* Remaining work: host-resolved keybinding registry, user overrides, conflict policy,
+  and richer per-command target metadata.
 - **`duplicate-subtree`** · new · L — `::DuplicateNode{source, new_parent, new_index, rename:
   RenameStrategy}`; clones structure + content; internal refs rebind to the clone, external preserved.
   *Clone a sub-model in one intent (reuses `replicate-by-id` rebind machinery).*
@@ -244,7 +249,7 @@ one-line shape. Every field is verbatim in
 
 ### Enriching / frontier
 - `clipboard-transfer-model` · new · M — `WorkspaceState.clipboard: Clipboard { operation: Copy|Cut, payload: Values{content_kind,constant_input_text?,value} | Formula{source} | Format | Subtree{root}, plain_text? }`; `CopyToClipboard`/`CutToClipboard` populate, `PasteClipboardFormat` and authored-constant `PasteClipboardValues` are the first paste consumers, successful constant-value cut paste clears copied sources plus host clipboard in one transaction, and `PasteExternalClipboardText` imports platform-supplied clipboard text as authored content. Multi-item authored constants and TSV/newline plain text can paste one-to-one over an explicitly ordered multi-node target scope, while single-node paste preserves raw text; rich OS clipboard formats, computed-value literalization, formula rewrite paste, and PasteSubtree consume in the full model. Host-owned, distinct from OS clipboard access.
-- `add-node-content-policy` · extend · S — `AddNode` gains `initial: Empty|InheritColumnFormula{table,column_id}|TemplateBound{id}|Literal` and `is_meta: bool`.
+- `add-node-content-policy` · extend · S — `AddNode` gains `initial: Empty|InheritColumnFormula{table,column_id}|TemplateBound{id}|Literal` and `is_meta: bool`; `WorkspaceState.templates` projects the current built-in host template catalog with dispatchable initial-content payloads.
 - `note-write` · extend · S — `::SetNote{node, note:Option<NoteContent>}`; `NodeView.note`. *Authored notes that round-trip to Excel comments; may stay allowed for Reviewer.*
 - `template-subsystem` · new · L — `::PromoteToTemplate`, `::InstantiateTemplate{template_id, parent, bindings}`, `::EditTemplate`, `::SyncInstance`, `::DetachInstance`; `template_index` + `NodeView.instance_of/drift`.
 - `import-workbook` · new · L — `::ImportWorkbook{source, mode:DryRun|Commit}`; DryRun → `ImportManifestProjection{proposed_nodes, binding_diagnostics, unsupported_features}` without mutating.

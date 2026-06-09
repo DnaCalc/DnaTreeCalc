@@ -9,6 +9,7 @@
 //! mounted skins lives in `dnatreecalc-shell`.
 
 pub mod accessibility;
+pub mod command;
 pub mod identity;
 pub mod intent;
 pub mod manifest;
@@ -23,6 +24,7 @@ pub use accessibility::{
     AriaAttrs, SelectableItemA11y, SelectableRowA11y, aria_bool, listbox_a11y, roving_tabindex,
     stable_node_dom_id, table_a11y, tree_a11y,
 };
+pub use command::{CommandCatalogProjection, CommandIntentKindProjection, CommandMetaProjection};
 pub use identity::{NodeId, NodeKey, SkinId, SkinMountSlot};
 pub use intent::{
     AuthoringScope, ClipboardPayloadKind, DependencyDeltaProjection, Dispatcher,
@@ -79,8 +81,8 @@ pub use workspace::{
     TableDependencyFactKindProjection, TableDependencyFactProjection,
     TableDependencyFactStatusProjection, TableFormulaBindPreviewProjection,
     TableFormulaMetadataProjection, TableProjection, TableRowProjection,
-    TreeReferenceCollectionFamilyProjection, TreeReferenceCollectionProjection,
-    WorkspaceRevisionProjection, WorkspaceState,
+    TemplateManifestProjection, TemplateProjection, TreeReferenceCollectionFamilyProjection,
+    TreeReferenceCollectionProjection, WorkspaceRevisionProjection, WorkspaceState,
 };
 
 #[cfg(test)]

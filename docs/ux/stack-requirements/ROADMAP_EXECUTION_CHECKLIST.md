@@ -36,9 +36,12 @@ stable key, evaluate candidate-only values, inspect ordered candidate structure,
 non-overlapping live/candidate structural edits, receive typed conflicts for ambiguous edits,
 commit/discard/reap/pin candidates, project scenario rails and comparison/series values over
 candidates, use minimal template-bound initial content, and persist workspace/skin state through
-browser `localStorage` or desktop/test stores. Remaining work after this checkpoint is larger-scope:
-richer name-collision merge algebra, goal-seek columns/series, full template
-definition/instantiate/sync, formula rewrite/rebind authoring APIs, and broader real-skin UX polish.
+browser `localStorage` or desktop/test stores. Skins can also read a framework-owned command catalog
+with selection-, clipboard-, candidate-, scenario-, sweep-, table-, and revision-sensitive
+enablement metadata, titles, shortcuts, effective bindings, and disabled reasons. Remaining work
+after this checkpoint is larger-scope: richer name-collision merge algebra, goal-seek
+columns/series, full template definition/instantiate/sync, formula rewrite/rebind authoring APIs,
+and broader real-skin UX polish.
 
 Current objective: continue the addressable, layerable, non-publishing candidate overlay substrate
 without letting skins or the host fabricate what-if semantics. The OxCalc spike is complete and the
@@ -59,7 +62,9 @@ separately from published workspace nodes. Stale candidates can now rebase by re
 OxCalc-owned private edit log onto the current workspace revision through the closed
 `RebaseCandidate` intent; parented candidates flatten their captured layered private edits during
 rebase, and rebased candidates do not project stale values before explicit candidate evaluation.
-Optimized live layering/merge semantics remain open.
+Optimized live layering/merge semantics remain open. The first W2 `command-palette-metadata`
+slice is now also landed in the Skin IR/framework layer: `WorkspaceState::command_catalog` derives
+typed command affordances from projected host truth rather than skin-side legality checks.
 OxCalc owns candidate state, publication/discard, overlay provenance, and value epochs; the
 DnaTreeCalc host exposes only typed handles, projections, and closed intents.
 
@@ -298,8 +303,10 @@ Use this as the per-tranche goal statement before implementation:
       `InitialNodeContentProjection::TemplateBound { template_id }` resolves built-in host template
       ids (`starter`, `input-zero`) to ordinary initial content before OxCalc dry-bind/recalc for
       preview, published add-node, and candidate add-node paths. Unknown template ids remain typed
-      unsupported initial content. Full template definition/edit/instantiate/sync remains future
-      template subsystem work.
+      unsupported initial content. `WorkspaceState.templates` now projects the same built-in host
+      template catalog with names, descriptions, preview content, and the exact typed initial
+      content payload skins should dispatch. Full template definition/edit/instantiate/sync remains
+      future template subsystem work.
 - [x] Land first `clipboard-transfer-model` tranche:
       `WorkspaceIntent::CopyToClipboard { scope, payload }` builds a typed host-owned carrier for
       `Values`, `Formula`, `Format`, and `Subtree` payloads from projected state and emits
@@ -691,6 +698,22 @@ Use this as the per-tranche goal statement before implementation:
       surfaces publish `aria-selected`, stable active descendants, and one focusable visible item
       when no visible selection exists. Framework tests prove helper output; walking-skeleton and
       programmable Skin IR tests prove the real skins still mount and route host selection/dispatch.
+- [x] W2 `command-palette-metadata` first Skin IR slice:
+      Skin IR now exposes `WorkspaceState::command_catalog(&SelectionState)` with stable command
+      kind ids, titles, shortcuts, effective bindings, enablement, and disabled reasons for the
+      current closed workspace, node, clipboard, candidate, scenario, sweep, revision, and table
+      command surface. The catalog derives from projected host truth only; it does not execute
+      commands, fabricate target payloads, or parse formula semantics. Framework tests prove
+      selection, clipboard, candidate, scenario, sweep, and revision-state enablement; a
+      programmable Skin IR host test proves real dispatcher activity updates the catalog from the
+      published `WorkspaceState`.
+- [x] Real-skin command/template consumption checkpoint:
+      The shared node-management panel used by FormulaTree and TripleEditor now reads
+      `WorkspaceState.templates` to offer projected built-in initial-content templates, dispatches
+      the selected template's typed `InitialNodeContentProjection` through the existing `AddNode`
+      intent, and renders shortcut/enablement hints from `WorkspaceState::command_catalog` instead
+      of local skin rules. Skins crate tests prove the helper behavior; the programmable Skin IR
+      suite proves the projected templates still add/evaluate through the host and OxCalc paths.
 - [ ] `candidate-overlay-handle`: continue W4b with broader structural order/delete/name-collision
       merge algebra beyond same-node rename/move, same-parent rename/add, and same-parent
       rename/reorder facet merging plus sibling add/delete, sibling add/reorder, and sibling

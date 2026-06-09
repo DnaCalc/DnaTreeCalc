@@ -9,9 +9,9 @@ use dnatreecalc_host::model::{
 use dnatreecalc_skin_framework::{
     ActiveSelectionDetailProjection, AuthoringScope, CalcRunStateProjection, CandidateProjection,
     ClipboardOperationProjection, ClipboardPayloadKind, ClipboardPayloadProjection,
-    ComparativeSourceProjection, FormulaBindPreviewDiagnosticStage, FormulaBindPreviewInputKind,
-    FormulaReferenceInsertionTarget, InitialNodeContentProjection, IntentError,
-    InvalidationReasonProjection, MutationImpactBlockedReasonProjection,
+    CommandIntentKindProjection, ComparativeSourceProjection, FormulaBindPreviewDiagnosticStage,
+    FormulaBindPreviewInputKind, FormulaReferenceInsertionTarget, InitialNodeContentProjection,
+    IntentError, InvalidationReasonProjection, MutationImpactBlockedReasonProjection,
     MutationImpactIntentProjection, NodeAttributePatch, NodeContentKind, NodeId,
     NodeValueProjection, RecalcPlanMutation, ReferenceTargetProjection,
     RuntimeEffectFamilyProjection, RuntimeOverlayKindProjection, ScenarioSourceProjection,
@@ -42,6 +42,149 @@ fn sweep_point(point_id: &str, label: &str, raw: &str) -> SweepPointInput {
             display: raw.to_string(),
         },
     }
+}
+
+#[test]
+fn programmable_skin_reads_command_catalog_from_projected_state() {
+    let harness = Harness::empty();
+    let skin = &harness.driver;
+
+    skin.add_node(None, "Input", "10");
+    skin.add_node(None, "Output", "=Input*2");
+    let input_key = skin
+        .state()
+        .node(&NodeId::new("Input"))
+        .expect("input node projects")
+        .key
+        .clone();
+
+    skin.select(None);
+    let catalog = skin.command_catalog();
+    assert!(
+        !catalog
+            .get(CommandIntentKindProjection::RenameNode)
+            .expect("rename command is cataloged")
+            .enabled
+    );
+
+    skin.select(Some("Output"));
+    let selected_catalog = skin.command_catalog();
+    assert!(
+        selected_catalog
+            .get(CommandIntentKindProjection::RenameNode)
+            .expect("rename command is cataloged")
+            .enabled
+    );
+    assert!(
+        selected_catalog
+            .get(CommandIntentKindProjection::CopyFormula)
+            .expect("copy formula command is cataloged")
+            .enabled
+    );
+    assert_eq!(
+        selected_catalog
+            .get(CommandIntentKindProjection::Recalculate)
+            .expect("recalculate command is cataloged")
+            .effective_binding,
+        Some("F9")
+    );
+
+    skin.try_copy_to_clipboard(
+        AuthoringScope::Node(input_key.clone()),
+        ClipboardPayloadKind::Values,
+    );
+    let clipboard_catalog = skin.command_catalog();
+    assert!(
+        clipboard_catalog
+            .get(CommandIntentKindProjection::PasteClipboardValues)
+            .expect("paste values command is cataloged")
+            .enabled
+    );
+
+    let open = skin.try_open_candidate();
+    assert!(open.accepted);
+    let candidate_handle = skin
+        .state()
+        .candidates
+        .first()
+        .expect("candidate projects")
+        .handle
+        .clone();
+    skin.try_evaluate_candidate(&candidate_handle);
+    let candidate_catalog = skin.command_catalog();
+    assert!(
+        candidate_catalog
+            .get(CommandIntentKindProjection::CommitCandidate)
+            .expect("commit candidate command is cataloged")
+            .enabled
+    );
+
+    assert!(
+        skin.try_create_scenario("scenario:base", "Base", None)
+            .accepted
+    );
+    assert!(
+        skin.try_create_scenario_sweep(
+            "sweep:input",
+            "Input Sweep",
+            Some("scenario:base"),
+            input_key,
+            vec![
+                sweep_point("low", "Low", "5"),
+                sweep_point("high", "High", "15")
+            ],
+        )
+        .accepted
+    );
+    let what_if_catalog = skin.command_catalog();
+    assert!(
+        what_if_catalog
+            .get(CommandIntentKindProjection::DeleteScenario)
+            .expect("delete scenario command is cataloged")
+            .enabled
+    );
+    assert!(
+        what_if_catalog
+            .get(CommandIntentKindProjection::DeleteSweep)
+            .expect("delete sweep command is cataloged")
+            .enabled
+    );
+}
+
+#[test]
+fn programmable_skin_uses_projected_template_initial_content() {
+    let harness = Harness::empty();
+    let skin = &harness.driver;
+
+    let state = skin.state();
+    let starter = state
+        .templates
+        .entries
+        .iter()
+        .find(|template| template.template_id == "starter")
+        .expect("starter template projects")
+        .clone();
+    assert!(starter.built_in);
+    assert_eq!(starter.name, "Starter Formula");
+    assert_eq!(starter.preview_content.as_deref(), Some("=1+1"));
+
+    let receipt = skin.try_add_node_initial(None, "FromTemplate", starter.initial, false);
+    assert!(receipt.accepted, "{:?}", receipt.error);
+    let state = skin.state();
+    let templated = state
+        .node(&NodeId::new("FromTemplate"))
+        .expect("template-created node projects");
+    assert_eq!(templated.content_kind, NodeContentKind::Formula);
+    assert_eq!(templated.content_text, "=1+1");
+    assert_eq!(
+        state
+            .templates
+            .entries
+            .iter()
+            .map(|template| template.template_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["starter", "input-zero"]
+    );
 }
 
 #[test]

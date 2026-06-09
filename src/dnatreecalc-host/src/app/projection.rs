@@ -5,6 +5,7 @@ use dnatreecalc_skin_framework::{
     NodeValueProjection, NodeView, WorkspaceRevisionProjection, WorkspaceState,
 };
 
+use super::templates::built_in_template_manifest_projection;
 use crate::model::{NodeContent, WorkspaceModel};
 
 /// Project the host's `WorkspaceModel` (product model: structure +
@@ -86,6 +87,7 @@ pub fn workspace_state_from_model(model: &WorkspaceModel) -> WorkspaceState {
         speculation_pressure: Default::default(),
         scenarios: Default::default(),
         sweeps: Default::default(),
+        templates: built_in_template_manifest_projection(),
         comparison: Default::default(),
         series: Default::default(),
         last_run: None,
@@ -155,5 +157,13 @@ mod tests {
             state.node_by_key(&income_key).map(|node| &node.id),
             Some(&NodeId::new("Accounts.2005.Q1.Income"))
         );
+        let starter = state
+            .templates
+            .entries
+            .iter()
+            .find(|template| template.template_id == "starter")
+            .expect("built-in starter template projects");
+        assert!(starter.built_in);
+        assert_eq!(starter.preview_content.as_deref(), Some("=1+1"));
     }
 }

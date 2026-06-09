@@ -8,6 +8,7 @@ mod preview;
 mod projection;
 mod registry;
 mod session;
+mod templates;
 
 pub use dispatcher::HostDispatcher;
 #[cfg(not(target_arch = "wasm32"))]

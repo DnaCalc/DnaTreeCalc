@@ -26,6 +26,7 @@ pub struct WorkspaceState {
     pub speculation_pressure: SpeculationPressureProjection,
     pub scenarios: ScenarioManifestProjection,
     pub sweeps: SweepManifestProjection,
+    pub templates: TemplateManifestProjection,
     pub comparison: ComparativeProjection,
     pub series: SeriesManifestProjection,
     pub last_run: Option<CalcRunProjection>,
@@ -151,6 +152,21 @@ pub struct SeriesPointProjection {
     pub key: NodeKey,
     pub label: String,
     pub value: NodeValueProjection,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TemplateManifestProjection {
+    pub entries: Vec<TemplateProjection>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TemplateProjection {
+    pub template_id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub initial: InitialNodeContentProjection,
+    pub preview_content: Option<String>,
+    pub built_in: bool,
 }
 
 impl WorkspaceState {

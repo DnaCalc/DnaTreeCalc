@@ -86,6 +86,7 @@ use oxfunc_core::locale_format::WorkbookDateSystem;
 use oxfunc_core::value::{CalcArray, CalcValue, CoreValue, ExcelText};
 use serde::{Deserialize, Serialize};
 
+use super::templates::{built_in_template_initial_content, built_in_template_manifest_projection};
 use crate::model::{
     CapabilityProfileId, NodeContent, TableColumnBodyKind, TableColumnFixture, TableFormulaFixture,
     TableNodeFixture, WorkspaceModel,
@@ -1047,7 +1048,7 @@ impl TreeWorkspaceSession {
                 self.inherited_column_formula_content(table, column_id)?
             }
             InitialNodeContentProjection::TemplateBound { template_id } => {
-                let Some(content) = template_bound_initial_content(template_id) else {
+                let Some(content) = built_in_template_initial_content(template_id) else {
                     return Ok(None);
                 };
                 content.to_string()
@@ -1073,7 +1074,7 @@ impl TreeWorkspaceSession {
             }
             InitialNodeContentProjection::InheritColumnFormula { .. } => true,
             InitialNodeContentProjection::TemplateBound { template_id } => {
-                template_bound_initial_content(template_id).is_some()
+                built_in_template_initial_content(template_id).is_some()
             }
         }
     }
@@ -1745,7 +1746,7 @@ impl TreeWorkspaceSession {
                 Ok(content)
             }
             InitialNodeContentProjection::TemplateBound { template_id } => {
-                let content = template_bound_initial_content(template_id).ok_or_else(|| {
+                let content = built_in_template_initial_content(template_id).ok_or_else(|| {
                     TreeWorkspaceSessionError::UnsupportedInitialContent {
                         policy: initial.stable_id().to_string(),
                     }
@@ -2853,7 +2854,7 @@ impl TreeWorkspaceSession {
                 Ok(content)
             }
             InitialNodeContentProjection::TemplateBound { template_id } => {
-                let content = template_bound_initial_content(template_id).ok_or_else(|| {
+                let content = built_in_template_initial_content(template_id).ok_or_else(|| {
                     TreeWorkspaceSessionError::UnsupportedInitialContent {
                         policy: initial.stable_id().to_string(),
                     }
@@ -5273,6 +5274,7 @@ impl TreeWorkspaceSession {
             speculation_pressure,
             scenarios,
             sweeps,
+            templates: built_in_template_manifest_projection(),
             comparison,
             series: SeriesManifestProjection::default(),
             last_run,
@@ -8407,14 +8409,6 @@ fn inherited_candidate_column_formula_content(
         });
     };
     Ok(formula.formula_text.clone())
-}
-
-fn template_bound_initial_content(template_id: &str) -> Option<&'static str> {
-    match template_id {
-        "starter" => Some("=1+1"),
-        "input-zero" => Some("0"),
-        _ => None,
-    }
 }
 
 fn invalidation_reason_kind_for_projection(

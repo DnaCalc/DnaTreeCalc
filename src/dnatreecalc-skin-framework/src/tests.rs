@@ -6,7 +6,7 @@
 //! to prove the trait/registry contract without dragging the rest of the
 //! workspace into a circular dep.
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::sync::{Arc, Mutex};
 
 use leptos::prelude::*;
@@ -25,10 +25,17 @@ use crate::state::{
     SharedSkinStateHandle, SkinState, SkinStatePersistenceKey,
 };
 use crate::theme::{ThemeMode, ThemeTokens};
-use crate::workspace::WorkspaceState;
+use crate::workspace::{
+    CandidateProjection, ClipboardNodeValueProjection, ClipboardOperationProjection,
+    ClipboardPayloadProjection, ClipboardProjection, NodeContentKind, NodeValueProjection,
+    NodeView, RevisionHistoryEntryProjection, RevisionHistoryProjection,
+    ScenarioManifestProjection, ScenarioProjection, ScenarioSourceProjection,
+    SpeculationPressureProjection, SweepManifestProjection, SweepPointProjection, SweepProjection,
+    WorkspaceRevisionProjection, WorkspaceState,
+};
 use crate::{
-    SelectableItemA11y, SelectableRowA11y, listbox_a11y, roving_tabindex, stable_node_dom_id,
-    tree_a11y,
+    CommandIntentKindProjection, SelectableItemA11y, SelectableRowA11y, listbox_a11y,
+    roving_tabindex, stable_node_dom_id, tree_a11y,
 };
 
 #[derive(Default, Clone, Serialize, Deserialize)]
@@ -406,6 +413,226 @@ fn a11y_helpers_encode_selection_and_roving_focus() {
     assert_eq!(listbox_a11y("Nodes", "dtc-node", None).role, "listbox");
 }
 
+#[test]
+fn command_catalog_projects_selection_sensitive_node_commands() {
+    let workspace = workspace_with_nodes(vec![node("node:a", "A", NodeContentKind::Formula)]);
+    let catalog = workspace.command_catalog(&SelectionState::default());
+
+    let rename = catalog
+        .get(CommandIntentKindProjection::RenameNode)
+        .expect("rename command is cataloged");
+    assert!(!rename.enabled);
+    assert_eq!(
+        rename.disabled_reason.as_deref(),
+        Some("no node is selected")
+    );
+
+    let selection = SelectionState::with_primary(Some(NodeId::new("A")));
+    let catalog = workspace.command_catalog(&selection);
+    assert!(
+        catalog
+            .get(CommandIntentKindProjection::RenameNode)
+            .expect("rename command is cataloged")
+            .enabled
+    );
+    assert!(
+        catalog
+            .get(CommandIntentKindProjection::CopyFormula)
+            .expect("copy formula command is cataloged")
+            .enabled
+    );
+    assert_eq!(
+        catalog
+            .get(CommandIntentKindProjection::Recalculate)
+            .expect("recalc command is cataloged")
+            .effective_binding,
+        Some("F9")
+    );
+}
+
+#[test]
+fn command_catalog_projects_clipboard_and_candidate_affordances() {
+    let mut workspace = workspace_with_nodes(vec![node("node:a", "A", NodeContentKind::Constant)]);
+    let selection = SelectionState::with_primary(Some(NodeId::new("A")));
+    let empty_catalog = workspace.command_catalog(&selection);
+    assert!(
+        !empty_catalog
+            .get(CommandIntentKindProjection::PasteClipboardValues)
+            .expect("paste command is cataloged")
+            .enabled
+    );
+    assert!(
+        !empty_catalog
+            .get(CommandIntentKindProjection::CommitCandidate)
+            .expect("commit candidate command is cataloged")
+            .enabled
+    );
+
+    workspace.clipboard = Some(ClipboardProjection {
+        operation: ClipboardOperationProjection::Copy,
+        payload: ClipboardPayloadProjection::Values {
+            nodes: vec![ClipboardNodeValueProjection {
+                node: NodeKey::new("node:a"),
+                path: NodeId::new("A"),
+                content_kind: NodeContentKind::Constant,
+                constant_input_text: Some("1".to_string()),
+                literalized_input_text: None,
+                value: NodeValueProjection::Number {
+                    raw: "1".to_string(),
+                    display: "1".to_string(),
+                },
+            }],
+        },
+        plain_text: Some("1".to_string()),
+    });
+    workspace.candidates.push(CandidateProjection {
+        handle: "candidate:1".to_string(),
+        basis_revision_id: "rev:1".to_string(),
+        parent_handle: None,
+        retention_pin_count: 0,
+        workspace_revision_id: "rev:c1".to_string(),
+        revision_history: RevisionHistoryProjection::default(),
+        nodes: Vec::new(),
+        values_by_key: BTreeMap::new(),
+        run: None,
+    });
+    workspace.speculation_pressure = SpeculationPressureProjection {
+        retained_candidate_count: 1,
+        reclaimable_candidate_count: 1,
+        ..SpeculationPressureProjection::default()
+    };
+
+    let catalog = workspace.command_catalog(&selection);
+    assert!(
+        catalog
+            .get(CommandIntentKindProjection::PasteClipboardValues)
+            .expect("paste command is cataloged")
+            .enabled
+    );
+    assert!(
+        catalog
+            .get(CommandIntentKindProjection::CommitCandidate)
+            .expect("commit candidate command is cataloged")
+            .enabled
+    );
+    assert!(
+        catalog
+            .get(CommandIntentKindProjection::ReapCandidates)
+            .expect("reap command is cataloged")
+            .enabled
+    );
+}
+
+#[test]
+fn command_catalog_projects_scenario_sweep_and_revision_navigation_state() {
+    let input = node("node:input", "Input", NodeContentKind::Constant);
+    let mut workspace = workspace_with_nodes(vec![input]);
+    workspace.revision_history = RevisionHistoryProjection {
+        current_revision_id: Some("rev:2".to_string()),
+        entries: vec![
+            RevisionHistoryEntryProjection {
+                revision_id: "rev:1".to_string(),
+                parent_revision_id: None,
+                structural_snapshot_id: "struct:1".to_string(),
+                node_input_snapshot_id: "input:1".to_string(),
+                namespace_snapshot_id: "ns:1".to_string(),
+                transaction_id: None,
+                transaction_summary: None,
+                is_current: false,
+            },
+            RevisionHistoryEntryProjection {
+                revision_id: "rev:2".to_string(),
+                parent_revision_id: Some("rev:1".to_string()),
+                structural_snapshot_id: "struct:2".to_string(),
+                node_input_snapshot_id: "input:2".to_string(),
+                namespace_snapshot_id: "ns:2".to_string(),
+                transaction_id: Some("tx:2".to_string()),
+                transaction_summary: None,
+                is_current: true,
+            },
+            RevisionHistoryEntryProjection {
+                revision_id: "rev:3".to_string(),
+                parent_revision_id: Some("rev:2".to_string()),
+                structural_snapshot_id: "struct:3".to_string(),
+                node_input_snapshot_id: "input:3".to_string(),
+                namespace_snapshot_id: "ns:3".to_string(),
+                transaction_id: Some("tx:3".to_string()),
+                transaction_summary: None,
+                is_current: false,
+            },
+        ],
+    };
+    workspace.scenarios = ScenarioManifestProjection {
+        active: Some("scenario:base".to_string()),
+        entries: vec![ScenarioProjection {
+            id: "scenario:base".to_string(),
+            name: "Base".to_string(),
+            source: ScenarioSourceProjection::Candidate {
+                handle: "candidate:scenario".to_string(),
+            },
+            override_count: 0,
+            overridden_nodes: Vec::new(),
+            override_values: BTreeMap::new(),
+            value_epoch: Some(1),
+            is_active: true,
+        }],
+    };
+    workspace.sweeps = SweepManifestProjection {
+        active: Some("sweep:input".to_string()),
+        entries: vec![SweepProjection {
+            id: "sweep:input".to_string(),
+            name: "Input Sweep".to_string(),
+            input_node: NodeKey::new("node:input"),
+            base_scenario_id: None,
+            points: vec![SweepPointProjection {
+                id: "low".to_string(),
+                label: "Low".to_string(),
+                input_value: NodeValueProjection::Number {
+                    raw: "1".to_string(),
+                    display: "1".to_string(),
+                },
+                scenario_id: "scenario:sweep-low".to_string(),
+                value_epoch: Some(2),
+            }],
+            value_epoch: Some(2),
+            is_active: true,
+        }],
+    };
+
+    let catalog =
+        workspace.command_catalog(&SelectionState::with_primary(Some(NodeId::new("Input"))));
+    assert!(
+        catalog
+            .get(CommandIntentKindProjection::DeleteScenario)
+            .expect("delete scenario command is cataloged")
+            .enabled
+    );
+    assert!(
+        catalog
+            .get(CommandIntentKindProjection::DeleteSweep)
+            .expect("delete sweep command is cataloged")
+            .enabled
+    );
+    assert!(
+        catalog
+            .get(CommandIntentKindProjection::CreateScenarioSweep)
+            .expect("create sweep command is cataloged")
+            .enabled
+    );
+    assert!(
+        catalog
+            .get(CommandIntentKindProjection::Undo)
+            .expect("undo command is cataloged")
+            .enabled
+    );
+    assert!(
+        catalog
+            .get(CommandIntentKindProjection::Redo)
+            .expect("redo command is cataloged")
+            .enabled
+    );
+}
+
 fn mount_persisted_skin(
     skin: &crate::skin::RegisteredSkin,
     store: Arc<InMemorySkinStatePersistenceStore>,
@@ -437,6 +664,59 @@ fn mount_persisted_skin(
         dispatch: dispatcher,
     });
     drop(handle);
+}
+
+fn workspace_with_nodes(nodes: Vec<NodeView>) -> WorkspaceState {
+    let mut workspace = WorkspaceState {
+        workspace_id: "workspace:test".to_string(),
+        profile: "test",
+        revision: WorkspaceRevisionProjection {
+            workspace_revision_id: Some("rev:1".to_string()),
+            ..WorkspaceRevisionProjection::default()
+        },
+        ..WorkspaceState::default()
+    };
+    for node in nodes {
+        workspace.node_order.push(node.id.clone());
+        workspace.key_order.push(node.key.clone());
+        workspace
+            .paths_by_key
+            .insert(node.key.clone(), node.id.clone());
+        workspace.nodes.insert(node.id.clone(), node.clone());
+        workspace.nodes_by_key.insert(node.key.clone(), node);
+    }
+    workspace
+}
+
+fn node(key: &str, path: &str, content_kind: NodeContentKind) -> NodeView {
+    NodeView {
+        key: NodeKey::new(key),
+        id: NodeId::new(path),
+        display_name: path.to_string(),
+        parent: None,
+        children: Vec::new(),
+        depth: 0,
+        content_kind,
+        content_text: if content_kind == NodeContentKind::Formula {
+            "=1".to_string()
+        } else {
+            "1".to_string()
+        },
+        computed_value: NodeValueProjection::Number {
+            raw: "1".to_string(),
+            display: "1".to_string(),
+        },
+        scenario_override: None,
+        literalized_value_input: Some("1".to_string()),
+        value_epoch: Some(1),
+        calc_state: None,
+        effective_format: None,
+        note: None,
+        attributes: BTreeMap::new(),
+        binding_diagnostics: Vec::new(),
+        is_meta: false,
+        table: None,
+    }
 }
 
 #[test]

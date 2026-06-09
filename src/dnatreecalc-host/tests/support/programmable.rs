@@ -6,7 +6,7 @@ use dnatreecalc_host::app::{HostDispatcher, TreeWorkspaceSession};
 use dnatreecalc_host::model::{WorkspaceFixture, WorkspaceModel};
 use dnatreecalc_skin_framework::{
     ActiveNodeDetailProjection, ActiveSelectionDetailProjection, ActiveTableCellDetailProjection,
-    AuthoringScope, ClipboardPayloadKind, Dispatcher, ErasedSkinContext,
+    AuthoringScope, ClipboardPayloadKind, CommandCatalogProjection, Dispatcher, ErasedSkinContext,
     FormulaBindPreviewProjection, FormulaReferenceInsertionTarget, InitialNodeContentProjection,
     IntentError, IntentReceipt, MutationImpactProjection, NodeAttributePatch, NodeId, NodeKey,
     NodeValueProjection, RecalcPlanMutation, RecalcPlanProjection, RegisteredSkin, SelectionState,
@@ -947,6 +947,12 @@ impl ProgrammableDriver {
         self.workspace
             .get_untracked()
             .active_selection_detail(&self.selection.get_untracked())
+    }
+
+    pub fn command_catalog(&self) -> CommandCatalogProjection {
+        self.workspace
+            .get_untracked()
+            .command_catalog(&self.selection.get_untracked())
     }
 
     pub fn set_recalc_mode(&self, mode: WorkspaceRecalcMode) {

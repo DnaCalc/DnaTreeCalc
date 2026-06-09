@@ -245,7 +245,35 @@ pub const SHELL_CSS: &str = r#"
     min-width: 0;
 }
 
-.dtc-node-management input {
+.dtc-node-management__hints {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+    color: var(--dtc-text-subtle);
+    font-size: 0.75rem;
+}
+
+.dtc-node-management__hints span {
+    display: inline-flex;
+    gap: 0.25rem;
+    align-items: center;
+}
+
+.dtc-node-management__hints kbd {
+    border: 1px solid var(--dtc-border-muted);
+    border-radius: 3px;
+    padding: 0 0.25rem;
+    background: var(--dtc-surface);
+    color: var(--dtc-text);
+    font: inherit;
+}
+
+.dtc-command-hint--disabled {
+    opacity: 0.45;
+}
+
+.dtc-node-management input,
+.dtc-node-management select {
     min-width: 0;
     border: 1px solid var(--dtc-border-strong);
     border-radius: 4px;
@@ -259,6 +287,10 @@ pub const SHELL_CSS: &str = r#"
 }
 
 .dtc-node-management__content {
+    flex: 1;
+}
+
+.dtc-node-management__template {
     flex: 1;
 }
 
