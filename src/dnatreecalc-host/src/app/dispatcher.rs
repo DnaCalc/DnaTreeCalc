@@ -199,6 +199,11 @@ impl Dispatcher for HostDispatcher {
                     session.set_meta_transaction(node, is_meta)
                 })
                 .map_or_else(IntentReceipt::rejected, receipt_for_publication),
+            WorkspaceIntent::SetNodeAttributes { node, attrs } => self
+                .apply_workspace_transaction_edit(|session| {
+                    session.set_node_attributes_transaction(node, attrs)
+                })
+                .map_or_else(IntentReceipt::rejected, receipt_for_publication),
             WorkspaceIntent::Recalculate => self
                 .apply_workspace_edit(|_| Ok(()), WorkspaceEditPublication::Recalculate)
                 .map_or_else(IntentReceipt::rejected, receipt_for_publication),
@@ -716,6 +721,12 @@ fn intent_error_from_session(error: TreeWorkspaceSessionError) -> IntentError {
         }
         TreeWorkspaceSessionError::NotePathReserved { node } => {
             IntentError::NotePathReserved { node }
+        }
+        TreeWorkspaceSessionError::AttributePathReserved { node } => {
+            IntentError::AttributePathReserved { node }
+        }
+        TreeWorkspaceSessionError::InvalidAttributeKey { key } => {
+            IntentError::InvalidAttributeKey { key }
         }
         TreeWorkspaceSessionError::ProjectionOutOfSync { node } => {
             IntentError::ProjectionOutOfSync { node }

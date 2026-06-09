@@ -32,9 +32,9 @@ assessment found that formula rewrite verbs (`replicate-by-id`, `f4-toggle-bindi
 `reference-insertion`) require an OxFml-owned authoring API; DnaTreeCalc has filed a handoff and
 landed the first ownership-correct W3 slice: number-format write through host-owned meta nodes and
 real OxCalc transactions. The next W3 slice, `note-write`, is also landed through canonical
-host-owned `Note` meta nodes and Skin IR note projection. The `SetMeta` half of
-`meta-and-attribute-write` is landed as an OxCalc-owned revisioned meta-membership edit and exposed
-through Skin IR; broader node attribute patches remain open.
+host-owned `Note` meta nodes and Skin IR note projection. `meta-and-attribute-write` is now landed
+for the current Skin IR surface: `SetMeta` is an OxCalc-owned revisioned meta-membership edit, and
+`SetNodeAttributes` patches a host-owned string attribute bag through revisioned meta nodes.
 
 ## Roadmap Position
 
@@ -180,9 +180,15 @@ The roadmap alignment rule is:
       `OxCalcTreeEdit::SetNodeMeta`, meta membership participates in namespace/workspace revision
       identity, DnaTreeCalc routes `WorkspaceIntent::SetMeta` through a real transaction, and Skin
       IR tests prove revision movement, projected `is_meta`, and formula invisibility.
+- [x] Implement the `SetNodeAttributes` half of `meta-and-attribute-write` for the current Skin IR
+      surface: `WorkspaceIntent::SetNodeAttributes { node, attrs }` patches path-safe string
+      attributes, stores them in canonical `Attributes.<key>` meta nodes through real OxCalc
+      transactions, projects `NodeView.attributes` and active-node attributes, rejects invalid keys
+      and non-meta reserved paths with typed errors, and keeps attributes formula-invisible. Richer
+      typed/styling/template attributes remain separate future surfaces rather than hidden semantics.
 - [ ] Continue W3 with the next ownership-correct slice. Candidate order after the OxFml-blocked
-      formula rewrite verbs: node-attribute patches, then `add-node-content-policy` widening or
-      OxFml-unblocked formula authoring.
+      formula rewrite verbs: `add-node-content-policy` widening or OxFml-unblocked formula
+      authoring.
 
 ### Gating Engine Workstreams
 

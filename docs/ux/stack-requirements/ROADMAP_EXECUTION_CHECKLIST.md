@@ -30,7 +30,9 @@ authoring API and are recorded in `../../handovers/HANDOVER_OXFML_formula_author
 The first landed W3 slice is `format-write` for authored number formats via canonical meta nodes and
 real OxCalc transactions. The second landed W3 slice is `note-write` via canonical `Note` meta nodes
 and `NodeView.note` projection. The `SetMeta` half of `meta-and-attribute-write` is landed through
-an OxCalc-owned revisioned meta-membership edit.
+an OxCalc-owned revisioned meta-membership edit. The `SetNodeAttributes` half is landed for the
+current Skin IR surface as a revisioned host-owned string attribute bag stored in canonical meta
+nodes and projected through `NodeView.attributes`.
 
 Do not advance to W4 speculation/history or W5 platform polish as the default next step while W3
 authoring verbs remain incomplete.
@@ -141,8 +143,14 @@ Use this as the per-tranche goal statement before implementation:
       revision identity, DnaTreeCalc exposes `WorkspaceIntent::SetMeta`, and tests assert
       transaction receipts, revision movement, projected `is_meta`, retained addressability, and
       formula invisibility.
-- [ ] Continue W3 with the next feasible tranche: node-attribute patches or
-      `add-node-content-policy` widening, unless OxFml lands the formula-authoring API first.
+- [x] Land the `SetNodeAttributes` half of `meta-and-attribute-write` for the current Skin IR
+      surface:
+      `WorkspaceIntent::SetNodeAttributes { node, attrs }` patches path-safe string attributes via
+      canonical `Attributes.<key>` meta nodes, projects `NodeView.attributes` and active-node
+      attributes, carries transaction receipts, and rejects invalid keys / reserved non-meta paths
+      with typed errors.
+- [ ] Continue W3 with the next feasible tranche: `add-node-content-policy` widening, unless OxFml
+      lands the formula-authoring API first.
 
 ## Gated Workstreams
 

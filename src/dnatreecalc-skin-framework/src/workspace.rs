@@ -77,6 +77,7 @@ impl WorkspaceState {
             calc_state: node.calc_state,
             effective_format: node.effective_format.clone(),
             note: node.note.clone(),
+            attributes: node.attributes.clone(),
             binding_diagnostics: node.binding_diagnostics.clone(),
             outgoing_references: self
                 .dependencies
@@ -306,6 +307,7 @@ pub struct ActiveNodeDetailProjection {
     pub calc_state: Option<NodeCalcStateProjection>,
     pub effective_format: Option<EffectiveFormatProjection>,
     pub note: Option<NodeNoteProjection>,
+    pub attributes: BTreeMap<String, String>,
     pub binding_diagnostics: Vec<BindingDiagnosticProjection>,
     pub outgoing_references: Vec<ReferenceResolutionProjection>,
     pub incoming_reference_handles: Vec<String>,
@@ -441,6 +443,7 @@ pub struct NodeView {
     pub calc_state: Option<NodeCalcStateProjection>,
     pub effective_format: Option<EffectiveFormatProjection>,
     pub note: Option<NodeNoteProjection>,
+    pub attributes: BTreeMap<String, String>,
     pub binding_diagnostics: Vec<BindingDiagnosticProjection>,
     pub is_meta: bool,
     pub table: Option<TableProjection>,

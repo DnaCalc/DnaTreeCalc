@@ -47,6 +47,7 @@ pub fn workspace_state_from_model(model: &WorkspaceModel) -> WorkspaceState {
             calc_state: None,
             effective_format: None,
             note: None,
+            attributes: BTreeMap::new(),
             binding_diagnostics: Vec::new(),
             is_meta: node.is_meta,
             table: None,

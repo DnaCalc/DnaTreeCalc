@@ -5,10 +5,10 @@ use dnatreecalc_skin_framework::{
     ActiveSelectionDetailProjection, AuthoringScope, CalcRunStateProjection,
     FormulaBindPreviewDiagnosticStage, FormulaBindPreviewInputKind, InitialNodeContentProjection,
     IntentError, InvalidationReasonProjection, MutationImpactBlockedReasonProjection,
-    MutationImpactIntentProjection, NodeContentKind, NodeId, NodeValueProjection,
-    RecalcPlanMutation, ReferenceTargetProjection, RuntimeEffectFamilyProjection,
-    RuntimeOverlayKindProjection, TableCellEditabilityProjection, TableCellRegionProjection,
-    TableColumnBodyProjection, TableDependencyFactKindProjection,
+    MutationImpactIntentProjection, NodeAttributePatch, NodeContentKind, NodeId,
+    NodeValueProjection, RecalcPlanMutation, ReferenceTargetProjection,
+    RuntimeEffectFamilyProjection, RuntimeOverlayKindProjection, TableCellEditabilityProjection,
+    TableCellRegionProjection, TableColumnBodyProjection, TableDependencyFactKindProjection,
     TableDependencyFactStatusProjection, TreeReferenceCollectionFamilyProjection,
     WorkspaceDeltaChange, WorkspaceRecalcMode,
 };
@@ -2543,6 +2543,94 @@ fn programmable_skin_sets_meta_via_oxcalc_transaction() {
             .computed_value
             .display_text(),
         "2"
+    );
+}
+
+#[test]
+fn programmable_skin_sets_node_attributes_via_meta_nodes() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+    assert!(skin.try_add_node(None, "Root", "").accepted);
+    assert!(skin.try_add_node(Some("Root"), "A", "1").accepted);
+    skin.recalc();
+
+    let a_key = skin
+        .state()
+        .node(&NodeId::new("Root.A"))
+        .expect("A projects before attribute patch")
+        .key
+        .clone();
+    let before_revision = revision_fingerprint(&skin.state().revision);
+
+    let set = skin.try_set_node_attributes(a_key.clone(), NodeAttributePatch::set("owner", "qa"));
+    assert!(set.accepted, "{:?}", set.error);
+    assert_any_transaction(&set);
+    let attributed = skin.state();
+    assert_ne!(revision_fingerprint(&attributed.revision), before_revision);
+    assert_eq!(
+        attributed
+            .node(&NodeId::new("Root.A"))
+            .unwrap()
+            .attributes
+            .get("owner")
+            .map(String::as_str),
+        Some("qa")
+    );
+    assert!(attributed.node(&NodeId::new("Root.A.Attributes")).is_none());
+
+    skin.select(Some("Root.A"));
+    let detail = skin
+        .active_detail()
+        .expect("selected node detail projects attributes");
+    assert_eq!(
+        detail.attributes.get("owner").map(String::as_str),
+        Some("qa")
+    );
+
+    let hidden_revision = revision_fingerprint(&skin.state().revision);
+    let clear = skin.try_set_node_attributes(a_key.clone(), NodeAttributePatch::clear("owner"));
+    assert!(clear.accepted, "{:?}", clear.error);
+    assert_any_transaction(&clear);
+    let cleared = skin.state();
+    assert_ne!(revision_fingerprint(&cleared.revision), hidden_revision);
+    assert!(
+        !cleared
+            .node(&NodeId::new("Root.A"))
+            .unwrap()
+            .attributes
+            .contains_key("owner")
+    );
+
+    let invalid_revision = revision_fingerprint(&skin.state().revision);
+    let invalid =
+        skin.try_set_node_attributes(a_key.clone(), NodeAttributePatch::set("review.status", "x"));
+    assert!(!invalid.accepted);
+    assert_eq!(
+        invalid.error,
+        Some(IntentError::InvalidAttributeKey {
+            key: "review.status".to_string()
+        })
+    );
+    assert_eq!(
+        revision_fingerprint(&skin.state().revision),
+        invalid_revision
+    );
+
+    assert!(skin.try_add_node(Some("Root"), "B", "2").accepted);
+    assert!(skin.try_add_node(Some("Root.B"), "Attributes", "").accepted);
+    let b_key = skin
+        .state()
+        .node(&NodeId::new("Root.B"))
+        .expect("B projects before reserved attribute patch")
+        .key
+        .clone();
+    let reserved = skin.try_set_node_attributes(b_key, NodeAttributePatch::set("owner", "dev"));
+    assert!(!reserved.accepted);
+    assert_eq!(
+        reserved.error,
+        Some(IntentError::AttributePathReserved {
+            node: "Root.B.Attributes".to_string()
+        })
     );
 }
 

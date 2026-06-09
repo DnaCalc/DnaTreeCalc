@@ -1,3 +1,4 @@
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
 
 use crate::identity::{NodeId, NodeKey};
@@ -21,6 +22,39 @@ pub enum AuthoringScope {
         owner: NodeKey,
         source_reference_handle: String,
     },
+}
+
+/// Patch for authored node attributes.
+///
+/// Attributes are model metadata, not formula-visible values. The host owns the
+/// attribute storage policy and persists patches through revisioned model edits.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct NodeAttributePatch {
+    pub set: BTreeMap<String, String>,
+    pub clear: BTreeSet<String>,
+}
+
+impl NodeAttributePatch {
+    #[must_use]
+    pub fn set(key: impl Into<String>, value: impl Into<String>) -> Self {
+        Self {
+            set: BTreeMap::from([(key.into(), value.into())]),
+            clear: BTreeSet::new(),
+        }
+    }
+
+    #[must_use]
+    pub fn clear(key: impl Into<String>) -> Self {
+        Self {
+            set: BTreeMap::new(),
+            clear: BTreeSet::from([key.into()]),
+        }
+    }
+
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.set.is_empty() && self.clear.is_empty()
+    }
 }
 
 /// The closed set of asks a skin may make of the host.
@@ -88,6 +122,12 @@ pub enum WorkspaceIntent {
     SetMeta {
         node: NodeKey,
         is_meta: bool,
+    },
+    /// Patch authored per-node attributes. Attribute keys and values are
+    /// host-model metadata; formulas do not see them.
+    SetNodeAttributes {
+        node: NodeKey,
+        attrs: NodeAttributePatch,
     },
     AddNode {
         parent: Option<NodeId>,
@@ -310,6 +350,10 @@ pub enum IntentError {
     FormatPathReserved { node: String },
     #[error("note meta path {node} is occupied by a non-meta node")]
     NotePathReserved { node: String },
+    #[error("attribute meta path {node} is occupied by a non-meta node")]
+    AttributePathReserved { node: String },
+    #[error("attribute key {key} is not path-safe")]
+    InvalidAttributeKey { key: String },
     #[error("engine rejected the intent: {0}")]
     EngineRejected(String),
     #[error("host failed to dispatch the intent: {0}")]
@@ -442,6 +486,7 @@ impl Dispatcher for InMemoryDispatcher {
             | WorkspaceIntent::SetNumberFormat { .. }
             | WorkspaceIntent::SetNote { .. }
             | WorkspaceIntent::SetMeta { .. }
+            | WorkspaceIntent::SetNodeAttributes { .. }
             | WorkspaceIntent::AddNode { .. }
             | WorkspaceIntent::RenameNode { .. }
             | WorkspaceIntent::MoveNode { .. }

@@ -20,8 +20,8 @@ pub mod workspace;
 pub use identity::{NodeId, NodeKey, SkinId, SkinMountSlot};
 pub use intent::{
     AuthoringScope, DependencyDeltaProjection, Dispatcher, InMemoryDispatcher, IntentError,
-    IntentReceipt, NodeValueDeltaProjection, StructuralDeltaProjection, TableCellInput,
-    TableRowInput, WorkspaceDelta, WorkspaceDeltaChange, WorkspaceIntent,
+    IntentReceipt, NodeAttributePatch, NodeValueDeltaProjection, StructuralDeltaProjection,
+    TableCellInput, TableRowInput, WorkspaceDelta, WorkspaceDeltaChange, WorkspaceIntent,
 };
 pub use manifest::{SkinCapabilities, SkinCategory, SkinManifest};
 pub use registry::SkinRegistry;
