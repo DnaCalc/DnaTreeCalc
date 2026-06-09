@@ -69,13 +69,15 @@ clipboard intact. The next constant-value paste-special slice is landed for mult
 constants: multiple constant value carriers paste one-to-one over an explicitly ordered node target
 scope in a single OxCalc transaction, and multi-source cut paste clears copied sources not included
 in the target scope. The first computed-value paste-special slice is now landed for scalar cell
-values: OxFml literalizes typed scalar `CalcValue` payloads into authored input text with an
-explicit unsupported verdict for arrays, references, missing/non-finite values, and rich/callable
-values; DnaTreeCalc projects that literalization and `PasteClipboardValues` consumes it without
-using rendered display text. Array literalization, formula paste, formula/subtree source deletion,
-and subtree rebind remain open. A focused OxFml handoff records the remaining paste-special APIs for
-array literalization, formula rebind, formula-and-format paste, and subtree internal-reference
-rebind support. The W3 `set-membership-write` assessment is
+values and deterministic array constants: OxFml literalizes typed `CalcValue` payloads into authored
+input text, including supported arrays as OxFml-authored array constant formulas, with explicit
+unsupported verdicts for references, missing/non-finite values, rich/callable values, nested arrays,
+empty array cells, and quote-containing array text in this slice. DnaTreeCalc projects that
+literalization and `PasteClipboardValues` consumes it without using rendered display text. Formula
+paste, formula/subtree source deletion, formula-and-format paste, and subtree rebind remain open. A
+focused OxFml handoff records the remaining paste-special APIs for formula rebind,
+formula-and-format paste, and subtree internal-reference rebind support. The W3
+`set-membership-write` assessment is
 also complete:
 current OxCalc publishes `TreeReferenceCollectionDependency` facts and DnaTreeCalc can expand
 `AuthoringScope::Collection` for read/scoped operations. OxCalc now has a first
@@ -285,17 +287,19 @@ The roadmap alignment rule is:
       multi-source value clipboard carriers paste only when every source has authored constant input
       text and the target is an explicitly ordered node scope of the same length. Matching sources
       apply one-to-one in one OxCalc transaction. Multi-source cut paste clears copied sources not
-      included in the target scope and clears the host clipboard after success. Computed values,
-      arrays, formula paste, formula/subtree source deletion, and subtree rebind remain open.
+      included in the target scope and clears the host clipboard after success. Computed value
+      literalization is covered by the following tranche; formula paste, formula/subtree source
+      deletion, and subtree rebind remain open.
 - [x] Implement the first computed-value paste-special slice:
-      OxFml exposes scalar `CalcValue` authoring literalization for blank, finite number, text,
-      logical, and worksheet-error values, with typed unsupported verdicts for arrays, references,
-      missing/non-finite values, and rich/callable values. DnaTreeCalc projects the authored
-      literalization on `NodeView.literalized_value_input`, includes it in value clipboard carriers,
-      and `PasteClipboardValues` consumes it through the existing scoped content transaction path.
-      Authored constants still win over computed literalization. Array literalization, formula
-      paste/rebind, formula-and-format paste, subtree rebind, and formula/subtree cut source deletion
-      remain open.
+      OxFml exposes `CalcValue` authoring literalization for blank, finite number, text, logical,
+      worksheet-error, and supported array values. Arrays are emitted as OxFml-authored array
+      constant formulas, while references, missing/non-finite values, rich/callable values, nested
+      arrays, empty array cells, and quote-containing array text remain explicit unsupported cases in
+      this slice. DnaTreeCalc projects the authored literalization on
+      `NodeView.literalized_value_input`, includes it in value clipboard carriers, and
+      `PasteClipboardValues` consumes it through the existing scoped content transaction path.
+      Authored constants still win over computed literalization. Formula paste/rebind,
+      formula-and-format paste, subtree rebind, and formula/subtree cut source deletion remain open.
 - [x] Fix typed array value retention after recalculation:
       OxCalc edge-cache hits now recover the retained typed published `CalcValue` when the cached
       display payload matches the same node's published display text, rather than reparsing display

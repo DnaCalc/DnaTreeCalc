@@ -1695,7 +1695,10 @@ fn programmable_skin_projects_array_values_from_oxcalc_calc_values() {
         "explicit recalc should retain the typed array CalcValue, got {:?}",
         array_node.computed_value
     );
-    assert_eq!(array_node.literalized_value_input, None);
+    assert_eq!(
+        array_node.literalized_value_input.as_deref(),
+        Some("={1;2;3}")
+    );
 }
 
 #[test]
@@ -3303,12 +3306,12 @@ fn programmable_skin_commits_multi_source_constant_clipboard_value_cut_paste_ato
 }
 
 #[test]
-fn programmable_skin_rejects_nonconstant_multi_source_value_paste() {
+fn programmable_skin_pastes_mixed_constant_and_array_value_sources() {
     let harness = Harness::empty();
     let skin = harness.driver.clone();
     skin.add_node(None, "Book", "");
     skin.add_node(Some("Book"), "Source", "1000");
-    skin.add_node(Some("Book"), "ArraySource", "=RANDARRAY(5,5)");
+    skin.add_node(Some("Book"), "ArraySource", "=SEQUENCE(2,2)");
     skin.add_node(Some("Book"), "Target", "0");
     skin.add_node(Some("Book"), "Target2", "0");
 
@@ -3323,7 +3326,10 @@ fn programmable_skin_rejects_nonconstant_multi_source_value_paste() {
         "expected array source to project as array, got {:?}",
         array_source.computed_value
     );
-    assert_eq!(array_source.literalized_value_input, None);
+    assert_eq!(
+        array_source.literalized_value_input.as_deref(),
+        Some("={1,2;3,4}")
+    );
     let source_key = state.node(&NodeId::new("Book.Source")).unwrap().key.clone();
     let array_source_key = state
         .node(&NodeId::new("Book.ArraySource"))
@@ -3343,15 +3349,25 @@ fn programmable_skin_rejects_nonconstant_multi_source_value_paste() {
     assert!(multi_copy.accepted, "{:?}", multi_copy.error);
     let multi_paste =
         skin.try_paste_clipboard_values(AuthoringScope::Nodes(vec![target_key, target2_key]));
-    assert!(!multi_paste.accepted);
-    assert_eq!(
-        multi_paste.error,
-        Some(IntentError::ClipboardPayloadMismatch {
-            expected: "ordered_literal_values".to_string(),
-            actual: "source_content_kind=formula,value_literalization=unsupported at index 1"
-                .to_string()
-        })
-    );
+    assert!(multi_paste.accepted, "{:?}", multi_paste.error);
+    assert_any_transaction(&multi_paste);
+    let state = skin.state();
+    let target = state.node(&NodeId::new("Book.Target")).unwrap();
+    let target2 = state.node(&NodeId::new("Book.Target2")).unwrap();
+    assert_eq!(target.content_kind, NodeContentKind::Constant);
+    assert_eq!(target.content_text, "1000");
+    assert_eq!(target.computed_value.display_text(), "1000");
+    assert_eq!(target2.content_kind, NodeContentKind::Formula);
+    assert_eq!(target2.content_text, "={1,2;3,4}");
+    let NodeValueProjection::Array { rows, cols, cells } = &target2.computed_value else {
+        panic!(
+            "array value paste should project as array, got {:?}",
+            target2.computed_value
+        );
+    };
+    assert_eq!((*rows, *cols), (2, 2));
+    assert_eq!(cells[0][0].display_text(), "1");
+    assert_eq!(cells[1][1].display_text(), "4");
 }
 
 #[test]
@@ -3394,11 +3410,11 @@ fn programmable_skin_commits_constant_clipboard_value_cut_paste_atomically() {
 }
 
 #[test]
-fn programmable_skin_rejected_value_cut_paste_preserves_source_and_clipboard() {
+fn programmable_skin_commits_array_value_cut_paste_atomically() {
     let harness = Harness::empty();
     let skin = harness.driver.clone();
     skin.add_node(None, "Book", "");
-    skin.add_node(Some("Book"), "ArraySource", "=RANDARRAY(5,5)");
+    skin.add_node(Some("Book"), "ArraySource", "=SEQUENCE(2,2)");
     skin.add_node(Some("Book"), "Target", "0");
 
     let state = skin.state();
@@ -3412,7 +3428,10 @@ fn programmable_skin_rejected_value_cut_paste_preserves_source_and_clipboard() {
         "expected array source to project as array, got {:?}",
         array_source.computed_value
     );
-    assert_eq!(array_source.literalized_value_input, None);
+    assert_eq!(
+        array_source.literalized_value_input.as_deref(),
+        Some("={1,2;3,4}")
+    );
     let array_source_key = state
         .node(&NodeId::new("Book.ArraySource"))
         .unwrap()
@@ -3426,24 +3445,27 @@ fn programmable_skin_rejected_value_cut_paste_preserves_source_and_clipboard() {
     assert!(cut.accepted, "{:?}", cut.error);
 
     let paste = skin.try_paste_clipboard_values(AuthoringScope::Node(target_key));
-    assert!(!paste.accepted);
-    assert_eq!(
-        paste.error,
-        Some(IntentError::ClipboardPayloadMismatch {
-            expected: "single_literal_value".to_string(),
-            actual: "source_content_kind=formula,value_literalization=unsupported".to_string()
-        })
+    assert!(paste.accepted, "{:?}", paste.error);
+    assert_any_transaction(&paste);
+    assert!(
+        paste
+            .delta
+            .changes
+            .iter()
+            .any(|change| matches!(change, WorkspaceDeltaChange::ClipboardChanged(None)))
     );
     let state = skin.state();
     let array_source = state.node(&NodeId::new("Book.ArraySource")).unwrap();
     let target = state.node(&NodeId::new("Book.Target")).unwrap();
-    assert_eq!(array_source.content_kind, NodeContentKind::Formula);
-    assert_eq!(array_source.content_text, "=RANDARRAY(5,5)");
-    assert_eq!(target.content_text, "0");
+    assert_eq!(array_source.content_kind, NodeContentKind::Empty);
+    assert_eq!(array_source.content_text, "");
+    assert_eq!(target.content_kind, NodeContentKind::Formula);
+    assert_eq!(target.content_text, "={1,2;3,4}");
     assert!(matches!(
-        state.clipboard.as_ref().map(|clipboard| &clipboard.payload),
-        Some(ClipboardPayloadProjection::Values { .. })
+        target.computed_value,
+        NodeValueProjection::Array { .. }
     ));
+    assert_eq!(state.clipboard, None);
 }
 
 #[test]

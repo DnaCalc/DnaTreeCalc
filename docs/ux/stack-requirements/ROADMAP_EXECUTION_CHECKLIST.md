@@ -61,11 +61,11 @@ source and clipboard intact. The remaining paste-special semantics are recorded 
 The next constant-value paste-special slice is also landed: multiple authored-constant value carriers
 paste one-to-one over an explicitly ordered node target scope in one OxCalc transaction, and
 multi-source cut paste clears copied sources not included in the target scope before clearing the
-host clipboard. The first computed-value paste-special slice is also landed for scalar cell values:
-OxFml literalizes typed scalar `CalcValue` payloads into authored input text, DnaTreeCalc projects
-that literalization through the Skin IR, and `PasteClipboardValues` consumes it through the existing
-scoped content transaction path. Arrays, formula paste, formula/subtree source deletion, and subtree
-rebind remain open.
+host clipboard. The first computed-value paste-special slice is also landed for scalar cell values
+and supported array constants: OxFml literalizes typed `CalcValue` payloads into authored input
+text, DnaTreeCalc projects that literalization through the Skin IR, and `PasteClipboardValues`
+consumes it through the existing scoped content transaction path. Formula paste,
+formula/subtree source deletion, formula-and-format paste, and subtree rebind remain open.
 The W3 `set-membership-write` assessment is complete and recorded in
 `../../handovers/HANDOVER_OXCALC_set_membership_write.md`: current collection membership/order is an
 OxCalc-published dependency fact. OxCalc now has a first transaction edit slice for typed
@@ -236,26 +236,27 @@ Use this as the per-tranche goal statement before implementation:
       multi-source `Values` carriers paste one-to-one only when every source has authored constant
       input text and the target is an explicitly ordered node scope of the same length. Copy paste
       preserves the host clipboard; cut paste clears copied sources outside the target scope and then
-      clears the host clipboard. Computed values, arrays, formula paste, formula/subtree source
-      deletion, and subtree rebind remain open.
+      clears the host clipboard. Computed value literalization is covered by the following tranche;
+      formula paste, formula/subtree source deletion, and subtree rebind remain open.
 - [x] Land first computed-value paste-special tranche:
-      OxFml now exposes scalar `CalcValue` authoring literalization for blank, finite number, text,
-      logical, and worksheet-error values, and typed unsupported verdicts for arrays, references,
-      missing/non-finite values, and rich/callable values. DnaTreeCalc projects the literalized
-      authored input through `NodeView.literalized_value_input`, value clipboard carriers include it,
-      and `PasteClipboardValues` consumes it without using rendered display text. Authored constants
-      remain preferred over computed literalization. Array literalization, formula rebind/paste,
-      formula-and-format paste, subtree rebind, and formula/subtree cut source deletion remain open.
+      OxFml now exposes `CalcValue` authoring literalization for blank, finite number, text,
+      logical, worksheet-error, and supported array values, with typed unsupported verdicts for
+      references, missing/non-finite values, rich/callable values, nested arrays, empty array cells,
+      and quote-containing array text in this slice. DnaTreeCalc projects the literalized authored
+      input through `NodeView.literalized_value_input`, value clipboard carriers include it, and
+      `PasteClipboardValues` consumes it without using rendered display text. Authored constants
+      remain preferred over computed literalization. Formula rebind/paste, formula-and-format paste,
+      subtree rebind, and formula/subtree cut source deletion remain open.
 - [x] Fix typed array value retention after recalculation:
       OxCalc edge-cache hits now reuse the retained typed published `CalcValue` when the cached
       display payload matches the same node's published display text, avoiding display-string
       reparsing for array values. DnaTreeCalc projection now prefers `last_outcome.published_calc_values`
       over literal-input node-view values, so explicit recalc retains array values as typed Skin IR
-      arrays and still reports no scalar `literalized_value_input` for arrays.
+      arrays and can now project OxFml-authored array constant literal input for supported arrays.
 - [x] File OxFml handoff for the remaining W3 paste-special APIs:
       computed value literalization, formula rebind, formula-and-format paste, and subtree
-      internal-reference rebind support. The scalar computed-value literalization portion is now
-      partially satisfied; arrays and rebind operations remain open.
+      internal-reference rebind support. Computed value literalization is now satisfied for scalar
+      cells and supported array constants; formula and subtree rebind operations remain open.
 - [x] Assess `set-membership-write` and file OxCalc handoff:
       `TreeReferenceCollectionDependency` facts carry handles, members, and membership/order versions
       for projection and `AuthoringScope::Collection` expansion. OxCalc now exposes a first
