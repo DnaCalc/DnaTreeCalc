@@ -431,9 +431,12 @@ The roadmap alignment rule is:
       `WorkspaceIntent::Undo` and `WorkspaceIntent::Redo` as host-owned cursor commands over the
       retained OxCalc revision graph: normal edit transactions record the previous revision as an
       undo boundary, redo is cleared on branch edits, successful undo/redo republishes the restored
-      OxCalc snapshot, and selection is restored from the host cursor entry. Still open before full
-      time-travel/history claims: bounded eviction/persistence policy and transaction invalidation
-      summaries.
+      OxCalc snapshot, and selection is restored from the host cursor entry. The transaction-summary
+      slice is also landed: OxCalc retains transaction id, invalidated node ids, rebind flags, typed
+      invalidation reasons, and estimated invalidated-node count on successor revision entries, and
+      DnaTreeCalc projects those facts through `RevisionHistoryEntryProjection.transaction_summary`
+      keyed by `NodeKey`. Still open before full time-travel/history claims: bounded
+      eviction/persistence policy.
 - [ ] `candidate-overlay-handle`: addressable, layerable, non-publishing candidate contexts.
 - [x] `value-epoch-keying`: per-node published-value epoch distinct from input epoch.
 

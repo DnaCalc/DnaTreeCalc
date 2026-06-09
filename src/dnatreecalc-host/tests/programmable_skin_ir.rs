@@ -121,6 +121,40 @@ fn programmable_skin_projects_and_navigates_retained_revision_history() {
         .expect("edited revision should project");
     assert_ne!(edited_revision, original_revision);
     skin.assert_scalar("Root.B", "6");
+    let edited_a_key = edited
+        .node(&NodeId::new("Root.A"))
+        .expect("Root.A should project")
+        .key
+        .clone();
+    let edited_b_key = edited
+        .node(&NodeId::new("Root.B"))
+        .expect("Root.B should project")
+        .key
+        .clone();
+    let edited_summary = edited
+        .revision_history
+        .entries
+        .iter()
+        .find(|entry| entry.revision_id == edited_revision)
+        .and_then(|entry| entry.transaction_summary.as_ref())
+        .expect("edited revision should project transaction invalidation summary");
+    assert!(!edited_summary.transaction_id.is_empty());
+    assert_eq!(
+        edited_summary.estimated_node_count,
+        edited_summary.invalidated_nodes.len()
+    );
+    assert!(
+        edited_summary
+            .invalidated_nodes
+            .iter()
+            .any(|entry| entry.node == edited_a_key && !entry.reasons.is_empty())
+    );
+    assert!(edited_summary.invalidated_nodes.iter().any(|entry| {
+        entry.node == edited_b_key
+            && entry
+                .reasons
+                .contains(&InvalidationReasonProjection::UpstreamPublication)
+    }));
 
     let receipt = skin.navigate_revision(&original_revision);
     assert!(receipt.accepted);

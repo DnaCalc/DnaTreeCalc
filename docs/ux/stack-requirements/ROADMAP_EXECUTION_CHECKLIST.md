@@ -385,8 +385,11 @@ Use this as the per-tranche goal statement before implementation:
       routing adds `WorkspaceIntent::Undo` and `WorkspaceIntent::Redo` over host-owned cursor stacks:
       successful edit transactions record previous revisions as undo boundaries, redo clears on
       branch edits, and undo/redo republish the OxCalc-restored snapshot while restoring host
-      selection. Still required before full time-travel or history UI claims: bounded
-      eviction/persistence policy and transaction invalidation summaries.
+      selection. Current OxCalc/DnaTreeCalc transaction-summary slice retains transaction id,
+      invalidated node ids, rebind flags, typed invalidation reasons, and estimated invalidated-node
+      count on successor revision entries, then projects those facts through Skin IR revision
+      history keyed by `NodeKey`. Still required before full time-travel or history UI claims:
+      bounded eviction/persistence policy.
 - [ ] `candidate-overlay-handle`: implement N addressable, layerable, non-publishing candidate
       contexts before scenarios, what-if previews, goal seek, sweeps, or comparative overlays.
 - [x] `value-epoch-keying`: per-node published-value epoch is available for projection consumers.

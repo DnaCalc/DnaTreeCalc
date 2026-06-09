@@ -18,7 +18,8 @@ use dnatreecalc_skin_framework::{
     NodeNoteProjection, NodeValueProjection, NodeView, NoteSourceProjection, PhaseKeyProjection,
     RecalcPlanInvalidationProjection, RecalcPlanMutation, RecalcPlanProjection,
     ReferenceResolutionProjection, ReferenceTargetProjection, RevisionHistoryEntryProjection,
-    RevisionHistoryProjection, RuntimeEffectFamilyProjection, RuntimeEffectProjection,
+    RevisionHistoryProjection, RevisionInvalidationSummaryEntryProjection,
+    RevisionTransactionSummaryProjection, RuntimeEffectFamilyProjection, RuntimeEffectProjection,
     RuntimeOverlayKindProjection, RuntimeOverlayProjection, SourceSpanProjection,
     TableAnchorProjection, TableCellInput, TableCellProjection, TableCellRegionProjection,
     TableCellsProjection, TableColumnBodyProjection, TableColumnProjection,
@@ -4142,6 +4143,30 @@ impl TreeWorkspaceSession {
                     structural_snapshot_id: entry.structure_snapshot_id.to_string(),
                     node_input_snapshot_id: entry.node_input_snapshot_id.to_string(),
                     namespace_snapshot_id: entry.namespace_snapshot_id.to_string(),
+                    transaction_summary: entry.transaction_summary.as_ref().map(|summary| {
+                        RevisionTransactionSummaryProjection {
+                            transaction_id: summary.transaction_id.clone(),
+                            invalidated_nodes: summary
+                                .invalidated_nodes
+                                .iter()
+                                .map(|entry| RevisionInvalidationSummaryEntryProjection {
+                                    node: node_key_for_tree_node(entry.node_id),
+                                    requires_rebind: entry.requires_rebind,
+                                    reasons: entry
+                                        .reasons
+                                        .iter()
+                                        .map(|reason| invalidation_reason_projection_for(*reason))
+                                        .collect(),
+                                })
+                                .collect(),
+                            requires_rebind: summary
+                                .requires_rebind
+                                .iter()
+                                .map(|node_id| node_key_for_tree_node(*node_id))
+                                .collect(),
+                            estimated_node_count: summary.estimated_node_count,
+                        }
+                    }),
                     is_current: entry.revision_id == workspace_view.workspace_revision_id,
                 })
                 .collect(),

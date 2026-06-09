@@ -678,7 +678,23 @@ pub struct RevisionHistoryEntryProjection {
     pub structural_snapshot_id: String,
     pub node_input_snapshot_id: String,
     pub namespace_snapshot_id: String,
+    pub transaction_summary: Option<RevisionTransactionSummaryProjection>,
     pub is_current: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RevisionTransactionSummaryProjection {
+    pub transaction_id: String,
+    pub invalidated_nodes: Vec<RevisionInvalidationSummaryEntryProjection>,
+    pub requires_rebind: Vec<NodeKey>,
+    pub estimated_node_count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RevisionInvalidationSummaryEntryProjection {
+    pub node: NodeKey,
+    pub requires_rebind: bool,
+    pub reasons: Vec<InvalidationReasonProjection>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
