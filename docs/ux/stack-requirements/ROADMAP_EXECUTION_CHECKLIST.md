@@ -103,6 +103,11 @@ TSV/newline text supplied by platform clipboard code is flattened row-major and 
 over an explicitly ordered multi-node target scope in one OxCalc transaction when counts match;
 single-node paste preserves raw text, including newlines; single text items keep the existing
 broadcast behavior; and count mismatches reject before mutation.
+The first `duplicate-subtree` slice is now landed for formula-free ordinary subtrees:
+`DuplicateSubtree { source, destination_parent, new_symbol }` creates cloned nodes through one
+OxCalc edit transaction with reserved engine node ids, projects the normal structural delta, and
+rejects formula-bearing subtrees before mutation because internal-reference rebind remains
+OxFml-owned and unavailable. Table subtree cloning and meta-subtree breadth remain open.
 
 Do not advance to W4 speculation/history or W5 platform polish as the default next step while W3
 authoring verbs remain incomplete.
@@ -325,6 +330,13 @@ Use this as the per-tranche goal statement before implementation:
       applies matching cells in one OxCalc transaction, preserves single-node raw-text paste and
       single-cell broadcast behavior, and rejects item-count mismatches before mutation. Rich OS
       clipboard formats, formula rewrite paste, and subtree paste/rebind remain open.
+- [x] Land first `duplicate-subtree` tranche:
+      `WorkspaceIntent::DuplicateSubtree { source, destination_parent, new_symbol }` duplicates
+      formula-free ordinary subtrees through one OxCalc transaction with reserved node ids and a
+      normal structural delta. Formula-bearing subtrees reject with typed
+      `DuplicateSubtreeUnsupported` rather than copying stale formula text; formula rebind,
+      formula/subtree cut source deletion, table subtree cloning, and meta-subtree breadth remain
+      open.
 - [ ] Continue W3 with the next feasible tranche: move to the next OxFml-backed formula authoring
       verb (`f4-toggle-binding`, `replicate-by-id`, formula paste/rebind) when its rewrite semantics
       are available, or record a focused blocker if the current editor surface cannot support it.

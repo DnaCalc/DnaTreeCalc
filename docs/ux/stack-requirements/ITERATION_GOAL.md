@@ -116,6 +116,11 @@ text from the platform clipboard is flattened row-major and assigned one item pe
 target node in a single OxCalc transaction when the item count exactly matches the expanded target
 scope. Single-node paste preserves raw text, including newlines, and a single pasted text item still
 broadcasts to the whole target scope. Count mismatches reject before mutation.
+The first `duplicate-subtree` slice is now landed for formula-free ordinary subtrees:
+`DuplicateSubtree` carries a source `NodeKey`, destination parent, and new symbol; the host expands
+the projected subtree shape, rejects formula-bearing or table-backed subtrees before mutation, and
+applies the clone as one OxCalc transaction with reserved engine node ids. Formula rebind,
+formula/subtree source deletion, table subtree cloning, and meta-subtree breadth remain open.
 
 ## Roadmap Position
 

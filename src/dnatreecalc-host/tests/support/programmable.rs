@@ -157,6 +157,19 @@ impl ProgrammableDriver {
             })
     }
 
+    pub fn try_duplicate_subtree(
+        &self,
+        source: NodeKey,
+        destination_parent: Option<&str>,
+        new_symbol: &str,
+    ) -> IntentReceipt {
+        self.dispatch.dispatch(WorkspaceIntent::DuplicateSubtree {
+            source,
+            destination_parent: destination_parent.map(NodeId::new),
+            new_symbol: new_symbol.to_string(),
+        })
+    }
+
     pub fn try_insert_formula_reference(
         &self,
         node: NodeKey,

@@ -3780,6 +3780,81 @@ fn programmable_skin_pastes_clipboard_format_through_format_write_path() {
 }
 
 #[test]
+fn programmable_skin_duplicates_formula_free_subtree_through_skin_ir() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+    assert!(skin.try_add_node(None, "Book", "").accepted);
+    assert!(skin.try_add_node(Some("Book"), "Template", "").accepted);
+    assert!(
+        skin.try_add_node(Some("Book.Template"), "Inputs", "7")
+            .accepted
+    );
+    skin.recalc();
+
+    let state = skin.state();
+    let template_key = state
+        .node(&NodeId::new("Book.Template"))
+        .unwrap()
+        .key
+        .clone();
+    let duplicate = skin.try_duplicate_subtree(template_key, Some("Book"), "Scenario");
+    assert!(duplicate.accepted, "{:?}", duplicate.error);
+    assert_any_transaction(&duplicate);
+
+    let state = skin.state();
+    let scenario = state.node(&NodeId::new("Book.Scenario")).unwrap();
+    let input = state.node(&NodeId::new("Book.Scenario.Inputs")).unwrap();
+    assert_ne!(
+        scenario.key,
+        state.node(&NodeId::new("Book.Template")).unwrap().key
+    );
+    assert_eq!(input.content_kind, NodeContentKind::Constant);
+    assert_eq!(input.content_text, "7");
+    skin.assert_scalar("Book.Scenario.Inputs", "7");
+    assert!(duplicate.delta.changes.iter().any(|change| matches!(
+        change,
+        WorkspaceDeltaChange::Structural(structural)
+            if structural.added.len() == 2
+    )));
+}
+
+#[test]
+fn programmable_skin_rejects_duplicate_subtree_that_needs_formula_rebind() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+    assert!(skin.try_add_node(None, "Book", "").accepted);
+    assert!(skin.try_add_node(Some("Book"), "Template", "").accepted);
+    assert!(
+        skin.try_add_node(Some("Book.Template"), "Input", "7")
+            .accepted
+    );
+    assert!(
+        skin.try_add_node(Some("Book.Template"), "Total", "=Input+1")
+            .accepted
+    );
+    skin.recalc();
+
+    let state = skin.state();
+    let template_key = state
+        .node(&NodeId::new("Book.Template"))
+        .unwrap()
+        .key
+        .clone();
+    let duplicate = skin.try_duplicate_subtree(template_key, Some("Book"), "Scenario");
+    assert!(!duplicate.accepted);
+    assert_eq!(
+        duplicate.error,
+        Some(IntentError::DuplicateSubtreeUnsupported {
+            node: "Book.Template.Total".to_string(),
+            detail: "formula-bearing subtree duplication requires OxFml-owned reference rebind"
+                .to_string()
+        })
+    );
+    let state = skin.state();
+    assert!(state.node(&NodeId::new("Book.Scenario")).is_none());
+}
+
+#[test]
 fn programmable_skin_edits_table_cells_and_adds_rows_from_outside_ir() {
     let harness = Harness::from_repo_fixture("tables");
     let skin = harness.driver.clone();

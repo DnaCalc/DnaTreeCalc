@@ -183,6 +183,13 @@ pub enum WorkspaceIntent {
         target: AuthoringScope,
         text: String,
     },
+    /// Duplicate a formula-free subtree under a destination parent. Formula
+    /// rebind remains OxFml-owned and is rejected until that API exists.
+    DuplicateSubtree {
+        source: NodeKey,
+        destination_parent: Option<NodeId>,
+        new_symbol: String,
+    },
     /// Insert a host reference into a formula edit buffer. The skin owns the
     /// buffer/caret span; OxFml owns reference text composition and rebind.
     InsertFormulaReference {
@@ -445,6 +452,8 @@ pub enum IntentError {
     ClipboardPayloadMismatch { expected: String, actual: String },
     #[error("formula reference insertion failed for {node}: {detail}")]
     FormulaReferenceInsertionFailed { node: String, detail: String },
+    #[error("duplicate subtree failed for {node}: {detail}")]
+    DuplicateSubtreeUnsupported { node: String, detail: String },
     #[error("engine rejected the intent: {0}")]
     EngineRejected(String),
     #[error("host failed to dispatch the intent: {0}")]
@@ -585,6 +594,7 @@ impl Dispatcher for InMemoryDispatcher {
             | WorkspaceIntent::PasteClipboardFormat { .. }
             | WorkspaceIntent::PasteClipboardValues { .. }
             | WorkspaceIntent::PasteExternalClipboardText { .. }
+            | WorkspaceIntent::DuplicateSubtree { .. }
             | WorkspaceIntent::InsertFormulaReference { .. }
             | WorkspaceIntent::AddNode { .. }
             | WorkspaceIntent::RenameNode { .. }

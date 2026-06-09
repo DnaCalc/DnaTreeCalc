@@ -221,6 +221,19 @@ impl Dispatcher for HostDispatcher {
             WorkspaceIntent::PasteExternalClipboardText { target, text } => self
                 .paste_external_clipboard_text(target, text)
                 .unwrap_or_else(IntentReceipt::rejected),
+            WorkspaceIntent::DuplicateSubtree {
+                source,
+                destination_parent,
+                new_symbol,
+            } => self
+                .apply_workspace_transaction_edit(|session| {
+                    session.duplicate_subtree_transaction(
+                        source,
+                        destination_parent.as_ref(),
+                        new_symbol,
+                    )
+                })
+                .map_or_else(IntentReceipt::rejected, receipt_for_publication),
             WorkspaceIntent::InsertFormulaReference {
                 node,
                 current_formula_text,
@@ -1201,6 +1214,9 @@ fn intent_error_from_session(error: TreeWorkspaceSessionError) -> IntentError {
         }
         TreeWorkspaceSessionError::FormulaReferenceInsertionFailed { node, detail } => {
             IntentError::FormulaReferenceInsertionFailed { node, detail }
+        }
+        TreeWorkspaceSessionError::DuplicateSubtreeUnsupported { node, detail } => {
+            IntentError::DuplicateSubtreeUnsupported { node, detail }
         }
         TreeWorkspaceSessionError::ProjectionOutOfSync { node } => {
             IntentError::ProjectionOutOfSync { node }
