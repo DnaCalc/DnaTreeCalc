@@ -554,6 +554,14 @@ Use this as the per-tranche goal statement before implementation:
       no-op deltas, workspace switching, and shell/registry context wiring. Delta-only replay/resync,
       gap-recovery UI, worker calc, virtualization, frame telemetry, and later W5 platform hardening
       remain open.
+- [x] W5 early `skinstate-persistence-exercised` slice:
+      Skin IR now persists each typed `SkinState` by `(skin_id, slot, workspace_id)`, with load,
+      schema migration, stable-`NodeKey` GC, and save-on-update owned by the framework handle rather
+      than by skins. The framework exposes an in-memory store for tests and a native local-file store
+      for desktop hosts; the wasm web entrypoint wires browser `localStorage`. Framework tests prove
+      persisted roundtrip, migration, slot/workspace isolation, identity-keyed GC, and local-file
+      storage. Walking-skeleton and programmable Skin IR tests prove the store is threaded through
+      real shell/skin mounts without recalc or skin-side semantics.
 - [ ] `candidate-overlay-handle`: continue toward fully addressable, layerable, non-publishing
       candidate contexts with optimized live layering/merge rebase, candidate add-node template
       initial content, direct sweep/goal-seek comparison columns, scoped/unit series projection, and
@@ -568,8 +576,8 @@ Only pull these forward when their prerequisites above are met:
   insertion, paste special, duplicate subtree, set membership, notes, formats).
 - W4a/W4b/W4c: revision navigation, candidate overlays, speculation, scenarios, and comparative
   projections.
-- W5 early remaining subset: persistence, design tokens, a11y, plus delta-only resync/gap-recovery
-  policy on top of the landed projection delta/version stream.
+- W5 early remaining subset: design tokens, a11y, plus delta-only resync/gap-recovery policy on top
+  of the landed projection delta/version stream.
 - W5+ later platform: worker calc, multi-slot composition, keybinding registry, virtualization,
   capability negotiation, error isolation, telemetry.
 - W6: templates, table structural authoring, import/export, external feeds, sensitivity/goal seek,

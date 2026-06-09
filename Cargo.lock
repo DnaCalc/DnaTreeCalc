@@ -366,6 +366,7 @@ dependencies = [
  "dnatreecalc-skin-framework",
  "dnatreecalc-skins",
  "leptos",
+ "serde_json",
  "wasm-bindgen",
  "web-sys",
 ]

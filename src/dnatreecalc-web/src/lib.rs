@@ -18,7 +18,9 @@ use dnatreecalc_host::app::{
 use dnatreecalc_shell::WorkspaceShell;
 #[cfg(target_arch = "wasm32")]
 use dnatreecalc_skin_framework::{
-    Dispatcher, NodeId, SelectionState, SharedSkinState, SharedSkinStateHandle, WorkspaceDelta,
+    Dispatcher, NodeId, PersistedSkinStateRecord, SelectionState, SharedSkinState,
+    SharedSkinStateHandle, SkinStatePersistenceError, SkinStatePersistenceKey,
+    SkinStatePersistenceStore, WorkspaceDelta,
 };
 #[cfg(target_arch = "wasm32")]
 use dnatreecalc_skins::TRIPLE_EDITOR_ID;
@@ -30,6 +32,63 @@ use leptos::prelude::*;
 use wasm_bindgen::JsCast;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
+
+#[cfg(target_arch = "wasm32")]
+struct BrowserLocalStorageSkinStateStore {
+    storage: web_sys::Storage,
+    prefix: String,
+}
+
+#[cfg(target_arch = "wasm32")]
+impl BrowserLocalStorageSkinStateStore {
+    fn new(storage: web_sys::Storage) -> Self {
+        Self {
+            storage,
+            prefix: "dnatreecalc:skin-state:".to_string(),
+        }
+    }
+
+    fn key_for(&self, key: &SkinStatePersistenceKey) -> String {
+        format!("{}{}", self.prefix, key.storage_key())
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+impl SkinStatePersistenceStore for BrowserLocalStorageSkinStateStore {
+    fn load(
+        &self,
+        key: &SkinStatePersistenceKey,
+    ) -> Result<Option<PersistedSkinStateRecord>, SkinStatePersistenceError> {
+        let storage_key = self.key_for(key);
+        let Some(text) = self.storage.get_item(&storage_key).map_err(|error| {
+            SkinStatePersistenceError::Store {
+                operation: "reading browser localStorage",
+                detail: format!("{error:?}"),
+            }
+        })?
+        else {
+            return Ok(None);
+        };
+        serde_json::from_str(&text)
+            .map(Some)
+            .map_err(|error| SkinStatePersistenceError::Deserialize(error.to_string()))
+    }
+
+    fn save(
+        &self,
+        key: &SkinStatePersistenceKey,
+        record: &PersistedSkinStateRecord,
+    ) -> Result<(), SkinStatePersistenceError> {
+        let text = serde_json::to_string(record)
+            .map_err(|error| SkinStatePersistenceError::Serialize(error.to_string()))?;
+        self.storage
+            .set_item(&self.key_for(key), &text)
+            .map_err(|error| SkinStatePersistenceError::Store {
+                operation: "writing browser localStorage",
+                detail: format!("{error:?}"),
+            })
+    }
+}
 
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
@@ -57,6 +116,12 @@ pub fn mount_dnatreecalc(element_id: &str) -> Result<(), JsValue> {
         "Sheet1.RandArray5x5",
     ))));
     let shared = SharedSkinStateHandle::new(SharedSkinState::default());
+    let skin_state_store: Arc<dyn SkinStatePersistenceStore> =
+        Arc::new(BrowserLocalStorageSkinStateStore::new(
+            window
+                .local_storage()?
+                .ok_or_else(|| JsValue::from_str("localStorage unavailable"))?,
+        ));
 
     let dispatcher = Arc::new(HostDispatcher::with_session_and_shared(
         selection,
@@ -76,6 +141,7 @@ pub fn mount_dnatreecalc(element_id: &str) -> Result<(), JsValue> {
                 latest_delta=latest_delta.read_only()
                 selection=selection
                 shared=shared
+                skin_state_store=skin_state_store.clone()
                 dispatch=dispatch.clone()
                 registry=registry.clone()
                 initial_skin=TRIPLE_EDITOR_ID

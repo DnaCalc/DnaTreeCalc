@@ -661,6 +661,17 @@ The roadmap alignment rule is:
       no-ops, workspace switching, and shell/registry context wiring from outside the skin layer.
       Delta-only resync/replay, worker calculation, virtualization, telemetry, and gap-recovery UI
       policy remain later W5 work.
+- [x] W5 early `skinstate-persistence-exercised` slice:
+      Skin IR now persists each typed `SkinState` by `(skin_id, slot, workspace_id)`, loads and
+      migrates records by `SkinState::schema_version`, runs `gc(live_node_keys)` over stable
+      `NodeKey` identities at mount, and saves state after typed handle updates. The framework
+      exposes an in-memory store for tests and a native local-file store for desktop hosts; the wasm
+      web entrypoint wires a browser `localStorage` backend. Framework tests prove roundtrip,
+      migration, slot/workspace isolation, NodeKey GC, and native local-file storage. Walking
+      skeleton and programmable Skin IR tests prove the required persisted-state store is threaded
+      through real shell/skin mounts without recalculating or adding skin-side semantics. Shared-state
+      audit, scenario metadata persistence policy, design tokens, a11y helpers, and multi-slot
+      composition remain later W5 work.
 - [ ] `candidate-overlay-handle`: continue toward fully addressable, layerable, non-publishing
       candidate contexts with optimized live layering/merge rebase, candidate add-node template
       initial content, direct sweep/goal-seek comparison columns, scoped/unit series projection, and

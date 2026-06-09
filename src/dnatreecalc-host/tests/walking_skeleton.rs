@@ -25,8 +25,8 @@ use dnatreecalc_host::app::{
 };
 use dnatreecalc_host::model::{WorkspaceFixture, WorkspaceModel};
 use dnatreecalc_skin_framework::{
-    Dispatcher, ErasedSkinContext, NodeId, SelectionState, SharedSkinState, SharedSkinStateHandle,
-    WorkspaceDelta, WorkspaceIntent,
+    Dispatcher, ErasedSkinContext, InMemorySkinStatePersistenceStore, NodeId, SelectionState,
+    SharedSkinState, SharedSkinStateHandle, SkinMountSlot, WorkspaceDelta, WorkspaceIntent,
 };
 use dnatreecalc_skins::{
     DEPENDENCY_INSPECTOR_ID, FORMULA_TREE_ID, OUTLINE_TABLE_ID, TRIPLE_EDITOR_ID, VALUE_BOARD_ID,
@@ -126,6 +126,7 @@ fn mounting_and_switching_skins_never_recalculates_the_oxcalc_context() {
     ));
     let selection = RwSignal::new(SelectionState::default());
     let shared = SharedSkinStateHandle::new(SharedSkinState::default());
+    let skin_state_store = Arc::new(InMemorySkinStatePersistenceStore::new());
 
     let dispatcher = Arc::new(HostDispatcher::with_session(
         selection,
@@ -155,6 +156,8 @@ fn mounting_and_switching_skins_never_recalculates_the_oxcalc_context() {
         latest_delta: latest_delta.read_only(),
         selection: selection.read_only(),
         shared,
+        slot: SkinMountSlot::Main,
+        skin_state_store: skin_state_store.clone(),
         dispatch: dispatch.clone(),
     };
     let handle_a = registry
@@ -172,6 +175,8 @@ fn mounting_and_switching_skins_never_recalculates_the_oxcalc_context() {
         latest_delta: latest_delta.read_only(),
         selection: selection.read_only(),
         shared,
+        slot: SkinMountSlot::Main,
+        skin_state_store,
         dispatch: dispatch.clone(),
     };
     let handle_b = registry
@@ -212,6 +217,7 @@ fn selection_signal_visible_to_both_skins_via_their_contexts() {
     ));
     let selection = RwSignal::new(SelectionState::default());
     let shared = SharedSkinStateHandle::new(SharedSkinState::default());
+    let skin_state_store = Arc::new(InMemorySkinStatePersistenceStore::new());
     let dispatcher = Arc::new(HostDispatcher::new(selection));
     let dispatch: Arc<dyn Dispatcher> = dispatcher.clone();
 
@@ -220,6 +226,8 @@ fn selection_signal_visible_to_both_skins_via_their_contexts() {
         latest_delta: latest_delta.read_only(),
         selection: selection.read_only(),
         shared,
+        slot: SkinMountSlot::Main,
+        skin_state_store: skin_state_store.clone(),
         dispatch: dispatch.clone(),
     };
     let cx_for_second = ErasedSkinContext {
@@ -227,6 +235,8 @@ fn selection_signal_visible_to_both_skins_via_their_contexts() {
         latest_delta: latest_delta.read_only(),
         selection: selection.read_only(),
         shared,
+        slot: SkinMountSlot::Main,
+        skin_state_store,
         dispatch,
     };
 
@@ -394,6 +404,7 @@ fn walking_skeleton_click_through_harness_edits_switches_saves_and_reopens() {
     ));
     let selection = RwSignal::new(SelectionState::default());
     let shared = SharedSkinStateHandle::new(SharedSkinState::default());
+    let skin_state_store = Arc::new(InMemorySkinStatePersistenceStore::new());
     let dispatcher = Arc::new(HostDispatcher::with_session(
         selection,
         workspace,
@@ -429,6 +440,8 @@ fn walking_skeleton_click_through_harness_edits_switches_saves_and_reopens() {
             latest_delta: latest_delta.read_only(),
             selection: selection.read_only(),
             shared,
+            slot: SkinMountSlot::Main,
+            skin_state_store: skin_state_store.clone(),
             dispatch: dispatch.clone(),
         };
         let handle = registry

@@ -2,11 +2,14 @@ use std::sync::Arc;
 
 use leptos::prelude::*;
 
-use crate::identity::SkinId;
+use crate::identity::{NodeKey, SkinId, SkinMountSlot};
 use crate::intent::{Dispatcher, WorkspaceDelta};
 use crate::manifest::{SkinCapabilities, SkinManifest};
 use crate::selection::SelectionState;
-use crate::state::{SharedSkinStateHandle, SkinState, SkinStateHandle};
+use crate::state::{
+    SharedSkinStateHandle, SkinState, SkinStateHandle, SkinStatePersistenceKey,
+    SkinStatePersistenceStore,
+};
 use crate::workspace::WorkspaceState;
 
 /// Typed context passed to a [`WorkspaceSkin`] at mount time.
@@ -37,6 +40,8 @@ pub struct ErasedSkinContext {
     pub latest_delta: ReadSignal<WorkspaceDelta>,
     pub selection: ReadSignal<SelectionState>,
     pub shared: SharedSkinStateHandle,
+    pub slot: SkinMountSlot,
+    pub skin_state_store: Arc<dyn SkinStatePersistenceStore>,
     pub dispatch: Arc<dyn Dispatcher>,
 }
 
@@ -117,7 +122,23 @@ impl<K: WorkspaceSkin> ErasedSkinFactory for TypedFactory<K> {
     }
 
     fn mount(&self, cx: ErasedSkinContext) -> SkinHandle {
-        let typed_state = SkinStateHandle::<K::State>::new(K::State::default());
+        let workspace_snapshot = cx.workspace.get_untracked();
+        let live_node_keys = workspace_snapshot
+            .key_order
+            .iter()
+            .cloned()
+            .collect::<std::collections::HashSet<NodeKey>>();
+        let persistence_key = SkinStatePersistenceKey::new(
+            self.skin.id(),
+            cx.slot,
+            workspace_snapshot.workspace_id.clone(),
+        );
+        let typed_state = SkinStateHandle::<K::State>::from_persistence(
+            persistence_key,
+            cx.skin_state_store.clone(),
+            &live_node_keys,
+        )
+        .expect("loading persisted skin state must succeed");
         let typed_cx = SkinContext {
             workspace: cx.workspace,
             latest_delta: cx.latest_delta,

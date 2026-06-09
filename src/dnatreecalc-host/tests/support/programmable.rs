@@ -11,9 +11,9 @@ use dnatreecalc_skin_framework::{
     IntentError, IntentReceipt, MutationImpactProjection, NodeAttributePatch, NodeId, NodeKey,
     NodeValueProjection, RecalcPlanMutation, RecalcPlanProjection, RegisteredSkin, SelectionState,
     SharedSkinState, SharedSkinStateHandle, SkinCapabilities, SkinCategory, SkinContext,
-    SkinHandle, SkinId, SkinManifest, SkinState, TableCellInput, TableFormulaBindPreviewProjection,
-    TableRowInput, WorkspaceDelta, WorkspaceIntent, WorkspaceRecalcMode,
-    WorkspaceRevisionProjection, WorkspaceSkin, WorkspaceState,
+    SkinHandle, SkinId, SkinManifest, SkinMountSlot, SkinState, TableCellInput,
+    TableFormulaBindPreviewProjection, TableRowInput, WorkspaceDelta, WorkspaceIntent,
+    WorkspaceRecalcMode, WorkspaceRevisionProjection, WorkspaceSkin, WorkspaceState,
 };
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -1123,6 +1123,8 @@ impl Harness {
         ));
         let selection = RwSignal::new(SelectionState::default());
         let shared = SharedSkinStateHandle::new(SharedSkinState::default());
+        let skin_state_store =
+            Arc::new(dnatreecalc_skin_framework::InMemorySkinStatePersistenceStore::new());
         let dispatcher = Arc::new(HostDispatcher::with_session(
             selection,
             workspace,
@@ -1140,6 +1142,8 @@ impl Harness {
             latest_delta: latest_delta.read_only(),
             selection: selection.read_only(),
             shared,
+            slot: SkinMountSlot::Main,
+            skin_state_store,
             dispatch,
         });
         drop(handle);

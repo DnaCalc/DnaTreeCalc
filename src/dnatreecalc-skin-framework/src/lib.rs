@@ -32,9 +32,13 @@ pub use skin::{
     ErasedSkinContext, ErasedSkinFactory, RegisteredSkin, SkinContext, SkinHandle, WorkspaceSkin,
 };
 pub use state::{
-    MigrationError, SharedSkinState, SharedSkinStateHandle, SkinState, SkinStateHandle,
-    WorkspaceRecalcMode,
+    InMemorySkinStatePersistenceStore, MigrationError, PersistedSkinStateRecord, SharedSkinState,
+    SharedSkinStateHandle, SkinState, SkinStateHandle, SkinStatePersistenceError,
+    SkinStatePersistenceKey, SkinStatePersistenceStore, WorkspaceRecalcMode,
 };
+
+#[cfg(not(target_arch = "wasm32"))]
+pub use state::LocalFileSkinStatePersistenceStore;
 pub use workspace::{
     ActiveNodeDetailProjection, ActiveSelectionDetailProjection, ActiveTableCellDetailProjection,
     AuthoringScopeExpansionError, BindingDiagnosticProjection, CalcRunProjection,

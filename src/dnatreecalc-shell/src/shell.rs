@@ -2,7 +2,8 @@ use std::sync::Arc;
 
 use dnatreecalc_skin_framework::{
     Dispatcher, ErasedSkinContext, NodeId, SelectionState, SharedSkinStateHandle, SkinId,
-    SkinRegistry, WorkspaceDelta, WorkspaceIntent, WorkspaceRecalcMode, WorkspaceState,
+    SkinMountSlot, SkinRegistry, SkinStatePersistenceStore, WorkspaceDelta, WorkspaceIntent,
+    WorkspaceRecalcMode, WorkspaceState,
 };
 use leptos::prelude::*;
 use wasm_bindgen::JsCast;
@@ -30,6 +31,7 @@ pub fn WorkspaceShell(
     latest_delta: ReadSignal<WorkspaceDelta>,
     selection: RwSignal<SelectionState>,
     shared: SharedSkinStateHandle,
+    skin_state_store: Arc<dyn SkinStatePersistenceStore>,
     dispatch: Arc<dyn Dispatcher>,
     registry: Arc<SkinRegistry>,
     initial_skin: SkinId,
@@ -37,6 +39,7 @@ pub fn WorkspaceShell(
     let current_skin = RwSignal::new(initial_skin);
     let registry_for_view = registry.clone();
     let dispatch_for_view = dispatch.clone();
+    let skin_state_store_for_view = skin_state_store.clone();
     let shortcut_skin_ids = registry.ids();
 
     let title = Memo::new(move |_| {
@@ -106,6 +109,8 @@ pub fn WorkspaceShell(
                         latest_delta,
                         selection: selection.read_only(),
                         shared,
+                        slot: SkinMountSlot::Main,
+                        skin_state_store: skin_state_store_for_view.clone(),
                         dispatch: dispatch_for_view.clone(),
                     };
                     let handle = registered.mount(cx);

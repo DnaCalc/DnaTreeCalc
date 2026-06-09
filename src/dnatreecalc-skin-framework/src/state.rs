@@ -1,11 +1,15 @@
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::marker::PhantomData;
+use std::sync::{Arc, Mutex};
+
+#[cfg(not(target_arch = "wasm32"))]
+use std::path::{Path, PathBuf};
 
 use leptos::prelude::*;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
-use crate::identity::NodeId;
+use crate::identity::{NodeId, NodeKey, SkinId, SkinMountSlot};
 
 /// The typed, persistable per-skin state a [`crate::WorkspaceSkin`] declares.
 ///
@@ -34,7 +38,7 @@ pub trait SkinState:
     /// Garbage-collect references to nodes that no longer exist.
     ///
     /// Called by the host periodically and on save; default no-op.
-    fn gc(&mut self, _live_nodes: &HashSet<NodeId>) {}
+    fn gc(&mut self, _live_nodes: &HashSet<NodeKey>) {}
 }
 
 #[derive(Debug, Clone, thiserror::Error)]
@@ -45,6 +49,222 @@ pub enum MigrationError {
     Failed(String),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct SkinStatePersistenceKey {
+    pub skin_id: String,
+    pub slot: SkinMountSlot,
+    pub workspace_id: String,
+}
+
+impl SkinStatePersistenceKey {
+    #[must_use]
+    pub fn new(skin_id: SkinId, slot: SkinMountSlot, workspace_id: impl Into<String>) -> Self {
+        Self {
+            skin_id: skin_id.as_str().to_string(),
+            slot,
+            workspace_id: workspace_id.into(),
+        }
+    }
+
+    #[must_use]
+    pub fn storage_key(&self) -> String {
+        format!(
+            "skin={};slot={};workspace={}",
+            self.skin_id,
+            self.slot.stable_id(),
+            self.workspace_id
+        )
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PersistedSkinStateRecord {
+    pub schema_version: u32,
+    pub value: serde_json::Value,
+}
+
+impl PersistedSkinStateRecord {
+    #[must_use]
+    pub fn new(schema_version: u32, value: serde_json::Value) -> Self {
+        Self {
+            schema_version,
+            value,
+        }
+    }
+}
+
+#[derive(Debug, Clone, thiserror::Error)]
+pub enum SkinStatePersistenceError {
+    #[error("skin state store failed while {operation}: {detail}")]
+    Store {
+        operation: &'static str,
+        detail: String,
+    },
+    #[error("skin state serialization failed: {0}")]
+    Serialize(String),
+    #[error("skin state deserialization failed: {0}")]
+    Deserialize(String),
+    #[error("skin state migration from schema {from_version} failed: {detail}")]
+    Migration { from_version: u32, detail: String },
+}
+
+pub trait SkinStatePersistenceStore: Send + Sync {
+    fn load(
+        &self,
+        key: &SkinStatePersistenceKey,
+    ) -> Result<Option<PersistedSkinStateRecord>, SkinStatePersistenceError>;
+
+    fn save(
+        &self,
+        key: &SkinStatePersistenceKey,
+        record: &PersistedSkinStateRecord,
+    ) -> Result<(), SkinStatePersistenceError>;
+}
+
+#[derive(Default)]
+pub struct InMemorySkinStatePersistenceStore {
+    records: Mutex<BTreeMap<SkinStatePersistenceKey, PersistedSkinStateRecord>>,
+}
+
+impl InMemorySkinStatePersistenceStore {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn insert(
+        &self,
+        key: SkinStatePersistenceKey,
+        record: PersistedSkinStateRecord,
+    ) -> Result<(), SkinStatePersistenceError> {
+        self.records
+            .lock()
+            .map_err(|_| SkinStatePersistenceError::Store {
+                operation: "locking in-memory store",
+                detail: "mutex poisoned".to_string(),
+            })?
+            .insert(key, record);
+        Ok(())
+    }
+
+    pub fn get(
+        &self,
+        key: &SkinStatePersistenceKey,
+    ) -> Result<Option<PersistedSkinStateRecord>, SkinStatePersistenceError> {
+        Ok(self
+            .records
+            .lock()
+            .map_err(|_| SkinStatePersistenceError::Store {
+                operation: "locking in-memory store",
+                detail: "mutex poisoned".to_string(),
+            })?
+            .get(key)
+            .cloned())
+    }
+}
+
+impl SkinStatePersistenceStore for InMemorySkinStatePersistenceStore {
+    fn load(
+        &self,
+        key: &SkinStatePersistenceKey,
+    ) -> Result<Option<PersistedSkinStateRecord>, SkinStatePersistenceError> {
+        self.get(key)
+    }
+
+    fn save(
+        &self,
+        key: &SkinStatePersistenceKey,
+        record: &PersistedSkinStateRecord,
+    ) -> Result<(), SkinStatePersistenceError> {
+        self.insert(key.clone(), record.clone())
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub struct LocalFileSkinStatePersistenceStore {
+    root: PathBuf,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl LocalFileSkinStatePersistenceStore {
+    #[must_use]
+    pub fn new(root: impl Into<PathBuf>) -> Self {
+        Self { root: root.into() }
+    }
+
+    #[must_use]
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
+    fn path_for(&self, key: &SkinStatePersistenceKey) -> PathBuf {
+        self.root
+            .join(safe_path_component(&key.skin_id))
+            .join(key.slot.stable_id())
+            .join(format!("{}.json", safe_path_component(&key.workspace_id)))
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl SkinStatePersistenceStore for LocalFileSkinStatePersistenceStore {
+    fn load(
+        &self,
+        key: &SkinStatePersistenceKey,
+    ) -> Result<Option<PersistedSkinStateRecord>, SkinStatePersistenceError> {
+        let path = self.path_for(key);
+        match std::fs::read_to_string(&path) {
+            Ok(text) => serde_json::from_str(&text)
+                .map(Some)
+                .map_err(|error| SkinStatePersistenceError::Deserialize(error.to_string())),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(SkinStatePersistenceError::Store {
+                operation: "reading local skin state",
+                detail: error.to_string(),
+            }),
+        }
+    }
+
+    fn save(
+        &self,
+        key: &SkinStatePersistenceKey,
+        record: &PersistedSkinStateRecord,
+    ) -> Result<(), SkinStatePersistenceError> {
+        let path = self.path_for(key);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|error| SkinStatePersistenceError::Store {
+                operation: "creating local skin state directory",
+                detail: error.to_string(),
+            })?;
+        }
+        let text = serde_json::to_string_pretty(record)
+            .map_err(|error| SkinStatePersistenceError::Serialize(error.to_string()))?;
+        std::fs::write(path, text).map_err(|error| SkinStatePersistenceError::Store {
+            operation: "writing local skin state",
+            detail: error.to_string(),
+        })
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn safe_path_component(value: &str) -> String {
+    value
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.') {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+#[derive(Clone)]
+struct SkinStatePersistenceBinding {
+    key: SkinStatePersistenceKey,
+    store: Arc<dyn SkinStatePersistenceStore>,
+}
+
 /// Reactive handle over a skin's typed state.
 ///
 /// Wraps a Leptos `RwSignal` so reads are tracked and writes fire updates.
@@ -52,6 +272,7 @@ pub enum MigrationError {
 /// freely; the underlying state lives in the Leptos arena.
 pub struct SkinStateHandle<S: SkinState> {
     signal: RwSignal<S>,
+    persistence: Option<SkinStatePersistenceBinding>,
     _marker: PhantomData<S>,
 }
 
@@ -60,8 +281,24 @@ impl<S: SkinState> SkinStateHandle<S> {
     pub fn new(initial: S) -> Self {
         Self {
             signal: RwSignal::new(initial),
+            persistence: None,
             _marker: PhantomData,
         }
+    }
+
+    pub fn from_persistence(
+        key: SkinStatePersistenceKey,
+        store: Arc<dyn SkinStatePersistenceStore>,
+        live_nodes: &HashSet<NodeKey>,
+    ) -> Result<Self, SkinStatePersistenceError> {
+        let initial = load_skin_state::<S>(store.as_ref(), &key, live_nodes)?;
+        let handle = Self {
+            signal: RwSignal::new(initial),
+            persistence: Some(SkinStatePersistenceBinding { key, store }),
+            _marker: PhantomData,
+        };
+        handle.persist_current()?;
+        Ok(handle)
     }
 
     /// Tracked read: callers in a reactive scope re-run on updates.
@@ -76,10 +313,14 @@ impl<S: SkinState> SkinStateHandle<S> {
 
     pub fn update(&self, f: impl FnOnce(&mut S)) {
         self.signal.update(f);
+        self.persist_current()
+            .expect("persisting skin state after update must succeed");
     }
 
     pub fn set(&self, value: S) {
         self.signal.set(value);
+        self.persist_current()
+            .expect("persisting skin state after set must succeed");
     }
 
     /// Expose the raw signal for advanced cases (e.g., derived memos).
@@ -87,15 +328,49 @@ impl<S: SkinState> SkinStateHandle<S> {
     pub fn signal(&self) -> RwSignal<S> {
         self.signal
     }
+
+    pub fn persist_current(&self) -> Result<(), SkinStatePersistenceError> {
+        let Some(binding) = &self.persistence else {
+            return Ok(());
+        };
+        let value = serde_json::to_value(self.signal.get_untracked())
+            .map_err(|error| SkinStatePersistenceError::Serialize(error.to_string()))?;
+        let record = PersistedSkinStateRecord::new(S::schema_version(), value);
+        binding.store.save(&binding.key, &record)
+    }
 }
 
 impl<S: SkinState> Clone for SkinStateHandle<S> {
     fn clone(&self) -> Self {
-        *self
+        Self {
+            signal: self.signal,
+            persistence: self.persistence.clone(),
+            _marker: PhantomData,
+        }
     }
 }
 
-impl<S: SkinState> Copy for SkinStateHandle<S> {}
+fn load_skin_state<S: SkinState>(
+    store: &dyn SkinStatePersistenceStore,
+    key: &SkinStatePersistenceKey,
+    live_nodes: &HashSet<NodeKey>,
+) -> Result<S, SkinStatePersistenceError> {
+    let mut state = match store.load(key)? {
+        Some(record) if record.schema_version == S::schema_version() => {
+            serde_json::from_value(record.value)
+                .map_err(|error| SkinStatePersistenceError::Deserialize(error.to_string()))?
+        }
+        Some(record) => S::migrate(record.schema_version, record.value).map_err(|error| {
+            SkinStatePersistenceError::Migration {
+                from_version: record.schema_version,
+                detail: error.to_string(),
+            }
+        })?,
+        None => S::default(),
+    };
+    state.gc(live_nodes);
+    Ok(state)
+}
 
 /// Cross-skin shared state stored under the `skins.shared` meta-namespace
 /// (`docs/ux/SKINS.md` §2.4). The walking skeleton uses only the collapse

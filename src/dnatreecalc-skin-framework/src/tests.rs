@@ -6,12 +6,13 @@
 //! to prove the trait/registry contract without dragging the rest of the
 //! workspace into a circular dep.
 
-use std::sync::Arc;
+use std::collections::HashSet;
+use std::sync::{Arc, Mutex};
 
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::identity::{NodeId, SkinId};
+use crate::identity::{NodeId, NodeKey, SkinId, SkinMountSlot};
 use crate::intent::{
     Dispatcher, InMemoryDispatcher, IntentReceipt, WorkspaceDelta, WorkspaceIntent,
 };
@@ -19,12 +20,92 @@ use crate::manifest::{SkinCapabilities, SkinCategory, SkinManifest};
 use crate::registry::SkinRegistry;
 use crate::selection::SelectionState;
 use crate::skin::{ErasedSkinContext, SkinContext, SkinHandle, WorkspaceSkin};
-use crate::state::{SharedSkinState, SharedSkinStateHandle, SkinState};
+use crate::state::{
+    InMemorySkinStatePersistenceStore, MigrationError, PersistedSkinStateRecord, SharedSkinState,
+    SharedSkinStateHandle, SkinState, SkinStatePersistenceKey,
+};
 use crate::workspace::WorkspaceState;
 
 #[derive(Default, Clone, Serialize, Deserialize)]
 struct InertState {
     pub mounts: u32,
+}
+
+#[derive(Default, Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+struct PersistedTestState {
+    pub mounts: u32,
+    pub label: String,
+    pub remembered_nodes: HashSet<NodeKey>,
+}
+
+impl SkinState for PersistedTestState {
+    fn schema_version() -> u32 {
+        2
+    }
+
+    fn migrate(prior_version: u32, prior_value: serde_json::Value) -> Result<Self, MigrationError> {
+        if prior_version != 1 {
+            return Err(MigrationError::Failed(format!(
+                "unsupported prior version {prior_version}"
+            )));
+        }
+        #[derive(Deserialize)]
+        struct V1 {
+            label: String,
+            remembered_nodes: HashSet<NodeKey>,
+        }
+        let prior: V1 = serde_json::from_value(prior_value)
+            .map_err(|error| MigrationError::Failed(error.to_string()))?;
+        Ok(Self {
+            mounts: 0,
+            label: prior.label,
+            remembered_nodes: prior.remembered_nodes,
+        })
+    }
+
+    fn gc(&mut self, live_nodes: &HashSet<NodeKey>) {
+        self.remembered_nodes
+            .retain(|node| live_nodes.contains(node));
+    }
+}
+
+struct PersistedSkin {
+    observed: Arc<Mutex<Vec<PersistedTestState>>>,
+}
+
+impl WorkspaceSkin for PersistedSkin {
+    type State = PersistedTestState;
+
+    fn id(&self) -> SkinId {
+        SkinId::new("persisted-test")
+    }
+
+    fn manifest(&self) -> SkinManifest {
+        SkinManifest {
+            display_name: "Persisted",
+            description: "Test skin for persisted state.",
+            category: SkinCategory::Inspector,
+            version: "test",
+        }
+    }
+
+    fn capabilities(&self) -> SkinCapabilities {
+        SkinCapabilities::default()
+    }
+
+    fn mount(&self, cx: SkinContext<Self::State>) -> SkinHandle {
+        self.observed
+            .lock()
+            .expect("observed state lock poisoned")
+            .push(cx.state.get_untracked());
+        cx.state.update(|state| {
+            state.mounts += 1;
+            if state.label.is_empty() {
+                state.label = "mounted".to_string();
+            }
+        });
+        SkinHandle::new(().into_any())
+    }
 }
 
 impl SkinState for InertState {
@@ -127,12 +208,15 @@ fn registry_mount_invokes_typed_skin_with_default_state() {
     let selection = RwSignal::new(SelectionState::default());
     let dispatcher: Arc<dyn Dispatcher> = Arc::new(InMemoryDispatcher::new(selection));
     let shared = SharedSkinStateHandle::new(SharedSkinState::default());
+    let skin_state_store = Arc::new(InMemorySkinStatePersistenceStore::new());
 
     let cx = ErasedSkinContext {
         workspace: workspace.read_only(),
         latest_delta: latest_delta.read_only(),
         selection: selection.read_only(),
         shared,
+        slot: SkinMountSlot::Main,
+        skin_state_store,
         dispatch: dispatcher,
     };
 
@@ -143,6 +227,163 @@ fn registry_mount_invokes_typed_skin_with_default_state() {
     // rendered tree which the framework crate deliberately does not
     // depend on. Skin behavior under render is covered by the shell-
     // level integration tests.
+}
+
+#[test]
+fn registry_mount_roundtrips_skin_state_by_skin_slot_and_workspace() {
+    let mut registry = SkinRegistry::new();
+    let observed = Arc::new(Mutex::new(Vec::new()));
+    let id = registry.register(PersistedSkin {
+        observed: observed.clone(),
+    });
+    let store = Arc::new(InMemorySkinStatePersistenceStore::new());
+    let skin = registry.get(id).expect("registered skin must resolve");
+
+    mount_persisted_skin(
+        skin,
+        store.clone(),
+        SkinMountSlot::Main,
+        "workspace:a",
+        vec![NodeKey::new("node:a")],
+    );
+    mount_persisted_skin(
+        skin,
+        store.clone(),
+        SkinMountSlot::Main,
+        "workspace:a",
+        vec![NodeKey::new("node:a")],
+    );
+    mount_persisted_skin(
+        skin,
+        store,
+        SkinMountSlot::SplitLeft,
+        "workspace:a",
+        vec![NodeKey::new("node:a")],
+    );
+
+    let observed = observed.lock().expect("observed state lock poisoned");
+    assert_eq!(observed[0].mounts, 0);
+    assert_eq!(observed[1].mounts, 1);
+    assert_eq!(observed[1].label, "mounted");
+    assert_eq!(
+        observed[2].mounts, 0,
+        "different slots must not share persisted SkinState"
+    );
+}
+
+#[test]
+fn registry_mount_migrates_and_garbage_collects_nodekey_state() {
+    let mut registry = SkinRegistry::new();
+    let observed = Arc::new(Mutex::new(Vec::new()));
+    let id = registry.register(PersistedSkin {
+        observed: observed.clone(),
+    });
+    let store = Arc::new(InMemorySkinStatePersistenceStore::new());
+    let key = SkinStatePersistenceKey::new(
+        SkinId::new("persisted-test"),
+        SkinMountSlot::Main,
+        "workspace:migrated",
+    );
+    store
+        .insert(
+            key.clone(),
+            PersistedSkinStateRecord::new(
+                1,
+                serde_json::json!({
+                    "label": "legacy",
+                    "remembered_nodes": ["node:live", "node:deleted"]
+                }),
+            ),
+        )
+        .expect("seed persisted state");
+
+    let skin = registry.get(id).expect("registered skin must resolve");
+    mount_persisted_skin(
+        skin,
+        store.clone(),
+        SkinMountSlot::Main,
+        "workspace:migrated",
+        vec![NodeKey::new("node:live")],
+    );
+
+    let observed = observed.lock().expect("observed state lock poisoned");
+    assert_eq!(observed[0].label, "legacy");
+    assert_eq!(
+        observed[0].remembered_nodes,
+        [NodeKey::new("node:live")].into_iter().collect()
+    );
+    drop(observed);
+
+    let stored = store
+        .get(&key)
+        .expect("read persisted state")
+        .expect("state should be persisted after migration");
+    assert_eq!(stored.schema_version, PersistedTestState::schema_version());
+    let saved: PersistedTestState =
+        serde_json::from_value(stored.value).expect("stored value should deserialize");
+    assert_eq!(saved.label, "legacy");
+    assert_eq!(saved.mounts, 1);
+    assert_eq!(
+        saved.remembered_nodes,
+        [NodeKey::new("node:live")].into_iter().collect()
+    );
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[test]
+fn local_file_skin_state_store_roundtrips_records() {
+    let root = std::env::temp_dir().join(format!(
+        "dnatreecalc-skin-state-test-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    let store = crate::state::LocalFileSkinStatePersistenceStore::new(&root);
+    let key = SkinStatePersistenceKey::new(
+        SkinId::new("persisted-test"),
+        SkinMountSlot::RightInspector,
+        "workspace:file",
+    );
+    let record = PersistedSkinStateRecord::new(7, serde_json::json!({ "ok": true }));
+
+    crate::state::SkinStatePersistenceStore::save(&store, &key, &record)
+        .expect("save local file record");
+    let loaded = crate::state::SkinStatePersistenceStore::load(&store, &key)
+        .expect("load local file record")
+        .expect("record should exist");
+    assert_eq!(loaded, record);
+    std::fs::remove_dir_all(&root).expect("cleanup local file store");
+}
+
+fn mount_persisted_skin(
+    skin: &crate::skin::RegisteredSkin,
+    store: Arc<InMemorySkinStatePersistenceStore>,
+    slot: SkinMountSlot,
+    workspace_id: &str,
+    live_keys: Vec<NodeKey>,
+) {
+    let mut workspace_state = WorkspaceState {
+        workspace_id: workspace_id.to_string(),
+        ..WorkspaceState::default()
+    };
+    workspace_state.key_order = live_keys;
+    let workspace = RwSignal::new(workspace_state);
+    let latest_delta = RwSignal::new(WorkspaceDelta::unchanged(
+        workspace.get_untracked().projection_seq,
+    ));
+    let selection = RwSignal::new(SelectionState::default());
+    let dispatcher: Arc<dyn Dispatcher> = Arc::new(InMemoryDispatcher::new(selection));
+    let shared = SharedSkinStateHandle::new(SharedSkinState::default());
+
+    let handle = skin.mount(ErasedSkinContext {
+        workspace: workspace.read_only(),
+        latest_delta: latest_delta.read_only(),
+        selection: selection.read_only(),
+        shared,
+        slot,
+        skin_state_store: store,
+        dispatch: dispatcher,
+    });
+    drop(handle);
 }
 
 #[test]

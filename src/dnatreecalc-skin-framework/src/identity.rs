@@ -115,10 +115,28 @@ impl fmt::Display for SkinId {
 /// The walking skeleton uses only [`SkinMountSlot::Main`]. Split-pane and
 /// inspector composition (`SKINS.md` §7) layer in later worksets without
 /// changing the trait surface.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum SkinMountSlot {
     Main,
     RightInspector,
     SplitLeft,
     SplitRight,
+}
+
+impl SkinMountSlot {
+    #[must_use]
+    pub const fn stable_id(self) -> &'static str {
+        match self {
+            Self::Main => "main",
+            Self::RightInspector => "right_inspector",
+            Self::SplitLeft => "split_left",
+            Self::SplitRight => "split_right",
+        }
+    }
+}
+
+impl fmt::Display for SkinMountSlot {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.stable_id())
+    }
 }
