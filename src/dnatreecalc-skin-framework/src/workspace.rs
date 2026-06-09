@@ -24,6 +24,7 @@ pub struct WorkspaceState {
     pub candidates: Vec<CandidateProjection>,
     pub speculation_pressure: SpeculationPressureProjection,
     pub scenarios: ScenarioManifestProjection,
+    pub comparison: ComparativeProjection,
     pub last_run: Option<CalcRunProjection>,
     pub node_order: Vec<NodeId>,
     pub key_order: Vec<NodeKey>,
@@ -68,6 +69,32 @@ pub struct ScenarioProjection {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ScenarioSourceProjection {
     Candidate { handle: String },
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ComparativeProjection {
+    pub basis: ComparativeColumnProjection,
+    pub columns: Vec<ComparativeColumnProjection>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ComparativeColumnProjection {
+    pub label: String,
+    pub source: ComparativeSourceProjection,
+    pub value_epoch: Option<u64>,
+    pub values: BTreeMap<NodeKey, NodeValueProjection>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum ComparativeSourceProjection {
+    #[default]
+    Published,
+    Candidate {
+        handle: String,
+    },
+    Scenario {
+        id: String,
+    },
 }
 
 impl WorkspaceState {

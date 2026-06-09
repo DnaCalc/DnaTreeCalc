@@ -83,9 +83,12 @@ restoring the candidate-private input captured on first override. The next W4c s
 freshness slice is also landed: scenario entries carry a host-owned scenario value epoch that
 advances on scenario creation, override set/clear, candidate-private edits, and candidate
 evaluation; active scenarios project per-node `NodeView.scenario_override` without changing
-published `computed_value`. This slice deliberately does not implement comparative multi-overlay
-projection, chart/feed series projection, formula/rich-value scenario override authoring, or
-engine-published scenario revision history. Remaining W3
+published `computed_value`. The first W4c comparative multi-overlay projection slice is also
+landed: `WorkspaceState.comparison` projects a published basis column plus scenario-backed columns
+whose values come from the scenario backing candidate's typed `values_by_key`, leaving unevaluated
+scenario columns empty rather than fabricating values. This slice deliberately does not implement
+direct sweep/goal-seek comparison columns, chart/feed series projection, formula/rich-value scenario
+override authoring, or engine-published scenario revision history. Remaining W3
 formula-rewrite/rebind verbs stay parked until their owning
 OxFml/OxCalc substrates are available. W2 safe structural authoring is
 closed for the current Skin IR surface: receipts carry typed errors and real OxCalc transaction ids,
@@ -608,11 +611,19 @@ The roadmap alignment rule is:
       candidate. Active scenarios project per-node `NodeView.scenario_override` from the stored typed
       override payload without rewriting published `computed_value`. Programmable Skin IR tests
       prove epoch progression, active/inactive override visibility, and array override visibility.
-      Comparative overlays, chart/feed series projection, formula/rich-value override authoring, and
-      engine-published scenario revision history remain open.
+      Direct sweep/goal-seek comparison columns, chart/feed series projection, formula/rich-value
+      override authoring, and engine-published scenario revision history remain open.
+- [x] W4c `comparative-multi-overlay-projection` first scenario-backed slice:
+      `WorkspaceState.comparison` now projects a published basis column and scenario-backed
+      comparison columns. Basis values come from published `NodeView.computed_value`; scenario column
+      values come from the matching candidate projection's typed `values_by_key`; unevaluated
+      scenario columns remain empty. Programmable Skin IR tests prove basis/scenario separation,
+      scenario labels/sources, evaluated scenario values, and column removal when a scenario is
+      deleted. Direct sweep/goal-seek comparison columns, chart/feed series projection, richer value
+      provenance, and engine-published scenario revision history remain open.
 - [ ] `candidate-overlay-handle`: continue toward fully addressable, layerable, non-publishing
       candidate contexts with optimized layering/rebase, candidate add-node template initial content,
-      comparative projection, series projection, and broader what-if UX.
+      direct sweep/goal-seek comparison columns, series projection, and broader what-if UX.
 - [x] `value-epoch-keying`: per-node published-value epoch distinct from input epoch.
 
 ## Status Template

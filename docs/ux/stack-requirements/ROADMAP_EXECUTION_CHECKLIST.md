@@ -510,11 +510,20 @@ Use this as the per-tranche goal statement before implementation:
       candidate. Active scenarios project per-node `NodeView.scenario_override` from the stored typed
       override payload without rewriting published `computed_value`. Programmable Skin IR tests
       prove epoch progression, active/inactive override visibility, and array override visibility.
-      Comparative overlays, chart/feed series projection, formula/rich-value override authoring, and
-      engine-published scenario revision history remain open.
+      Direct sweep/goal-seek comparison columns, chart/feed series projection, formula/rich-value
+      override authoring, and engine-published scenario revision history remain open.
+- [x] W4c `comparative-multi-overlay-projection` first scenario-backed slice:
+      `WorkspaceState.comparison` now projects a published basis column and scenario-backed
+      comparison columns. Basis values come from published `NodeView.computed_value`; scenario column
+      values come from the matching candidate projection's typed `values_by_key`; unevaluated
+      scenario columns remain empty. Programmable Skin IR tests prove basis/scenario separation,
+      scenario labels/sources, evaluated scenario values, and column removal when a scenario is
+      deleted. Direct sweep/goal-seek comparison columns, chart/feed series projection, richer value
+      provenance, and engine-published scenario revision history remain open.
 - [ ] `candidate-overlay-handle`: continue toward fully addressable, layerable, non-publishing
       candidate contexts with optimized layering/rebase, candidate add-node template initial content,
-      comparative projection, series projection, and broader what-if UX before goal seek or sweeps.
+      direct sweep/goal-seek comparison columns, series projection, and broader what-if UX before
+      goal seek or sweeps.
 - [x] `value-epoch-keying`: per-node published-value epoch is available for projection consumers.
 
 ## Next-Wave Parking Lot

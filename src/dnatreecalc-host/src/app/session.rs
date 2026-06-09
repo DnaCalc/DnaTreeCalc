@@ -2,7 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use dnatreecalc_skin_framework::{
     AuthoringScope, BindingDiagnosticProjection, CalcRunProjection, CalcRunStateProjection,
-    CandidateNodeProjection, CandidateProjection, DependencyDescriptorProjection,
+    CandidateNodeProjection, CandidateProjection, ComparativeColumnProjection,
+    ComparativeProjection, ComparativeSourceProjection, DependencyDescriptorProjection,
     DependencyEdgeProjection, DependencyGraphProjection, DependencyKindProjection,
     DerivationHoleBindingProjection, DerivationInvocationProjection,
     DerivationOxfmlTraceEventProjection, DerivationPreparedArgumentProjection,
@@ -4741,6 +4742,9 @@ impl TreeWorkspaceSession {
             speculation_pressure_projection_for(self.context.candidate_pressure(
                 &OxCalcTreeCandidateReapPolicy::max_retained(DEFAULT_SPECULATION_REAP_BUDGET),
             ));
+        let candidates = self.candidate_projections()?;
+        let scenarios = self.scenario_manifest_projection()?;
+        let comparison = comparative_projection_for(&nodes_by_key, &candidates, &scenarios);
 
         Ok(WorkspaceState {
             workspace_id: self.workspace_id.as_str().to_string(),
@@ -4748,9 +4752,10 @@ impl TreeWorkspaceSession {
             projection_seq: 0,
             revision,
             revision_history,
-            candidates: self.candidate_projections()?,
+            candidates,
             speculation_pressure,
-            scenarios: self.scenario_manifest_projection()?,
+            scenarios,
+            comparison,
             last_run,
             node_order: self.display_order.clone(),
             key_order: self
@@ -6741,6 +6746,48 @@ fn scenario_override_calc_value(
             },
         ),
     }
+}
+
+fn comparative_projection_for(
+    nodes_by_key: &BTreeMap<NodeKey, NodeView>,
+    candidates: &[CandidateProjection],
+    scenarios: &ScenarioManifestProjection,
+) -> ComparativeProjection {
+    let basis_values = nodes_by_key
+        .iter()
+        .map(|(key, node)| (key.clone(), node.computed_value.clone()))
+        .collect::<BTreeMap<_, _>>();
+    let basis_epoch = nodes_by_key
+        .values()
+        .filter_map(|node| node.value_epoch)
+        .max();
+    let basis = ComparativeColumnProjection {
+        label: "Published".to_string(),
+        source: ComparativeSourceProjection::Published,
+        value_epoch: basis_epoch,
+        values: basis_values,
+    };
+    let candidates_by_handle = candidates
+        .iter()
+        .map(|candidate| (candidate.handle.as_str(), candidate))
+        .collect::<BTreeMap<_, _>>();
+    let columns = scenarios
+        .entries
+        .iter()
+        .filter_map(|scenario| {
+            let ScenarioSourceProjection::Candidate { handle } = &scenario.source;
+            let candidate = candidates_by_handle.get(handle.as_str())?;
+            Some(ComparativeColumnProjection {
+                label: scenario.name.clone(),
+                source: ComparativeSourceProjection::Scenario {
+                    id: scenario.id.clone(),
+                },
+                value_epoch: scenario.value_epoch,
+                values: candidate.values_by_key.clone(),
+            })
+        })
+        .collect();
+    ComparativeProjection { basis, columns }
 }
 
 fn value_projection_for(

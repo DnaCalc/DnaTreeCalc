@@ -9,7 +9,7 @@ use dnatreecalc_host::model::{
 use dnatreecalc_skin_framework::{
     ActiveSelectionDetailProjection, AuthoringScope, CalcRunStateProjection,
     ClipboardOperationProjection, ClipboardPayloadKind, ClipboardPayloadProjection,
-    FormulaBindPreviewDiagnosticStage, FormulaBindPreviewInputKind,
+    ComparativeSourceProjection, FormulaBindPreviewDiagnosticStage, FormulaBindPreviewInputKind,
     FormulaReferenceInsertionTarget, InitialNodeContentProjection, IntentError,
     InvalidationReasonProjection, MutationImpactBlockedReasonProjection,
     MutationImpactIntentProjection, NodeAttributePatch, NodeContentKind, NodeId,
@@ -1035,6 +1035,18 @@ fn programmable_skin_projects_scenario_manifest_over_candidate_handles() {
     assert!(scenario.overridden_nodes.is_empty());
     assert!(scenario.value_epoch.is_some());
     assert!(!scenario.is_active);
+    assert_eq!(created_state.comparison.columns.len(), 1);
+    assert_eq!(created_state.comparison.columns[0].label, "Bull");
+    assert_eq!(
+        created_state.comparison.columns[0].source,
+        ComparativeSourceProjection::Scenario {
+            id: "scenario:bull".to_string()
+        }
+    );
+    assert!(
+        created_state.comparison.columns[0].values.is_empty(),
+        "unevaluated scenario columns should not fabricate values"
+    );
     assert_eq!(
         created_state
             .candidates
@@ -1091,6 +1103,7 @@ fn programmable_skin_projects_scenario_manifest_over_candidate_handles() {
     assert!(delete.accepted, "{:?}", delete.error);
     let deleted_state = skin.state();
     assert!(deleted_state.scenarios.entries.is_empty());
+    assert!(deleted_state.comparison.columns.is_empty());
     assert_eq!(deleted_state.scenarios.active, None);
     assert_eq!(deleted_state.candidates[0].retention_pin_count, 0);
     assert!(delete.delta.changes.iter().any(|change| {
@@ -1119,6 +1132,16 @@ fn programmable_skin_sets_and_clears_candidate_backed_scenario_overrides() {
         .key
         .clone();
     skin.assert_scalar("Root.B", "2");
+    assert_eq!(
+        skin.state()
+            .comparison
+            .basis
+            .values
+            .get(&root_b)
+            .map(NodeValueProjection::display_text)
+            .as_deref(),
+        Some("2")
+    );
 
     assert!(skin.try_open_candidate().accepted);
     let handle = skin.state().candidates[0].handle.clone();
@@ -1186,6 +1209,40 @@ fn programmable_skin_sets_and_clears_candidate_backed_scenario_overrides() {
             .map(NodeValueProjection::display_text)
             .as_deref(),
         Some("6")
+    );
+    let comparison_column = evaluated
+        .comparison
+        .columns
+        .iter()
+        .find(|column| {
+            matches!(
+                &column.source,
+                ComparativeSourceProjection::Scenario { id } if id == "scenario:bull"
+            )
+        })
+        .expect("scenario comparison column should project");
+    assert_eq!(comparison_column.label, "Bull");
+    assert_eq!(
+        comparison_column.value_epoch,
+        evaluated.scenarios.entries[0].value_epoch
+    );
+    assert_eq!(
+        comparison_column
+            .values
+            .get(&root_b)
+            .map(NodeValueProjection::display_text)
+            .as_deref(),
+        Some("6")
+    );
+    assert_eq!(
+        evaluated
+            .comparison
+            .basis
+            .values
+            .get(&root_b)
+            .map(NodeValueProjection::display_text)
+            .as_deref(),
+        Some("2")
     );
     skin.assert_scalar("Root.B", "2");
 
