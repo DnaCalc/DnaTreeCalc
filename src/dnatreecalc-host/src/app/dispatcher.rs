@@ -425,6 +425,18 @@ impl Dispatcher for HostDispatcher {
                     |error| self.reject_current(error),
                     receipt_for_projection_change,
                 ),
+            WorkspaceIntent::CreateScenario {
+                scenario_id,
+                name,
+                base_scenario_id,
+            } => self
+                .apply_projection_edit(|session| {
+                    session.create_scenario(scenario_id, name, base_scenario_id)
+                })
+                .map_or_else(
+                    |error| self.reject_current(error),
+                    receipt_for_projection_change,
+                ),
             WorkspaceIntent::ActivateScenario { scenario_id } => self
                 .apply_projection_edit(|session| session.activate_scenario(scenario_id.as_deref()))
                 .map_or_else(

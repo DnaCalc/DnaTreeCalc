@@ -5,6 +5,7 @@ use std::fmt;
 use crate::identity::{NodeId, NodeKey};
 use crate::intent::{AuthoringScope, TableCellInput, TableRowInput};
 use crate::selection::SelectionState;
+use serde::{Deserialize, Serialize};
 
 /// Read-side projection of the workspace, as seen by a mounted skin.
 ///
@@ -810,7 +811,7 @@ impl fmt::Display for NodeContentKind {
 }
 
 /// What the skin should render for a node's value cell.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum NodeValueProjection {
     /// The node has never been evaluated by OxCalc.
     #[default]

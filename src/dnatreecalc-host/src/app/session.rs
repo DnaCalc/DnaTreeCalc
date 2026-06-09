@@ -102,6 +102,54 @@ pub struct DnaTreeWorkspaceDocument {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub selected_node: Option<String>,
     pub oxcalc_workspace: OxCalcTreeWorkspaceSnapshot,
+    #[serde(default)]
+    pub what_if: DnaTreeWhatIfDocument,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DnaTreeWhatIfDocument {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active_scenario_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active_sweep_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub scenarios: Vec<DnaTreeScenarioDocument>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sweeps: Vec<DnaTreeSweepDocument>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DnaTreeScenarioDocument {
+    pub id: String,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_scenario_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub overrides: Vec<DnaTreeScenarioOverrideDocument>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DnaTreeScenarioOverrideDocument {
+    pub node: NodeKey,
+    pub value: NodeValueProjection,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DnaTreeSweepDocument {
+    pub id: String,
+    pub name: String,
+    pub input_node: NodeKey,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_scenario_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub points: Vec<DnaTreeSweepPointDocument>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DnaTreeSweepPointDocument {
+    pub id: String,
+    pub label: String,
+    pub value: NodeValueProjection,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -152,6 +200,8 @@ struct TreeWorkspaceScenarioState {
     overrides: BTreeMap<NodeKey, TreeWorkspaceScenarioOverrideState>,
     value_epoch: u64,
     visible_in_manifest: bool,
+    persistence_base_scenario_id: Option<String>,
+    persistable: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -326,6 +376,7 @@ impl TreeWorkspaceSession {
             profile: self.profile.to_string(),
             selected_node: selected_node.map(|node| node.as_str().to_string()),
             oxcalc_workspace: self.export_workspace_snapshot()?,
+            what_if: self.export_what_if_document(),
         })
     }
 
@@ -342,8 +393,154 @@ impl TreeWorkspaceSession {
             .selected_node
             .as_ref()
             .map(|node| NodeId::new(node.clone()));
-        let session = Self::from_workspace_snapshot(document.oxcalc_workspace, profile)?;
+        let mut session = Self::from_workspace_snapshot(document.oxcalc_workspace, profile)?;
+        session.restore_what_if_document(document.what_if)?;
         Ok((session, selection))
+    }
+
+    fn export_what_if_document(&self) -> DnaTreeWhatIfDocument {
+        let scenarios = self
+            .scenarios
+            .values()
+            .filter(|scenario| scenario.visible_in_manifest && scenario.persistable)
+            .map(|scenario| DnaTreeScenarioDocument {
+                id: scenario.id.clone(),
+                name: scenario.name.clone(),
+                base_scenario_id: scenario.persistence_base_scenario_id.clone(),
+                overrides: scenario
+                    .overrides
+                    .iter()
+                    .map(|(node, override_state)| DnaTreeScenarioOverrideDocument {
+                        node: node.clone(),
+                        value: override_state.value.clone(),
+                    })
+                    .collect(),
+            })
+            .collect::<Vec<_>>();
+        let persistable_scenario_ids = scenarios
+            .iter()
+            .map(|scenario| scenario.id.clone())
+            .collect::<BTreeSet<_>>();
+        let sweeps = self
+            .sweeps
+            .values()
+            .filter(|sweep| {
+                sweep
+                    .base_scenario_id
+                    .as_deref()
+                    .is_none_or(|base| persistable_scenario_ids.contains(base))
+            })
+            .map(|sweep| DnaTreeSweepDocument {
+                id: sweep.id.clone(),
+                name: sweep.name.clone(),
+                input_node: sweep.input_node.clone(),
+                base_scenario_id: sweep.base_scenario_id.clone(),
+                points: sweep
+                    .points
+                    .iter()
+                    .map(|point| DnaTreeSweepPointDocument {
+                        id: point.id.clone(),
+                        label: point.label.clone(),
+                        value: point.input_value.clone(),
+                    })
+                    .collect(),
+            })
+            .collect::<Vec<_>>();
+        let persistable_sweep_ids = sweeps
+            .iter()
+            .map(|sweep| sweep.id.clone())
+            .collect::<BTreeSet<_>>();
+        DnaTreeWhatIfDocument {
+            active_scenario_id: self
+                .active_scenario_id
+                .as_ref()
+                .filter(|id| persistable_scenario_ids.contains(*id))
+                .cloned(),
+            active_sweep_id: self
+                .active_sweep_id
+                .as_ref()
+                .filter(|id| persistable_sweep_ids.contains(*id))
+                .cloned(),
+            scenarios,
+            sweeps,
+        }
+    }
+
+    fn restore_what_if_document(
+        &mut self,
+        document: DnaTreeWhatIfDocument,
+    ) -> Result<(), TreeWorkspaceSessionError> {
+        let mut pending_scenarios = document.scenarios;
+        while !pending_scenarios.is_empty() {
+            let before_len = pending_scenarios.len();
+            let mut deferred = Vec::new();
+            for scenario in pending_scenarios {
+                if scenario
+                    .base_scenario_id
+                    .as_ref()
+                    .is_some_and(|base| !self.scenarios.contains_key(base))
+                {
+                    deferred.push(scenario);
+                    continue;
+                }
+                self.restore_scenario_document(scenario)?;
+            }
+            if deferred.len() == before_len {
+                let missing = deferred
+                    .first()
+                    .and_then(|scenario| scenario.base_scenario_id.clone())
+                    .unwrap_or_else(|| deferred[0].id.clone());
+                return Err(TreeWorkspaceSessionError::UnknownScenario {
+                    scenario_id: missing,
+                });
+            }
+            pending_scenarios = deferred;
+        }
+        for sweep in document.sweeps {
+            self.create_scenario_sweep(
+                sweep.id,
+                sweep.name,
+                sweep.base_scenario_id,
+                sweep.input_node,
+                sweep
+                    .points
+                    .into_iter()
+                    .map(|point| SweepPointInput {
+                        point_id: point.id,
+                        label: point.label,
+                        value: point.value,
+                    })
+                    .collect(),
+            )?;
+        }
+        if let Some(active_scenario_id) = document.active_scenario_id {
+            self.activate_scenario(Some(&active_scenario_id))?;
+        }
+        if let Some(active_sweep_id) = document.active_sweep_id {
+            self.activate_sweep(Some(&active_sweep_id))?;
+        }
+        Ok(())
+    }
+
+    fn restore_scenario_document(
+        &mut self,
+        scenario: DnaTreeScenarioDocument,
+    ) -> Result<(), TreeWorkspaceSessionError> {
+        let projection = self.create_scenario(
+            scenario.id.clone(),
+            scenario.name,
+            scenario.base_scenario_id.clone(),
+        )?;
+        let ScenarioSourceProjection::Candidate { handle } = projection.source;
+        for override_document in scenario.overrides {
+            self.set_scenario_override(
+                &scenario.id,
+                &override_document.node,
+                &override_document.value,
+            )?;
+        }
+        self.evaluate_candidate(&handle)?;
+        Ok(())
     }
 
     fn create_table_cell_nodes_from_fixture(
@@ -1631,6 +1828,38 @@ impl TreeWorkspaceSession {
             name,
             candidate_handle,
             true,
+            None,
+            false,
+        )
+    }
+
+    pub fn create_scenario(
+        &mut self,
+        scenario_id: impl Into<String>,
+        name: impl Into<String>,
+        base_scenario_id: Option<String>,
+    ) -> Result<ScenarioProjection, TreeWorkspaceSessionError> {
+        let base_candidate_handle = match &base_scenario_id {
+            Some(base_scenario_id) => Some(
+                self.scenarios
+                    .get(base_scenario_id)
+                    .filter(|scenario| scenario.visible_in_manifest && scenario.persistable)
+                    .ok_or_else(|| TreeWorkspaceSessionError::UnknownScenario {
+                        scenario_id: base_scenario_id.clone(),
+                    })?
+                    .candidate_handle
+                    .clone(),
+            ),
+            None => None,
+        };
+        let candidate = self.open_candidate(base_candidate_handle.as_deref())?;
+        self.create_scenario_from_candidate_with_visibility(
+            scenario_id,
+            name,
+            &candidate.handle,
+            true,
+            base_scenario_id,
+            true,
         )
     }
 
@@ -1640,6 +1869,8 @@ impl TreeWorkspaceSession {
         name: impl Into<String>,
         candidate_handle: &str,
         visible_in_manifest: bool,
+        persistence_base_scenario_id: Option<String>,
+        persistable: bool,
     ) -> Result<ScenarioProjection, TreeWorkspaceSessionError> {
         let scenario_id = scenario_id.into();
         if self.scenarios.contains_key(&scenario_id) {
@@ -1655,6 +1886,8 @@ impl TreeWorkspaceSession {
             overrides: BTreeMap::new(),
             value_epoch,
             visible_in_manifest,
+            persistence_base_scenario_id,
+            persistable,
         };
         self.scenarios.insert(scenario_id.clone(), scenario);
         self.scenario_projection(&scenario_id)
@@ -1697,6 +1930,7 @@ impl TreeWorkspaceSession {
         }
         self.scenarios.remove(scenario_id);
         self.remove_sweep_points_for_scenario(scenario_id);
+        self.remove_sweeps_for_base_scenario(scenario_id)?;
         if self.active_scenario_id.as_deref() == Some(scenario_id) {
             self.active_scenario_id = None;
         }
@@ -1842,6 +2076,8 @@ impl TreeWorkspaceSession {
                 &scenario_id,
                 &point.label,
                 &candidate.handle,
+                false,
+                base_scenario_id.clone(),
                 false,
             )?;
             self.set_scenario_override(&scenario_id, &input_node, &point.value)?;
@@ -5375,6 +5611,32 @@ impl TreeWorkspaceSession {
                 self.active_sweep_id = None;
             }
         }
+    }
+
+    fn remove_sweeps_for_base_scenario(
+        &mut self,
+        scenario_id: &str,
+    ) -> Result<(), TreeWorkspaceSessionError> {
+        let removed = self
+            .sweeps
+            .iter()
+            .filter_map(|(sweep_id, sweep)| {
+                (sweep.base_scenario_id.as_deref() == Some(scenario_id)).then(|| sweep_id.clone())
+            })
+            .collect::<Vec<_>>();
+        for sweep_id in removed {
+            if let Some(sweep) = self.sweeps.remove(&sweep_id) {
+                for point in sweep.points {
+                    if self.scenarios.contains_key(&point.scenario_id) {
+                        self.delete_scenario(&point.scenario_id)?;
+                    }
+                }
+            }
+            if self.active_sweep_id.as_deref() == Some(sweep_id.as_str()) {
+                self.active_sweep_id = None;
+            }
+        }
+        Ok(())
     }
 
     fn candidate_node_content_text(

@@ -1882,6 +1882,229 @@ fn programmable_skin_layers_sweep_points_over_visible_scenario() {
             .as_deref(),
         Some("11")
     );
+
+    let delete_base = skin.try_delete_scenario("scenario:base");
+    assert!(delete_base.accepted, "{:?}", delete_base.error);
+    let cleaned = skin.state();
+    assert!(cleaned.scenarios.entries.is_empty());
+    assert!(cleaned.sweeps.entries.is_empty());
+    assert!(cleaned.comparison.columns.is_empty());
+}
+
+#[test]
+fn programmable_skin_persists_managed_scenarios_and_sweeps_through_workspace_document() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    skin.add_node(Some("Root"), "A", "1");
+    skin.add_node(Some("Root"), "B", "=A*2");
+    let state = skin.state();
+    let a_key = state.node(&NodeId::new("Root.A")).unwrap().key.clone();
+    let b_key = state.node(&NodeId::new("Root.B")).unwrap().key.clone();
+
+    let create = skin.try_create_scenario("scenario:managed", "Managed", None);
+    assert!(create.accepted, "{:?}", create.error);
+    let set = skin.try_set_scenario_override(
+        "scenario:managed",
+        a_key.clone(),
+        NodeValueProjection::Number {
+            raw: "5".to_string(),
+            display: "5".to_string(),
+        },
+    );
+    assert!(set.accepted, "{:?}", set.error);
+    let scenario_handle = match &skin.state().scenarios.entries[0].source {
+        ScenarioSourceProjection::Candidate { handle } => handle.clone(),
+    };
+    assert!(skin.try_evaluate_candidate(&scenario_handle).accepted);
+    let create_child = skin.try_create_scenario(
+        "scenario:a-child",
+        "Managed Child",
+        Some("scenario:managed"),
+    );
+    assert!(create_child.accepted, "{:?}", create_child.error);
+    let set_child = skin.try_set_scenario_override(
+        "scenario:a-child",
+        a_key.clone(),
+        NodeValueProjection::Number {
+            raw: "6".to_string(),
+            display: "6".to_string(),
+        },
+    );
+    assert!(set_child.accepted, "{:?}", set_child.error);
+    let child_handle = match &skin
+        .state()
+        .scenarios
+        .entries
+        .iter()
+        .find(|scenario| scenario.id == "scenario:a-child")
+        .expect("child scenario should project")
+        .source
+    {
+        ScenarioSourceProjection::Candidate { handle } => handle.clone(),
+    };
+    assert!(skin.try_evaluate_candidate(&child_handle).accepted);
+    assert!(
+        skin.try_create_scenario_sweep(
+            "sweep:managed",
+            "Managed Sweep",
+            Some("scenario:managed"),
+            a_key,
+            vec![
+                sweep_point("six", "Six", "6"),
+                sweep_point("seven", "Seven", "7")
+            ],
+        )
+        .accepted
+    );
+    assert!(
+        skin.try_activate_scenario(Some("scenario:a-child"))
+            .accepted
+    );
+    assert!(skin.try_activate_sweep(Some("sweep:managed")).accepted);
+
+    let document = harness
+        .session
+        .lock()
+        .unwrap()
+        .export_dnatree_document(None)
+        .expect("document export succeeds");
+    assert_eq!(
+        document.what_if.active_scenario_id.as_deref(),
+        Some("scenario:a-child")
+    );
+    assert_eq!(
+        document.what_if.active_sweep_id.as_deref(),
+        Some("sweep:managed")
+    );
+    assert_eq!(document.what_if.scenarios.len(), 2);
+    assert_eq!(
+        document
+            .what_if
+            .scenarios
+            .iter()
+            .map(|scenario| scenario.id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["scenario:a-child", "scenario:managed"],
+        "document order is map order, so restore must not rely on bases appearing first"
+    );
+    assert_eq!(document.what_if.sweeps.len(), 1);
+
+    let (imported, _) =
+        TreeWorkspaceSession::from_dnatree_document(document).expect("document import succeeds");
+    let restored = imported.workspace_state().expect("imported state projects");
+    assert_eq!(
+        restored.scenarios.active.as_deref(),
+        Some("scenario:a-child")
+    );
+    assert_eq!(restored.sweeps.active.as_deref(), Some("sweep:managed"));
+    assert_eq!(restored.scenarios.entries.len(), 2);
+    assert_eq!(restored.sweeps.entries.len(), 1);
+    assert_eq!(
+        restored
+            .comparison
+            .basis
+            .values
+            .get(&b_key)
+            .map(NodeValueProjection::display_text)
+            .as_deref(),
+        Some("2")
+    );
+    assert_eq!(
+        restored
+            .comparison
+            .columns
+            .iter()
+            .find(|column| {
+                matches!(
+                    &column.source,
+                    ComparativeSourceProjection::Scenario { id } if id == "scenario:managed"
+                )
+            })
+            .and_then(|column| column.values.get(&b_key))
+            .map(NodeValueProjection::display_text)
+            .as_deref(),
+        Some("10")
+    );
+    assert_eq!(
+        restored
+            .comparison
+            .columns
+            .iter()
+            .find(|column| {
+                matches!(
+                    &column.source,
+                    ComparativeSourceProjection::Scenario { id } if id == "scenario:a-child"
+                )
+            })
+            .and_then(|column| column.values.get(&b_key))
+            .map(NodeValueProjection::display_text)
+            .as_deref(),
+        Some("12")
+    );
+    let restored_sweep_values = restored
+        .comparison
+        .columns
+        .iter()
+        .filter_map(|column| match &column.source {
+            ComparativeSourceProjection::SweepPoint { point_id, .. } => Some((
+                point_id.as_str(),
+                column
+                    .values
+                    .get(&b_key)
+                    .map(NodeValueProjection::display_text),
+            )),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        restored_sweep_values,
+        vec![
+            ("six", Some("12".to_string())),
+            ("seven", Some("14".to_string())),
+        ]
+    );
+}
+
+#[test]
+fn programmable_skin_does_not_persist_arbitrary_candidate_backed_scenarios_as_overrides() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    skin.add_node(Some("Root"), "A", "1");
+    assert!(skin.try_open_candidate().accepted);
+    let handle = skin.state().candidates[0].handle.clone();
+    assert!(
+        skin.try_edit_candidate_content(&handle, "Root.A", "9")
+            .accepted
+    );
+    assert!(skin.try_evaluate_candidate(&handle).accepted);
+    let create = skin.try_create_scenario_from_candidate("scenario:freeform", "Freeform", &handle);
+    assert!(create.accepted, "{:?}", create.error);
+    assert_eq!(skin.state().scenarios.entries.len(), 1);
+
+    let document = harness
+        .session
+        .lock()
+        .unwrap()
+        .export_dnatree_document(None)
+        .expect("document export succeeds");
+    assert!(
+        document.what_if.scenarios.is_empty(),
+        "arbitrary candidate-backed scenarios are transient until OxCalc exposes durable candidate/scenario snapshots"
+    );
+    let (imported, _) =
+        TreeWorkspaceSession::from_dnatree_document(document).expect("document import succeeds");
+    assert!(
+        imported
+            .workspace_state()
+            .expect("imported state projects")
+            .scenarios
+            .entries
+            .is_empty()
+    );
 }
 
 #[test]

@@ -165,7 +165,7 @@ one-line shape. Every field is verbatim in
 - `skin-error-isolation` · n/a · M — shell wraps each slot mount in an error boundary; a panicking skin shows a fallback in *its* slot without taking down others.
 - `empty-state-onboarding` · n/a · S — `NewWorkspace` seeds from a named `StarterTemplate`; command catalog exposes onboarding metadata.
 - `pinned-speculative-view` · extend · M — audited shared `pinned_speculations:[PinnedView{handle, label, basis_epoch}]` keeps a candidate alive (GC root) while exploring others.
-- `scenario-persist-migrate` · n/a · M — scenario *names/metadata* persist via `SkinState`; override **values** round-trip through the engine model, never a parallel store.
+- `scenario-persist-migrate` · n/a · M — managed scenario *names/metadata* persist with the workspace document; override **values** re-materialize through OxCalc candidates from typed payloads, never rendered-value storage. SkinState may persist per-skin scenario rail presentation only.
 - `collab-presence-markers` · new · M — shared `peers:[PresenceMarker{peer_id, slot, selection, editing}]` + advisory `ClaimNode`/`ReleaseNode` soft-locks *(research)*.
 
 ---

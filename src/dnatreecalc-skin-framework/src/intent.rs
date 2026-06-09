@@ -297,6 +297,15 @@ pub enum WorkspaceIntent {
         name: String,
         candidate_handle: String,
     },
+    /// Create a host-managed scenario from the published state or a visible
+    /// managed base scenario. The host opens and retains the OxCalc candidate,
+    /// making the scenario reconstructable from typed overrides during
+    /// document reload.
+    CreateScenario {
+        scenario_id: String,
+        name: String,
+        base_scenario_id: Option<String>,
+    },
     /// Set or clear the active scenario rail selection.
     ActivateScenario {
         scenario_id: Option<String>,
@@ -807,6 +816,7 @@ impl Dispatcher for InMemoryDispatcher {
             | WorkspaceIntent::ReapCandidates { .. }
             | WorkspaceIntent::CommitCandidate { .. }
             | WorkspaceIntent::CreateScenarioFromCandidate { .. }
+            | WorkspaceIntent::CreateScenario { .. }
             | WorkspaceIntent::ActivateScenario { .. }
             | WorkspaceIntent::DeleteScenario { .. }
             | WorkspaceIntent::SetScenarioOverride { .. }

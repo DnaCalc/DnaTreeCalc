@@ -29,9 +29,9 @@ use dnatreecalc_host::app::{
 };
 use dnatreecalc_host::model::{WorkspaceFixture, WorkspaceModel};
 use dnatreecalc_skin_framework::{
-    Dispatcher, ErasedSkinContext, InMemorySkinStatePersistenceStore, NodeId, SelectionState,
-    SharedSkinState, SharedSkinStateHandle, SkinMountSlot, ThemeTokens, WorkspaceDelta,
-    WorkspaceIntent,
+    ComparativeSourceProjection, Dispatcher, ErasedSkinContext, InMemorySkinStatePersistenceStore,
+    NodeId, NodeValueProjection, SelectionState, SharedSkinState, SharedSkinStateHandle,
+    SkinMountSlot, ThemeTokens, WorkspaceDelta, WorkspaceIntent,
 };
 use dnatreecalc_skins::{
     DEPENDENCY_INSPECTOR_ID, FORMULA_TREE_ID, OUTLINE_TABLE_ID, TRIPLE_EDITOR_ID, VALUE_BOARD_ID,
@@ -507,6 +507,119 @@ fn host_dispatcher_autosaves_workspace_documents_through_store() {
     assert_eq!(
         scalar_value(&restored_state, "Accounts.2005.Q1.Income"),
         Some("0.8")
+    );
+}
+
+#[test]
+fn host_dispatcher_autosaves_managed_what_if_documents_through_store() {
+    let mut session = TreeWorkspaceSession::from_model(
+        &WorkspaceModel::try_from(WorkspaceFixture::from_repo_fixture("accounts").unwrap())
+            .unwrap(),
+    )
+    .unwrap();
+    session.recalculate().unwrap();
+    let workspace_state = session.workspace_state().unwrap();
+    let selection = RwSignal::new(SelectionState::default());
+    let workspace = RwSignal::new(workspace_state);
+    let latest_delta = RwSignal::new(WorkspaceDelta::unchanged(0));
+    let shared = SharedSkinStateHandle::new(SharedSkinState::default());
+    let store = Arc::new(InMemoryWorkspaceDocumentStore::default());
+    let dispatcher = HostDispatcher::with_session_shared_and_workspace_store(
+        selection,
+        workspace,
+        latest_delta,
+        Arc::new(std::sync::Mutex::new(session)),
+        Some(shared),
+        Some(store.clone()),
+    );
+
+    assert!(dispatcher.dispatch(WorkspaceIntent::NewWorkspace).accepted);
+    assert!(
+        dispatcher
+            .dispatch(WorkspaceIntent::AddNode {
+                parent: None,
+                symbol: "Root".to_string(),
+                initial: dnatreecalc_skin_framework::InitialNodeContentProjection::Empty,
+                is_meta: false,
+            })
+            .accepted
+    );
+    assert!(
+        dispatcher
+            .dispatch(WorkspaceIntent::AddNode {
+                parent: Some(NodeId::new("Root")),
+                symbol: "A".to_string(),
+                initial: dnatreecalc_skin_framework::InitialNodeContentProjection::Literal {
+                    content: "1".to_string(),
+                },
+                is_meta: false,
+            })
+            .accepted
+    );
+    assert!(
+        dispatcher
+            .dispatch(WorkspaceIntent::AddNode {
+                parent: Some(NodeId::new("Root")),
+                symbol: "B".to_string(),
+                initial: dnatreecalc_skin_framework::InitialNodeContentProjection::Literal {
+                    content: "=A*2".to_string(),
+                },
+                is_meta: false,
+            })
+            .accepted
+    );
+    let state = workspace.get_untracked();
+    let a_key = state.node(&NodeId::new("Root.A")).unwrap().key.clone();
+    let b_key = state.node(&NodeId::new("Root.B")).unwrap().key.clone();
+    assert!(
+        dispatcher
+            .dispatch(WorkspaceIntent::CreateScenario {
+                scenario_id: "scenario:persisted".to_string(),
+                name: "Persisted".to_string(),
+                base_scenario_id: None,
+            })
+            .accepted
+    );
+    assert!(
+        dispatcher
+            .dispatch(WorkspaceIntent::SetScenarioOverride {
+                scenario_id: "scenario:persisted".to_string(),
+                node: a_key,
+                value: NodeValueProjection::Number {
+                    raw: "5".to_string(),
+                    display: "5".to_string(),
+                },
+            })
+            .accepted
+    );
+
+    let document = store
+        .load_workspace("Workspace 1")
+        .unwrap()
+        .expect("autosave should persist active workspace document");
+    assert_eq!(document.what_if.scenarios.len(), 1);
+    assert_eq!(document.what_if.scenarios[0].id, "scenario:persisted");
+
+    let (restored, _) = workspace_session_from_document_store_or_default(store.as_ref()).unwrap();
+    let restored_state = restored.workspace_state().unwrap();
+    let scenario_column = restored_state
+        .comparison
+        .columns
+        .iter()
+        .find(|column| {
+            matches!(
+                &column.source,
+                ComparativeSourceProjection::Scenario { id } if id == "scenario:persisted"
+            )
+        })
+        .expect("managed scenario should restore as comparison column");
+    assert_eq!(
+        scenario_column
+            .values
+            .get(&b_key)
+            .map(NodeValueProjection::display_text)
+            .as_deref(),
+        Some("10")
     );
 }
 

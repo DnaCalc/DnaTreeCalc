@@ -363,6 +363,19 @@ impl ProgrammableDriver {
             })
     }
 
+    pub fn try_create_scenario(
+        &self,
+        scenario_id: &str,
+        name: &str,
+        base_scenario_id: Option<&str>,
+    ) -> IntentReceipt {
+        self.dispatch.dispatch(WorkspaceIntent::CreateScenario {
+            scenario_id: scenario_id.to_string(),
+            name: name.to_string(),
+            base_scenario_id: base_scenario_id.map(ToString::to_string),
+        })
+    }
+
     pub fn try_activate_scenario(&self, scenario_id: Option<&str>) -> IntentReceipt {
         self.dispatch.dispatch(WorkspaceIntent::ActivateScenario {
             scenario_id: scenario_id.map(ToString::to_string),

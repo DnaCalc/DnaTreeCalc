@@ -808,7 +808,18 @@ The roadmap alignment rule is:
       `WorkspaceState.series`. Programmable Skin IR tests prove published-base sweeps,
       scenario-layered sweeps, typed input values, evaluated dependent formula values, active sweep
       projection, deletion cleanup, and hidden backing-scenario behavior from outside the skin layer.
-      Goal-seek solving, richer sweep provenance, and persisted scenario/sweep metadata remain open.
+      Goal-seek solving, richer sweep provenance, and durable arbitrary-candidate scenario
+      snapshots remain open.
+- [x] W5 early / W6 `scenario-persist-migrate` first managed document slice:
+      Skin IR now exposes a host-managed `CreateScenario` intent that opens the backing OxCalc
+      candidate itself, making the scenario reconstructable from typed overrides. `.dnatree`
+      workspace documents persist managed scenario names, active scenario id, typed override
+      payloads, managed sweep specs, and active sweep id; reload re-materializes candidates through
+      OxCalc and re-evaluates values instead of storing rendered results. Arbitrary
+      `CreateScenarioFromCandidate` scenarios remain transient because their candidate-private
+      structural/content edits are not yet durable engine scenario snapshots. Programmable Skin IR
+      and walking-skeleton autosave tests prove document export/import plus browser/desktop store
+      autosave paths from outside the skin layer.
 - [x] W5 early `projection-delta-channel` / `projection-version-stamp` synchronous projection slice:
       `SkinContext` and `ErasedSkinContext` now expose a required `latest_delta:
       ReadSignal<WorkspaceDelta>` beside the full `WorkspaceState` read signal. The host dispatcher
@@ -838,8 +849,9 @@ The roadmap alignment rule is:
       without giving skins serialization responsibility. The host exposes in-memory and native
       local-file stores for tests/desktop hosts, and the wasm web entrypoint restores/saves through
       browser `localStorage`. Walking-skeleton tests prove dispatcher autosave, restore through the
-      store, and native local-file document storage. Candidate overlays, scenarios, and richer
-      workspace metadata persistence remain explicit later-policy work.
+      store, native local-file document storage, and managed what-if document autosave. Arbitrary
+      candidate overlays, freeform candidate-backed scenarios, and richer workspace metadata
+      persistence remain explicit later-policy work.
 - [x] W5 early `design-token-layer` slice:
       Skin IR now carries required `ThemeTokens` on both `SkinContext` and `ErasedSkinContext`,
       with typed `ThemeMode { Light, Dark, HighContrast }` and CSS custom property emission. The

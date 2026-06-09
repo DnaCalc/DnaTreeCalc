@@ -641,7 +641,18 @@ Use this as the per-tranche goal statement before implementation:
       `WorkspaceState.series`. Programmable Skin IR tests prove published-base sweeps,
       scenario-layered sweeps, typed input values, evaluated dependent formula values, active sweep
       projection, deletion cleanup, and hidden backing-scenario behavior from outside the skin layer.
-      Goal-seek solving, richer sweep provenance, and persisted scenario/sweep metadata remain open.
+      Goal-seek solving, richer sweep provenance, and durable arbitrary-candidate scenario
+      snapshots remain open.
+- [x] W5 early / W6 `scenario-persist-migrate` first managed document slice:
+      Skin IR now exposes a host-managed `CreateScenario` intent that opens the backing OxCalc
+      candidate itself, making the scenario reconstructable from typed overrides. `.dnatree`
+      workspace documents persist managed scenario names, active scenario id, typed override
+      payloads, managed sweep specs, and active sweep id; reload re-materializes candidates through
+      OxCalc and re-evaluates values instead of storing rendered results. Arbitrary
+      `CreateScenarioFromCandidate` scenarios remain transient because their candidate-private
+      structural/content edits are not yet durable engine scenario snapshots. Programmable Skin IR
+      and walking-skeleton autosave tests prove document export/import plus browser/desktop store
+      autosave paths from outside the skin layer.
 - [x] W5 early `projection-delta-channel` / `projection-version-stamp` synchronous projection slice:
       Skin IR now carries a required `latest_delta: ReadSignal<WorkspaceDelta>` beside the full
       `WorkspaceState` signal, and the host dispatcher owns a single publication path that stamps
@@ -665,8 +676,8 @@ Use this as the per-tranche goal statement before implementation:
       seam with a workspace catalog and active-workspace pointer. `HostDispatcher` autosaves
       accepted intents, native hosts can use the local-file store, and the wasm web entrypoint
       restores/saves through browser `localStorage`. Walking-skeleton tests prove dispatcher
-      autosave/restore and desktop local-file document storage. Candidate/scenario persistence
-      remains later-policy work.
+      autosave/restore, desktop local-file document storage, and managed what-if document autosave.
+      Arbitrary candidate overlays and freeform candidate-backed scenarios remain later-policy work.
 - [x] W5 early `design-token-layer` slice:
       Skin IR now exposes required `ThemeTokens` with typed light, dark, and high-contrast modes.
       The shell injects those tokens as `.dtc-shell` CSS custom properties and passes the same
