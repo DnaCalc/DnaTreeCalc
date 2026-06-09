@@ -65,8 +65,7 @@ records can name candidate-added nodes without publishing them. The candidate in
 formula initial-content slice is now landed: candidate adds read formula text from candidate-private
 table metadata, dry-bind it in the candidate prospective-node context, and reject row-context table
 formulas before private mutation. Optimized layering/rebase, candidate add-node template policy,
-scenario/what-if UX, richer candidate invalidation summaries, and broader candidate overlay GC
-remain open. Remaining W3
+scenario/what-if UX, and broader candidate overlay GC remain open. Remaining W3
 formula-rewrite/rebind verbs stay parked until their owning
 OxFml/OxCalc substrates are available. W2 safe structural authoring is
 closed for the current Skin IR surface: receipts carry typed errors and real OxCalc transaction ids,
@@ -544,9 +543,16 @@ The roadmap alignment rule is:
       OxCalc to dry-bind the inherited formula in the candidate prospective-node context, and
       programmable Skin IR tests prove successful inherited formula projection plus row-context
       rejection without private mutation.
+- [x] `candidate-overlay-handle` candidate private-edit invalidation summaries:
+      OxCalc attaches planning-derived transaction summaries to candidate apply-only revision entries
+      when every private edit maps to an existing invalidation preview mutation, and DnaTreeCalc
+      projects those summaries through candidate revision history. Programmable Skin IR tests prove a
+      private candidate content edit carries invalidated-node counts and rebind facts without
+      publishing live state. Unsupported candidate edit families remain summary-less rather than
+      fabricated.
 - [ ] `candidate-overlay-handle`: continue toward fully addressable, layerable, non-publishing
       candidate contexts with optimized layering/rebase, candidate add-node template initial content,
-      richer candidate invalidation summaries, and overlay GC.
+      and overlay GC.
 - [x] `value-epoch-keying`: per-node published-value epoch distinct from input epoch.
 
 ## Status Template

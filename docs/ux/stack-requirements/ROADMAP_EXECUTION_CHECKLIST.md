@@ -469,10 +469,15 @@ Use this as the per-tranche goal statement before implementation:
       OxCalc to dry-bind the inherited formula in the candidate prospective-node context, and
       programmable Skin IR tests prove successful inherited formula projection plus row-context
       rejection without private mutation.
+- [x] `candidate-overlay-handle` candidate private-edit invalidation summaries:
+      OxCalc attaches planning-derived transaction summaries to candidate apply-only revision entries
+      when every private edit maps to an existing invalidation preview mutation, and DnaTreeCalc
+      projects those summaries through candidate revision history. Programmable Skin IR tests prove a
+      private candidate content edit carries invalidated-node counts and rebind facts without
+      publishing live state.
 - [ ] `candidate-overlay-handle`: continue toward fully addressable, layerable, non-publishing
       candidate contexts with optimized layering/rebase, candidate add-node template initial content,
-      richer candidate invalidation summaries, and overlay GC before scenarios, what-if previews,
-      goal seek, sweeps, or comparative overlays.
+      and overlay GC before scenarios, what-if previews, goal seek, sweeps, or comparative overlays.
 - [x] `value-epoch-keying`: per-node published-value epoch is available for projection consumers.
 
 ## Next-Wave Parking Lot

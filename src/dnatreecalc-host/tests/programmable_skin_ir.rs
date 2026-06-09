@@ -342,7 +342,18 @@ fn programmable_skin_projects_candidate_values_without_publishing_until_commit()
         candidate_transaction_id.starts_with("transaction:programmable-skin-ir:"),
         "{candidate_transaction_id}"
     );
-    assert_eq!(edited_revision_entry.transaction_summary, None);
+    let candidate_summary = edited_revision_entry
+        .transaction_summary
+        .as_ref()
+        .expect("candidate private edit should project planned invalidation summary");
+    assert_eq!(candidate_summary.transaction_id, candidate_transaction_id);
+    assert_eq!(candidate_summary.estimated_node_count, 2);
+    assert!(candidate_summary.requires_rebind.is_empty());
+    assert_eq!(
+        candidate_summary.invalidated_nodes.len(),
+        2,
+        "{candidate_summary:?}"
+    );
     let evaluate = skin.try_evaluate_candidate(&handle);
     assert!(evaluate.accepted, "{:?}", evaluate.error);
     assert_eq!(evaluate.transaction_id, None);
