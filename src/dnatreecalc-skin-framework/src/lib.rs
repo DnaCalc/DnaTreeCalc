@@ -28,8 +28,8 @@ pub use intent::{
     AuthoringScope, ClipboardPayloadKind, DependencyDeltaProjection, Dispatcher,
     FormulaReferenceInsertionProjection, FormulaReferenceInsertionTarget, InMemoryDispatcher,
     IntentError, IntentReceipt, NodeAttributePatch, NodeValueDeltaProjection,
-    StructuralDeltaProjection, TableCellInput, TableRowInput, WorkspaceDelta, WorkspaceDeltaChange,
-    WorkspaceIntent,
+    StructuralDeltaProjection, SweepPointInput, TableCellInput, TableRowInput, WorkspaceDelta,
+    WorkspaceDeltaChange, WorkspaceIntent,
 };
 pub use manifest::{SkinCapabilities, SkinCategory, SkinManifest};
 pub use registry::SkinRegistry;
@@ -72,13 +72,14 @@ pub use workspace::{
     RuntimeEffectFamilyProjection, RuntimeEffectProjection, RuntimeOverlayKindProjection,
     RuntimeOverlayProjection, ScenarioManifestProjection, ScenarioProjection,
     ScenarioSourceProjection, SeriesManifestProjection, SeriesPointProjection, SeriesProjection,
-    SourceSpanProjection, SpeculationPressureProjection, TableAnchorProjection,
-    TableCellEditabilityProjection, TableCellProjection, TableCellRegionProjection,
-    TableCellsProjection, TableColumnBodyProjection, TableColumnProjection,
-    TableDependencyFactBlockerProjection, TableDependencyFactKindProjection,
-    TableDependencyFactProjection, TableDependencyFactStatusProjection,
-    TableFormulaBindPreviewProjection, TableFormulaMetadataProjection, TableProjection,
-    TableRowProjection, TreeReferenceCollectionFamilyProjection, TreeReferenceCollectionProjection,
+    SourceSpanProjection, SpeculationPressureProjection, SweepManifestProjection,
+    SweepPointProjection, SweepProjection, TableAnchorProjection, TableCellEditabilityProjection,
+    TableCellProjection, TableCellRegionProjection, TableCellsProjection,
+    TableColumnBodyProjection, TableColumnProjection, TableDependencyFactBlockerProjection,
+    TableDependencyFactKindProjection, TableDependencyFactProjection,
+    TableDependencyFactStatusProjection, TableFormulaBindPreviewProjection,
+    TableFormulaMetadataProjection, TableProjection, TableRowProjection,
+    TreeReferenceCollectionFamilyProjection, TreeReferenceCollectionProjection,
     WorkspaceRevisionProjection, WorkspaceState,
 };
 

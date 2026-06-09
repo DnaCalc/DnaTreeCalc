@@ -5,7 +5,7 @@ use crate::identity::{NodeId, NodeKey};
 use crate::selection::{SelectionState, TableCellSelection};
 use crate::workspace::{
     CalcRunProjection, CandidateProjection, ClipboardProjection, DependencyKindProjection,
-    InitialNodeContentProjection, NodeValueProjection, ScenarioProjection,
+    InitialNodeContentProjection, NodeValueProjection, ScenarioProjection, SweepProjection,
 };
 use leptos::prelude::*;
 
@@ -56,6 +56,13 @@ pub struct FormulaReferenceInsertionProjection {
     pub updated_formula_text: String,
     pub applied_start: usize,
     pub applied_len: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SweepPointInput {
+    pub point_id: String,
+    pub label: String,
+    pub value: NodeValueProjection,
 }
 
 impl NodeAttributePatch {
@@ -312,6 +319,25 @@ pub enum WorkspaceIntent {
     ClearScenarioOverride {
         scenario_id: String,
         node: NodeKey,
+    },
+    /// Create a host-owned direct sensitivity sweep over one input node.
+    /// Each point is materialized as an evaluated OxCalc candidate-backed
+    /// scenario; skins read typed sweep/comparison/series projections instead
+    /// of computing formula results.
+    CreateScenarioSweep {
+        sweep_id: String,
+        name: String,
+        base_scenario_id: Option<String>,
+        input_node: NodeKey,
+        points: Vec<SweepPointInput>,
+    },
+    /// Set or clear the active sweep rail selection.
+    ActivateSweep {
+        sweep_id: Option<String>,
+    },
+    /// Delete a host-owned sweep and release its scenario-backed points.
+    DeleteSweep {
+        sweep_id: String,
     },
     AddNode {
         parent: Option<NodeId>,
@@ -610,6 +636,14 @@ pub enum IntentError {
     UnknownScenarioOverride { scenario_id: String, node: NodeKey },
     #[error("unsupported scenario override value for {scenario_id}: {detail}")]
     UnsupportedScenarioOverrideValue { scenario_id: String, detail: String },
+    #[error("sweep {sweep_id} already exists")]
+    SweepAlreadyExists { sweep_id: String },
+    #[error("unknown sweep {sweep_id}")]
+    UnknownSweep { sweep_id: String },
+    #[error("sweep {sweep_id} has duplicate point {point_id}")]
+    DuplicateSweepPoint { sweep_id: String, point_id: String },
+    #[error("sweep {sweep_id} requires at least one point")]
+    EmptySweep { sweep_id: String },
     #[error("engine rejected the intent: {0}")]
     EngineRejected(String),
     #[error("host failed to dispatch the intent: {0}")]
@@ -648,6 +682,8 @@ pub enum WorkspaceDeltaChange {
     CandidateRemoved(String),
     ScenarioChanged(ScenarioProjection),
     ScenarioRemoved(String),
+    SweepChanged(SweepProjection),
+    SweepRemoved(String),
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -775,6 +811,9 @@ impl Dispatcher for InMemoryDispatcher {
             | WorkspaceIntent::DeleteScenario { .. }
             | WorkspaceIntent::SetScenarioOverride { .. }
             | WorkspaceIntent::ClearScenarioOverride { .. }
+            | WorkspaceIntent::CreateScenarioSweep { .. }
+            | WorkspaceIntent::ActivateSweep { .. }
+            | WorkspaceIntent::DeleteSweep { .. }
             | WorkspaceIntent::AddNode { .. }
             | WorkspaceIntent::RenameNode { .. }
             | WorkspaceIntent::MoveNode { .. }

@@ -37,7 +37,7 @@ non-overlapping live/candidate structural edits, receive typed conflicts for amb
 commit/discard/reap/pin candidates, project scenario rails and comparison/series values over
 candidates, use minimal template-bound initial content, and persist workspace/skin state through
 browser `localStorage` or desktop/test stores. Remaining work after this checkpoint is larger-scope:
-richer name-collision merge algebra, direct sweep/goal-seek columns/series, full template
+richer name-collision merge algebra, goal-seek columns/series, full template
 definition/instantiate/sync, formula rewrite/rebind authoring APIs, and broader real-skin UX polish.
 
 Current objective: continue the addressable, layerable, non-publishing candidate overlay substrate
@@ -608,7 +608,7 @@ Use this as the per-tranche goal statement before implementation:
       candidate. Active scenarios project per-node `NodeView.scenario_override` from the stored typed
       override payload without rewriting published `computed_value`. Programmable Skin IR tests
       prove epoch progression, active/inactive override visibility, and array override visibility.
-      Direct sweep/goal-seek comparison columns, chart/feed series projection, formula/rich-value
+      Goal-seek comparison columns, chart/feed series projection, formula/rich-value
       override authoring, and engine-published scenario revision history remain open.
 - [x] W4c `comparative-multi-overlay-projection` first scenario-backed slice:
       `WorkspaceState.comparison` now projects a published basis column and scenario-backed
@@ -616,7 +616,7 @@ Use this as the per-tranche goal statement before implementation:
       values merge typed scenario override values with the matching candidate projection's typed
       `values_by_key`; unevaluated non-overridden scenario values remain empty. Programmable Skin IR
       tests prove basis/scenario separation, scenario labels/sources, evaluated scenario values, and
-      column removal when a scenario is deleted. Direct sweep/goal-seek comparison columns, richer
+      column removal when a scenario is deleted. Goal-seek comparison columns, richer
       value provenance, and engine-published scenario revision history remain open.
 - [x] W4c `series-projection` first comparison-backed slice:
       `WorkspaceState.series` now projects chart/feed series for the published basis and
@@ -624,7 +624,7 @@ Use this as the per-tranche goal statement before implementation:
       from current display paths, and values remain typed `NodeValueProjection` payloads. Unevaluated
       scenario series remain empty instead of fabricating values. Programmable Skin IR tests prove
       published basis series, unevaluated scenario series, evaluated scenario series, basis/scenario
-      separation, and scenario deletion cleanup. Direct sweep/goal-seek series, richer value
+      separation, and scenario deletion cleanup. Goal-seek series, richer value
       provenance, and engine-published scenario revision history remain open.
 - [x] W4c `series-projection` scoped/unit slice:
       `WorkspaceState::series_for_scope` now expands the existing Skin IR `AuthoringScope` model
@@ -633,6 +633,15 @@ Use this as the per-tranche goal statement before implementation:
       non-empty unit; mixed or missing units remain untyped. Programmable Skin IR tests prove
       selected published series, mixed-unit suppression, selected scenario-backed series, and typed
       `NodeValueProjection` value preservation.
+- [x] W4c `direct-sensitivity-sweep` first scenario-backed slice:
+      Skin IR now exposes closed `CreateScenarioSweep`, `ActivateSweep`, and `DeleteSweep` intents.
+      The host owns the sweep manifest, materializes each point as an evaluated OxCalc
+      candidate-backed internal scenario, keeps backing scenarios hidden from the ordinary scenario
+      rail, and projects typed sweep point columns/series through `WorkspaceState.comparison` and
+      `WorkspaceState.series`. Programmable Skin IR tests prove published-base sweeps,
+      scenario-layered sweeps, typed input values, evaluated dependent formula values, active sweep
+      projection, deletion cleanup, and hidden backing-scenario behavior from outside the skin layer.
+      Goal-seek solving, richer sweep provenance, and persisted scenario/sweep metadata remain open.
 - [x] W5 early `projection-delta-channel` / `projection-version-stamp` synchronous projection slice:
       Skin IR now carries a required `latest_delta: ReadSignal<WorkspaceDelta>` beside the full
       `WorkspaceState` signal, and the host dispatcher owns a single publication path that stamps
@@ -674,8 +683,7 @@ Use this as the per-tranche goal statement before implementation:
 - [ ] `candidate-overlay-handle`: continue W4b with broader structural order/delete/name-collision
       merge algebra beyond same-node rename/move, same-parent rename/add, and same-parent
       rename/reorder facet merging plus sibling add/delete, sibling add/reorder, and sibling
-      delete/reorder merging, direct sweep/goal-seek comparison columns/series, and broader what-if
-      UX before goal seek or sweeps.
+      delete/reorder merging, goal-seek comparison columns/series, and broader what-if UX.
 - [x] `value-epoch-keying`: per-node published-value epoch is available for projection consumers.
 
 ## Next-Wave Parking Lot

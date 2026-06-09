@@ -15,9 +15,10 @@ use dnatreecalc_skin_framework::{
     MutationImpactIntentProjection, NodeAttributePatch, NodeContentKind, NodeId,
     NodeValueProjection, RecalcPlanMutation, ReferenceTargetProjection,
     RuntimeEffectFamilyProjection, RuntimeOverlayKindProjection, ScenarioSourceProjection,
-    TableCellEditabilityProjection, TableCellRegionProjection, TableColumnBodyProjection,
-    TableDependencyFactKindProjection, TableDependencyFactStatusProjection,
-    TreeReferenceCollectionFamilyProjection, WorkspaceDeltaChange, WorkspaceRecalcMode,
+    SweepPointInput, TableCellEditabilityProjection, TableCellRegionProjection,
+    TableColumnBodyProjection, TableDependencyFactKindProjection,
+    TableDependencyFactStatusProjection, TreeReferenceCollectionFamilyProjection,
+    WorkspaceDeltaChange, WorkspaceRecalcMode,
 };
 
 use support::programmable::{Harness, revision_fingerprint};
@@ -30,6 +31,17 @@ fn candidate_children(candidate: &CandidateProjection, node: &str) -> Vec<NodeId
         .unwrap_or_else(|| panic!("{node} should project in candidate"))
         .children
         .clone()
+}
+
+fn sweep_point(point_id: &str, label: &str, raw: &str) -> SweepPointInput {
+    SweepPointInput {
+        point_id: point_id.to_string(),
+        label: label.to_string(),
+        value: NodeValueProjection::Number {
+            raw: raw.to_string(),
+            display: raw.to_string(),
+        },
+    }
 }
 
 #[test]
@@ -1614,6 +1626,261 @@ fn programmable_skin_sets_and_clears_candidate_backed_scenario_overrides() {
         skin.state().scenarios.entries[0]
             .overridden_nodes
             .is_empty()
+    );
+}
+
+#[test]
+fn programmable_skin_projects_direct_sweep_comparison_and_series() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    skin.add_node(Some("Root"), "Input", "1");
+    skin.add_node(Some("Root"), "Double", "=Input*2");
+    skin.add_node(Some("Root"), "Label", "\"published\"");
+    let state = skin.state();
+    let input_key = state
+        .node(&NodeId::new("Root.Input"))
+        .expect("Root.Input should project")
+        .key
+        .clone();
+    let double_key = state
+        .node(&NodeId::new("Root.Double"))
+        .expect("Root.Double should project")
+        .key
+        .clone();
+    skin.assert_scalar("Root.Double", "2");
+
+    let create = skin.try_create_scenario_sweep(
+        "sweep:input",
+        "Input Sweep",
+        None,
+        input_key.clone(),
+        vec![
+            sweep_point("low", "Low", "1"),
+            sweep_point("mid", "Mid", "2"),
+            sweep_point("high", "High", "3"),
+        ],
+    );
+    assert!(create.accepted, "{:?}", create.error);
+    assert!(create.delta.changes.iter().any(|change| {
+        matches!(change, WorkspaceDeltaChange::SweepChanged(sweep) if sweep.id == "sweep:input")
+    }));
+
+    let swept = skin.state();
+    assert_eq!(swept.sweeps.entries.len(), 1);
+    let sweep = &swept.sweeps.entries[0];
+    assert_eq!(sweep.id, "sweep:input");
+    assert_eq!(sweep.name, "Input Sweep");
+    assert_eq!(sweep.input_node, input_key);
+    assert_eq!(sweep.points.len(), 3);
+    assert_eq!(
+        sweep
+            .points
+            .iter()
+            .map(|point| point.label.as_str())
+            .collect::<Vec<_>>(),
+        vec!["Low", "Mid", "High"]
+    );
+    assert_eq!(
+        sweep
+            .points
+            .iter()
+            .map(|point| point.input_value.display_text())
+            .collect::<Vec<_>>(),
+        vec!["1", "2", "3"]
+    );
+    assert!(
+        swept.scenarios.entries.is_empty(),
+        "sweep backing scenarios should not project as ordinary scenario rails"
+    );
+    assert_eq!(swept.candidates.len(), 3);
+    assert!(
+        swept
+            .candidates
+            .iter()
+            .all(|candidate| candidate.retention_pin_count == 1)
+    );
+
+    let sweep_columns = swept
+        .comparison
+        .columns
+        .iter()
+        .filter_map(|column| match &column.source {
+            ComparativeSourceProjection::SweepPoint {
+                sweep_id,
+                point_id,
+                scenario_id,
+            } if sweep_id == "sweep:input" => Some((
+                point_id.as_str(),
+                scenario_id.as_str(),
+                column
+                    .values
+                    .get(&double_key)
+                    .map(NodeValueProjection::display_text),
+            )),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        sweep_columns,
+        vec![
+            ("low", "sweep:sweep:input:point:low", Some("2".to_string())),
+            ("mid", "sweep:sweep:input:point:mid", Some("4".to_string())),
+            (
+                "high",
+                "sweep:sweep:input:point:high",
+                Some("6".to_string())
+            ),
+        ]
+    );
+    assert_eq!(
+        swept
+            .comparison
+            .basis
+            .values
+            .get(&double_key)
+            .map(NodeValueProjection::display_text)
+            .as_deref(),
+        Some("2")
+    );
+    skin.assert_scalar("Root.Double", "2");
+
+    let double_series = swept
+        .series_for_scope(&AuthoringScope::Node(double_key.clone()))
+        .expect("sweep target scope should expand");
+    let sweep_series_values = double_series
+        .entries
+        .iter()
+        .filter_map(|entry| match &entry.source {
+            ComparativeSourceProjection::SweepPoint { point_id, .. } => {
+                Some((point_id.as_str(), entry.points[0].value.display_text()))
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        sweep_series_values,
+        vec![
+            ("low", "2".to_string()),
+            ("mid", "4".to_string()),
+            ("high", "6".to_string()),
+        ]
+    );
+
+    let activate = skin.try_activate_sweep(Some("sweep:input"));
+    assert!(activate.accepted, "{:?}", activate.error);
+    assert_eq!(skin.state().sweeps.active.as_deref(), Some("sweep:input"));
+    assert!(skin.state().sweeps.entries[0].is_active);
+
+    let delete = skin.try_delete_sweep("sweep:input");
+    assert!(delete.accepted, "{:?}", delete.error);
+    let deleted = skin.state();
+    assert!(deleted.sweeps.entries.is_empty());
+    assert!(deleted.scenarios.entries.is_empty());
+    assert!(deleted.comparison.columns.is_empty());
+    assert_eq!(deleted.series.entries.len(), 1);
+    assert!(delete.delta.changes.iter().any(|change| {
+        matches!(change, WorkspaceDeltaChange::SweepRemoved(id) if id == "sweep:input")
+    }));
+}
+
+#[test]
+fn programmable_skin_layers_sweep_points_over_visible_scenario() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    skin.add_node(Some("Root"), "A", "1");
+    skin.add_node(Some("Root"), "B", "2");
+    skin.add_node(Some("Root"), "Total", "=A+B");
+    let state = skin.state();
+    let a_key = state.node(&NodeId::new("Root.A")).unwrap().key.clone();
+    let b_key = state.node(&NodeId::new("Root.B")).unwrap().key.clone();
+    let total_key = state.node(&NodeId::new("Root.Total")).unwrap().key.clone();
+
+    assert!(skin.try_open_candidate().accepted);
+    let base_handle = skin.state().candidates[0].handle.clone();
+    assert!(
+        skin.try_create_scenario_from_candidate("scenario:base", "Base What-If", &base_handle)
+            .accepted
+    );
+    assert!(
+        skin.try_set_scenario_override(
+            "scenario:base",
+            b_key,
+            NodeValueProjection::Number {
+                raw: "10".to_string(),
+                display: "10".to_string(),
+            },
+        )
+        .accepted
+    );
+    assert!(skin.try_evaluate_candidate(&base_handle).accepted);
+
+    let create = skin.try_create_scenario_sweep(
+        "sweep:a",
+        "A Sweep",
+        Some("scenario:base"),
+        a_key,
+        vec![
+            sweep_point("one", "One", "1"),
+            sweep_point("two", "Two", "2"),
+        ],
+    );
+    assert!(create.accepted, "{:?}", create.error);
+    let swept = skin.state();
+    assert_eq!(
+        swept
+            .scenarios
+            .entries
+            .iter()
+            .map(|scenario| scenario.id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["scenario:base"]
+    );
+    assert_eq!(
+        swept.sweeps.entries[0].base_scenario_id.as_deref(),
+        Some("scenario:base")
+    );
+
+    let sweep_values = swept
+        .comparison
+        .columns
+        .iter()
+        .filter_map(|column| match &column.source {
+            ComparativeSourceProjection::SweepPoint { point_id, .. } => Some((
+                point_id.as_str(),
+                column
+                    .values
+                    .get(&total_key)
+                    .map(NodeValueProjection::display_text),
+            )),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        sweep_values,
+        vec![
+            ("one", Some("11".to_string())),
+            ("two", Some("12".to_string()))
+        ]
+    );
+    assert_eq!(
+        swept
+            .comparison
+            .columns
+            .iter()
+            .find(|column| {
+                matches!(
+                    &column.source,
+                    ComparativeSourceProjection::Scenario { id } if id == "scenario:base"
+                )
+            })
+            .and_then(|column| column.values.get(&total_key))
+            .map(NodeValueProjection::display_text)
+            .as_deref(),
+        Some("11")
     );
 }
 

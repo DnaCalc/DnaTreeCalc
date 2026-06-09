@@ -397,6 +397,36 @@ impl ProgrammableDriver {
             })
     }
 
+    pub fn try_create_scenario_sweep(
+        &self,
+        sweep_id: &str,
+        name: &str,
+        base_scenario_id: Option<&str>,
+        input_node: NodeKey,
+        points: Vec<dnatreecalc_skin_framework::SweepPointInput>,
+    ) -> IntentReceipt {
+        self.dispatch
+            .dispatch(WorkspaceIntent::CreateScenarioSweep {
+                sweep_id: sweep_id.to_string(),
+                name: name.to_string(),
+                base_scenario_id: base_scenario_id.map(ToString::to_string),
+                input_node,
+                points,
+            })
+    }
+
+    pub fn try_activate_sweep(&self, sweep_id: Option<&str>) -> IntentReceipt {
+        self.dispatch.dispatch(WorkspaceIntent::ActivateSweep {
+            sweep_id: sweep_id.map(ToString::to_string),
+        })
+    }
+
+    pub fn try_delete_sweep(&self, sweep_id: &str) -> IntentReceipt {
+        self.dispatch.dispatch(WorkspaceIntent::DeleteSweep {
+            sweep_id: sweep_id.to_string(),
+        })
+    }
+
     pub fn edit_deferred(&self, node: &str, content: &str) {
         self.accept(WorkspaceIntent::EditContentDeferred {
             node: NodeId::new(node),

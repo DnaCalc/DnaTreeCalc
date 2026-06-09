@@ -24,7 +24,8 @@ use dnatreecalc_skin_framework::{
     RevisionTransactionSummaryProjection, RuntimeEffectFamilyProjection, RuntimeEffectProjection,
     RuntimeOverlayKindProjection, RuntimeOverlayProjection, ScenarioManifestProjection,
     ScenarioProjection, ScenarioSourceProjection, SeriesManifestProjection, SourceSpanProjection,
-    SpeculationPressureProjection, TableAnchorProjection, TableCellInput, TableCellProjection,
+    SpeculationPressureProjection, SweepManifestProjection, SweepPointInput, SweepPointProjection,
+    SweepProjection, TableAnchorProjection, TableCellInput, TableCellProjection,
     TableCellRegionProjection, TableCellsProjection, TableColumnBodyProjection,
     TableColumnProjection, TableDependencyFactBlockerProjection, TableDependencyFactKindProjection,
     TableDependencyFactProjection, TableDependencyFactStatusProjection,
@@ -127,6 +128,8 @@ pub struct TreeWorkspaceSession {
     scenarios: BTreeMap<String, TreeWorkspaceScenarioState>,
     active_scenario_id: Option<String>,
     next_scenario_value_epoch: u64,
+    sweeps: BTreeMap<String, TreeWorkspaceSweepState>,
+    active_sweep_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -148,12 +151,31 @@ struct TreeWorkspaceScenarioState {
     candidate_handle: String,
     overrides: BTreeMap<NodeKey, TreeWorkspaceScenarioOverrideState>,
     value_epoch: u64,
+    visible_in_manifest: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct TreeWorkspaceScenarioOverrideState {
     original_content_text: String,
     value: NodeValueProjection,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TreeWorkspaceSweepState {
+    id: String,
+    name: String,
+    input_node: NodeKey,
+    base_scenario_id: Option<String>,
+    points: Vec<TreeWorkspaceSweepPointState>,
+    value_epoch: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TreeWorkspaceSweepPointState {
+    id: String,
+    label: String,
+    input_value: NodeValueProjection,
+    scenario_id: String,
 }
 
 #[derive(Debug, Clone)]
@@ -215,6 +237,8 @@ impl TreeWorkspaceSession {
             scenarios: BTreeMap::new(),
             active_scenario_id: None,
             next_scenario_value_epoch: 1,
+            sweeps: BTreeMap::new(),
+            active_sweep_id: None,
         };
 
         for path in &model.node_order {
@@ -280,6 +304,8 @@ impl TreeWorkspaceSession {
             scenarios: BTreeMap::new(),
             active_scenario_id: None,
             next_scenario_value_epoch: 1,
+            sweeps: BTreeMap::new(),
+            active_sweep_id: None,
         };
         session.refresh_projection_from_context()?;
         Ok(session)
@@ -1600,6 +1626,21 @@ impl TreeWorkspaceSession {
         name: impl Into<String>,
         candidate_handle: &str,
     ) -> Result<ScenarioProjection, TreeWorkspaceSessionError> {
+        self.create_scenario_from_candidate_with_visibility(
+            scenario_id,
+            name,
+            candidate_handle,
+            true,
+        )
+    }
+
+    fn create_scenario_from_candidate_with_visibility(
+        &mut self,
+        scenario_id: impl Into<String>,
+        name: impl Into<String>,
+        candidate_handle: &str,
+        visible_in_manifest: bool,
+    ) -> Result<ScenarioProjection, TreeWorkspaceSessionError> {
         let scenario_id = scenario_id.into();
         if self.scenarios.contains_key(&scenario_id) {
             return Err(TreeWorkspaceSessionError::ScenarioAlreadyExists { scenario_id });
@@ -1613,6 +1654,7 @@ impl TreeWorkspaceSession {
             candidate_handle: candidate_handle.to_string(),
             overrides: BTreeMap::new(),
             value_epoch,
+            visible_in_manifest,
         };
         self.scenarios.insert(scenario_id.clone(), scenario);
         self.scenario_projection(&scenario_id)
@@ -1623,7 +1665,11 @@ impl TreeWorkspaceSession {
         scenario_id: Option<&str>,
     ) -> Result<ScenarioManifestProjection, TreeWorkspaceSessionError> {
         if let Some(scenario_id) = scenario_id {
-            if !self.scenarios.contains_key(scenario_id) {
+            if !self
+                .scenarios
+                .get(scenario_id)
+                .is_some_and(|scenario| scenario.visible_in_manifest)
+            {
                 return Err(TreeWorkspaceSessionError::UnknownScenario {
                     scenario_id: scenario_id.to_string(),
                 });
@@ -1650,6 +1696,7 @@ impl TreeWorkspaceSession {
             }
         }
         self.scenarios.remove(scenario_id);
+        self.remove_sweep_points_for_scenario(scenario_id);
         if self.active_scenario_id.as_deref() == Some(scenario_id) {
             self.active_scenario_id = None;
         }
@@ -1724,6 +1771,140 @@ impl TreeWorkspaceSession {
             .remove(node);
         self.bump_scenario_value_epoch(scenario_id);
         self.scenario_projection(scenario_id)
+    }
+
+    pub fn create_scenario_sweep(
+        &mut self,
+        sweep_id: impl Into<String>,
+        name: impl Into<String>,
+        base_scenario_id: Option<String>,
+        input_node: NodeKey,
+        points: Vec<SweepPointInput>,
+    ) -> Result<SweepProjection, TreeWorkspaceSessionError> {
+        let sweep_id = sweep_id.into();
+        if self.sweeps.contains_key(&sweep_id) {
+            return Err(TreeWorkspaceSessionError::SweepAlreadyExists { sweep_id });
+        }
+        if points.is_empty() {
+            return Err(TreeWorkspaceSessionError::EmptySweep { sweep_id });
+        }
+        let input_tree_node_id = tree_node_id_from_node_key(&input_node)?;
+        if !self
+            .context
+            .workspace_view(&self.workspace_id)?
+            .nodes
+            .iter()
+            .any(|node| node.node_id == input_tree_node_id)
+        {
+            return Err(TreeWorkspaceSessionError::ProjectionOutOfSync {
+                node: input_node.to_string(),
+            });
+        }
+        let base_candidate_handle = match &base_scenario_id {
+            Some(base_scenario_id) => Some(
+                self.scenarios
+                    .get(base_scenario_id)
+                    .filter(|scenario| scenario.visible_in_manifest)
+                    .ok_or_else(|| TreeWorkspaceSessionError::UnknownScenario {
+                        scenario_id: base_scenario_id.clone(),
+                    })?
+                    .candidate_handle
+                    .clone(),
+            ),
+            None => None,
+        };
+        if let Some(base_candidate_handle) = &base_candidate_handle {
+            let candidate = self.candidate_handle(base_candidate_handle)?;
+            self.candidate_node_content_text(&candidate, &input_node)?;
+        }
+
+        let mut seen_point_ids = BTreeSet::new();
+        let mut scenario_ids = Vec::with_capacity(points.len());
+        for point in &points {
+            if !seen_point_ids.insert(point.point_id.clone()) {
+                return Err(TreeWorkspaceSessionError::DuplicateSweepPoint {
+                    sweep_id,
+                    point_id: point.point_id.clone(),
+                });
+            }
+            let scenario_id = sweep_point_scenario_id(&sweep_id, &point.point_id);
+            if self.scenarios.contains_key(&scenario_id) {
+                return Err(TreeWorkspaceSessionError::ScenarioAlreadyExists { scenario_id });
+            }
+            scenario_override_authored_input(&scenario_id, &point.value)?;
+            scenario_ids.push(scenario_id);
+        }
+
+        let mut sweep_points = Vec::with_capacity(points.len());
+        for (point, scenario_id) in points.into_iter().zip(scenario_ids) {
+            let candidate = self.open_candidate(base_candidate_handle.as_deref())?;
+            self.create_scenario_from_candidate_with_visibility(
+                &scenario_id,
+                &point.label,
+                &candidate.handle,
+                false,
+            )?;
+            self.set_scenario_override(&scenario_id, &input_node, &point.value)?;
+            self.evaluate_candidate(&candidate.handle)?;
+            sweep_points.push(TreeWorkspaceSweepPointState {
+                id: point.point_id,
+                label: point.label,
+                input_value: point.value,
+                scenario_id,
+            });
+        }
+
+        let value_epoch = sweep_points
+            .iter()
+            .filter_map(|point| {
+                self.scenarios
+                    .get(&point.scenario_id)
+                    .map(|scenario| scenario.value_epoch)
+            })
+            .max()
+            .unwrap_or_else(|| self.next_scenario_value_epoch());
+        let sweep = TreeWorkspaceSweepState {
+            id: sweep_id.clone(),
+            name: name.into(),
+            input_node,
+            base_scenario_id,
+            points: sweep_points,
+            value_epoch,
+        };
+        self.sweeps.insert(sweep_id.clone(), sweep);
+        self.sweep_projection(&sweep_id)
+    }
+
+    pub fn activate_sweep(
+        &mut self,
+        sweep_id: Option<&str>,
+    ) -> Result<SweepManifestProjection, TreeWorkspaceSessionError> {
+        if let Some(sweep_id) = sweep_id {
+            if !self.sweeps.contains_key(sweep_id) {
+                return Err(TreeWorkspaceSessionError::UnknownSweep {
+                    sweep_id: sweep_id.to_string(),
+                });
+            }
+        }
+        self.active_sweep_id = sweep_id.map(ToString::to_string);
+        self.sweep_manifest_projection()
+    }
+
+    pub fn delete_sweep(&mut self, sweep_id: &str) -> Result<String, TreeWorkspaceSessionError> {
+        let sweep = self.sweeps.remove(sweep_id).ok_or_else(|| {
+            TreeWorkspaceSessionError::UnknownSweep {
+                sweep_id: sweep_id.to_string(),
+            }
+        })?;
+        if self.active_sweep_id.as_deref() == Some(sweep_id) {
+            self.active_sweep_id = None;
+        }
+        for point in sweep.points {
+            if self.scenarios.contains_key(&point.scenario_id) {
+                self.delete_scenario(&point.scenario_id)?;
+            }
+        }
+        Ok(sweep_id.to_string())
     }
 
     pub fn reap_candidates(
@@ -4836,7 +5017,15 @@ impl TreeWorkspaceSession {
             ));
         let candidates = self.candidate_projections()?;
         let scenarios = self.scenario_manifest_projection()?;
-        let comparison = comparative_projection_for(&nodes_by_key, &candidates, &scenarios);
+        let sweeps = self.sweep_manifest_projection()?;
+        let all_scenarios = self.all_scenario_manifest_projection()?;
+        let comparison = comparative_projection_for(
+            &nodes_by_key,
+            &candidates,
+            &scenarios,
+            &all_scenarios,
+            &sweeps,
+        );
 
         let mut state = WorkspaceState {
             workspace_id: self.workspace_id.as_str().to_string(),
@@ -4847,6 +5036,7 @@ impl TreeWorkspaceSession {
             candidates,
             speculation_pressure,
             scenarios,
+            sweeps,
             comparison,
             series: SeriesManifestProjection::default(),
             last_run,
@@ -5022,8 +5212,35 @@ impl TreeWorkspaceSession {
             active: self.active_scenario_id.clone(),
             entries: self
                 .scenarios
+                .values()
+                .filter(|scenario| scenario.visible_in_manifest)
+                .map(|scenario| self.scenario_projection(&scenario.id))
+                .collect::<Result<Vec<_>, _>>()?,
+        })
+    }
+
+    fn all_scenario_manifest_projection(
+        &self,
+    ) -> Result<ScenarioManifestProjection, TreeWorkspaceSessionError> {
+        Ok(ScenarioManifestProjection {
+            active: self.active_scenario_id.clone(),
+            entries: self
+                .scenarios
                 .keys()
                 .map(|scenario_id| self.scenario_projection(scenario_id))
+                .collect::<Result<Vec<_>, _>>()?,
+        })
+    }
+
+    fn sweep_manifest_projection(
+        &self,
+    ) -> Result<SweepManifestProjection, TreeWorkspaceSessionError> {
+        Ok(SweepManifestProjection {
+            active: self.active_sweep_id.clone(),
+            entries: self
+                .sweeps
+                .keys()
+                .map(|sweep_id| self.sweep_projection(sweep_id))
                 .collect::<Result<Vec<_>, _>>()?,
         })
     }
@@ -5089,6 +5306,75 @@ impl TreeWorkspaceSession {
             value_epoch: Some(scenario.value_epoch),
             is_active: self.active_scenario_id.as_deref() == Some(scenario_id),
         })
+    }
+
+    fn sweep_projection(
+        &self,
+        sweep_id: &str,
+    ) -> Result<SweepProjection, TreeWorkspaceSessionError> {
+        let sweep =
+            self.sweeps
+                .get(sweep_id)
+                .ok_or_else(|| TreeWorkspaceSessionError::UnknownSweep {
+                    sweep_id: sweep_id.to_string(),
+                })?;
+        let points = sweep
+            .points
+            .iter()
+            .map(|point| {
+                let scenario = self.scenarios.get(&point.scenario_id).ok_or_else(|| {
+                    TreeWorkspaceSessionError::UnknownScenario {
+                        scenario_id: point.scenario_id.clone(),
+                    }
+                })?;
+                Ok(SweepPointProjection {
+                    id: point.id.clone(),
+                    label: point.label.clone(),
+                    input_value: point.input_value.clone(),
+                    scenario_id: point.scenario_id.clone(),
+                    value_epoch: Some(scenario.value_epoch),
+                })
+            })
+            .collect::<Result<Vec<_>, TreeWorkspaceSessionError>>()?;
+        Ok(SweepProjection {
+            id: sweep.id.clone(),
+            name: sweep.name.clone(),
+            input_node: sweep.input_node.clone(),
+            base_scenario_id: sweep.base_scenario_id.clone(),
+            points,
+            value_epoch: Some(sweep.value_epoch),
+            is_active: self.active_sweep_id.as_deref() == Some(sweep_id),
+        })
+    }
+
+    fn remove_sweep_points_for_scenario(&mut self, scenario_id: &str) {
+        let mut empty_sweeps = Vec::new();
+        for (sweep_id, sweep) in &mut self.sweeps {
+            let original_len = sweep.points.len();
+            sweep
+                .points
+                .retain(|point| point.scenario_id != scenario_id);
+            if sweep.points.is_empty() {
+                empty_sweeps.push(sweep_id.clone());
+            } else if sweep.points.len() != original_len {
+                sweep.value_epoch = sweep
+                    .points
+                    .iter()
+                    .filter_map(|point| {
+                        self.scenarios
+                            .get(&point.scenario_id)
+                            .map(|scenario| scenario.value_epoch)
+                    })
+                    .max()
+                    .unwrap_or(sweep.value_epoch);
+            }
+        }
+        for sweep_id in empty_sweeps {
+            self.sweeps.remove(&sweep_id);
+            if self.active_sweep_id.as_deref() == Some(sweep_id.as_str()) {
+                self.active_sweep_id = None;
+            }
+        }
     }
 
     fn candidate_node_content_text(
@@ -6620,6 +6906,14 @@ pub enum TreeWorkspaceSessionError {
     UnknownScenarioOverride { scenario_id: String, node: NodeKey },
     #[error("unsupported scenario override value for {scenario_id}: {detail}")]
     UnsupportedScenarioOverrideValue { scenario_id: String, detail: String },
+    #[error("sweep {sweep_id} already exists")]
+    SweepAlreadyExists { sweep_id: String },
+    #[error("unknown sweep {sweep_id}")]
+    UnknownSweep { sweep_id: String },
+    #[error("sweep {sweep_id} has duplicate point {point_id}")]
+    DuplicateSweepPoint { sweep_id: String, point_id: String },
+    #[error("sweep {sweep_id} requires at least one point")]
+    EmptySweep { sweep_id: String },
     #[error("OxCalc context projection is out of sync for {node}")]
     ProjectionOutOfSync { node: String },
 }
@@ -6782,6 +7076,10 @@ fn scenario_override_authored_input(
     }
 }
 
+fn sweep_point_scenario_id(sweep_id: &str, point_id: &str) -> String {
+    format!("sweep:{sweep_id}:point:{point_id}")
+}
+
 fn scenario_override_calc_value(
     scenario_id: &str,
     value: &NodeValueProjection,
@@ -6845,6 +7143,8 @@ fn comparative_projection_for(
     nodes_by_key: &BTreeMap<NodeKey, NodeView>,
     candidates: &[CandidateProjection],
     scenarios: &ScenarioManifestProjection,
+    all_scenarios: &ScenarioManifestProjection,
+    sweeps: &SweepManifestProjection,
 ) -> ComparativeProjection {
     let basis_values = nodes_by_key
         .iter()
@@ -6868,7 +7168,7 @@ fn comparative_projection_for(
         .values()
         .map(|node| (node.id.clone(), node.key.clone()))
         .collect::<BTreeMap<_, _>>();
-    let columns = scenarios
+    let mut columns = scenarios
         .entries
         .iter()
         .filter_map(|scenario| {
@@ -6885,7 +7185,34 @@ fn comparative_projection_for(
                 values,
             })
         })
-        .collect();
+        .collect::<Vec<_>>();
+    for sweep in &sweeps.entries {
+        for point in &sweep.points {
+            let Some(scenario) = all_scenarios
+                .entries
+                .iter()
+                .find(|scenario| scenario.id == point.scenario_id)
+            else {
+                continue;
+            };
+            let ScenarioSourceProjection::Candidate { handle } = &scenario.source;
+            let Some(candidate) = candidates_by_handle.get(handle.as_str()) else {
+                continue;
+            };
+            let mut values = comparative_values_for_candidate(candidate, &published_key_by_path);
+            values.extend(scenario.override_values.clone());
+            columns.push(ComparativeColumnProjection {
+                label: format!("{}: {}", sweep.name, point.label),
+                source: ComparativeSourceProjection::SweepPoint {
+                    sweep_id: sweep.id.clone(),
+                    point_id: point.id.clone(),
+                    scenario_id: point.scenario_id.clone(),
+                },
+                value_epoch: point.value_epoch,
+                values,
+            });
+        }
+    }
     ComparativeProjection { basis, columns }
 }
 

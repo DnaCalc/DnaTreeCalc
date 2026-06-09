@@ -457,6 +457,38 @@ impl Dispatcher for HostDispatcher {
                     |error| self.reject_current(error),
                     receipt_for_projection_change,
                 ),
+            WorkspaceIntent::CreateScenarioSweep {
+                sweep_id,
+                name,
+                base_scenario_id,
+                input_node,
+                points,
+            } => self
+                .apply_projection_edit(|session| {
+                    session.create_scenario_sweep(
+                        sweep_id,
+                        name,
+                        base_scenario_id,
+                        input_node,
+                        points,
+                    )
+                })
+                .map_or_else(
+                    |error| self.reject_current(error),
+                    receipt_for_projection_change,
+                ),
+            WorkspaceIntent::ActivateSweep { sweep_id } => self
+                .apply_projection_edit(|session| session.activate_sweep(sweep_id.as_deref()))
+                .map_or_else(
+                    |error| self.reject_current(error),
+                    receipt_for_projection_change,
+                ),
+            WorkspaceIntent::DeleteSweep { sweep_id } => self
+                .apply_projection_edit(|session| session.delete_sweep(&sweep_id))
+                .map_or_else(
+                    |error| self.reject_current(error),
+                    receipt_for_projection_change,
+                ),
             WorkspaceIntent::Recalculate => self
                 .apply_workspace_edit(|_| Ok(()), WorkspaceEditPublication::Recalculate)
                 .map_or_else(|error| self.reject_current(error), receipt_for_publication),
@@ -1855,6 +1887,16 @@ fn intent_error_from_session(error: TreeWorkspaceSessionError) -> IntentError {
             scenario_id,
             detail,
         },
+        TreeWorkspaceSessionError::SweepAlreadyExists { sweep_id } => {
+            IntentError::SweepAlreadyExists { sweep_id }
+        }
+        TreeWorkspaceSessionError::UnknownSweep { sweep_id } => {
+            IntentError::UnknownSweep { sweep_id }
+        }
+        TreeWorkspaceSessionError::DuplicateSweepPoint { sweep_id, point_id } => {
+            IntentError::DuplicateSweepPoint { sweep_id, point_id }
+        }
+        TreeWorkspaceSessionError::EmptySweep { sweep_id } => IntentError::EmptySweep { sweep_id },
         TreeWorkspaceSessionError::ProjectionOutOfSync { node } => {
             IntentError::ProjectionOutOfSync { node }
         }
@@ -1999,6 +2041,27 @@ fn workspace_delta(
             .any(|after| after.id == scenario.id)
         {
             changes.push(WorkspaceDeltaChange::ScenarioRemoved(scenario.id.clone()));
+        }
+    }
+
+    for sweep in &after.sweeps.entries {
+        let before_sweep = before
+            .sweeps
+            .entries
+            .iter()
+            .find(|before| before.id == sweep.id);
+        if before_sweep != Some(sweep) {
+            changes.push(WorkspaceDeltaChange::SweepChanged(sweep.clone()));
+        }
+    }
+    for sweep in &before.sweeps.entries {
+        if !after
+            .sweeps
+            .entries
+            .iter()
+            .any(|after| after.id == sweep.id)
+        {
+            changes.push(WorkspaceDeltaChange::SweepRemoved(sweep.id.clone()));
         }
     }
 

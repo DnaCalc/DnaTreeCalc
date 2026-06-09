@@ -85,6 +85,7 @@ pub fn workspace_state_from_model(model: &WorkspaceModel) -> WorkspaceState {
         candidates: Vec::new(),
         speculation_pressure: Default::default(),
         scenarios: Default::default(),
+        sweeps: Default::default(),
         comparison: Default::default(),
         series: Default::default(),
         last_run: None,

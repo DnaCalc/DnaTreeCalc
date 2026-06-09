@@ -24,6 +24,7 @@ pub struct WorkspaceState {
     pub candidates: Vec<CandidateProjection>,
     pub speculation_pressure: SpeculationPressureProjection,
     pub scenarios: ScenarioManifestProjection,
+    pub sweeps: SweepManifestProjection,
     pub comparison: ComparativeProjection,
     pub series: SeriesManifestProjection,
     pub last_run: Option<CalcRunProjection>,
@@ -74,6 +75,32 @@ pub enum ScenarioSourceProjection {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SweepManifestProjection {
+    pub active: Option<String>,
+    pub entries: Vec<SweepProjection>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SweepProjection {
+    pub id: String,
+    pub name: String,
+    pub input_node: NodeKey,
+    pub base_scenario_id: Option<String>,
+    pub points: Vec<SweepPointProjection>,
+    pub value_epoch: Option<u64>,
+    pub is_active: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SweepPointProjection {
+    pub id: String,
+    pub label: String,
+    pub input_value: NodeValueProjection,
+    pub scenario_id: String,
+    pub value_epoch: Option<u64>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ComparativeProjection {
     pub basis: ComparativeColumnProjection,
     pub columns: Vec<ComparativeColumnProjection>,
@@ -96,6 +123,11 @@ pub enum ComparativeSourceProjection {
     },
     Scenario {
         id: String,
+    },
+    SweepPoint {
+        sweep_id: String,
+        point_id: String,
+        scenario_id: String,
     },
 }
 
@@ -438,6 +470,11 @@ fn series_id_for_comparative_source(source: &ComparativeSourceProjection) -> Str
         ComparativeSourceProjection::Published => "series:published".to_string(),
         ComparativeSourceProjection::Candidate { handle } => format!("series:candidate:{handle}"),
         ComparativeSourceProjection::Scenario { id } => format!("series:scenario:{id}"),
+        ComparativeSourceProjection::SweepPoint {
+            sweep_id, point_id, ..
+        } => {
+            format!("series:sweep:{sweep_id}:{point_id}")
+        }
     }
 }
 
