@@ -3,15 +3,23 @@
 //! skin crates own that.
 
 mod dispatcher;
+mod persistence;
 mod preview;
 mod projection;
 mod registry;
 mod session;
 
 pub use dispatcher::HostDispatcher;
+#[cfg(not(target_arch = "wasm32"))]
+pub use persistence::LocalFileWorkspaceDocumentStore;
+pub use persistence::{
+    InMemoryWorkspaceDocumentStore, WorkspaceDocumentCatalog, WorkspaceDocumentStore,
+    WorkspaceDocumentStoreError, workspace_session_from_document_store_or_default,
+};
 pub use preview::{preview_accounts_workspace_session, preview_accounts_workspace_state};
 pub use projection::workspace_state_from_model;
 pub use registry::build_default_registry;
 pub use session::{
-    TreeWorkspaceCollectionDependencyProjection, TreeWorkspaceSession, TreeWorkspaceSessionError,
+    DnaTreeWorkspaceDocument, TreeWorkspaceCollectionDependencyProjection, TreeWorkspaceSession,
+    TreeWorkspaceSessionError,
 };

@@ -12,7 +12,9 @@ use std::sync::Arc;
 
 #[cfg(target_arch = "wasm32")]
 use dnatreecalc_host::app::{
-    HostDispatcher, build_default_registry, preview_accounts_workspace_session,
+    DnaTreeWorkspaceDocument, HostDispatcher, WorkspaceDocumentCatalog, WorkspaceDocumentStore,
+    WorkspaceDocumentStoreError, build_default_registry,
+    workspace_session_from_document_store_or_default,
 };
 #[cfg(target_arch = "wasm32")]
 use dnatreecalc_shell::WorkspaceShell;
@@ -37,6 +39,97 @@ use wasm_bindgen::prelude::*;
 struct BrowserLocalStorageSkinStateStore {
     storage: web_sys::Storage,
     prefix: String,
+}
+
+#[cfg(target_arch = "wasm32")]
+struct BrowserLocalStorageWorkspaceDocumentStore {
+    storage: web_sys::Storage,
+    catalog_key: String,
+    workspace_prefix: String,
+}
+
+#[cfg(target_arch = "wasm32")]
+impl BrowserLocalStorageWorkspaceDocumentStore {
+    fn new(storage: web_sys::Storage) -> Self {
+        Self {
+            storage,
+            catalog_key: "dnatreecalc:workspace-documents:catalog".to_string(),
+            workspace_prefix: "dnatreecalc:workspace-documents:workspace:".to_string(),
+        }
+    }
+
+    fn workspace_key(&self, workspace_id: &str) -> String {
+        format!("{}{}", self.workspace_prefix, workspace_id)
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+impl WorkspaceDocumentStore for BrowserLocalStorageWorkspaceDocumentStore {
+    fn load_catalog(
+        &self,
+    ) -> Result<Option<WorkspaceDocumentCatalog>, WorkspaceDocumentStoreError> {
+        let Some(text) = self.storage.get_item(&self.catalog_key).map_err(|error| {
+            WorkspaceDocumentStoreError::Store {
+                operation: "reading browser workspace catalog",
+                detail: format!("{error:?}"),
+            }
+        })?
+        else {
+            return Ok(None);
+        };
+        serde_json::from_str(&text)
+            .map(Some)
+            .map_err(|error| WorkspaceDocumentStoreError::Deserialize(error.to_string()))
+    }
+
+    fn save_catalog(
+        &self,
+        catalog: &WorkspaceDocumentCatalog,
+    ) -> Result<(), WorkspaceDocumentStoreError> {
+        let text = serde_json::to_string(catalog)
+            .map_err(|error| WorkspaceDocumentStoreError::Serialize(error.to_string()))?;
+        self.storage
+            .set_item(&self.catalog_key, &text)
+            .map_err(|error| WorkspaceDocumentStoreError::Store {
+                operation: "writing browser workspace catalog",
+                detail: format!("{error:?}"),
+            })
+    }
+
+    fn load_workspace(
+        &self,
+        workspace_id: &str,
+    ) -> Result<Option<DnaTreeWorkspaceDocument>, WorkspaceDocumentStoreError> {
+        let key = self.workspace_key(workspace_id);
+        let Some(text) =
+            self.storage
+                .get_item(&key)
+                .map_err(|error| WorkspaceDocumentStoreError::Store {
+                    operation: "reading browser workspace document",
+                    detail: format!("{error:?}"),
+                })?
+        else {
+            return Ok(None);
+        };
+        serde_json::from_str(&text)
+            .map(Some)
+            .map_err(|error| WorkspaceDocumentStoreError::Deserialize(error.to_string()))
+    }
+
+    fn save_workspace(
+        &self,
+        workspace_id: &str,
+        document: &DnaTreeWorkspaceDocument,
+    ) -> Result<(), WorkspaceDocumentStoreError> {
+        let text = serde_json::to_string(document)
+            .map_err(|error| WorkspaceDocumentStoreError::Serialize(error.to_string()))?;
+        self.storage
+            .set_item(&self.workspace_key(workspace_id), &text)
+            .map_err(|error| WorkspaceDocumentStoreError::Store {
+                operation: "writing browser workspace document",
+                detail: format!("{error:?}"),
+            })
+    }
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -102,7 +195,16 @@ pub fn mount_dnatreecalc(element_id: &str) -> Result<(), JsValue> {
         .ok_or_else(|| JsValue::from_str("mount element not found"))?
         .dyn_into::<web_sys::HtmlElement>()?;
 
-    let session = Arc::new(std::sync::Mutex::new(preview_accounts_workspace_session()));
+    let local_storage = window
+        .local_storage()?
+        .ok_or_else(|| JsValue::from_str("localStorage unavailable"))?;
+    let workspace_document_store: Arc<dyn WorkspaceDocumentStore> = Arc::new(
+        BrowserLocalStorageWorkspaceDocumentStore::new(local_storage.clone()),
+    );
+    let (session, restored_selection) =
+        workspace_session_from_document_store_or_default(workspace_document_store.as_ref())
+            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+    let session = Arc::new(std::sync::Mutex::new(session));
     let workspace_state = session
         .lock()
         .map_err(|_| JsValue::from_str("workspace session mutex poisoned"))?
@@ -112,23 +214,20 @@ pub fn mount_dnatreecalc(element_id: &str) -> Result<(), JsValue> {
     let latest_delta = RwSignal::new(WorkspaceDelta::unchanged(
         workspace.get_untracked().projection_seq,
     ));
-    let selection = RwSignal::new(SelectionState::with_primary(Some(NodeId::new(
-        "Sheet1.RandArray5x5",
-    ))));
+    let selection = RwSignal::new(SelectionState::with_primary(
+        restored_selection.or_else(|| Some(NodeId::new("Sheet1.RandArray5x5"))),
+    ));
     let shared = SharedSkinStateHandle::new(SharedSkinState::default());
     let skin_state_store: Arc<dyn SkinStatePersistenceStore> =
-        Arc::new(BrowserLocalStorageSkinStateStore::new(
-            window
-                .local_storage()?
-                .ok_or_else(|| JsValue::from_str("localStorage unavailable"))?,
-        ));
+        Arc::new(BrowserLocalStorageSkinStateStore::new(local_storage));
 
-    let dispatcher = Arc::new(HostDispatcher::with_session_and_shared(
+    let dispatcher = Arc::new(HostDispatcher::with_session_shared_and_workspace_store(
         selection,
         workspace,
         latest_delta,
         session,
         Some(shared),
+        Some(workspace_document_store),
     ));
     let dispatch: Arc<dyn Dispatcher> = dispatcher;
 

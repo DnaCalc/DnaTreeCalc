@@ -15,12 +15,19 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use super::persistence::{WorkspaceDocumentStore, persist_workspace_sessions};
 use super::session::{TreeWorkspaceSession, TreeWorkspaceSessionError, node_key_for_tree_node};
 use crate::model::{WorkspaceFixture, WorkspaceModel};
 
 thread_local! {
     static HOST_SESSIONS: RefCell<BTreeMap<u64, Arc<Mutex<TreeWorkspaceSession>>>> =
         const { RefCell::new(BTreeMap::new()) };
+}
+
+pub(crate) fn with_host_sessions<R>(
+    f: impl FnOnce(&BTreeMap<u64, Arc<Mutex<TreeWorkspaceSession>>>) -> R,
+) -> R {
+    HOST_SESSIONS.with(|sessions| f(&sessions.borrow()))
 }
 
 static NEXT_HOST_SESSION_ID: AtomicU64 = AtomicU64::new(1);
@@ -37,6 +44,7 @@ pub struct HostDispatcher {
     workspace: Option<RwSignal<WorkspaceState>>,
     latest_delta: Option<RwSignal<WorkspaceDelta>>,
     shared: Option<SharedSkinStateHandle>,
+    workspace_document_store: Option<Arc<dyn WorkspaceDocumentStore>>,
     session_id: Mutex<Option<u64>>,
     workspace_sessions: Mutex<BTreeMap<String, u64>>,
     next_workspace_ordinal: AtomicU64,
@@ -60,6 +68,7 @@ impl HostDispatcher {
             workspace: None,
             latest_delta: None,
             shared: None,
+            workspace_document_store: None,
             session_id: Mutex::new(None),
             workspace_sessions: Mutex::new(BTreeMap::new()),
             next_workspace_ordinal: AtomicU64::new(1),
@@ -88,6 +97,25 @@ impl HostDispatcher {
         session: Arc<Mutex<TreeWorkspaceSession>>,
         shared: Option<SharedSkinStateHandle>,
     ) -> Self {
+        Self::with_session_shared_and_workspace_store(
+            selection,
+            workspace,
+            latest_delta,
+            session,
+            shared,
+            None,
+        )
+    }
+
+    #[must_use]
+    pub fn with_session_shared_and_workspace_store(
+        selection: RwSignal<SelectionState>,
+        workspace: RwSignal<WorkspaceState>,
+        latest_delta: RwSignal<WorkspaceDelta>,
+        session: Arc<Mutex<TreeWorkspaceSession>>,
+        shared: Option<SharedSkinStateHandle>,
+        workspace_document_store: Option<Arc<dyn WorkspaceDocumentStore>>,
+    ) -> Self {
         let session_id = NEXT_HOST_SESSION_ID.fetch_add(1, Ordering::Relaxed);
         let workspace_id = session
             .lock()
@@ -106,11 +134,12 @@ impl HostDispatcher {
                 state.active_workspace_id = Some(workspace_id.clone());
             });
         }
-        Self {
+        let dispatcher = Self {
             selection,
             workspace: Some(workspace),
             latest_delta: Some(latest_delta),
             shared,
+            workspace_document_store,
             session_id: Mutex::new(Some(session_id)),
             workspace_sessions: Mutex::new(workspace_sessions),
             next_workspace_ordinal: AtomicU64::new(1),
@@ -118,7 +147,9 @@ impl HostDispatcher {
             undo_stack: Mutex::new(Vec::new()),
             redo_stack: Mutex::new(Vec::new()),
             log: Mutex::new(Vec::new()),
-        }
+        };
+        dispatcher.hydrate_workspace_sessions_from_document_store(&workspace_id);
+        dispatcher
     }
 
     /// Snapshot of intents dispatched since construction. Tests use this
@@ -139,7 +170,7 @@ impl Dispatcher for HostDispatcher {
             .lock()
             .expect("dispatcher log poisoned")
             .push(intent.clone());
-        match intent {
+        let receipt = match intent {
             WorkspaceIntent::SelectNode(target) => {
                 self.selection.set(SelectionState::with_primary(target));
                 IntentReceipt::accepted().with_delta(self.publish_unchanged_delta())
@@ -637,7 +668,13 @@ impl Dispatcher for HostDispatcher {
             // one this dispatcher version does not know — reject loudly
             // rather than silently ignore.
             _ => self.reject_current(IntentError::Unsupported),
+        };
+        if receipt.accepted {
+            if let Err(error) = self.persist_active_workspace_document() {
+                return self.reject_current(error);
+            }
         }
+        receipt
     }
 }
 
@@ -1247,6 +1284,84 @@ impl HostDispatcher {
         if let Some(latest_delta) = self.latest_delta {
             latest_delta.set(delta);
         }
+    }
+
+    fn persist_active_workspace_document(&self) -> Result<(), IntentError> {
+        let Some(store) = &self.workspace_document_store else {
+            return Ok(());
+        };
+        let active_session_id = self.active_session_id()?;
+        let workspace_sessions = self
+            .workspace_sessions
+            .lock()
+            .map_err(|_| host_failure("workspace catalog mutex poisoned"))?
+            .clone();
+        let active_workspace_id = workspace_sessions
+            .iter()
+            .find_map(|(workspace_id, session_id)| {
+                (*session_id == active_session_id).then(|| workspace_id.clone())
+            })
+            .ok_or_else(|| host_failure("active workspace is missing from workspace catalog"))?;
+        let selected = self.selection.get_untracked().primary;
+        persist_workspace_sessions(
+            store,
+            &workspace_sessions,
+            &active_workspace_id,
+            selected.as_ref(),
+        )
+        .map_err(|error| IntentError::HostFailure(error.to_string()))
+    }
+
+    fn hydrate_workspace_sessions_from_document_store(&self, active_workspace_id: &str) {
+        let Some(store) = &self.workspace_document_store else {
+            return;
+        };
+        let Ok(Some(catalog)) = store.load_catalog() else {
+            self.refresh_shared_workspace_catalog(active_workspace_id);
+            return;
+        };
+        for workspace_id in catalog.workspace_ids {
+            let known = self
+                .workspace_sessions
+                .lock()
+                .map(|sessions| sessions.contains_key(&workspace_id))
+                .unwrap_or(true);
+            if known {
+                continue;
+            }
+            let Ok(Some(document)) = store.load_workspace(&workspace_id) else {
+                continue;
+            };
+            let Ok((session, _)) = TreeWorkspaceSession::from_dnatree_document(document) else {
+                continue;
+            };
+            let session = Arc::new(Mutex::new(session));
+            let session_id = NEXT_HOST_SESSION_ID.fetch_add(1, Ordering::Relaxed);
+            HOST_SESSIONS.with(|sessions| {
+                sessions.borrow_mut().insert(session_id, session);
+            });
+            if let Ok(mut sessions) = self.workspace_sessions.lock() {
+                sessions.insert(workspace_id, session_id);
+            }
+        }
+        self.refresh_shared_workspace_catalog(active_workspace_id);
+    }
+
+    fn refresh_shared_workspace_catalog(&self, active_workspace_id: &str) {
+        let Some(shared) = self.shared else {
+            return;
+        };
+        let Ok(workspace_ids) = self
+            .workspace_sessions
+            .lock()
+            .map(|sessions| sessions.keys().cloned().collect::<Vec<_>>())
+        else {
+            return;
+        };
+        shared.update(|state| {
+            state.workspace_ids = workspace_ids;
+            state.active_workspace_id = Some(active_workspace_id.to_string());
+        });
     }
 
     fn record_revision_undo_boundary(

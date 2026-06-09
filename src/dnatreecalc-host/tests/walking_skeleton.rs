@@ -20,8 +20,12 @@
 
 use std::sync::Arc;
 
+#[cfg(not(target_arch = "wasm32"))]
+use dnatreecalc_host::app::LocalFileWorkspaceDocumentStore;
 use dnatreecalc_host::app::{
-    HostDispatcher, TreeWorkspaceSession, build_default_registry, preview_accounts_workspace_state,
+    HostDispatcher, InMemoryWorkspaceDocumentStore, TreeWorkspaceSession, WorkspaceDocumentStore,
+    build_default_registry, preview_accounts_workspace_state,
+    workspace_session_from_document_store_or_default,
 };
 use dnatreecalc_host::model::{WorkspaceFixture, WorkspaceModel};
 use dnatreecalc_skin_framework::{
@@ -390,6 +394,161 @@ fn workspace_management_intents_create_and_switch_projected_sessions() {
             .node(&NodeId::new("Root"))
             .is_some()
     );
+}
+
+#[test]
+fn host_dispatcher_autosaves_workspace_documents_through_store() {
+    let _owner = Owner::new();
+
+    let mut initial_session = TreeWorkspaceSession::from_model(
+        &WorkspaceModel::try_from(WorkspaceFixture::from_repo_fixture("accounts").unwrap())
+            .unwrap(),
+    )
+    .unwrap();
+    initial_session.recalculate().unwrap();
+    let workspace_state = initial_session.workspace_state().unwrap();
+    let session = Arc::new(std::sync::Mutex::new(initial_session));
+
+    let workspace = RwSignal::new(workspace_state);
+    let latest_delta = RwSignal::new(WorkspaceDelta::unchanged(
+        workspace.get_untracked().projection_seq,
+    ));
+    let selection = RwSignal::new(SelectionState::with_primary(Some(NodeId::new(
+        "Accounts.2005.Q1.Income",
+    ))));
+    let shared = SharedSkinStateHandle::new(SharedSkinState::default());
+    let store = Arc::new(InMemoryWorkspaceDocumentStore::new());
+    let dispatcher = HostDispatcher::with_session_shared_and_workspace_store(
+        selection,
+        workspace,
+        latest_delta,
+        session,
+        Some(shared),
+        Some(store.clone()),
+    );
+
+    let receipt = dispatcher.dispatch(WorkspaceIntent::EditContent {
+        node: NodeId::new("Accounts.2005.Q1.Income.Sales"),
+        content: "4".to_string(),
+    });
+    assert!(receipt.accepted, "{:?}", receipt.error);
+
+    let catalog = store
+        .load_catalog()
+        .unwrap()
+        .expect("accepted intent saves workspace catalog");
+    assert_eq!(catalog.active_workspace_id.as_deref(), Some("accounts"));
+    assert_eq!(catalog.workspace_ids, vec!["accounts".to_string()]);
+
+    let document = store
+        .load_workspace("accounts")
+        .unwrap()
+        .expect("accepted intent saves active workspace document");
+    assert_eq!(
+        document.selected_node.as_deref(),
+        Some("Accounts.2005.Q1.Income")
+    );
+
+    let new_receipt = dispatcher.dispatch(WorkspaceIntent::NewWorkspace);
+    assert!(new_receipt.accepted, "{:?}", new_receipt.error);
+    let add_receipt = dispatcher.dispatch(WorkspaceIntent::AddNode {
+        parent: None,
+        symbol: "Root".to_string(),
+        initial: dnatreecalc_skin_framework::InitialNodeContentProjection::Literal {
+            content: "1".to_string(),
+        },
+        is_meta: false,
+    });
+    assert!(add_receipt.accepted, "{:?}", add_receipt.error);
+    let catalog = store
+        .load_catalog()
+        .unwrap()
+        .expect("new workspace updates persisted catalog");
+    assert_eq!(
+        catalog.workspace_ids,
+        vec!["Workspace 1".to_string(), "accounts".to_string()]
+    );
+    assert_eq!(catalog.active_workspace_id.as_deref(), Some("Workspace 1"));
+
+    let (mut restored, restored_selection) =
+        workspace_session_from_document_store_or_default(store.as_ref()).unwrap();
+    restored.recalculate().unwrap();
+    let restored_state = restored.workspace_state().unwrap();
+    assert_eq!(restored_state.workspace_id, "Workspace 1");
+    assert_eq!(
+        restored_selection.as_ref().map(NodeId::as_str),
+        Some("Root")
+    );
+
+    let restored_workspace = RwSignal::new(restored_state);
+    let restored_delta = RwSignal::new(WorkspaceDelta::unchanged(
+        restored_workspace.get_untracked().projection_seq,
+    ));
+    let restored_selection_signal =
+        RwSignal::new(SelectionState::with_primary(restored_selection.clone()));
+    let restored_shared = SharedSkinStateHandle::new(SharedSkinState::default());
+    let restored_dispatcher = HostDispatcher::with_session_shared_and_workspace_store(
+        restored_selection_signal,
+        restored_workspace,
+        restored_delta,
+        Arc::new(std::sync::Mutex::new(restored)),
+        Some(restored_shared),
+        Some(store.clone()),
+    );
+    assert_eq!(
+        restored_shared.get_untracked().workspace_ids,
+        vec!["Workspace 1".to_string(), "accounts".to_string()]
+    );
+    let switch_receipt = restored_dispatcher.dispatch(WorkspaceIntent::SwitchWorkspace {
+        workspace_id: "accounts".to_string(),
+    });
+    assert!(switch_receipt.accepted, "{:?}", switch_receipt.error);
+    let restored_state = restored_workspace.get_untracked();
+    assert_eq!(
+        scalar_value(&restored_state, "Accounts.2005.Q1.Income"),
+        Some("0.8")
+    );
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[test]
+fn local_file_workspace_document_store_roundtrips_for_desktop_storage() {
+    let root = std::env::temp_dir().join(format!(
+        "dnatreecalc-workspace-store-test-{}",
+        std::process::id()
+    ));
+    if root.exists() {
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+    let store = LocalFileWorkspaceDocumentStore::new(&root);
+
+    let mut session = TreeWorkspaceSession::from_model(
+        &WorkspaceModel::try_from(WorkspaceFixture::from_repo_fixture("accounts").unwrap())
+            .unwrap(),
+    )
+    .unwrap();
+    session.recalculate().unwrap();
+    let document = session
+        .export_dnatree_document(Some(&NodeId::new("Accounts.2005.Q1.Income")))
+        .unwrap();
+    store
+        .save_catalog(&dnatreecalc_host::app::WorkspaceDocumentCatalog::new(
+            vec!["accounts".to_string()],
+            Some("accounts".to_string()),
+        ))
+        .unwrap();
+    store.save_workspace("accounts", &document).unwrap();
+
+    let (restored, selection) = workspace_session_from_document_store_or_default(&store).unwrap();
+    let restored_state = restored.workspace_state().unwrap();
+    assert_eq!(
+        selection.as_ref().map(NodeId::as_str),
+        Some("Accounts.2005.Q1.Income")
+    );
+    assert_eq!(restored_state.workspace_id, "accounts");
+    assert!(root.join("catalog.json").exists());
+
+    std::fs::remove_dir_all(&root).unwrap();
 }
 
 #[test]

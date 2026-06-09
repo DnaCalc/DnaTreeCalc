@@ -730,6 +730,15 @@ The roadmap alignment rule is:
       through real shell/skin mounts without recalculating or adding skin-side semantics. Shared-state
       audit, scenario metadata persistence policy, a11y helpers, and multi-slot composition remain
       later W5 work.
+- [x] W5 early `workspace-document-persistence` slice:
+      The host now owns a `WorkspaceDocumentStore` seam for `.dnatree` workspace documents plus a
+      persisted workspace catalog/active-workspace pointer. `HostDispatcher` autosaves accepted
+      intents through that seam, preserving host-owned OxCalc snapshots and selected node state
+      without giving skins serialization responsibility. The host exposes in-memory and native
+      local-file stores for tests/desktop hosts, and the wasm web entrypoint restores/saves through
+      browser `localStorage`. Walking-skeleton tests prove dispatcher autosave, restore through the
+      store, and native local-file document storage. Candidate overlays, scenarios, and richer
+      workspace metadata persistence remain explicit later-policy work.
 - [x] W5 early `design-token-layer` slice:
       Skin IR now carries required `ThemeTokens` on both `SkinContext` and `ErasedSkinContext`,
       with typed `ThemeMode { Light, Dark, HighContrast }` and CSS custom property emission. The

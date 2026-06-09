@@ -600,6 +600,13 @@ Use this as the per-tranche goal statement before implementation:
       persisted roundtrip, migration, slot/workspace isolation, identity-keyed GC, and local-file
       storage. Walking-skeleton and programmable Skin IR tests prove the store is threaded through
       real shell/skin mounts without recalc or skin-side semantics.
+- [x] W5 early `workspace-document-persistence` slice:
+      Host-owned `.dnatree` workspace documents now persist through a `WorkspaceDocumentStore`
+      seam with a workspace catalog and active-workspace pointer. `HostDispatcher` autosaves
+      accepted intents, native hosts can use the local-file store, and the wasm web entrypoint
+      restores/saves through browser `localStorage`. Walking-skeleton tests prove dispatcher
+      autosave/restore and desktop local-file document storage. Candidate/scenario persistence
+      remains later-policy work.
 - [x] W5 early `design-token-layer` slice:
       Skin IR now exposes required `ThemeTokens` with typed light, dark, and high-contrast modes.
       The shell injects those tokens as `.dtc-shell` CSS custom properties and passes the same
