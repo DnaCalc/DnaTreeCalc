@@ -316,7 +316,24 @@ pub struct ActiveNodeDetailProjection {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClipboardProjection {
+    pub operation: ClipboardOperationProjection,
     pub payload: ClipboardPayloadProjection,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClipboardOperationProjection {
+    Copy,
+    Cut,
+}
+
+impl ClipboardOperationProjection {
+    #[must_use]
+    pub const fn stable_id(self) -> &'static str {
+        match self {
+            Self::Copy => "copy",
+            Self::Cut => "cut",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

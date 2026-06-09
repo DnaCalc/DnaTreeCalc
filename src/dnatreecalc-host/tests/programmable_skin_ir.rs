@@ -2,11 +2,12 @@ mod support;
 
 use dnatreecalc_host::app::TreeWorkspaceSession;
 use dnatreecalc_skin_framework::{
-    ActiveSelectionDetailProjection, AuthoringScope, CalcRunStateProjection, ClipboardPayloadKind,
-    ClipboardPayloadProjection, FormulaBindPreviewDiagnosticStage, FormulaBindPreviewInputKind,
-    InitialNodeContentProjection, IntentError, InvalidationReasonProjection,
-    MutationImpactBlockedReasonProjection, MutationImpactIntentProjection, NodeAttributePatch,
-    NodeContentKind, NodeId, NodeValueProjection, RecalcPlanMutation, ReferenceTargetProjection,
+    ActiveSelectionDetailProjection, AuthoringScope, CalcRunStateProjection,
+    ClipboardOperationProjection, ClipboardPayloadKind, ClipboardPayloadProjection,
+    FormulaBindPreviewDiagnosticStage, FormulaBindPreviewInputKind, InitialNodeContentProjection,
+    IntentError, InvalidationReasonProjection, MutationImpactBlockedReasonProjection,
+    MutationImpactIntentProjection, NodeAttributePatch, NodeContentKind, NodeId,
+    NodeValueProjection, RecalcPlanMutation, ReferenceTargetProjection,
     RuntimeEffectFamilyProjection, RuntimeOverlayKindProjection, TableCellEditabilityProjection,
     TableCellRegionProjection, TableColumnBodyProjection, TableDependencyFactKindProjection,
     TableDependencyFactStatusProjection, TreeReferenceCollectionFamilyProjection,
@@ -2827,6 +2828,7 @@ fn programmable_skin_populates_typed_clipboard_carriers_from_projection() {
     let Some(clipboard) = &state.clipboard else {
         panic!("clipboard projects after value copy");
     };
+    assert_eq!(clipboard.operation, ClipboardOperationProjection::Copy);
     let ClipboardPayloadProjection::Values { nodes } = &clipboard.payload else {
         panic!("expected values clipboard payload");
     };
@@ -2918,6 +2920,42 @@ fn programmable_skin_populates_typed_clipboard_carriers_from_projection() {
     assert_eq!(root_path, &NodeId::new("Root"));
     assert_eq!(nodes.len(), 4);
     assert!(nodes.contains(&b_key));
+
+    let before_cut_revision = revision_fingerprint(&skin.state().revision);
+    let cut = skin.try_cut_to_clipboard(
+        AuthoringScope::Subtree(root_key.clone()),
+        ClipboardPayloadKind::Subtree,
+    );
+    assert!(cut.accepted, "{:?}", cut.error);
+    assert_eq!(cut.transaction_id, None);
+    assert!(
+        cut.delta
+            .changes
+            .iter()
+            .any(|change| matches!(change, WorkspaceDeltaChange::ClipboardChanged(Some(_))))
+    );
+    let cut_state = skin.state();
+    assert_eq!(
+        revision_fingerprint(&cut_state.revision),
+        before_cut_revision
+    );
+    assert!(cut_state.node(&NodeId::new("Root")).is_some());
+    assert!(cut_state.node(&NodeId::new("Root.B.B1")).is_some());
+    let Some(clipboard) = &cut_state.clipboard else {
+        panic!("clipboard projects after cut");
+    };
+    assert_eq!(clipboard.operation, ClipboardOperationProjection::Cut);
+    let ClipboardPayloadProjection::Subtree {
+        root,
+        root_path,
+        nodes,
+    } = &clipboard.payload
+    else {
+        panic!("expected cut subtree clipboard payload");
+    };
+    assert_eq!(root, &root_key);
+    assert_eq!(root_path, &NodeId::new("Root"));
+    assert_eq!(nodes.len(), 4);
 
     let unsupported = skin.try_copy_to_clipboard(
         AuthoringScope::Nodes(vec![root_key, b_key]),

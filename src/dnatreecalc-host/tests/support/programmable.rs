@@ -125,6 +125,15 @@ impl ProgrammableDriver {
             .dispatch(WorkspaceIntent::CopyToClipboard { scope, payload })
     }
 
+    pub fn try_cut_to_clipboard(
+        &self,
+        scope: AuthoringScope,
+        payload: ClipboardPayloadKind,
+    ) -> IntentReceipt {
+        self.dispatch
+            .dispatch(WorkspaceIntent::CutToClipboard { scope, payload })
+    }
+
     pub fn try_paste_clipboard_format(&self, target: AuthoringScope) -> IntentReceipt {
         self.dispatch
             .dispatch(WorkspaceIntent::PasteClipboardFormat { target })

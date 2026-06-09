@@ -137,6 +137,12 @@ pub enum WorkspaceIntent {
         scope: AuthoringScope,
         payload: ClipboardPayloadKind,
     },
+    /// Populate the host-owned clipboard carrier as a pending cut. This does
+    /// not delete model nodes; a later paste/commit verb owns that mutation.
+    CutToClipboard {
+        scope: AuthoringScope,
+        payload: ClipboardPayloadKind,
+    },
     /// Paste the current clipboard format payload onto a typed target scope.
     /// Formula and value paste are separate ownership-sensitive verbs.
     PasteClipboardFormat {
@@ -528,6 +534,7 @@ impl Dispatcher for InMemoryDispatcher {
             | WorkspaceIntent::SetMeta { .. }
             | WorkspaceIntent::SetNodeAttributes { .. }
             | WorkspaceIntent::CopyToClipboard { .. }
+            | WorkspaceIntent::CutToClipboard { .. }
             | WorkspaceIntent::PasteClipboardFormat { .. }
             | WorkspaceIntent::AddNode { .. }
             | WorkspaceIntent::RenameNode { .. }

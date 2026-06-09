@@ -2,11 +2,11 @@ use std::sync::{Arc, Mutex};
 
 use dnatreecalc_skin_framework::{
     AuthoringScope, ClipboardNodeFormatProjection, ClipboardNodeValueProjection,
-    ClipboardPayloadKind, ClipboardPayloadProjection, ClipboardProjection,
-    DependencyDeltaProjection, Dispatcher, IntentError, IntentReceipt, NodeContentKind, NodeId,
-    NodeKey, NodeValueDeltaProjection, NodeView, SelectionState, SharedSkinStateHandle,
-    StructuralDeltaProjection, TableCellSelection, WorkspaceDelta, WorkspaceDeltaChange,
-    WorkspaceIntent, WorkspaceState,
+    ClipboardOperationProjection, ClipboardPayloadKind, ClipboardPayloadProjection,
+    ClipboardProjection, DependencyDeltaProjection, Dispatcher, IntentError, IntentReceipt,
+    NodeContentKind, NodeId, NodeKey, NodeValueDeltaProjection, NodeView, SelectionState,
+    SharedSkinStateHandle, StructuralDeltaProjection, TableCellSelection, WorkspaceDelta,
+    WorkspaceDeltaChange, WorkspaceIntent, WorkspaceState,
 };
 use leptos::prelude::*;
 use oxcalc_core::consumer::TransactionRecalcPolicy;
@@ -207,7 +207,10 @@ impl Dispatcher for HostDispatcher {
                 })
                 .map_or_else(IntentReceipt::rejected, receipt_for_publication),
             WorkspaceIntent::CopyToClipboard { scope, payload } => self
-                .copy_to_clipboard(scope, payload)
+                .populate_clipboard(scope, payload, ClipboardOperationProjection::Copy)
+                .unwrap_or_else(IntentReceipt::rejected),
+            WorkspaceIntent::CutToClipboard { scope, payload } => self
+                .populate_clipboard(scope, payload, ClipboardOperationProjection::Cut)
                 .unwrap_or_else(IntentReceipt::rejected),
             WorkspaceIntent::PasteClipboardFormat { target } => self
                 .paste_clipboard_format(target)
@@ -478,16 +481,17 @@ fn receipt_for_publication<T>(publication: PublishedWorkspaceEdit<T>) -> IntentR
 }
 
 impl HostDispatcher {
-    fn copy_to_clipboard(
+    fn populate_clipboard(
         &self,
         scope: AuthoringScope,
         payload: ClipboardPayloadKind,
+        operation: ClipboardOperationProjection,
     ) -> Result<IntentReceipt, IntentError> {
         let workspace = self
             .workspace
             .ok_or_else(|| host_failure("workspace projection handle is not attached"))?;
         let before = workspace.get_untracked();
-        let clipboard = clipboard_from_projection(&before, &scope, payload)?;
+        let clipboard = clipboard_from_projection(&before, &scope, payload, operation)?;
         let mut after = before.clone();
         after.clipboard = Some(clipboard);
         after.projection_seq = self.next_projection_seq.fetch_add(1, Ordering::Relaxed);
@@ -694,6 +698,7 @@ fn clipboard_from_projection(
     workspace: &WorkspaceState,
     scope: &AuthoringScope,
     payload: ClipboardPayloadKind,
+    operation: ClipboardOperationProjection,
 ) -> Result<ClipboardProjection, IntentError> {
     let node_keys = workspace
         .expand_authoring_scope(scope)
@@ -769,7 +774,7 @@ fn clipboard_from_projection(
             }
         }
     };
-    Ok(ClipboardProjection { payload })
+    Ok(ClipboardProjection { operation, payload })
 }
 
 fn clipboard_number_format_code(workspace: &WorkspaceState) -> Result<Option<String>, IntentError> {

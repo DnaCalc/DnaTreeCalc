@@ -47,7 +47,9 @@ formats, and subtrees from `AuthoringScope`, projects it through `WorkspaceState
 emits a typed clipboard delta without involving the OS clipboard or fabricating paste semantics. The
 first paste-special slice is also landed for format payloads only: `PasteClipboardFormat` consumes a
 single copied format carrier and routes the write through the existing canonical
-`SetNumberFormat`/meta-node transaction path.
+`SetNumberFormat`/meta-node transaction path. The next `clipboard-transfer-model` slice is also
+landed: `CutToClipboard` populates the same typed carrier with `operation = Cut` while leaving the
+model untouched until a later paste/commit verb owns the mutation.
 
 ## Roadmap Position
 
@@ -220,10 +222,15 @@ The roadmap alignment rule is:
       payload and applies its `number_format_code` through the existing `set_number_format_transaction`
       path. It can also paste an unformatted source as a clear. This slice deliberately does not
       implement value paste, formula paste, OS clipboard integration, or subtree paste/rebind.
+- [x] Implement the second `clipboard-transfer-model` tranche:
+      `WorkspaceIntent::CutToClipboard { scope, payload }` populates the host-owned clipboard carrier
+      with `ClipboardOperationProjection::Cut` using the same typed payload construction as copy.
+      Cut does not delete nodes, advance revisions, or fabricate paste behavior; it only records the
+      pending transfer operation for later paste semantics.
 - [ ] Continue W3 with the next ownership-correct slice. Candidate order after the OxFml-blocked
-      formula rewrite verbs: continue `clipboard-transfer-model` toward cut or non-formula paste
-      only where ownership is clear, complete remaining `add-node-content-policy` only when template
-      substrate exists, or move to OxFml-unblocked formula authoring when that API lands.
+      formula rewrite verbs: continue `clipboard-transfer-model` toward non-formula paste only where
+      ownership is clear, complete remaining `add-node-content-policy` only when template substrate
+      exists, or move to OxFml-unblocked formula authoring when that API lands.
 
 ### Gating Engine Workstreams
 

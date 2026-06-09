@@ -46,6 +46,9 @@ formula rewrite, and subtree rebind remain separate work.
 The first `paste-special` slice is landed for format payloads: `PasteClipboardFormat` consumes one
 copied format carrier and applies it through the existing canonical number-format transaction path.
 Value paste, formula paste, OS clipboard integration, and subtree paste/rebind remain open.
+The second `clipboard-transfer-model` tranche is landed: `CutToClipboard` records
+`ClipboardOperationProjection::Cut` on the host-owned clipboard carrier without deleting nodes or
+advancing model revisions.
 
 Do not advance to W4 speculation/history or W5 platform polish as the default next step while W3
 authoring verbs remain incomplete.
@@ -185,9 +188,12 @@ Use this as the per-tranche goal statement before implementation:
       applies its `number_format_code` to a target `AuthoringScope` through the existing
       `set_number_format_transaction` path. Pasting an unformatted source clears the target format.
       Value paste, formula paste, OS clipboard integration, and subtree paste/rebind remain open.
+- [x] Land second `clipboard-transfer-model` tranche:
+      `WorkspaceIntent::CutToClipboard { scope, payload }` records a `Cut` operation on the same typed
+      host-owned clipboard carrier as copy. It intentionally does not delete source nodes or advance
+      the workspace revision; later paste/commit semantics own any model mutation.
 - [ ] Continue W3 with the next feasible tranche: continue `clipboard-transfer-model`
-      toward cut or non-formula paste where ownership is clear, or move to OxFml-unblocked formula
-      authoring.
+      toward non-formula paste where ownership is clear, or move to OxFml-unblocked formula authoring.
 
 ## Gated Workstreams
 
