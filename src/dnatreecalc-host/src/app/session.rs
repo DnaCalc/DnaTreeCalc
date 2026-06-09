@@ -1502,6 +1502,17 @@ impl TreeWorkspaceSession {
         self.candidate_projection_for_view(&view)
     }
 
+    pub fn rebase_candidate(
+        &mut self,
+        handle: &str,
+    ) -> Result<CandidateProjection, TreeWorkspaceSessionError> {
+        let handle = self.candidate_handle(handle)?;
+        let handle_text = handle.to_string();
+        let view = self.context.rebase_candidate_to_current_revision(&handle)?;
+        self.bump_scenarios_for_candidate(&handle_text);
+        self.candidate_projection_for_view(&view)
+    }
+
     pub fn discard_candidate(&mut self, handle: &str) -> Result<String, TreeWorkspaceSessionError> {
         let handle_value = self.candidate_handle(handle)?;
         self.context.discard_candidate(&handle_value)?;

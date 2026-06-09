@@ -287,6 +287,12 @@ impl ProgrammableDriver {
         })
     }
 
+    pub fn try_rebase_candidate(&self, handle: &str) -> IntentReceipt {
+        self.dispatch.dispatch(WorkspaceIntent::RebaseCandidate {
+            handle: handle.to_string(),
+        })
+    }
+
     pub fn try_discard_candidate(&self, handle: &str) -> IntentReceipt {
         self.dispatch.dispatch(WorkspaceIntent::DiscardCandidate {
             handle: handle.to_string(),

@@ -67,9 +67,13 @@ table metadata, dry-bind it in the candidate prospective-node context, and rejec
 formulas before private mutation. The first candidate speculation-budget/GC slice is now landed:
 OxCalc computes typed candidate pressure from live candidate handles, reaps unprotected candidates
 to a requested budget, and DnaTreeCalc projects the pressure plus a closed `ReapCandidates` Skin IR
-intent without host-side lifecycle fabrication. Optimized layering/rebase, candidate add-node
-template policy, and full scenario/what-if UX remain open. The first richer host-pin retention slice is
-also landed: OxCalc exposes explicit candidate retention pins that protect active candidates from
+intent without host-side lifecycle fabrication. The first unparented candidate rebase slice is now
+landed: OxCalc retains a private candidate edit log, replays it onto the current workspace revision
+without publishing, rejects parented/child-retained rebase with typed engine errors in this slice,
+and DnaTreeCalc exposes a closed `RebaseCandidate` intent that projects the rebased candidate
+without stale values until it is explicitly evaluated. Parented/layered rebase, candidate add-node
+template policy, and full scenario/what-if UX remain open. The first richer host-pin retention slice
+is also landed: OxCalc exposes explicit candidate retention pins that protect active candidates from
 budget reaping, DnaTreeCalc projects pin counts and pressure reason counts, and Skin IR exposes
 closed pin/unpin intents without owning lifecycle semantics. The first W4c scenario-projection slice
 is also landed: DnaTreeCalc projects a host-owned scenario manifest over existing OxCalc candidate
@@ -591,6 +595,15 @@ The roadmap alignment rule is:
       closed `PinCandidateRetention` / `UnpinCandidateRetention` Skin IR intents. Programmable Skin
       IR tests prove a pinned candidate survives reaping while an unpinned candidate is reclaimed,
       pin/unpin emits candidate-change deltas, and an unbalanced unpin is rejected.
+- [x] `candidate-overlay-handle` unparented stale-candidate rebase slice:
+      OxCalc retains successful private candidate edit transactions and exposes
+      `rebase_candidate_to_current_revision` to replay an unparented candidate's private edit log
+      onto the current workspace revision without publishing. Parented and child-retained rebase
+      paths reject with typed engine errors in this slice. DnaTreeCalc exposes the closed
+      `RebaseCandidate` Skin IR intent and projects the rebased candidate without stale values until
+      explicit candidate evaluation. Focused OxCalc tests prove stale commit rejection, successful
+      unparented rebase, non-publishing evaluation, commit from the rebased basis, and parented
+      rebase rejection; programmable Skin IR tests prove the same path from outside the engine.
 - [x] W4c `scenario-projection` first candidate-backed scenario rail slice:
       DnaTreeCalc projects `WorkspaceState.scenarios` as a host-owned manifest over existing OxCalc
       candidate handles, with closed `CreateScenarioFromCandidate`, `ActivateScenario`, and
@@ -635,9 +648,9 @@ The roadmap alignment rule is:
       direct sweep/goal-seek series, richer value provenance, and engine-published scenario revision
       history remain open.
 - [ ] `candidate-overlay-handle`: continue toward fully addressable, layerable, non-publishing
-      candidate contexts with optimized layering/rebase, candidate add-node template initial content,
-      direct sweep/goal-seek comparison columns, scoped/unit series projection, and broader what-if
-      UX.
+      candidate contexts with optimized parented/layered rebase, candidate add-node template initial
+      content, direct sweep/goal-seek comparison columns, scoped/unit series projection, and broader
+      what-if UX.
 - [x] `value-epoch-keying`: per-node published-value epoch distinct from input epoch.
 
 ## Status Template

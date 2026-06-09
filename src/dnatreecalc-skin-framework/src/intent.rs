@@ -247,6 +247,11 @@ pub enum WorkspaceIntent {
     EvaluateCandidate {
         handle: String,
     },
+    /// Rebase an unparented candidate by replaying its engine-owned private
+    /// edit log onto the current workspace revision without publishing.
+    RebaseCandidate {
+        handle: String,
+    },
     /// Drop an addressable candidate overlay without changing workspace state.
     DiscardCandidate {
         handle: String,
@@ -741,6 +746,7 @@ impl Dispatcher for InMemoryDispatcher {
             | WorkspaceIntent::DeleteCandidateNode { .. }
             | WorkspaceIntent::AddCandidateNode { .. }
             | WorkspaceIntent::EvaluateCandidate { .. }
+            | WorkspaceIntent::RebaseCandidate { .. }
             | WorkspaceIntent::DiscardCandidate { .. }
             | WorkspaceIntent::PinCandidateRetention { .. }
             | WorkspaceIntent::UnpinCandidateRetention { .. }

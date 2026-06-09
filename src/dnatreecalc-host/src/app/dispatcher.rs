@@ -317,6 +317,9 @@ impl Dispatcher for HostDispatcher {
             WorkspaceIntent::EvaluateCandidate { handle } => self
                 .apply_candidate_projection_edit(|session| session.evaluate_candidate(&handle))
                 .map_or_else(IntentReceipt::rejected, receipt_for_candidate_change),
+            WorkspaceIntent::RebaseCandidate { handle } => self
+                .apply_candidate_projection_edit(|session| session.rebase_candidate(&handle))
+                .map_or_else(IntentReceipt::rejected, receipt_for_candidate_change),
             WorkspaceIntent::DiscardCandidate { handle } => self
                 .discard_candidate(&handle)
                 .unwrap_or_else(IntentReceipt::rejected),

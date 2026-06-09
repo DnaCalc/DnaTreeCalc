@@ -1516,6 +1516,80 @@ fn programmable_skin_rejects_stale_candidate_commit_without_losing_candidate() {
 }
 
 #[test]
+fn programmable_skin_rebases_stale_candidate_before_commit() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    skin.add_node(Some("Root"), "A", "1");
+    skin.add_node(Some("Root"), "B", "=A+1");
+    let root_b = skin
+        .state()
+        .node(&NodeId::new("Root.B"))
+        .expect("Root.B should project")
+        .key
+        .clone();
+    let open = skin.try_open_candidate();
+    assert!(open.accepted, "{:?}", open.error);
+    let handle = skin.state().candidates[0].handle.clone();
+    let original_basis = skin.state().candidates[0].basis_revision_id.clone();
+
+    assert!(
+        skin.try_edit_candidate_content(&handle, "Root.A", "5")
+            .accepted
+    );
+    skin.edit("Root.A", "2");
+    skin.assert_scalar("Root.B", "3");
+    let current_revision = skin
+        .state()
+        .revision
+        .workspace_revision_id
+        .clone()
+        .expect("published workspace revision should project");
+    assert_ne!(current_revision, original_basis);
+    let stale_commit = skin.try_commit_candidate(&handle);
+    assert!(!stale_commit.accepted);
+    assert!(matches!(
+        stale_commit.error,
+        Some(IntentError::CandidateBasisNotCurrent { .. })
+    ));
+
+    let rebase = skin.try_rebase_candidate(&handle);
+    assert!(rebase.accepted, "{:?}", rebase.error);
+    assert!(rebase.delta.changes.iter().any(|change| {
+        matches!(change, WorkspaceDeltaChange::CandidateChanged(candidate) if candidate.handle == handle)
+    }));
+    let rebased_state = skin.state();
+    let rebased = rebased_state
+        .candidates
+        .iter()
+        .find(|candidate| candidate.handle == handle)
+        .expect("rebased candidate should remain retained");
+    assert_eq!(rebased.basis_revision_id, current_revision);
+    assert_ne!(rebased.workspace_revision_id, original_basis);
+    assert!(
+        rebased.values_by_key.is_empty(),
+        "rebase should not project stale candidate values before candidate evaluation"
+    );
+
+    assert!(skin.try_evaluate_candidate(&handle).accepted);
+    assert_eq!(
+        skin.state().candidates[0]
+            .values_by_key
+            .get(&root_b)
+            .map(NodeValueProjection::display_text)
+            .as_deref(),
+        Some("6")
+    );
+    skin.assert_scalar("Root.B", "3");
+
+    let commit = skin.try_commit_candidate(&handle);
+    assert!(commit.accepted, "{:?}", commit.error);
+    skin.assert_scalar("Root.B", "6");
+    assert!(skin.state().candidates.is_empty());
+}
+
+#[test]
 fn programmable_skin_projects_layered_child_candidate_values() {
     let harness = Harness::empty();
     let skin = harness.driver.clone();
