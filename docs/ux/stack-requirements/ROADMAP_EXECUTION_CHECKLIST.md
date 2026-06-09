@@ -374,8 +374,12 @@ Use this as the per-tranche goal statement before implementation:
 - [x] `transaction-scope`: current W2 node, table snapshot, generated-node table add, and
       existing-node scoped content receipts carry real OxCalc transaction ids. Remaining scoped
       multi-target authoring verbs belong to W3 command expansion rather than W2 closure.
-- [ ] `revision-graph-retention`: implement retained parent-linked revision DAG and cursor before
-      undo, redo, time travel, or history UI claims.
+- [ ] `revision-graph-retention`: first OxCalc substrate slice landed in
+      `0735d9c Retain workspace revision lineage`: in-memory parent-linked revision graph,
+      workspace-view retained entries/current parent, and transaction predecessor/successor ids.
+      Still required before undo, redo, time travel, or history UI claims: cursor/navigation API,
+      retained publication/runtime compatibility, eviction-aware typed failure, persistence policy,
+      and transaction invalidation summaries.
 - [ ] `candidate-overlay-handle`: implement N addressable, layerable, non-publishing candidate
       contexts before scenarios, what-if previews, goal seek, sweeps, or comparative overlays.
 - [x] `value-epoch-keying`: per-node published-value epoch is available for projection consumers.
