@@ -74,9 +74,11 @@ missing paste-special APIs for computed value literalization, formula rebind, fo
 paste, and subtree internal-reference rebind support. The W3 `set-membership-write` assessment is
 also complete:
 current OxCalc publishes `TreeReferenceCollectionDependency` facts and DnaTreeCalc can expand
-`AuthoringScope::Collection` for read/scoped operations, but OxCalc has no transaction edit for
-authored collection membership/order changes. A focused OxCalc handoff records the required
-`SetReferenceCollectionMembership`-style substrate. The first system-clipboard interchange slice is
+`AuthoringScope::Collection` for read/scoped operations. OxCalc now has a first
+`SetReferenceCollectionMembership` edit slice that validates owner/source-handle/member ids and
+returns typed unknown/non-editable errors for current derived collections, but it still has no
+positive authored membership/order store, version bump, invalidation, or descriptor republication.
+A focused OxCalc handoff records the remaining substrate. The first system-clipboard interchange slice is
 now landed without giving the host OS clipboard authority: typed clipboard carriers project optional
 plain text for platform export, and `PasteExternalClipboardText` accepts text supplied by the
 skin/platform clipboard layer and routes it through the existing authored-content transaction path.
@@ -286,8 +288,10 @@ The roadmap alignment rule is:
 - [x] Assess `set-membership-write` against live OxCalc/DnaTreeCalc code and file the OxCalc handoff:
       current collection facts are published read/dependency descriptors only, and
       `AuthoringScope::Collection` is a projection expansion surface, not a membership mutation
-      substrate. `SetCollectionMembership` remains unsupported until OxCalc owns a transaction-backed
-      membership/order edit that republishes dependency descriptors and membership/order versions.
+      substrate. OxCalc now exposes a first validation/rejection edit slice for owner/source-handle
+      checks and typed non-editable derived collection errors. `SetCollectionMembership` remains
+      unsupported in Skin IR until OxCalc owns positive authored membership/order storage,
+      invalidation, and descriptor republication.
 - [x] Implement the first system-clipboard interchange slice:
       `ClipboardProjection.plain_text` exports deterministic text for supported typed clipboard
       payloads (`Values` as scalar text or array TSV, `Formula` as authored formula text), while

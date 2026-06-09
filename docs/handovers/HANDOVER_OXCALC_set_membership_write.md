@@ -6,6 +6,14 @@ Ask: Add an OxCalc-owned W3 `set-membership-write` substrate for authored refere
 Context: DNA TreeCalc W3 needs a Skin IR intent equivalent to `SetCollectionMembership { owner, source_reference_handle, members, order }` so a skin can author multi-value reference collections without grid coordinates or formula-text rewriting. DnaTreeCalc can currently expand `AuthoringScope::Collection` from engine-published reference-resolution facts, but that is a read projection only. The host must not mutate collection membership by editing formula strings, editing tree structure as a proxy, or manufacturing membership/order versions.
 Evidence: `docs/ux/stack-requirements/ENGINE_REQUIREMENTS.md` defines `set-membership-write` as an OxCalc-owned `extend` item that bumps `membership_version` / `order_version`. Current OxCalc `OxCalcTreeEdit` exposes node, table, meta, rename/move/reorder/delete edits, but no collection-membership edit. Current OxCalc dependency facts expose `TreeReferenceCollectionDependency { family, host_ref_handle, base_node_id, membership_version, order_version, member_node_ids }`; DnaTreeCalc projects those into `ReferenceTargetProjection::Collection` and uses them for `AuthoringScope::Collection` expansion.
 
+Update: OxCalc now exposes a first `SetReferenceCollectionMembership` transaction edit slice that
+validates `owner_node_id`, `source_reference_handle`, and requested member node ids against current
+OxCalc dependency descriptors. The slice returns typed `UnknownReferenceCollection` and
+`ReferenceCollectionNotEditable` errors for current derived collection families such as
+`@CHILDREN`. It does not yet store authored membership/order, bump collection versions, invalidate
+dependents, or publish updated descriptors, so this handoff remains open for the positive mutation
+substrate.
+
 ## Required Shape
 
 The DnaTreeCalc host needs an OxCalc transaction API along these lines:

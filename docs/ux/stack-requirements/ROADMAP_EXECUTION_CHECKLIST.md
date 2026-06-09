@@ -65,7 +65,9 @@ host clipboard. Computed formula results, arrays, formula paste, formula/subtree
 subtree rebind remain open.
 The W3 `set-membership-write` assessment is complete and recorded in
 `../../handovers/HANDOVER_OXCALC_set_membership_write.md`: current collection membership/order is an
-OxCalc-published dependency fact, not yet an editable transaction-backed substrate.
+OxCalc-published dependency fact. OxCalc now has a first transaction edit slice for typed
+owner/source-handle/member validation and derived-collection rejection, but not yet positive
+authored membership/order mutation.
 The first system-clipboard interchange slice is landed without giving the host OS clipboard
 authority: typed clipboard carriers project optional plain text for platform export, and
 `PasteExternalClipboardText` accepts platform-supplied clipboard text as authored content.
@@ -238,9 +240,11 @@ Use this as the per-tranche goal statement before implementation:
       internal-reference rebind support.
 - [x] Assess `set-membership-write` and file OxCalc handoff:
       `TreeReferenceCollectionDependency` facts carry handles, members, and membership/order versions
-      for projection and `AuthoringScope::Collection` expansion, but current `OxCalcTreeEdit` has no
-      authored collection-membership/order edit. `SetCollectionMembership` remains unsupported until
-      OxCalc provides that transaction substrate.
+      for projection and `AuthoringScope::Collection` expansion. OxCalc now exposes a first
+      `SetReferenceCollectionMembership` validation/rejection edit surface, but current derived
+      collections remain non-editable and there is no authored collection-membership/order store.
+      `SetCollectionMembership` remains unsupported until OxCalc provides that positive transaction
+      substrate.
 - [x] Land first system-clipboard interchange tranche:
       `ClipboardProjection.plain_text` exports deterministic text for supported typed clipboard
       payloads (`Values` as scalar text or array TSV, `Formula` as authored formula text), and
