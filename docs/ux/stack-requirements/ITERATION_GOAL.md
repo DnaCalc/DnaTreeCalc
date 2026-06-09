@@ -2,10 +2,16 @@
 
 ## Goal Statement
 
-Execute the DNA TreeCalc stack-requirements roadmap as an engine-first product program: each
-iteration takes the earliest unclosed roadmap capability, verifies where the truth lives in the
-current code, implements the smallest useful tranche in that owning layer, and proves the result
-through the DnaTreeCalc host projection, closed intent seam, or Skin IR test plumbing.
+Drive the DNA TreeCalc stack-requirements roadmap in dependency order by turning each iteration into
+one ownership-correct capability push: take the earliest unclosed roadmap item, verify the current
+OxFml/OxCalc/DnaTreeCalc code against the readiness claim, implement the smallest useful tranche in
+the layer that owns the truth, and prove the result from the outside through the host projection,
+closed intent seam, programmable Skin IR tests, or a real skin.
+
+Each iteration must leave the stack more truthful, not just more decorated. The work should expose
+or strengthen engine facts that skins can consume, route authoring through closed typed intents, and
+avoid any host or skin workaround that parses formulas, recomputes values, fabricates transaction
+ids, or invents semantic state that OxFml or OxCalc should own.
 
 The purpose is not to polish skins opportunistically. The purpose is to make richer skins possible
 without giving them semantic ownership. OxFml must own formula parsing, binding, rewriting, and
@@ -23,6 +29,9 @@ The iteration loop is:
 6. prove it from outside the engine with programmable Skin IR tests or a real skin,
 7. record exact supported scope, evidence, exclusions, and the next cursor, and
 8. commit the affected repos before starting the next tranche.
+
+The running success test is: a future skin can become richer because it reads more typed truth or
+sends a better typed command, while the semantic boundary remains obvious in code and tests.
 
 Current cursor: **W3 - Reference and content authoring verbs**. W2 safe structural authoring is
 closed for the current Skin IR surface: receipts carry typed errors and real OxCalc transaction ids,
