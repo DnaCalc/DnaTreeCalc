@@ -72,7 +72,10 @@ subtree internal-reference rebind support. The W3 `set-membership-write` assessm
 current OxCalc publishes `TreeReferenceCollectionDependency` facts and DnaTreeCalc can expand
 `AuthoringScope::Collection` for read/scoped operations, but OxCalc has no transaction edit for
 authored collection membership/order changes. A focused OxCalc handoff records the required
-`SetReferenceCollectionMembership`-style substrate.
+`SetReferenceCollectionMembership`-style substrate. The first system-clipboard interchange slice is
+now landed without giving the host OS clipboard authority: typed clipboard carriers project optional
+plain text for platform export, and `PasteExternalClipboardText` accepts text supplied by the
+skin/platform clipboard layer and routes it through the existing authored-content transaction path.
 
 ## Roadmap Position
 
@@ -270,11 +273,16 @@ The roadmap alignment rule is:
       `AuthoringScope::Collection` is a projection expansion surface, not a membership mutation
       substrate. `SetCollectionMembership` remains unsupported until OxCalc owns a transaction-backed
       membership/order edit that republishes dependency descriptors and membership/order versions.
+- [x] Implement the first system-clipboard interchange slice:
+      `ClipboardProjection.plain_text` exports deterministic text for supported typed clipboard
+      payloads (`Values` as scalar text or array TSV, `Formula` as authored formula text), while
+      `PasteExternalClipboardText { target, text }` lets the platform supply OS clipboard text and
+      routes it as authored content through the existing scoped content transaction path. The host
+      still does not call browser or desktop clipboard APIs; rich/multi-item OS clipboard formats
+      remain open.
 - [ ] Continue W3 with the next ownership-correct slice. Candidate order after the OxFml-blocked
-      formula rewrite verbs: continue `clipboard-transfer-model` toward OS clipboard import/export
-      only where ownership is clear, complete remaining
-      `add-node-content-policy` only when template substrate exists, or move to OxFml-unblocked
-      formula authoring when that API lands.
+      formula rewrite verbs: complete remaining `add-node-content-policy` only when template
+      substrate exists, or move to OxFml-unblocked formula authoring when that API lands.
 
 ### Gating Engine Workstreams
 

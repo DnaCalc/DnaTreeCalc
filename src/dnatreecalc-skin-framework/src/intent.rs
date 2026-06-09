@@ -153,6 +153,13 @@ pub enum WorkspaceIntent {
     PasteClipboardValues {
         target: AuthoringScope,
     },
+    /// Paste text supplied by the platform clipboard into a typed target
+    /// scope as authored content. The host never touches the OS clipboard;
+    /// skins/platform code own the actual clipboard read.
+    PasteExternalClipboardText {
+        target: AuthoringScope,
+        text: String,
+    },
     AddNode {
         parent: Option<NodeId>,
         symbol: String,
@@ -542,6 +549,7 @@ impl Dispatcher for InMemoryDispatcher {
             | WorkspaceIntent::CutToClipboard { .. }
             | WorkspaceIntent::PasteClipboardFormat { .. }
             | WorkspaceIntent::PasteClipboardValues { .. }
+            | WorkspaceIntent::PasteExternalClipboardText { .. }
             | WorkspaceIntent::AddNode { .. }
             | WorkspaceIntent::RenameNode { .. }
             | WorkspaceIntent::MoveNode { .. }

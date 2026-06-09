@@ -144,6 +144,18 @@ impl ProgrammableDriver {
             .dispatch(WorkspaceIntent::PasteClipboardValues { target })
     }
 
+    pub fn try_paste_external_clipboard_text(
+        &self,
+        target: AuthoringScope,
+        text: &str,
+    ) -> IntentReceipt {
+        self.dispatch
+            .dispatch(WorkspaceIntent::PasteExternalClipboardText {
+                target,
+                text: text.to_string(),
+            })
+    }
+
     pub fn edit_deferred(&self, node: &str, content: &str) {
         self.accept(WorkspaceIntent::EditContentDeferred {
             node: NodeId::new(node),

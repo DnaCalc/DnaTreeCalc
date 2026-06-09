@@ -62,6 +62,9 @@ source and clipboard intact. The remaining paste-special semantics are recorded 
 The W3 `set-membership-write` assessment is complete and recorded in
 `../../handovers/HANDOVER_OXCALC_set_membership_write.md`: current collection membership/order is an
 OxCalc-published dependency fact, not yet an editable transaction-backed substrate.
+The first system-clipboard interchange slice is landed without giving the host OS clipboard
+authority: typed clipboard carriers project optional plain text for platform export, and
+`PasteExternalClipboardText` accepts platform-supplied clipboard text as authored content.
 
 Do not advance to W4 speculation/history or W5 platform polish as the default next step while W3
 authoring verbs remain incomplete.
@@ -223,9 +226,14 @@ Use this as the per-tranche goal statement before implementation:
       for projection and `AuthoringScope::Collection` expansion, but current `OxCalcTreeEdit` has no
       authored collection-membership/order edit. `SetCollectionMembership` remains unsupported until
       OxCalc provides that transaction substrate.
-- [ ] Continue W3 with the next feasible tranche: continue `clipboard-transfer-model`
-      toward OS clipboard import/export where ownership is clear, or move to OxFml-unblocked formula
-      authoring.
+- [x] Land first system-clipboard interchange tranche:
+      `ClipboardProjection.plain_text` exports deterministic text for supported typed clipboard
+      payloads (`Values` as scalar text or array TSV, `Formula` as authored formula text), and
+      `PasteExternalClipboardText { target, text }` lets platform clipboard code provide text for the
+      existing authored-content transaction path. Browser/desktop clipboard APIs stay outside the
+      host; rich/multi-item OS clipboard formats remain open.
+- [ ] Continue W3 with the next feasible tranche: complete remaining `add-node-content-policy` only
+      when template substrate exists, or move to OxFml-unblocked formula authoring.
 
 ## Gated Workstreams
 

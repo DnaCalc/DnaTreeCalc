@@ -4,9 +4,9 @@ use dnatreecalc_skin_framework::{
     AuthoringScope, ClipboardNodeFormatProjection, ClipboardNodeValueProjection,
     ClipboardOperationProjection, ClipboardPayloadKind, ClipboardPayloadProjection,
     ClipboardProjection, DependencyDeltaProjection, Dispatcher, IntentError, IntentReceipt,
-    NodeContentKind, NodeId, NodeKey, NodeValueDeltaProjection, NodeView, SelectionState,
-    SharedSkinStateHandle, StructuralDeltaProjection, TableCellSelection, WorkspaceDelta,
-    WorkspaceDeltaChange, WorkspaceIntent, WorkspaceState,
+    NodeContentKind, NodeId, NodeKey, NodeValueDeltaProjection, NodeValueProjection, NodeView,
+    SelectionState, SharedSkinStateHandle, StructuralDeltaProjection, TableCellSelection,
+    WorkspaceDelta, WorkspaceDeltaChange, WorkspaceIntent, WorkspaceState,
 };
 use leptos::prelude::*;
 use oxcalc_core::consumer::TransactionRecalcPolicy;
@@ -217,6 +217,9 @@ impl Dispatcher for HostDispatcher {
                 .unwrap_or_else(IntentReceipt::rejected),
             WorkspaceIntent::PasteClipboardValues { target } => self
                 .paste_clipboard_values(target)
+                .unwrap_or_else(IntentReceipt::rejected),
+            WorkspaceIntent::PasteExternalClipboardText { target, text } => self
+                .paste_external_clipboard_text(target, text)
                 .unwrap_or_else(IntentReceipt::rejected),
             WorkspaceIntent::Recalculate => self
                 .apply_workspace_edit(|_| Ok(()), WorkspaceEditPublication::Recalculate)
@@ -542,6 +545,34 @@ impl HostDispatcher {
         }
     }
 
+    fn paste_external_clipboard_text(
+        &self,
+        target: AuthoringScope,
+        text: String,
+    ) -> Result<IntentReceipt, IntentError> {
+        self.workspace
+            .ok_or_else(|| host_failure("workspace projection handle is not attached"))
+            .and_then(|workspace| {
+                let before = workspace.get_untracked();
+                let targets = before.expand_authoring_scope(&target).map_err(|error| {
+                    clipboard_scope_error(ClipboardPayloadKind::Values, error.to_string())
+                })?;
+                if targets.is_empty() {
+                    return Err(clipboard_scope_error(
+                        ClipboardPayloadKind::Values,
+                        "external clipboard paste requires at least one target",
+                    ));
+                }
+                Ok(())
+            })?;
+        match self.apply_workspace_transaction_edit(|session| {
+            session.edit_scoped_content_transaction(target, text)
+        }) {
+            Ok(publication) => Ok(receipt_for_publication(publication)),
+            Err(error) => Ok(IntentReceipt::rejected(error)),
+        }
+    }
+
     fn apply_constant_value_paste_transaction(
         &self,
         target: AuthoringScope,
@@ -854,7 +885,44 @@ fn clipboard_from_projection(
             }
         }
     };
-    Ok(ClipboardProjection { operation, payload })
+    let plain_text = clipboard_plain_text(&payload);
+    Ok(ClipboardProjection {
+        operation,
+        payload,
+        plain_text,
+    })
+}
+
+fn clipboard_plain_text(payload: &ClipboardPayloadProjection) -> Option<String> {
+    match payload {
+        ClipboardPayloadProjection::Values { nodes } => Some(
+            nodes
+                .iter()
+                .map(|node| clipboard_value_plain_text(&node.value))
+                .collect::<Vec<_>>()
+                .join("\n"),
+        ),
+        ClipboardPayloadProjection::Formula { content, .. } => Some(content.clone()),
+        ClipboardPayloadProjection::Format { .. } | ClipboardPayloadProjection::Subtree { .. } => {
+            None
+        }
+    }
+}
+
+fn clipboard_value_plain_text(value: &NodeValueProjection) -> String {
+    match value {
+        NodeValueProjection::Array { cells, .. } => cells
+            .iter()
+            .map(|row| {
+                row.iter()
+                    .map(clipboard_value_plain_text)
+                    .collect::<Vec<_>>()
+                    .join("\t")
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
+        _ => value.display_text(),
+    }
 }
 
 fn clipboard_number_format_code(workspace: &WorkspaceState) -> Result<Option<String>, IntentError> {

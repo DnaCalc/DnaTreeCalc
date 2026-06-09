@@ -318,6 +318,10 @@ pub struct ActiveNodeDetailProjection {
 pub struct ClipboardProjection {
     pub operation: ClipboardOperationProjection,
     pub payload: ClipboardPayloadProjection,
+    /// Plain-text representation suitable for platform clipboard export.
+    /// The host prepares this; skins/platform code perform the actual OS
+    /// clipboard write.
+    pub plain_text: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

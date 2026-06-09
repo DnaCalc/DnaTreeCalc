@@ -2843,6 +2843,7 @@ fn programmable_skin_populates_typed_clipboard_carriers_from_projection() {
     assert_eq!(nodes[1].content_kind, NodeContentKind::Formula);
     assert_eq!(nodes[1].constant_input_text, None);
     assert_eq!(nodes[1].value.display_text(), "3");
+    assert_eq!(clipboard.plain_text.as_deref(), Some("2\n3"));
 
     let formula = skin.try_copy_to_clipboard(
         AuthoringScope::Node(b_key.clone()),
@@ -2864,6 +2865,7 @@ fn programmable_skin_populates_typed_clipboard_carriers_from_projection() {
     assert_eq!(source, &b_key);
     assert_eq!(source_path, &NodeId::new("Root.B"));
     assert_eq!(content, "=A+1");
+    assert_eq!(clipboard.plain_text.as_deref(), Some("=A+1"));
 
     let constant_formula = skin.try_copy_to_clipboard(
         AuthoringScope::Node(a_key.clone()),
@@ -2902,6 +2904,7 @@ fn programmable_skin_populates_typed_clipboard_carriers_from_projection() {
             .and_then(|format| format.number_format_code.as_deref()),
         Some("0.00")
     );
+    assert_eq!(clipboard.plain_text, None);
 
     let subtree = skin.try_copy_to_clipboard(
         AuthoringScope::Subtree(root_key.clone()),
@@ -2924,6 +2927,7 @@ fn programmable_skin_populates_typed_clipboard_carriers_from_projection() {
     assert_eq!(root_path, &NodeId::new("Root"));
     assert_eq!(nodes.len(), 4);
     assert!(nodes.contains(&b_key));
+    assert_eq!(clipboard.plain_text, None);
 
     let before_cut_revision = revision_fingerprint(&skin.state().revision);
     let cut = skin.try_cut_to_clipboard(
@@ -2971,6 +2975,82 @@ fn programmable_skin_populates_typed_clipboard_carriers_from_projection() {
         Some(IntentError::ClipboardScopeUnsupported {
             payload: "formula".to_string(),
             detail: "formula clipboard payload requires exactly one source node, got 2".to_string()
+        })
+    );
+}
+
+#[test]
+fn programmable_skin_exports_array_clipboard_values_as_plain_text_grid() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+    skin.add_node(None, "Book", "");
+    skin.add_node(Some("Book"), "Grid", "=SEQUENCE(2,2)");
+
+    let grid_key = skin
+        .state()
+        .node(&NodeId::new("Book.Grid"))
+        .unwrap()
+        .key
+        .clone();
+    let copy =
+        skin.try_copy_to_clipboard(AuthoringScope::Node(grid_key), ClipboardPayloadKind::Values);
+    assert!(copy.accepted, "{:?}", copy.error);
+    let state = skin.state();
+    let clipboard = state.clipboard.as_ref().expect("clipboard projects");
+    assert_eq!(clipboard.plain_text.as_deref(), Some("1\t2\n3\t4"));
+}
+
+#[test]
+fn programmable_skin_pastes_external_clipboard_text_as_authored_content() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+    assert!(skin.try_add_node(None, "Book", "").accepted);
+    assert!(skin.try_add_node(Some("Book"), "Source", "41").accepted);
+    assert!(skin.try_add_node(Some("Book"), "Target", "0").accepted);
+    assert!(skin.try_add_node(Some("Book"), "Other", "0").accepted);
+    skin.recalc();
+
+    let state = skin.state();
+    let target_key = state.node(&NodeId::new("Book.Target")).unwrap().key.clone();
+    let other_key = state.node(&NodeId::new("Book.Other")).unwrap().key.clone();
+
+    let paste_constant =
+        skin.try_paste_external_clipboard_text(AuthoringScope::Node(target_key.clone()), "42");
+    assert!(paste_constant.accepted, "{:?}", paste_constant.error);
+    assert_any_transaction(&paste_constant);
+    let state = skin.state();
+    let target = state.node(&NodeId::new("Book.Target")).unwrap();
+    assert_eq!(target.content_kind, NodeContentKind::Constant);
+    assert_eq!(target.content_text, "42");
+    assert_eq!(target.computed_value.display_text(), "42");
+
+    let paste_formula =
+        skin.try_paste_external_clipboard_text(AuthoringScope::Node(target_key), "=Source+1");
+    assert!(paste_formula.accepted, "{:?}", paste_formula.error);
+    assert_any_transaction(&paste_formula);
+    let state = skin.state();
+    let target = state.node(&NodeId::new("Book.Target")).unwrap();
+    assert_eq!(target.content_kind, NodeContentKind::Formula);
+    assert_eq!(target.content_text, "=Source+1");
+    assert_eq!(target.computed_value.display_text(), "42");
+
+    let paste_multi = skin
+        .try_paste_external_clipboard_text(AuthoringScope::Nodes(vec![other_key]), "'literal text");
+    assert!(paste_multi.accepted, "{:?}", paste_multi.error);
+    assert_any_transaction(&paste_multi);
+    let state = skin.state();
+    let other = state.node(&NodeId::new("Book.Other")).unwrap();
+    assert_eq!(other.content_kind, NodeContentKind::Constant);
+    assert_eq!(other.content_text, "'literal text");
+    assert_eq!(other.computed_value.display_text(), "literal text");
+
+    let empty_target = skin.try_paste_external_clipboard_text(AuthoringScope::Nodes(vec![]), "100");
+    assert!(!empty_target.accepted);
+    assert_eq!(
+        empty_target.error,
+        Some(IntentError::ClipboardScopeUnsupported {
+            payload: "values".to_string(),
+            detail: "external clipboard paste requires at least one target".to_string()
         })
     );
 }
