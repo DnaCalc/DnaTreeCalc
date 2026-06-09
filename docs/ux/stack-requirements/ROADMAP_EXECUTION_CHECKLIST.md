@@ -44,7 +44,8 @@ history is now projected with real transaction ids and optional invalidation sum
 receipts can carry the promoted private revision's real transaction id without host fabrication.
 Candidate basis revisions are now retained under bounded revision retention while candidate handles
 are live, including shared-basis candidates and sibling candidates that survive another candidate's
-commit.
+commit. Candidate-private node structure is now projected through `CandidateProjection.nodes`
+separately from published workspace nodes.
 OxCalc owns candidate state, publication/discard, overlay provenance, and value epochs; the
 DnaTreeCalc host exposes only typed handles, projections, and closed intents.
 
@@ -437,8 +438,15 @@ Use this as the per-tranche goal statement before implementation:
       sibling candidate pins when another candidate commits. Focused OxCalc tests prove pinned bases
       remain navigable under bounded retention and become evictable after the last candidate releases
       them.
-- [ ] `candidate-overlay-handle`: implement N addressable, layerable, non-publishing candidate
-      contexts before scenarios, what-if previews, goal seek, sweeps, or comparative overlays.
+- [x] `candidate-overlay-handle` candidate structural projection/read slice: OxCalc candidate views
+      expose candidate-private node views after private structural edits, and DnaTreeCalc projects
+      them through `CandidateProjection.nodes` without rewriting published workspace nodes.
+      Focused OxCalc and programmable Skin IR tests prove the projection remains non-publishing
+      until commit.
+- [ ] `candidate-overlay-handle`: continue toward fully addressable, layerable, non-publishing
+      candidate contexts with optimized layering/rebase, closed structural candidate mutation
+      intents, richer candidate invalidation summaries, and overlay GC before scenarios, what-if
+      previews, goal seek, sweeps, or comparative overlays.
 - [x] `value-epoch-keying`: per-node published-value epoch is available for projection consumers.
 
 ## Next-Wave Parking Lot

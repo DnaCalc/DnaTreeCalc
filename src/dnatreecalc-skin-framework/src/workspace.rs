@@ -706,8 +706,22 @@ pub struct CandidateProjection {
     pub parent_handle: Option<String>,
     pub workspace_revision_id: String,
     pub revision_history: RevisionHistoryProjection,
+    pub nodes: Vec<CandidateNodeProjection>,
     pub values_by_key: BTreeMap<NodeKey, NodeValueProjection>,
     pub run: Option<CalcRunProjection>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CandidateNodeProjection {
+    pub key: NodeKey,
+    pub id: NodeId,
+    pub display_name: String,
+    pub parent: Option<NodeId>,
+    pub children: Vec<NodeId>,
+    pub depth: u32,
+    pub content_kind: NodeContentKind,
+    pub content_text: String,
+    pub is_meta: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

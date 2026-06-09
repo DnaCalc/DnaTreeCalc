@@ -308,6 +308,15 @@ fn programmable_skin_projects_candidate_values_without_publishing_until_commit()
         skin.state().candidates[0].basis_revision_id,
         published_revision
     );
+    let open_state = skin.state();
+    let open_candidate = &open_state.candidates[0];
+    assert!(
+        open_candidate
+            .nodes
+            .iter()
+            .any(|node| node.id == NodeId::new("Root.A")
+                && node.parent.as_ref() == Some(&NodeId::new("Root")))
+    );
 
     let edit = skin.try_edit_candidate_content(&handle, "Root.A", "5");
     assert!(edit.accepted, "{:?}", edit.error);

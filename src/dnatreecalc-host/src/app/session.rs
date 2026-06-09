@@ -2,16 +2,17 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use dnatreecalc_skin_framework::{
     AuthoringScope, BindingDiagnosticProjection, CalcRunProjection, CalcRunStateProjection,
-    CandidateProjection, DependencyDescriptorProjection, DependencyEdgeProjection,
-    DependencyGraphProjection, DependencyKindProjection, DerivationHoleBindingProjection,
-    DerivationInvocationProjection, DerivationOxfmlTraceEventProjection,
-    DerivationPreparedArgumentProjection, DerivationTemplateHoleProjection,
-    DerivationTemplateSelectionProjection, DerivationTraceProjection, EffectiveFormatProjection,
-    FormatSourceProjection, FormulaBindPreviewDiagnosticProjection,
-    FormulaBindPreviewDiagnosticStage, FormulaBindPreviewInputKind,
-    FormulaBindPreviewProfileViolationKindProjection, FormulaBindPreviewProfileViolationProjection,
-    FormulaBindPreviewProjection, FormulaReferenceInsertionProjection,
-    FormulaReferenceInsertionTarget, InitialNodeContentProjection, InvalidationReasonProjection,
+    CandidateNodeProjection, CandidateProjection, DependencyDescriptorProjection,
+    DependencyEdgeProjection, DependencyGraphProjection, DependencyKindProjection,
+    DerivationHoleBindingProjection, DerivationInvocationProjection,
+    DerivationOxfmlTraceEventProjection, DerivationPreparedArgumentProjection,
+    DerivationTemplateHoleProjection, DerivationTemplateSelectionProjection,
+    DerivationTraceProjection, EffectiveFormatProjection, FormatSourceProjection,
+    FormulaBindPreviewDiagnosticProjection, FormulaBindPreviewDiagnosticStage,
+    FormulaBindPreviewInputKind, FormulaBindPreviewProfileViolationKindProjection,
+    FormulaBindPreviewProfileViolationProjection, FormulaBindPreviewProjection,
+    FormulaReferenceInsertionProjection, FormulaReferenceInsertionTarget,
+    InitialNodeContentProjection, InvalidationReasonProjection,
     MutationImpactBlockedReasonProjection, MutationImpactIntentProjection,
     MutationImpactProjection, NameCollisionProjection, NodeAttributePatch, NodeCalcStateProjection,
     NodeContentKind as FrameworkContentKind, NodeId, NodeInvalidationProjection, NodeKey,
@@ -4520,6 +4521,7 @@ impl TreeWorkspaceSession {
             .as_ref()
             .map(|calculation| self.calc_run_projection(calculation))
             .transpose()?;
+        let nodes = candidate_nodes_projection_for_view(view)?;
         Ok(CandidateProjection {
             handle: view.handle.to_string(),
             basis_revision_id: view.basis_revision_id.to_string(),
@@ -4538,6 +4540,7 @@ impl TreeWorkspaceSession {
                     })
                     .collect(),
             },
+            nodes,
             values_by_key,
             run,
         })
@@ -6893,6 +6896,64 @@ fn revision_history_entry_projection_for(
         }),
         is_current: entry.revision_id.to_string() == current_revision_id,
     }
+}
+
+fn candidate_nodes_projection_for_view(
+    view: &OxCalcTreeCandidateView,
+) -> Result<Vec<CandidateNodeProjection>, TreeWorkspaceSessionError> {
+    let mut candidate_node_ids = BTreeMap::new();
+    for node in &view.nodes {
+        if node.canonical_path == ENGINE_ROOT_SYMBOL {
+            continue;
+        }
+        candidate_node_ids.insert(
+            node.node_id,
+            node_id_from_canonical_path(&node.canonical_path)?,
+        );
+    }
+    let candidate_ids = view
+        .nodes
+        .iter()
+        .filter_map(|node| candidate_node_ids.get(&node.node_id).cloned())
+        .collect::<BTreeSet<_>>();
+    let mut child_map = BTreeMap::<NodeId, Vec<NodeId>>::new();
+    for node in &view.nodes {
+        let Some(node_id) = candidate_node_ids.get(&node.node_id).cloned() else {
+            continue;
+        };
+        if let Some(parent) = parent_path(node_id.as_str())
+            .map(NodeId::new)
+            .filter(|parent| candidate_ids.contains(parent))
+        {
+            child_map.entry(parent).or_default().push(node_id);
+        }
+    }
+    view.nodes
+        .iter()
+        .filter(|node| node.canonical_path != ENGINE_ROOT_SYMBOL)
+        .map(|node| {
+            let node_id = candidate_node_ids
+                .get(&node.node_id)
+                .cloned()
+                .ok_or_else(|| TreeWorkspaceSessionError::ProjectionOutOfSync {
+                    node: node.canonical_path.clone(),
+                })?;
+            let parent = parent_path(node_id.as_str())
+                .map(NodeId::new)
+                .filter(|parent| candidate_ids.contains(parent));
+            Ok(CandidateNodeProjection {
+                key: node_key_for_tree_node(node.node_id),
+                id: node_id.clone(),
+                display_name: node.symbol.clone(),
+                parent,
+                children: child_map.remove(&node_id).unwrap_or_default(),
+                depth: depth_of(node_id.as_str()),
+                content_kind: content_kind_for_text(&node.formula_text),
+                content_text: node.formula_text.clone(),
+                is_meta: node.is_meta,
+            })
+        })
+        .collect()
 }
 
 fn invalidation_reason_kind_for_projection(
