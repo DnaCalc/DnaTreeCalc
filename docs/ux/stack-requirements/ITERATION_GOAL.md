@@ -76,6 +76,11 @@ authored collection membership/order changes. A focused OxCalc handoff records t
 now landed without giving the host OS clipboard authority: typed clipboard carriers project optional
 plain text for platform export, and `PasteExternalClipboardText` accepts text supplied by the
 skin/platform clipboard layer and routes it through the existing authored-content transaction path.
+The next system-clipboard interchange slice is also landed for multi-item plain text: TSV/newline
+text from the platform clipboard is flattened row-major and assigned one item per explicitly ordered
+target node in a single OxCalc transaction when the item count exactly matches the expanded target
+scope. Single-node paste preserves raw text, including newlines, and a single pasted text item still
+broadcasts to the whole target scope. Count mismatches reject before mutation.
 
 ## Roadmap Position
 
@@ -278,8 +283,14 @@ The roadmap alignment rule is:
       payloads (`Values` as scalar text or array TSV, `Formula` as authored formula text), while
       `PasteExternalClipboardText { target, text }` lets the platform supply OS clipboard text and
       routes it as authored content through the existing scoped content transaction path. The host
-      still does not call browser or desktop clipboard APIs; rich/multi-item OS clipboard formats
-      remain open.
+      still does not call browser or desktop clipboard APIs; rich OS clipboard formats remain open.
+- [x] Implement the next system-clipboard interchange slice:
+      multi-item plain-text paste splits platform-supplied TSV/newline text into row-major authored
+      content items and applies them one-to-one over an explicitly ordered `AuthoringScope::Nodes`
+      expansion in one OxCalc transaction. Single-node paste preserves raw text, including newlines,
+      and a single pasted text item still broadcasts through the existing scoped-content path.
+      Item/target count mismatches reject before mutation. Rich OS clipboard formats, formula
+      rewrite/rebind paste, and subtree paste remain open.
 - [ ] Continue W3 with the next ownership-correct slice. Candidate order after the OxFml-blocked
       formula rewrite verbs: complete remaining `add-node-content-policy` only when template
       substrate exists, or move to OxFml-unblocked formula authoring when that API lands.

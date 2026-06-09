@@ -1232,6 +1232,52 @@ impl TreeWorkspaceSession {
         })
     }
 
+    pub fn edit_ordered_content_transaction(
+        &mut self,
+        scope: AuthoringScope,
+        contents: Vec<String>,
+    ) -> Result<TreeWorkspaceTransactionEdit<()>, TreeWorkspaceSessionError> {
+        let state = self.workspace_state()?;
+        let target_keys = state.expand_authoring_scope(&scope).map_err(|error| {
+            TreeWorkspaceSessionError::ProjectionOutOfSync {
+                node: error.to_string(),
+            }
+        })?;
+        if target_keys.len() != contents.len() {
+            return Err(TreeWorkspaceSessionError::ProjectionOutOfSync {
+                node: format!(
+                    "ordered content count {} does not match target count {}",
+                    contents.len(),
+                    target_keys.len()
+                ),
+            });
+        }
+        let mut transaction = OxCalcTreeEditTransaction::new(self.workspace_id.clone())
+            .with_recalc_policy(TransactionRecalcPolicy::RecalculateAndPublishOnce);
+        for (key, content) in target_keys.into_iter().zip(contents) {
+            let node = state.node_by_key(&key).ok_or_else(|| {
+                TreeWorkspaceSessionError::ProjectionOutOfSync {
+                    node: format!("node key {key}"),
+                }
+            })?;
+            transaction = transaction.with_edit(OxCalcTreeEdit::SetNodeFormulaText {
+                node_id: self.tree_node_id(node.id.as_str())?,
+                formula_text: content,
+            });
+        }
+        let outcome = self.context.apply_edit_transaction(transaction)?;
+        if let Some(calculation) = outcome.calculation {
+            self.recalc_count += 1;
+            self.last_outcome = Some(calculation);
+        } else {
+            self.last_outcome = None;
+        }
+        Ok(TreeWorkspaceTransactionEdit {
+            result: (),
+            transaction_id: outcome.transaction_id.to_string(),
+        })
+    }
+
     pub fn paste_constant_value_transaction(
         &mut self,
         target: AuthoringScope,

@@ -65,6 +65,11 @@ OxCalc-published dependency fact, not yet an editable transaction-backed substra
 The first system-clipboard interchange slice is landed without giving the host OS clipboard
 authority: typed clipboard carriers project optional plain text for platform export, and
 `PasteExternalClipboardText` accepts platform-supplied clipboard text as authored content.
+The second system-clipboard interchange slice is also landed for multi-item plain text:
+TSV/newline text supplied by platform clipboard code is flattened row-major and applied one-to-one
+over an explicitly ordered multi-node target scope in one OxCalc transaction when counts match;
+single-node paste preserves raw text, including newlines; single text items keep the existing
+broadcast behavior; and count mismatches reject before mutation.
 
 Do not advance to W4 speculation/history or W5 platform polish as the default next step while W3
 authoring verbs remain incomplete.
@@ -231,7 +236,13 @@ Use this as the per-tranche goal statement before implementation:
       payloads (`Values` as scalar text or array TSV, `Formula` as authored formula text), and
       `PasteExternalClipboardText { target, text }` lets platform clipboard code provide text for the
       existing authored-content transaction path. Browser/desktop clipboard APIs stay outside the
-      host; rich/multi-item OS clipboard formats remain open.
+      host; rich OS clipboard formats remain open.
+- [x] Land second system-clipboard interchange tranche:
+      `PasteExternalClipboardText { target, text }` now treats TSV/newline platform text with
+      multiple cells as row-major authored content for an explicitly ordered node target scope,
+      applies matching cells in one OxCalc transaction, preserves single-node raw-text paste and
+      single-cell broadcast behavior, and rejects item-count mismatches before mutation. Rich OS
+      clipboard formats, formula rewrite paste, and subtree paste/rebind remain open.
 - [ ] Continue W3 with the next feasible tranche: complete remaining `add-node-content-policy` only
       when template substrate exists, or move to OxFml-unblocked formula authoring.
 

@@ -550,24 +550,43 @@ impl HostDispatcher {
         target: AuthoringScope,
         text: String,
     ) -> Result<IntentReceipt, IntentError> {
-        self.workspace
+        let cells = external_clipboard_text_cells(&text);
+        let before = self
+            .workspace
             .ok_or_else(|| host_failure("workspace projection handle is not attached"))
-            .and_then(|workspace| {
-                let before = workspace.get_untracked();
-                let targets = before.expand_authoring_scope(&target).map_err(|error| {
-                    clipboard_scope_error(ClipboardPayloadKind::Values, error.to_string())
-                })?;
-                if targets.is_empty() {
-                    return Err(clipboard_scope_error(
-                        ClipboardPayloadKind::Values,
-                        "external clipboard paste requires at least one target",
-                    ));
-                }
-                Ok(())
-            })?;
-        match self.apply_workspace_transaction_edit(|session| {
-            session.edit_scoped_content_transaction(target, text)
-        }) {
+            .map(|workspace| workspace.get_untracked())?;
+        let targets = before.expand_authoring_scope(&target).map_err(|error| {
+            clipboard_scope_error(ClipboardPayloadKind::Values, error.to_string())
+        })?;
+        if targets.is_empty() {
+            return Err(clipboard_scope_error(
+                ClipboardPayloadKind::Values,
+                "external clipboard paste requires at least one target",
+            ));
+        }
+        let paste_ordered_items =
+            cells.len() > 1 && targets.len() > 1 && matches!(&target, AuthoringScope::Nodes(_));
+        if paste_ordered_items && cells.len() != targets.len() {
+            return Err(clipboard_scope_error(
+                ClipboardPayloadKind::Values,
+                format!(
+                    "external clipboard paste item count {} does not match target count {}",
+                    cells.len(),
+                    targets.len()
+                ),
+            ));
+        }
+
+        let publication = if paste_ordered_items {
+            self.apply_workspace_transaction_edit(|session| {
+                session.edit_ordered_content_transaction(target, cells)
+            })
+        } else {
+            self.apply_workspace_transaction_edit(|session| {
+                session.edit_scoped_content_transaction(target, text)
+            })
+        };
+        match publication {
             Ok(publication) => Ok(receipt_for_publication(publication)),
             Err(error) => Ok(IntentReceipt::rejected(error)),
         }
@@ -923,6 +942,18 @@ fn clipboard_value_plain_text(value: &NodeValueProjection) -> String {
             .join("\n"),
         _ => value.display_text(),
     }
+}
+
+fn external_clipboard_text_cells(text: &str) -> Vec<String> {
+    let mut normalized = text.replace("\r\n", "\n").replace('\r', "\n");
+    if normalized.ends_with('\n') {
+        normalized.pop();
+    }
+    normalized
+        .split('\n')
+        .flat_map(|row| row.split('\t'))
+        .map(ToString::to_string)
+        .collect()
 }
 
 fn clipboard_number_format_code(workspace: &WorkspaceState) -> Result<Option<String>, IntentError> {
