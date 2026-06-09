@@ -494,10 +494,21 @@ Use this as the per-tranche goal statement before implementation:
       deleting a scenario releases the pin, and programmable Skin IR tests prove manifest deltas and
       candidate lifecycle interaction from outside the skin layer. Scenario override values,
       scenario-local value epochs, comparative overlays, and series projection remain open.
+- [x] W4c `scenario-substrate` first typed value override slice:
+      Skin IR exposes closed `SetScenarioOverride` and `ClearScenarioOverride` intents over stable
+      `NodeKey` targets on candidate-backed scenarios. The host converts supported typed scalar and
+      array `NodeValueProjection` payloads to `CalcValue`, asks OxFml to literalize them as authored
+      input text, applies the edit through OxCalc candidate-private transactions, and clears by
+      restoring the original candidate-private input captured on first override. Programmable Skin
+      IR tests prove scalar dependency recalculation, repeated override preserving the original
+      clear target, typed array override projection, unsupported value rejection, and override
+      cleanup when an overridden candidate-private node is deleted. Scenario-local value epochs,
+      per-node `NodeView.scenario_override`, comparative overlays, formula/rich-value override
+      authoring, and series projection remain open.
 - [ ] `candidate-overlay-handle`: continue toward fully addressable, layerable, non-publishing
       candidate contexts with optimized layering/rebase, candidate add-node template initial content,
-      scenario override substrate, comparative projection, and broader what-if UX before goal seek
-      or sweeps.
+      scenario-local value epochs, per-node scenario flags, comparative projection, and broader
+      what-if UX before goal seek or sweeps.
 - [x] `value-epoch-keying`: per-node published-value epoch is available for projection consumers.
 
 ## Next-Wave Parking Lot

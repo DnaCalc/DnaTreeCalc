@@ -9,11 +9,11 @@ use dnatreecalc_skin_framework::{
     AuthoringScope, ClipboardPayloadKind, Dispatcher, ErasedSkinContext,
     FormulaBindPreviewProjection, FormulaReferenceInsertionTarget, InitialNodeContentProjection,
     IntentError, IntentReceipt, MutationImpactProjection, NodeAttributePatch, NodeId, NodeKey,
-    RecalcPlanMutation, RecalcPlanProjection, RegisteredSkin, SelectionState, SharedSkinState,
-    SharedSkinStateHandle, SkinCapabilities, SkinCategory, SkinContext, SkinHandle, SkinId,
-    SkinManifest, SkinState, TableCellInput, TableFormulaBindPreviewProjection, TableRowInput,
-    WorkspaceIntent, WorkspaceRecalcMode, WorkspaceRevisionProjection, WorkspaceSkin,
-    WorkspaceState,
+    NodeValueProjection, RecalcPlanMutation, RecalcPlanProjection, RegisteredSkin, SelectionState,
+    SharedSkinState, SharedSkinStateHandle, SkinCapabilities, SkinCategory, SkinContext,
+    SkinHandle, SkinId, SkinManifest, SkinState, TableCellInput, TableFormulaBindPreviewProjection,
+    TableRowInput, WorkspaceIntent, WorkspaceRecalcMode, WorkspaceRevisionProjection,
+    WorkspaceSkin, WorkspaceState,
 };
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -342,6 +342,28 @@ impl ProgrammableDriver {
         self.dispatch.dispatch(WorkspaceIntent::DeleteScenario {
             scenario_id: scenario_id.to_string(),
         })
+    }
+
+    pub fn try_set_scenario_override(
+        &self,
+        scenario_id: &str,
+        node: NodeKey,
+        value: NodeValueProjection,
+    ) -> IntentReceipt {
+        self.dispatch
+            .dispatch(WorkspaceIntent::SetScenarioOverride {
+                scenario_id: scenario_id.to_string(),
+                node,
+                value,
+            })
+    }
+
+    pub fn try_clear_scenario_override(&self, scenario_id: &str, node: NodeKey) -> IntentReceipt {
+        self.dispatch
+            .dispatch(WorkspaceIntent::ClearScenarioOverride {
+                scenario_id: scenario_id.to_string(),
+                node,
+            })
     }
 
     pub fn edit_deferred(&self, node: &str, content: &str) {

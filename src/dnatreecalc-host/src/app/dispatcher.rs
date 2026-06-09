@@ -349,6 +349,20 @@ impl Dispatcher for HostDispatcher {
             WorkspaceIntent::DeleteScenario { scenario_id } => self
                 .apply_projection_edit(|session| session.delete_scenario(&scenario_id))
                 .map_or_else(IntentReceipt::rejected, receipt_for_projection_change),
+            WorkspaceIntent::SetScenarioOverride {
+                scenario_id,
+                node,
+                value,
+            } => self
+                .apply_projection_edit(|session| {
+                    session.set_scenario_override(&scenario_id, &node, &value)
+                })
+                .map_or_else(IntentReceipt::rejected, receipt_for_projection_change),
+            WorkspaceIntent::ClearScenarioOverride { scenario_id, node } => self
+                .apply_projection_edit(|session| {
+                    session.clear_scenario_override(&scenario_id, &node)
+                })
+                .map_or_else(IntentReceipt::rejected, receipt_for_projection_change),
             WorkspaceIntent::Recalculate => self
                 .apply_workspace_edit(|_| Ok(()), WorkspaceEditPublication::Recalculate)
                 .map_or_else(IntentReceipt::rejected, receipt_for_publication),
@@ -1654,6 +1668,16 @@ fn intent_error_from_session(error: TreeWorkspaceSessionError) -> IntentError {
         TreeWorkspaceSessionError::UnknownScenario { scenario_id } => {
             IntentError::UnknownScenario { scenario_id }
         }
+        TreeWorkspaceSessionError::UnknownScenarioOverride { scenario_id, node } => {
+            IntentError::UnknownScenarioOverride { scenario_id, node }
+        }
+        TreeWorkspaceSessionError::UnsupportedScenarioOverrideValue {
+            scenario_id,
+            detail,
+        } => IntentError::UnsupportedScenarioOverrideValue {
+            scenario_id,
+            detail,
+        },
         TreeWorkspaceSessionError::ProjectionOutOfSync { node } => {
             IntentError::ProjectionOutOfSync { node }
         }

@@ -286,6 +286,20 @@ pub enum WorkspaceIntent {
     DeleteScenario {
         scenario_id: String,
     },
+    /// Set a typed scenario override value by stable node key. The host turns
+    /// supported values into authored input text and applies it to the
+    /// scenario's backing candidate.
+    SetScenarioOverride {
+        scenario_id: String,
+        node: NodeKey,
+        value: NodeValueProjection,
+    },
+    /// Clear a typed scenario override by restoring the node input captured
+    /// when the override was first set.
+    ClearScenarioOverride {
+        scenario_id: String,
+        node: NodeKey,
+    },
     AddNode {
         parent: Option<NodeId>,
         symbol: String,
@@ -570,6 +584,10 @@ pub enum IntentError {
     ScenarioAlreadyExists { scenario_id: String },
     #[error("unknown scenario {scenario_id}")]
     UnknownScenario { scenario_id: String },
+    #[error("unknown scenario override {scenario_id}:{node}")]
+    UnknownScenarioOverride { scenario_id: String, node: NodeKey },
+    #[error("unsupported scenario override value for {scenario_id}: {detail}")]
+    UnsupportedScenarioOverrideValue { scenario_id: String, detail: String },
     #[error("engine rejected the intent: {0}")]
     EngineRejected(String),
     #[error("host failed to dispatch the intent: {0}")]
@@ -731,6 +749,8 @@ impl Dispatcher for InMemoryDispatcher {
             | WorkspaceIntent::CreateScenarioFromCandidate { .. }
             | WorkspaceIntent::ActivateScenario { .. }
             | WorkspaceIntent::DeleteScenario { .. }
+            | WorkspaceIntent::SetScenarioOverride { .. }
+            | WorkspaceIntent::ClearScenarioOverride { .. }
             | WorkspaceIntent::AddNode { .. }
             | WorkspaceIntent::RenameNode { .. }
             | WorkspaceIntent::MoveNode { .. }

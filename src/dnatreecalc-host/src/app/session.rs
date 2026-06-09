@@ -81,7 +81,7 @@ use oxfml_core::{
     HostReferenceStructuralSelectorSyntax, HostReferenceSyntaxProfile,
 };
 use oxfunc_core::locale_format::WorkbookDateSystem;
-use oxfunc_core::value::{CalcValue, CoreValue, ExcelText};
+use oxfunc_core::value::{CalcArray, CalcValue, CoreValue, ExcelText};
 use serde::{Deserialize, Serialize};
 
 use crate::model::{
@@ -144,6 +144,12 @@ struct TreeWorkspaceScenarioState {
     id: String,
     name: String,
     candidate_handle: String,
+    overrides: BTreeMap<NodeKey, TreeWorkspaceScenarioOverrideState>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TreeWorkspaceScenarioOverrideState {
+    original_content_text: String,
 }
 
 #[derive(Debug, Clone)]
@@ -1364,6 +1370,7 @@ impl TreeWorkspaceSession {
         node: &NodeKey,
     ) -> Result<CandidateProjection, TreeWorkspaceSessionError> {
         let handle = self.candidate_handle(handle)?;
+        let handle_text = handle.to_string();
         let tree_node_id = tree_node_id_from_node_key(node)?;
         let view = self.context.apply_candidate_edit_transaction(
             &handle,
@@ -1373,6 +1380,7 @@ impl TreeWorkspaceSession {
                 },
             ),
         )?;
+        self.remove_scenario_overrides_for_candidate_node(&handle_text, node);
         self.candidate_projection_for_view(&view)
     }
 
@@ -1518,6 +1526,7 @@ impl TreeWorkspaceSession {
             id: scenario_id.clone(),
             name: name.into(),
             candidate_handle: candidate_handle.to_string(),
+            overrides: BTreeMap::new(),
         };
         self.scenarios.insert(scenario_id.clone(), scenario);
         self.scenario_projection(&scenario_id)
@@ -1559,6 +1568,69 @@ impl TreeWorkspaceSession {
             self.active_scenario_id = None;
         }
         Ok(scenario_id.to_string())
+    }
+
+    pub fn set_scenario_override(
+        &mut self,
+        scenario_id: &str,
+        node: &NodeKey,
+        value: &NodeValueProjection,
+    ) -> Result<ScenarioProjection, TreeWorkspaceSessionError> {
+        let scenario = self.scenarios.get(scenario_id).cloned().ok_or_else(|| {
+            TreeWorkspaceSessionError::UnknownScenario {
+                scenario_id: scenario_id.to_string(),
+            }
+        })?;
+        let candidate = self.candidate_handle(&scenario.candidate_handle)?;
+        let original_content_text = scenario.overrides.get(node).map_or_else(
+            || self.candidate_node_content_text(&candidate, node),
+            |override_state| Ok(override_state.original_content_text.clone()),
+        )?;
+        let authored_input_text = scenario_override_authored_input(scenario_id, value)?;
+        self.apply_candidate_content_edit_by_key(&candidate, node, authored_input_text)?;
+        self.scenarios
+            .get_mut(scenario_id)
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownScenario {
+                scenario_id: scenario_id.to_string(),
+            })?
+            .overrides
+            .entry(node.clone())
+            .or_insert(TreeWorkspaceScenarioOverrideState {
+                original_content_text,
+            });
+        self.scenario_projection(scenario_id)
+    }
+
+    pub fn clear_scenario_override(
+        &mut self,
+        scenario_id: &str,
+        node: &NodeKey,
+    ) -> Result<ScenarioProjection, TreeWorkspaceSessionError> {
+        let scenario = self.scenarios.get(scenario_id).cloned().ok_or_else(|| {
+            TreeWorkspaceSessionError::UnknownScenario {
+                scenario_id: scenario_id.to_string(),
+            }
+        })?;
+        let override_state = scenario.overrides.get(node).cloned().ok_or_else(|| {
+            TreeWorkspaceSessionError::UnknownScenarioOverride {
+                scenario_id: scenario_id.to_string(),
+                node: node.clone(),
+            }
+        })?;
+        let candidate = self.candidate_handle(&scenario.candidate_handle)?;
+        self.apply_candidate_content_edit_by_key(
+            &candidate,
+            node,
+            override_state.original_content_text,
+        )?;
+        self.scenarios
+            .get_mut(scenario_id)
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownScenario {
+                scenario_id: scenario_id.to_string(),
+            })?
+            .overrides
+            .remove(node);
+        self.scenario_projection(scenario_id)
     }
 
     pub fn reap_candidates(
@@ -4851,11 +4923,47 @@ impl TreeWorkspaceSession {
             source: ScenarioSourceProjection::Candidate {
                 handle: scenario.candidate_handle.clone(),
             },
-            override_count: 0,
-            overridden_nodes: Vec::new(),
+            override_count: scenario.overrides.len(),
+            overridden_nodes: scenario.overrides.keys().cloned().collect(),
             value_epoch: None,
             is_active: self.active_scenario_id.as_deref() == Some(scenario_id),
         })
+    }
+
+    fn candidate_node_content_text(
+        &self,
+        candidate: &CandidateOverlayHandle,
+        node: &NodeKey,
+    ) -> Result<String, TreeWorkspaceSessionError> {
+        let tree_node_id = tree_node_id_from_node_key(node)?;
+        let view = self.context.candidate_view(candidate)?;
+        view.nodes
+            .iter()
+            .find(|candidate_node| candidate_node.node_id == tree_node_id)
+            .map(|candidate_node| candidate_node.formula_text.clone())
+            .ok_or_else(|| TreeWorkspaceSessionError::ProjectionOutOfSync {
+                node: node.to_string(),
+            })
+    }
+
+    fn apply_candidate_content_edit_by_key(
+        &mut self,
+        candidate: &CandidateOverlayHandle,
+        node: &NodeKey,
+        content: String,
+    ) -> Result<OxCalcTreeCandidateView, TreeWorkspaceSessionError> {
+        let tree_node_id = tree_node_id_from_node_key(node)?;
+        self.context
+            .apply_candidate_edit_transaction(
+                candidate,
+                OxCalcTreeEditTransaction::new(self.workspace_id.clone()).with_edit(
+                    OxCalcTreeEdit::SetNodeFormulaText {
+                        node_id: tree_node_id,
+                        formula_text: content,
+                    },
+                ),
+            )
+            .map_err(TreeWorkspaceSessionError::from)
     }
 
     fn remove_scenarios_for_candidate(&mut self, handle: &str) {
@@ -4870,6 +4978,14 @@ impl TreeWorkspaceSession {
             self.scenarios.remove(&scenario_id);
             if self.active_scenario_id.as_deref() == Some(scenario_id.as_str()) {
                 self.active_scenario_id = None;
+            }
+        }
+    }
+
+    fn remove_scenario_overrides_for_candidate_node(&mut self, handle: &str, node: &NodeKey) {
+        for scenario in self.scenarios.values_mut() {
+            if scenario.candidate_handle == handle {
+                scenario.overrides.remove(node);
             }
         }
     }
@@ -6339,6 +6455,10 @@ pub enum TreeWorkspaceSessionError {
     ScenarioAlreadyExists { scenario_id: String },
     #[error("unknown scenario {scenario_id}")]
     UnknownScenario { scenario_id: String },
+    #[error("unknown scenario override {scenario_id}:{node}")]
+    UnknownScenarioOverride { scenario_id: String, node: NodeKey },
+    #[error("unsupported scenario override value for {scenario_id}: {detail}")]
+    UnsupportedScenarioOverrideValue { scenario_id: String, detail: String },
     #[error("OxCalc context projection is out of sync for {node}")]
     ProjectionOutOfSync { node: String },
 }
@@ -6480,6 +6600,83 @@ fn content_kind_for_text(text: &str) -> FrameworkContentKind {
         crate::model::NodeContentKind::Empty => FrameworkContentKind::Empty,
         crate::model::NodeContentKind::Constant => FrameworkContentKind::Constant,
         crate::model::NodeContentKind::Formula => FrameworkContentKind::Formula,
+    }
+}
+
+fn scenario_override_authored_input(
+    scenario_id: &str,
+    value: &NodeValueProjection,
+) -> Result<String, TreeWorkspaceSessionError> {
+    let calc_value = scenario_override_calc_value(scenario_id, value)?;
+    match RuntimeEnvironment::new().literalize_calc_value_for_authoring(&calc_value) {
+        RuntimeValueLiteralizationResult::AuthoredInput(literalized) => {
+            Ok(literalized.authored_input_text)
+        }
+        RuntimeValueLiteralizationResult::Unsupported(unsupported) => Err(
+            TreeWorkspaceSessionError::UnsupportedScenarioOverrideValue {
+                scenario_id: scenario_id.to_string(),
+                detail: unsupported.message,
+            },
+        ),
+    }
+}
+
+fn scenario_override_calc_value(
+    scenario_id: &str,
+    value: &NodeValueProjection,
+) -> Result<CalcValue, TreeWorkspaceSessionError> {
+    match value {
+        NodeValueProjection::Number { raw, .. } => {
+            raw.parse::<f64>().map(CalcValue::number).map_err(|_| {
+                TreeWorkspaceSessionError::UnsupportedScenarioOverrideValue {
+                    scenario_id: scenario_id.to_string(),
+                    detail: format!("invalid numeric raw value {raw:?}"),
+                }
+            })
+        }
+        NodeValueProjection::Text(text) => {
+            Ok(CalcValue::text(ExcelText::from_interop_assignment(text)))
+        }
+        NodeValueProjection::Logical { value, .. } => Ok(CalcValue::logical(*value)),
+        NodeValueProjection::Empty => Ok(CalcValue::empty()),
+        NodeValueProjection::Missing => Ok(CalcValue::missing()),
+        NodeValueProjection::Array { rows, cols, cells } => {
+            if cells.len() != *rows || cells.iter().any(|row| row.len() != *cols) {
+                return Err(
+                    TreeWorkspaceSessionError::UnsupportedScenarioOverrideValue {
+                        scenario_id: scenario_id.to_string(),
+                        detail: format!("array shape mismatch rows={rows}, cols={cols}"),
+                    },
+                );
+            }
+            let converted = cells
+                .iter()
+                .map(|row| {
+                    row.iter()
+                        .map(|cell| scenario_override_calc_value(scenario_id, cell))
+                        .collect::<Result<Vec<_>, _>>()
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            CalcArray::from_rows(converted)
+                .map(CalcValue::array)
+                .ok_or_else(
+                    || TreeWorkspaceSessionError::UnsupportedScenarioOverrideValue {
+                        scenario_id: scenario_id.to_string(),
+                        detail: "array literalization requires a non-empty rectangular array"
+                            .to_string(),
+                    },
+                )
+        }
+        NodeValueProjection::Unevaluated
+        | NodeValueProjection::Pending
+        | NodeValueProjection::Scalar(_)
+        | NodeValueProjection::Reference { .. }
+        | NodeValueProjection::Error(_) => Err(
+            TreeWorkspaceSessionError::UnsupportedScenarioOverrideValue {
+                scenario_id: scenario_id.to_string(),
+                detail: format!("unsupported value projection {value:?}"),
+            },
+        ),
     }
 }
 

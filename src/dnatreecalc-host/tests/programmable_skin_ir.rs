@@ -1098,6 +1098,182 @@ fn programmable_skin_projects_scenario_manifest_over_candidate_handles() {
 }
 
 #[test]
+fn programmable_skin_sets_and_clears_candidate_backed_scenario_overrides() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    skin.add_node(Some("Root"), "A", "1");
+    skin.add_node(Some("Root"), "B", "=A+1");
+    let root_a = skin
+        .state()
+        .node(&NodeId::new("Root.A"))
+        .expect("Root.A should project")
+        .key
+        .clone();
+    let root_b = skin
+        .state()
+        .node(&NodeId::new("Root.B"))
+        .expect("Root.B should project")
+        .key
+        .clone();
+    skin.assert_scalar("Root.B", "2");
+
+    assert!(skin.try_open_candidate().accepted);
+    let handle = skin.state().candidates[0].handle.clone();
+    let create = skin.try_create_scenario_from_candidate("scenario:bull", "Bull", &handle);
+    assert!(create.accepted, "{:?}", create.error);
+
+    let set = skin.try_set_scenario_override(
+        "scenario:bull",
+        root_a.clone(),
+        NodeValueProjection::Number {
+            raw: "5".to_string(),
+            display: "5".to_string(),
+        },
+    );
+    assert!(set.accepted, "{:?}", set.error);
+    let overridden = skin.state();
+    let scenario = &overridden.scenarios.entries[0];
+    assert_eq!(scenario.override_count, 1);
+    assert_eq!(scenario.overridden_nodes, vec![root_a.clone()]);
+    assert!(set.delta.changes.iter().any(|change| {
+        matches!(change, WorkspaceDeltaChange::ScenarioChanged(changed) if changed.override_count == 1)
+    }));
+
+    assert!(skin.try_evaluate_candidate(&handle).accepted);
+    let evaluated = skin.state();
+    let candidate = &evaluated.candidates[0];
+    assert_eq!(
+        candidate
+            .nodes
+            .iter()
+            .find(|node| node.key == root_a)
+            .map(|node| node.content_text.as_str()),
+        Some("5")
+    );
+    assert_eq!(
+        candidate
+            .values_by_key
+            .get(&root_b)
+            .map(NodeValueProjection::display_text)
+            .as_deref(),
+        Some("6")
+    );
+    skin.assert_scalar("Root.B", "2");
+
+    let update = skin.try_set_scenario_override(
+        "scenario:bull",
+        root_a.clone(),
+        NodeValueProjection::Number {
+            raw: "7".to_string(),
+            display: "7".to_string(),
+        },
+    );
+    assert!(update.accepted, "{:?}", update.error);
+    assert!(skin.try_evaluate_candidate(&handle).accepted);
+    assert_eq!(
+        skin.state().candidates[0]
+            .values_by_key
+            .get(&root_b)
+            .map(NodeValueProjection::display_text)
+            .as_deref(),
+        Some("8")
+    );
+
+    let clear = skin.try_clear_scenario_override("scenario:bull", root_a.clone());
+    assert!(clear.accepted, "{:?}", clear.error);
+    assert_eq!(skin.state().scenarios.entries[0].override_count, 0);
+    assert!(
+        skin.state().scenarios.entries[0]
+            .overridden_nodes
+            .is_empty()
+    );
+    assert!(skin.try_evaluate_candidate(&handle).accepted);
+    assert_eq!(
+        skin.state().candidates[0]
+            .values_by_key
+            .get(&root_b)
+            .map(NodeValueProjection::display_text)
+            .as_deref(),
+        Some("2")
+    );
+
+    let array_override = skin.try_set_scenario_override(
+        "scenario:bull",
+        root_a.clone(),
+        NodeValueProjection::Array {
+            rows: 1,
+            cols: 2,
+            cells: vec![vec![
+                NodeValueProjection::Number {
+                    raw: "2".to_string(),
+                    display: "2".to_string(),
+                },
+                NodeValueProjection::Number {
+                    raw: "3".to_string(),
+                    display: "3".to_string(),
+                },
+            ]],
+        },
+    );
+    assert!(array_override.accepted, "{:?}", array_override.error);
+    assert!(skin.try_evaluate_candidate(&handle).accepted);
+    let array_state = skin.state();
+    let Some(NodeValueProjection::Array { rows, cols, cells }) =
+        array_state.candidates[0].values_by_key.get(&root_a)
+    else {
+        panic!(
+            "scenario array override should project as candidate array value, got {:?}",
+            array_state.candidates[0].values_by_key.get(&root_a)
+        );
+    };
+    assert_eq!((*rows, *cols), (1, 2));
+    assert_eq!(cells[0][0].display_text(), "2");
+    assert_eq!(cells[0][1].display_text(), "3");
+    assert!(
+        skin.try_clear_scenario_override("scenario:bull", root_a.clone())
+            .accepted
+    );
+
+    let unsupported = skin.try_set_scenario_override(
+        "scenario:bull",
+        root_a.clone(),
+        NodeValueProjection::Scalar("9".into()),
+    );
+    assert!(!unsupported.accepted);
+    assert!(matches!(
+        unsupported.error,
+        Some(IntentError::UnsupportedScenarioOverrideValue { .. })
+    ));
+
+    let set_deleted_node_override = skin.try_set_scenario_override(
+        "scenario:bull",
+        root_a.clone(),
+        NodeValueProjection::Number {
+            raw: "10".to_string(),
+            display: "10".to_string(),
+        },
+    );
+    assert!(
+        set_deleted_node_override.accepted,
+        "{:?}",
+        set_deleted_node_override.error
+    );
+    let delete_overridden_node = skin.try_delete_candidate_node(&handle, root_a);
+    assert!(
+        delete_overridden_node.accepted,
+        "{:?}",
+        delete_overridden_node.error
+    );
+    assert!(
+        skin.state().scenarios.entries[0]
+            .overridden_nodes
+            .is_empty()
+    );
+}
+
+#[test]
 fn programmable_skin_rejects_stale_candidate_commit_without_losing_candidate() {
     let harness = Harness::empty();
     let skin = harness.driver.clone();

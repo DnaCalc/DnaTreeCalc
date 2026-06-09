@@ -75,8 +75,14 @@ closed pin/unpin intents without owning lifecycle semantics. The first W4c scena
 is also landed: DnaTreeCalc projects a host-owned scenario manifest over existing OxCalc candidate
 handles, creates/activates/deletes scenario labels through closed Skin IR intents, and pins the
 backing candidate while the scenario exists so budget reaping does not erase the scenario rail.
-This slice deliberately does not implement scenario override values, scenario-local value epochs,
-comparative multi-overlay projection, or chart/feed series projection. Remaining W3
+The first W4c scenario-substrate override slice is also landed: Skin IR exposes closed
+`SetScenarioOverride` / `ClearScenarioOverride` intents by stable `NodeKey`, the host literalizes
+supported typed scalar and array `NodeValueProjection` payloads through OxFml into authored input
+text, applies them through OxCalc candidate-private edit transactions, and clears overrides by
+restoring the candidate-private input captured on first override. This slice deliberately does not
+implement scenario-local value epochs, per-node `NodeView.scenario_override` flags, comparative
+multi-overlay projection, chart/feed series projection, or formula/rich-value scenario override
+authoring. Remaining W3
 formula-rewrite/rebind verbs stay parked until their owning
 OxFml/OxCalc substrates are available. W2 safe structural authoring is
 closed for the current Skin IR surface: receipts carry typed errors and real OxCalc transaction ids,
@@ -583,9 +589,21 @@ The roadmap alignment rule is:
       Skin IR tests prove manifest deltas plus candidate lifecycle interaction from outside the
       skin layer. Scenario override values, scenario-local value epochs, comparative overlays, and
       series projection remain open.
+- [x] W4c `scenario-substrate` first typed value override slice:
+      Skin IR exposes closed `SetScenarioOverride` and `ClearScenarioOverride` intents over stable
+      `NodeKey` targets on candidate-backed scenarios. The host converts supported typed scalar and
+      array `NodeValueProjection` payloads to `CalcValue`, asks OxFml to literalize them as authored
+      input text, applies the edit through OxCalc candidate-private transactions, and clears by
+      restoring the original candidate-private input captured on first override. Programmable Skin
+      IR tests prove scalar dependency recalculation, repeated override preserving the original
+      clear target, typed array override projection, unsupported value rejection, and override
+      cleanup when an overridden candidate-private node is deleted. Scenario-local value epochs,
+      per-node `NodeView.scenario_override`, comparative overlays, formula/rich-value override
+      authoring, and series projection remain open.
 - [ ] `candidate-overlay-handle`: continue toward fully addressable, layerable, non-publishing
       candidate contexts with optimized layering/rebase, candidate add-node template initial content,
-      scenario override substrate, comparative projection, and broader what-if UX.
+      scenario-local value epochs, per-node scenario flags, comparative projection, and broader
+      what-if UX.
 - [x] `value-epoch-keying`: per-node published-value epoch distinct from input epoch.
 
 ## Status Template
