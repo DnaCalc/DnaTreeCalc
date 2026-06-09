@@ -68,7 +68,11 @@ also now landed: a successful `CutToClipboard(Values)` followed by `PasteClipboa
 target write and clears the source in one OxCalc transaction, then clears the host clipboard. Rejected
 cut-paste attempts leave the source and clipboard intact. A focused OxFml handoff records the missing
 paste-special APIs for computed value literalization, formula rebind, formula-and-format paste, and
-subtree internal-reference rebind support.
+subtree internal-reference rebind support. The W3 `set-membership-write` assessment is also complete:
+current OxCalc publishes `TreeReferenceCollectionDependency` facts and DnaTreeCalc can expand
+`AuthoringScope::Collection` for read/scoped operations, but OxCalc has no transaction edit for
+authored collection membership/order changes. A focused OxCalc handoff records the required
+`SetReferenceCollectionMembership`-style substrate.
 
 ## Roadmap Position
 
@@ -261,6 +265,11 @@ The roadmap alignment rule is:
       machinery exists.
 - [x] File the OxFml W3 paste-special handoff for computed value literalization, formula rebind,
       formula-and-format paste, and subtree internal-reference rebind support.
+- [x] Assess `set-membership-write` against live OxCalc/DnaTreeCalc code and file the OxCalc handoff:
+      current collection facts are published read/dependency descriptors only, and
+      `AuthoringScope::Collection` is a projection expansion surface, not a membership mutation
+      substrate. `SetCollectionMembership` remains unsupported until OxCalc owns a transaction-backed
+      membership/order edit that republishes dependency descriptors and membership/order versions.
 - [ ] Continue W3 with the next ownership-correct slice. Candidate order after the OxFml-blocked
       formula rewrite verbs: continue `clipboard-transfer-model` toward OS clipboard import/export
       only where ownership is clear, complete remaining

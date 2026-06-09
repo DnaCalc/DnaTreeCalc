@@ -30,6 +30,7 @@ Authored:
 - `HANDOVER_OXFML_dry_bind_preview.md` — dry-bind verdict for uncommitted formula edits, to complete the OxFml half of W2 legality-impact preview.
 - `HANDOVER_OXFML_formula_authoring_verbs.md` — OxFml-owned W3 formula rewrite/composition APIs for replicate/fill by id, F4 binding toggle, and point-mode reference insertion.
 - `HANDOVER_OXFML_paste_special_authoring.md` — OxFml-owned W3 paste-special APIs for computed value literalization, formula rebind, formula-and-format paste, and subtree internal-reference rebind support.
+- `HANDOVER_OXCALC_set_membership_write.md` — OxCalc-owned W3 authored reference-collection membership/order edit substrate for `SetCollectionMembership`.
 - `HANDOVER_OXCALC_engine_handle_and_incremental_edit.md` — the host-driven engine-handle + incremental-edit interaction contract (sans-executor / host-as-executor; pinned-version model; steppable / cancellable / executor-agnostic forward-compat for async/parallel/GPU). Underpins §6 items 8 (transactional batch) and 13 (undo).
 
 Anticipated:
