@@ -518,12 +518,21 @@ Use this as the per-tranche goal statement before implementation:
       values come from the matching candidate projection's typed `values_by_key`; unevaluated
       scenario columns remain empty. Programmable Skin IR tests prove basis/scenario separation,
       scenario labels/sources, evaluated scenario values, and column removal when a scenario is
-      deleted. Direct sweep/goal-seek comparison columns, chart/feed series projection, richer value
-      provenance, and engine-published scenario revision history remain open.
+      deleted. Direct sweep/goal-seek comparison columns, richer value provenance, and
+      engine-published scenario revision history remain open.
+- [x] W4c `series-projection` first comparison-backed slice:
+      `WorkspaceState.series` now projects chart/feed series for the published basis and
+      scenario-backed comparison columns. Points are ordered by workspace `key_order`, labels come
+      from current display paths, and values remain typed `NodeValueProjection` payloads. Unevaluated
+      scenario series remain empty instead of fabricating values. Programmable Skin IR tests prove
+      published basis series, unevaluated scenario series, evaluated scenario series, basis/scenario
+      separation, and scenario deletion cleanup. Explicit `series(scope)` selection, unit metadata,
+      direct sweep/goal-seek series, richer value provenance, and engine-published scenario revision
+      history remain open.
 - [ ] `candidate-overlay-handle`: continue toward fully addressable, layerable, non-publishing
       candidate contexts with optimized layering/rebase, candidate add-node template initial content,
-      direct sweep/goal-seek comparison columns, series projection, and broader what-if UX before
-      goal seek or sweeps.
+      direct sweep/goal-seek comparison columns, scoped/unit series projection, and broader what-if
+      UX before goal seek or sweeps.
 - [x] `value-epoch-keying`: per-node published-value epoch is available for projection consumers.
 
 ## Next-Wave Parking Lot

@@ -23,14 +23,15 @@ use dnatreecalc_skin_framework::{
     RevisionHistoryProjection, RevisionInvalidationSummaryEntryProjection,
     RevisionTransactionSummaryProjection, RuntimeEffectFamilyProjection, RuntimeEffectProjection,
     RuntimeOverlayKindProjection, RuntimeOverlayProjection, ScenarioManifestProjection,
-    ScenarioProjection, ScenarioSourceProjection, SourceSpanProjection,
-    SpeculationPressureProjection, TableAnchorProjection, TableCellInput, TableCellProjection,
-    TableCellRegionProjection, TableCellsProjection, TableColumnBodyProjection,
-    TableColumnProjection, TableDependencyFactBlockerProjection, TableDependencyFactKindProjection,
-    TableDependencyFactProjection, TableDependencyFactStatusProjection,
-    TableFormulaBindPreviewProjection, TableFormulaMetadataProjection, TableProjection,
-    TableRowInput, TableRowProjection, TreeReferenceCollectionFamilyProjection,
-    TreeReferenceCollectionProjection, WorkspaceRevisionProjection, WorkspaceState,
+    ScenarioProjection, ScenarioSourceProjection, SeriesManifestProjection, SeriesPointProjection,
+    SeriesProjection, SourceSpanProjection, SpeculationPressureProjection, TableAnchorProjection,
+    TableCellInput, TableCellProjection, TableCellRegionProjection, TableCellsProjection,
+    TableColumnBodyProjection, TableColumnProjection, TableDependencyFactBlockerProjection,
+    TableDependencyFactKindProjection, TableDependencyFactProjection,
+    TableDependencyFactStatusProjection, TableFormulaBindPreviewProjection,
+    TableFormulaMetadataProjection, TableProjection, TableRowInput, TableRowProjection,
+    TreeReferenceCollectionFamilyProjection, TreeReferenceCollectionProjection,
+    WorkspaceRevisionProjection, WorkspaceState,
 };
 use oxcalc_core::consumer::OxCalcTreeRunState;
 use oxcalc_core::consumer::{
@@ -4738,6 +4739,14 @@ impl TreeWorkspaceSession {
             .iter()
             .filter_map(|root| nodes.get(root).map(|node| node.key.clone()))
             .collect::<Vec<_>>();
+        let key_order = self
+            .display_order
+            .iter()
+            .map(|node_id| {
+                self.tree_node_id(node_id.as_str())
+                    .map(node_key_for_tree_node)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
         let speculation_pressure =
             speculation_pressure_projection_for(self.context.candidate_pressure(
                 &OxCalcTreeCandidateReapPolicy::max_retained(DEFAULT_SPECULATION_REAP_BUDGET),
@@ -4745,6 +4754,7 @@ impl TreeWorkspaceSession {
         let candidates = self.candidate_projections()?;
         let scenarios = self.scenario_manifest_projection()?;
         let comparison = comparative_projection_for(&nodes_by_key, &candidates, &scenarios);
+        let series = series_projection_for(&comparison, &key_order, &paths_by_key);
 
         Ok(WorkspaceState {
             workspace_id: self.workspace_id.as_str().to_string(),
@@ -4756,16 +4766,10 @@ impl TreeWorkspaceSession {
             speculation_pressure,
             scenarios,
             comparison,
+            series,
             last_run,
             node_order: self.display_order.clone(),
-            key_order: self
-                .display_order
-                .iter()
-                .map(|node_id| {
-                    self.tree_node_id(node_id.as_str())
-                        .map(node_key_for_tree_node)
-                })
-                .collect::<Result<Vec<_>, _>>()?,
+            key_order,
             paths_by_key,
             root_keys,
             root_paths,
@@ -6788,6 +6792,65 @@ fn comparative_projection_for(
         })
         .collect();
     ComparativeProjection { basis, columns }
+}
+
+fn series_projection_for(
+    comparison: &ComparativeProjection,
+    key_order: &[NodeKey],
+    paths_by_key: &BTreeMap<NodeKey, NodeId>,
+) -> SeriesManifestProjection {
+    let mut entries = Vec::with_capacity(1 + comparison.columns.len());
+    entries.push(series_projection_from_column(
+        "series:published".to_string(),
+        &comparison.basis,
+        key_order,
+        paths_by_key,
+    ));
+    entries.extend(comparison.columns.iter().map(|column| {
+        series_projection_from_column(
+            series_id_for_comparative_source(&column.source),
+            column,
+            key_order,
+            paths_by_key,
+        )
+    }));
+    SeriesManifestProjection { entries }
+}
+
+fn series_projection_from_column(
+    id: String,
+    column: &ComparativeColumnProjection,
+    key_order: &[NodeKey],
+    paths_by_key: &BTreeMap<NodeKey, NodeId>,
+) -> SeriesProjection {
+    let points = key_order
+        .iter()
+        .filter_map(|key| {
+            let value = column.values.get(key)?;
+            Some(SeriesPointProjection {
+                key: key.clone(),
+                label: paths_by_key
+                    .get(key)
+                    .map_or_else(|| key.to_string(), |path| path.as_str().to_string()),
+                value: value.clone(),
+            })
+        })
+        .collect();
+    SeriesProjection {
+        id,
+        label: column.label.clone(),
+        source: column.source.clone(),
+        unit: None,
+        points,
+    }
+}
+
+fn series_id_for_comparative_source(source: &ComparativeSourceProjection) -> String {
+    match source {
+        ComparativeSourceProjection::Published => "series:published".to_string(),
+        ComparativeSourceProjection::Candidate { handle } => format!("series:candidate:{handle}"),
+        ComparativeSourceProjection::Scenario { id } => format!("series:scenario:{id}"),
+    }
 }
 
 fn value_projection_for(
