@@ -6,8 +6,14 @@ a verb, a piece of state, or a color means the same thing in every lens. This
 document is the reference contract; the [Flow lens](lenses/FLOW.md) is its first
 realization.
 
-> Status: **built** (ATLAS Phase A, slice 1). The cockpit/multi-slot platform
-> (Phase B / stack wave W5) is not part of the spine yet — see *Phase-B notes*.
+> Status: **built** (ATLAS Phase A, slices 1–2: the spine, then all seven
+> mono-lens primaries on it). The cockpit/multi-slot platform (Phase B / stack
+> wave W5) is not part of the spine yet — see *Phase-B notes*.
+
+**Registry order (the `Ctrl+1..9` slots):** Capture · Tree · Ledger · Sheet ·
+Flow · Bench · Transport (the canonical grammar order: capture → structure →
+populations → edit → explore → what-if → time), then the legacy
+walking-skeleton skins. The switcher shows shortcut chips only for bound slots.
 
 ---
 
@@ -45,6 +51,14 @@ while typing in an edit buffer.
   `WorkspaceState::command_catalog`.
 - Lens-local secondary chords (`Tab`, drag) are deliberately **not** in the table;
   they stay lens-local and are badged as such.
+- **Typing discipline (load-bearing, learned the hard way):** every lens keydown
+  handler's *first* check is `event_target_is_text_entry`; every text input a
+  lens owns stops propagation of its keydowns; `Enter` is only the Commit verb
+  when the target is not an interactive control (`event_target_is_interactive`);
+  and **function keys are exempt** from the typing suppression so `F9`
+  recalculates from inside any edit buffer, exactly like Excel. (`Ctrl+Enter`
+  remains a compatibility alias for Recalculate — "sole recalc" means one verb,
+  not one chord.)
 
 *Today the registry is a constant; per-user remapping would later thread a
 customized instance through context instead of reconstructing `universal()`.*
@@ -66,6 +80,13 @@ fields are **`NodeKey`-keyed** (identity is permanent, path is cosmetic):
 
 `SharedSkinState::gc(live_nodes)` drops continuity references to nodes that no
 longer exist (including a `cleave` predicate that targets a dead node).
+
+*Also in `SharedSkinState` (pre-ATLAS, still live):* `recalc_mode` +
+`manual_recalc_pending` (the Auto/Manual commit policy every lens honors via
+`commit_content_edit`), `workspace_ids` + `active_workspace_id` (shell
+workspace switcher), and the legacy NodeId-keyed `tree_collapsed`/`pinned` —
+transition leftovers superseded by the NodeKey-keyed fields; their removal is a
+tracked cleanup once the legacy skins are absorbed.
 
 **Design note — multi-select lives in shared view-state, not a new intent.** The
 host-owned single `SelectionState.primary` (dispatcher-routed `SelectNode`)
@@ -99,8 +120,36 @@ across light / dark / high-contrast.
 - **Provenance is structural, never ambiguous.** `provenance_tint(node, ws)` →
   `Published | Pending | Speculative | Scenario | External`, rendered as
   *structural* tints (opacity / dashes / underline), not decoration.
+  `Speculative` and `External` are **reserved — pending engine-typed facts**
+  (no typed candidate/external-source provenance exists on `NodeView` yet); a
+  lens must never hand-roll them from heuristics. Bench applies
+  `dtc-prov--speculative` only to candidate-*sourced* comparison columns, where
+  the source is engine-typed (`ComparativeSourceProjection::Candidate`).
 - **Authoring is modeless 1-bit.** `selection_mode_class(is_selected, is_editing)`
   → the single SELECTED-vs-EDITING border cue.
+
+## 4. The shared spine widgets — `dnatreecalc-skins/src/spine_widgets.rs`
+
+The embedded **Lens**, **Console**, and **Name-Box** are one implementation
+consumed by every mono-lens (they become real companion slots in Phase B):
+
+- `NodeInspector` — selection facts, value, the modeless edit buffer
+  (caller-owned `editing`/`editor_text`/`edit_ref` signals so the lens grammar
+  can drive Enter-to-edit with programmatic focus), binding diagnostics;
+  lens-specific extras (Flow's explain stack) render as children.
+- `ConsoleBar` — calc-state health tallies over the visible (non-effective-meta)
+  population, node count, the **capability-profile badge**, and the F9
+  recalculate affordance.
+- `NameBoxBar` + `first_match` — the canonical `/` model query (path/name
+  contains, case-insensitive, effective-meta filtered) so `/` matches
+  identically in every lens.
+- `commit_content_edit` — the one recalc-mode-aware content-commit path.
+- `health_tallies`, `focus_edit_buffer`, and the keyboard-target guards.
+
+**Effective meta is defined once:** `WorkspaceState::is_effective_meta` walks
+the ancestor chain per `docs/model/META_NODES.md` (self **or any ancestor**
+meta). Lenses use it instead of the raw `is_meta` flag; exposing the contagion
+on the engine node view itself is a tracked upstream follow-up.
 
 ## Phase-B notes (not yet built)
 

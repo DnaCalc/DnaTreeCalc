@@ -18,10 +18,16 @@ composition** — built on the [upgraded stack](../stack-requirements/) and usin
   [`reference/ATLAS_SUITE.raw.json`](reference/ATLAS_SUITE.raw.json).
 - **Requirements:** ATLAS consumes [`../stack-requirements/`](../stack-requirements/) and surfaced six
   additions, folded in there as the *Suite-surfaced additions*.
-- **Built (Phase A, slice 1):** the shared spine — [`SPINE.md`](SPINE.md) (one grammar / one
-  continuity / one styling, in `dnatreecalc-skin-framework`) — and the reference lens —
-  [`lenses/FLOW.md`](lenses/FLOW.md) (`dnatreecalc-skins/src/flow.rs`, `Ctrl+6`). The cockpit /
-  multi-slot platform (Phase B) is not built yet; the spine is built so it drops in without rework.
+- **Built (Phase A, slices 1–2):** the shared spine — [`SPINE.md`](SPINE.md) (one grammar / one
+  continuity / one styling / one set of embedded widgets) — and **all seven mono-lens primaries**
+  on it: [Capture](lenses/CAPTURE.md) · [Tree](lenses/TREE.md) · [Ledger](lenses/LEDGER.md) ·
+  [Sheet](lenses/SHEET.md) · [Flow](lenses/FLOW.md) · [Bench](lenses/BENCH.md) ·
+  [Transport](lenses/TRANSPORT.md), registered on `Ctrl+1..7` in that order (the legacy
+  walking-skeleton skins follow). Bench and Transport moved **into Phase A** because the engine
+  substrate they need (candidates/scenarios/sweeps/comparison/series + the retained revision
+  graph) is fully landed and projected — the rollout table below originally gated them on spikes
+  that have since been answered. The cockpit / multi-slot platform (Phase B) is not built yet;
+  the spine is built so it drops in without rework.
 
 This README is the durable summary. (The fuller per-lens / spine / journey breakout can be expanded
 into a doc set on request; the raw synthesis holds every field today.)
@@ -55,11 +61,12 @@ into a doc set on request; the raw synthesis holds every field today.)
 
 - **One grammar.** A small *universal* verb table, defined **once** in the keybinding registry, whose
   meaning is fixed in every lens — only the visual realization differs. It is genuinely collision-free:
-  **Enter** is the *sole* commit-and-advance (next sibling/row), **F9** the *sole* recalc, **Ctrl+D**
-  the *sole* fill; arrows are standardized (↑↓ = sibling, ←→ = toward-parent/child) and **h/l** is the
-  *sole* fold (a bare arrow never means "collapse"); ` ] / [ ` trace; `/` Name-Box; **Space** leader +
-  health; **E** explain; **Ctrl+Z/Y** revision-nav; **Ctrl+1..7** switch lens; one canonical **Esc**
-  ladder. `Tab`, `Ctrl+Enter`, and **drag** are explicitly *lens-local* secondary chords, badged as
+  **Enter** is the *sole* commit-and-advance (next sibling/row), **F9** the *sole* recalc verb
+  (`Ctrl+Enter` stays as a compatibility chord for the same verb; F-keys work even while typing),
+  **Ctrl+D** the *sole* fill; arrows are standardized (↑↓ = sibling, ←→ = toward-parent/child) and
+  **h/l** is the *sole* fold (a bare arrow never means "collapse"); ` ] / [ ` trace; `/` Name-Box;
+  **Space** leader + health; **E** explain; **Ctrl+Z/Y** revision-nav; **Ctrl+1..9** switch lens
+  (the seven ATLAS lenses hold 1..7); one canonical **Esc** ladder. `Tab`, `Ctrl+Enter`, and **drag** are explicitly *lens-local* secondary chords, badged as
   such — so a key a user thinks is universal always behaves universally.
 - **One styling language.** Shared design tokens. **`calc_state` is the only saturated channel on
   nodes** in every lens; provenance tints (published / pending / speculative-ghost / scenario /
@@ -91,12 +98,12 @@ into a doc set on request; the raw synthesis holds every field today.)
 The cockpit is the **destination**, not the baseline — ATLAS ships a single-slot **mono-lens core
 first**, then composes:
 
-| Phase | What | Stack |
-|---|---|---|
-| **A — mono-lens core** | Re-skin Flow as reference; evolve Tree / Ledger / Sheet / Capture as **single-slot, single-select** skins; Lens + Console content lives *inside* a mono-lens | W0–W3 + the early-W5 subset (design-tokens, delta-channel, a11y, persistence) + `cleave-predicate-shared`. Most of the suite's value **without** the cockpit |
-| **B — composable cockpit** | The W5 platform: multi-slot, negotiation, focus/keybinding arbitration, persona, isolation, worker-calc; promote Lens + Console to real companion slots | W5 (the *last* platform wave — not the first, as a naïve reading would place it) |
-| **C — time + speculation** | Transport + Bench companions; ghost what-if, scenarios, undo-as-navigation light up everywhere | W4a/W4b/W4c (the two gating engine spikes) |
-| **D — narrative + tables + spatial reuse** | Story; Canvas revision-morphing + promote-to-template; Sheet table authoring → full ATLAS | W6 |
+| Phase | What | Stack | Status |
+|---|---|---|---|
+| **A — mono-lens core** | Flow as reference; Tree / Ledger / Sheet / Capture as **single-slot** lenses; Lens + Console embedded *inside* each mono-lens (shared `spine_widgets`); **plus Bench + Transport**, pulled forward from Phase C because their engine substrate landed | W0–W3 + the early-W5 subset + `cleave-predicate-shared`; W4a/b/c substrate (landed) for Bench/Transport | **Built** |
+| **B — composable cockpit** | The W5 platform: multi-slot, negotiation, focus/keybinding arbitration, persona, isolation, worker-calc; promote Lens + Console to real companion slots | W5 (the *last* platform wave — not the first) | Open |
+| **C — deeper speculation UX** | Ghost what-if inline in Flow, goal-seek, value-shape change-pulse between revisions, durable arbitrary-candidate scenarios | goal-seek substrate, value-shape diff, scenario durability (ROADMAP open Q10) | Open (the *rail* shipped in A) |
+| **D — narrative + tables + spatial reuse** | Story; Canvas revision-morphing + promote-to-template; Sheet table *authoring* depth → full ATLAS | W6 | Open |
 
 ### Six flagship cockpits (W5+ presets)
 Modeling (Flow · Lens · Bench · Transport · Console) · Author (Tree · Lens · Flow) · Audit (Ledger ·
@@ -112,6 +119,45 @@ Lens-on-demand · Transport-as-timeline).
 the consumer.)
 
 ---
+
+## Suite-surfaced follow-ups (Phase-A build learnings)
+
+Logged honestly during the build; each is a seam ask, not a blocker — the
+lenses ship with the truthful fallback noted:
+
+1. **Preview seam on the Skin IR** — the host session's ~20 `preview_*`
+   legality/impact methods (dry-bind, recalc plan, mutation impact) are not
+   reachable through `SkinContext`; lenses ship typed *post-attempt* rejection
+   strips instead of live legality nets. Ask: a read-side preview handle on
+   `SkinContext` (the result types already live in the framework).
+2. **Compose-without-commit reference insertion** — `InsertFormulaReference`
+   commits the recomposed formula; Sheet's point-mode is therefore an explicit
+   *armed* two-step. Ask: an OxFml compose-text-only seam.
+3. **Multi-select as a dispatched intent** — `selection_set` is shared
+   view-state; bulk verbs stay auditable because they route through
+   `AuthoringScope::Nodes`, but selection changes themselves are invisible to
+   the intent log. Promote before selection becomes load-bearing.
+4. **Scaffold-path intent** — Capture achieves one-transaction scaffolding via
+   the candidate lane (open → add per segment → evaluate → commit, discard on
+   rejection); a first-class batch-add would simplify it.
+5. **Effective-meta on the engine node view** — the contagion walk lives in
+   `WorkspaceState::is_effective_meta`; projecting it upstream removes the
+   per-projection walk.
+6. **Command-catalog gaps** — no kinds for NavigateRevision, SelectTableCell,
+   table column/totals formula edits, InsertFormulaReference, DuplicateSubtree,
+   SetMeta/SetNodeAttributes, EditScopedContent; affected lenses derive
+   enablement locally.
+7. **Revision metadata** — history entries carry ids + invalidation summaries
+   but no timestamp/author/label; Transport renders ids. Ask: optional authored
+   labels + clock metadata on revision entries.
+8. **Scenario/sweep edit verbs** — rename-scenario and add/remove-sweep-point
+   don't exist; Bench edits are delete-and-recreate.
+9. **Compound cleave predicates** — `CleaveFilter` is single-predicate (no
+   and/or, no numeric ranges); Ledger's bar exposes what exists and shows
+   foreign predicates as “(custom)”.
+10. **SKINS.md §2.6 refresh** — the spec's intent enumeration predates the
+    built surface (candidates/scenarios/sweeps/revisions/meta/notes/tables);
+    refresh or redirect to the command catalog as canonical.
 
 ## How the existing surface maps in
 

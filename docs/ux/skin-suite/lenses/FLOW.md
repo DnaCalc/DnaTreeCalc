@@ -5,8 +5,9 @@ results on the right, in structure-stable layered columns with dependency wires
 between them. It is the first ATLAS lens and the reference every later lens
 conforms to, so it is the canonical realization of [the spine](../SPINE.md).
 
-> Status: **built** (ATLAS Phase A, slice 1) — `dnatreecalc-skins/src/flow.rs`,
-> registered as `Ctrl+6`. Prototype: [`../../prototypes/09_flow.html`](../../prototypes/09_flow.html).
+> Status: **built** (ATLAS Phase A) — `dnatreecalc-skins/src/flow.rs`,
+> registered as `Ctrl+5` (the canonical suite order) and the web entrypoint's
+> default lens. Prototype: [`../../prototypes/09_flow.html`](../../prototypes/09_flow.html).
 
 ## What it reads (published projection only)
 
@@ -47,10 +48,11 @@ meaningful in Flow.)
 
 ## Embedded Lens + Console (Phase-A mono-lens)
 
-For the mono-lens core, the **Lens** inspector (selection detail + recursive
-explain) and the **Console** strip (calc-state health tallies + Name-Box) live
-*inside* Flow. In the Phase-B cockpit they become real companion slots over the
-same shared selection/continuity — no rework to Flow's reads/writes.
+The **Lens** inspector and **Console** strip are the shared
+`spine_widgets::{NodeInspector, ConsoleBar, NameBoxBar}` components — identical
+in every mono-lens; Flow contributes its explain stack as the inspector's
+lens-specific children. In the Phase-B cockpit they become real companion slots
+over the same shared selection/continuity — no rework to Flow's reads/writes.
 
 ## Reading head
 
