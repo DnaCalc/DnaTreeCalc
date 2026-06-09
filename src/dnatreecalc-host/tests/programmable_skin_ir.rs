@@ -2835,9 +2835,13 @@ fn programmable_skin_populates_typed_clipboard_carriers_from_projection() {
     assert_eq!(nodes.len(), 2);
     assert_eq!(nodes[0].node, a_key);
     assert_eq!(nodes[0].path, NodeId::new("Root.A"));
+    assert_eq!(nodes[0].content_kind, NodeContentKind::Constant);
+    assert_eq!(nodes[0].constant_input_text.as_deref(), Some("2"));
     assert_eq!(nodes[0].value.display_text(), "2");
     assert_eq!(nodes[1].node, b_key);
     assert_eq!(nodes[1].path, NodeId::new("Root.B"));
+    assert_eq!(nodes[1].content_kind, NodeContentKind::Formula);
+    assert_eq!(nodes[1].constant_input_text, None);
     assert_eq!(nodes[1].value.display_text(), "3");
 
     let formula = skin.try_copy_to_clipboard(
@@ -2967,6 +2971,96 @@ fn programmable_skin_populates_typed_clipboard_carriers_from_projection() {
         Some(IntentError::ClipboardScopeUnsupported {
             payload: "formula".to_string(),
             detail: "formula clipboard payload requires exactly one source node, got 2".to_string()
+        })
+    );
+}
+
+#[test]
+fn programmable_skin_pastes_constant_clipboard_values_through_content_write_path() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+    assert!(skin.try_add_node(None, "Book", "").accepted);
+    assert!(skin.try_add_node(Some("Book"), "Source", "1000").accepted);
+    assert!(skin.try_add_node(Some("Book"), "Target", "=1+1").accepted);
+    assert!(skin.try_add_node(Some("Book"), "Other", "0").accepted);
+    assert!(
+        skin.try_add_node(Some("Book"), "FormulaSource", "=Source+1")
+            .accepted
+    );
+    skin.recalc();
+
+    let state = skin.state();
+    let source_key = state.node(&NodeId::new("Book.Source")).unwrap().key.clone();
+    let target_key = state.node(&NodeId::new("Book.Target")).unwrap().key.clone();
+    let other_key = state.node(&NodeId::new("Book.Other")).unwrap().key.clone();
+    let formula_source_key = state
+        .node(&NodeId::new("Book.FormulaSource"))
+        .unwrap()
+        .key
+        .clone();
+
+    let empty_paste = skin.try_paste_clipboard_values(AuthoringScope::Node(target_key.clone()));
+    assert!(!empty_paste.accepted);
+    assert_eq!(
+        empty_paste.error,
+        Some(IntentError::ClipboardPayloadMismatch {
+            expected: "values".to_string(),
+            actual: "empty".to_string()
+        })
+    );
+
+    let copy = skin.try_copy_to_clipboard(
+        AuthoringScope::Node(source_key.clone()),
+        ClipboardPayloadKind::Values,
+    );
+    assert!(copy.accepted, "{:?}", copy.error);
+    let paste = skin.try_paste_clipboard_values(AuthoringScope::Nodes(vec![
+        target_key.clone(),
+        other_key.clone(),
+    ]));
+    assert!(paste.accepted, "{:?}", paste.error);
+    assert_any_transaction(&paste);
+    let state = skin.state();
+    let target = state.node(&NodeId::new("Book.Target")).unwrap();
+    let other = state.node(&NodeId::new("Book.Other")).unwrap();
+    assert_eq!(target.content_kind, NodeContentKind::Constant);
+    assert_eq!(target.content_text, "1000");
+    assert_eq!(target.computed_value.display_text(), "1000");
+    assert_eq!(other.content_kind, NodeContentKind::Constant);
+    assert_eq!(other.content_text, "1000");
+    assert_eq!(other.computed_value.display_text(), "1000");
+    assert!(matches!(
+        state.clipboard.as_ref().map(|clipboard| &clipboard.payload),
+        Some(ClipboardPayloadProjection::Values { .. })
+    ));
+
+    let formula_copy = skin.try_copy_to_clipboard(
+        AuthoringScope::Node(formula_source_key),
+        ClipboardPayloadKind::Values,
+    );
+    assert!(formula_copy.accepted, "{:?}", formula_copy.error);
+    let formula_paste = skin.try_paste_clipboard_values(AuthoringScope::Node(target_key.clone()));
+    assert!(!formula_paste.accepted);
+    assert_eq!(
+        formula_paste.error,
+        Some(IntentError::ClipboardPayloadMismatch {
+            expected: "single_constant_value".to_string(),
+            actual: "source_content_kind=formula".to_string()
+        })
+    );
+
+    let multi_copy = skin.try_copy_to_clipboard(
+        AuthoringScope::Nodes(vec![source_key, other_key]),
+        ClipboardPayloadKind::Values,
+    );
+    assert!(multi_copy.accepted, "{:?}", multi_copy.error);
+    let multi_paste = skin.try_paste_clipboard_values(AuthoringScope::Node(target_key));
+    assert!(!multi_paste.accepted);
+    assert_eq!(
+        multi_paste.error,
+        Some(IntentError::ClipboardPayloadMismatch {
+            expected: "single_constant_value".to_string(),
+            actual: "value_count=2".to_string()
         })
     );
 }

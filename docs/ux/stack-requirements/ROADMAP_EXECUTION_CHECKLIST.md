@@ -49,6 +49,11 @@ Value paste, formula paste, OS clipboard integration, and subtree paste/rebind r
 The second `clipboard-transfer-model` tranche is landed: `CutToClipboard` records
 `ClipboardOperationProjection::Cut` on the host-owned clipboard carrier without deleting nodes or
 advancing model revisions.
+The second `paste-special` slice is landed for constant-source values:
+`PasteClipboardValues` consumes a single value clipboard carrier only when it has authored constant
+input text, applies it through the existing scoped content transaction path, and rejects computed
+formula results, arrays, multi-source value payloads, formula paste, OS clipboard transfer, source
+deletion, and subtree rebind.
 
 Do not advance to W4 speculation/history or W5 platform polish as the default next step while W3
 authoring verbs remain incomplete.
@@ -192,8 +197,15 @@ Use this as the per-tranche goal statement before implementation:
       `WorkspaceIntent::CutToClipboard { scope, payload }` records a `Cut` operation on the same typed
       host-owned clipboard carrier as copy. It intentionally does not delete source nodes or advance
       the workspace revision; later paste/commit semantics own any model mutation.
+- [x] Land second `paste-special` tranche:
+      `WorkspaceIntent::PasteClipboardValues { target }` extends the value clipboard carrier with
+      source `content_kind` and optional `constant_input_text`, then pastes exactly one authored
+      constant source through the scoped content transaction path with a real transaction id.
+      Computed formula values, arrays, multi-source value payloads, formula paste, OS clipboard
+      transfer, source deletion for cuts, and subtree rebind remain open.
 - [ ] Continue W3 with the next feasible tranche: continue `clipboard-transfer-model`
-      toward non-formula paste where ownership is clear, or move to OxFml-unblocked formula authoring.
+      toward source deletion or OS clipboard import/export where ownership is clear, or move to
+      OxFml-unblocked formula authoring.
 
 ## Gated Workstreams
 

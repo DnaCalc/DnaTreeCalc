@@ -360,6 +360,10 @@ pub enum ClipboardPayloadProjection {
 pub struct ClipboardNodeValueProjection {
     pub node: NodeKey,
     pub path: NodeId,
+    pub content_kind: NodeContentKind,
+    /// Authored input text that can be pasted back without converting a
+    /// rendered value into source text. Present only for constant inputs.
+    pub constant_input_text: Option<String>,
     pub value: NodeValueProjection,
 }
 

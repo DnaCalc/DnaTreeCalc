@@ -148,6 +148,11 @@ pub enum WorkspaceIntent {
     PasteClipboardFormat {
         target: AuthoringScope,
     },
+    /// Paste a constant-source value clipboard payload onto a typed target
+    /// scope using authored constant input, not rendered display text.
+    PasteClipboardValues {
+        target: AuthoringScope,
+    },
     AddNode {
         parent: Option<NodeId>,
         symbol: String,
@@ -536,6 +541,7 @@ impl Dispatcher for InMemoryDispatcher {
             | WorkspaceIntent::CopyToClipboard { .. }
             | WorkspaceIntent::CutToClipboard { .. }
             | WorkspaceIntent::PasteClipboardFormat { .. }
+            | WorkspaceIntent::PasteClipboardValues { .. }
             | WorkspaceIntent::AddNode { .. }
             | WorkspaceIntent::RenameNode { .. }
             | WorkspaceIntent::MoveNode { .. }

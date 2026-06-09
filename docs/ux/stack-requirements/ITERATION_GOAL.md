@@ -58,7 +58,12 @@ first paste-special slice is also landed for format payloads only: `PasteClipboa
 single copied format carrier and routes the write through the existing canonical
 `SetNumberFormat`/meta-node transaction path. The next `clipboard-transfer-model` slice is also
 landed: `CutToClipboard` populates the same typed carrier with `operation = Cut` while leaving the
-model untouched until a later paste/commit verb owns the mutation.
+model untouched until a later paste/commit verb owns the mutation. The next paste-special slice is
+now landed for constant-source values only: value clipboard carriers record source content kind plus
+an optional authored constant input string, and `PasteClipboardValues` applies a single constant
+source through the scoped content transaction path without converting rendered values into input
+text. Computed formula-result paste, array literalization, formula paste, OS clipboard integration,
+source deletion for cut/paste, and subtree rebind remain open.
 
 ## Roadmap Position
 
@@ -236,10 +241,19 @@ The roadmap alignment rule is:
       with `ClipboardOperationProjection::Cut` using the same typed payload construction as copy.
       Cut does not delete nodes, advance revisions, or fabricate paste behavior; it only records the
       pending transfer operation for later paste semantics.
+- [x] Implement the second `paste-special` slice:
+      `WorkspaceIntent::PasteClipboardValues { target }` consumes a single value clipboard carrier
+      only when the source was an authored constant. The carrier includes `content_kind` plus
+      `constant_input_text`, and paste routes that authored input through the existing scoped content
+      transaction path with a real OxCalc transaction id. It deliberately rejects computed formula
+      values, arrays, multi-source value payloads, formula paste, OS clipboard transfer, source
+      deletion for cuts, and subtree rebind until the owning OxFml/OxCalc literalization and rebind
+      machinery exists.
 - [ ] Continue W3 with the next ownership-correct slice. Candidate order after the OxFml-blocked
-      formula rewrite verbs: continue `clipboard-transfer-model` toward non-formula paste only where
-      ownership is clear, complete remaining `add-node-content-policy` only when template substrate
-      exists, or move to OxFml-unblocked formula authoring when that API lands.
+      formula rewrite verbs: continue `clipboard-transfer-model` toward source deletion or OS
+      clipboard import/export only where ownership is clear, complete remaining
+      `add-node-content-policy` only when template substrate exists, or move to OxFml-unblocked
+      formula authoring when that API lands.
 
 ### Gating Engine Workstreams
 
