@@ -79,8 +79,11 @@ same stable node while non-overlapping edits still rebase. Candidate add-node pa
 classification is also landed: candidate adds mark their parent lane so a live sibling/ordering
 change rejects stale rebase instead of silently merging. Old-parent/delete-descendant classification
 is now landed too: candidate moves mark their source and destination parent lanes, candidate deletes
-mark their removed subtree, and explicit candidate reorder marks the parent lane. Richer structural
-merge algebra, candidate add-node template policy, and full scenario/what-if UX remain open. The
+mark their removed subtree, and explicit candidate reorder marks the parent lane. The first
+lane-aware merge slice is also landed: OxCalc now separates content-node touches from structural
+parent/order lanes during candidate rebase, so candidate structural adds can rebase over live
+content edits on the same parent without publishing candidate-only structure. Candidate add-node
+template policy and full scenario/what-if UX remain open. The
 first richer host-pin retention slice
 is also landed: OxCalc exposes explicit candidate retention pins that protect active candidates from
 budget reaping, DnaTreeCalc projects pin counts and pressure reason counts, and Skin IR exposes
@@ -646,6 +649,14 @@ The roadmap alignment rule is:
       and explicit reorder parent-lane conflict; programmable Skin IR tests prove old-parent move
       and delete-descendant rebase rejection from outside the engine. Richer structural merge
       algebra, template initial content, and scenario/what-if UX remain open.
+- [x] `candidate-overlay-handle` lane-aware rebase merge slice:
+      OxCalc now classifies candidate/live rebase touches into content nodes, structural parent/order
+      lanes, structural node edits, and deleted nodes rather than using one coarse node set for every
+      edit kind. This preserves same-node content conflicts and structural lane conflicts while
+      allowing a candidate structural add to rebase over a live content edit on the same parent.
+      Focused OxCalc tests prove the positive merge and the existing conflict cases; programmable
+      Skin IR tests prove the accepted rebase and commit path through the host projection. Broader
+      multi-edit merge algebra, template initial content, and scenario/what-if UX remain open.
 - [x] W4c `scenario-projection` first candidate-backed scenario rail slice:
       DnaTreeCalc projects `WorkspaceState.scenarios` as a host-owned manifest over existing OxCalc
       candidate handles, with closed `CreateScenarioFromCandidate`, `ActivateScenario`, and
@@ -739,8 +750,9 @@ The roadmap alignment rule is:
       a11y helpers for ValueBoard's `TableCellSelection`, focus-boundary helpers for future
       multi-slot composition, and broader screen-reader/browser audits remain later W5 work.
 - [ ] `candidate-overlay-handle`: continue toward fully addressable, layerable, non-publishing
-      candidate contexts with richer structural merge algebra, candidate add-node template initial
-      content, direct sweep/goal-seek comparison columns/series, and broader what-if UX.
+      candidate contexts with broader multi-edit structural merge algebra, candidate add-node
+      template initial content, direct sweep/goal-seek comparison columns/series, and broader
+      what-if UX.
 - [x] `value-epoch-keying`: per-node published-value epoch distinct from input epoch.
 
 ## Status Template

@@ -526,6 +526,13 @@ Use this as the per-tranche goal statement before implementation:
       old-parent move conflict, delete-descendant conflict, and explicit reorder parent-lane
       conflict; programmable Skin IR tests prove old-parent move and delete-descendant conflict from
       outside the engine.
+- [x] `candidate-overlay-handle` lane-aware rebase merge slice:
+      OxCalc classifies rebase touches into content nodes, structural parent/order lanes,
+      structural node edits, and deleted nodes instead of using one coarse overlap set. Candidate
+      structural add now rebases over a live content edit on the same parent while same-node content,
+      parent/order, move, and delete conflicts remain rejected. Focused OxCalc tests prove the
+      positive merge and existing conflict cases; programmable Skin IR tests prove the accepted
+      rebase/commit path through the host projection.
 - [x] W4c `scenario-projection` first candidate-backed scenario rail slice:
       DnaTreeCalc projects `WorkspaceState.scenarios` as a host-owned manifest over existing OxCalc
       candidate handles and exposes closed create/activate/delete scenario intents. Creating a
@@ -605,9 +612,9 @@ Use this as the per-tranche goal statement before implementation:
       surfaces publish `aria-selected`, stable active descendants, and one focusable visible item
       when no visible selection exists. Framework tests prove helper output; walking-skeleton and
       programmable Skin IR tests prove the real skins still mount and route host selection/dispatch.
-- [ ] `candidate-overlay-handle`: continue W4b with richer structural merge algebra, candidate
-      add-node template initial content, direct sweep/goal-seek comparison columns/series, and
-      broader what-if UX before goal seek or sweeps.
+- [ ] `candidate-overlay-handle`: continue W4b with broader multi-edit structural merge algebra,
+      candidate add-node template initial content, direct sweep/goal-seek comparison columns/series,
+      and broader what-if UX before goal seek or sweeps.
 - [x] `value-epoch-keying`: per-node published-value epoch is available for projection consumers.
 
 ## Next-Wave Parking Lot

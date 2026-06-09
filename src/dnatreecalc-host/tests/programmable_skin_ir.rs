@@ -1998,6 +1998,77 @@ fn programmable_skin_rebases_stale_candidate_before_commit() {
 }
 
 #[test]
+fn programmable_skin_rebases_candidate_add_when_live_only_edits_parent_content() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "1");
+    let root_key = skin
+        .state()
+        .node(&NodeId::new("Root"))
+        .expect("Root should project")
+        .key
+        .clone();
+    let open = skin.try_open_candidate();
+    assert!(open.accepted, "{:?}", open.error);
+    let handle = skin.state().candidates[0].handle.clone();
+    let original_basis = skin.state().candidates[0].basis_revision_id.clone();
+
+    let add = skin.try_add_candidate_node(
+        &handle,
+        Some(root_key),
+        "CandidateChild",
+        InitialNodeContentProjection::Literal {
+            content: "7".to_string(),
+        },
+        false,
+    );
+    assert!(add.accepted, "{:?}", add.error);
+
+    skin.edit("Root", "2");
+    skin.assert_scalar("Root", "2");
+    let current_revision = skin
+        .state()
+        .revision
+        .workspace_revision_id
+        .clone()
+        .expect("published workspace revision should project");
+    assert_ne!(current_revision, original_basis);
+
+    let rebase = skin.try_rebase_candidate(&handle);
+    assert!(rebase.accepted, "{:?}", rebase.error);
+    let rebased_state = skin.state();
+    let rebased = rebased_state
+        .candidates
+        .iter()
+        .find(|candidate| candidate.handle == handle)
+        .expect("rebased candidate should remain retained");
+    assert_eq!(rebased.basis_revision_id, current_revision);
+    assert!(
+        rebased
+            .nodes
+            .iter()
+            .any(|node| node.id == NodeId::new("Root.CandidateChild") && node.content_text == "7")
+    );
+    assert!(
+        rebased.values_by_key.is_empty(),
+        "rebase should not carry stale candidate values"
+    );
+    assert!(
+        skin.state()
+            .node(&NodeId::new("Root.CandidateChild"))
+            .is_none(),
+        "rebase must not publish candidate-only structure"
+    );
+
+    let commit = skin.try_commit_candidate(&handle);
+    assert!(commit.accepted, "{:?}", commit.error);
+    skin.assert_scalar("Root", "2");
+    skin.assert_scalar("Root.CandidateChild", "7");
+    assert!(skin.state().candidates.is_empty());
+}
+
+#[test]
 fn programmable_skin_projects_layered_child_candidate_values() {
     let harness = Harness::empty();
     let skin = harness.driver.clone();
