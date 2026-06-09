@@ -1664,6 +1664,81 @@ fn programmable_skin_projects_layered_child_candidate_values() {
 }
 
 #[test]
+fn programmable_skin_rebases_parented_candidate_as_flattened_layer() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    skin.add_node(Some("Root"), "A", "1");
+    skin.add_node(Some("Root"), "B", "=A+1");
+    let b_key = skin
+        .state()
+        .node(&NodeId::new("Root.B"))
+        .expect("Root.B should project")
+        .key
+        .clone();
+
+    let parent_open = skin.try_open_candidate();
+    assert!(parent_open.accepted, "{:?}", parent_open.error);
+    let parent_handle = skin.state().candidates[0].handle.clone();
+    assert!(
+        skin.try_edit_candidate_content(&parent_handle, "Root.A", "5")
+            .accepted
+    );
+
+    let child_open = skin.try_open_child_candidate(&parent_handle);
+    assert!(child_open.accepted, "{:?}", child_open.error);
+    let child_handle = skin
+        .state()
+        .candidates
+        .iter()
+        .find(|candidate| candidate.parent_handle.as_deref() == Some(parent_handle.as_str()))
+        .expect("child candidate should project")
+        .handle
+        .clone();
+    assert!(
+        skin.try_edit_candidate_content(&child_handle, "Root.A", "7")
+            .accepted
+    );
+
+    skin.edit("Root.A", "2");
+    skin.assert_scalar("Root.B", "3");
+    assert!(!skin.try_discard_candidate(&parent_handle).accepted);
+
+    let rebase = skin.try_rebase_candidate(&child_handle);
+    assert!(rebase.accepted, "{:?}", rebase.error);
+    let state = skin.state();
+    let child = state
+        .candidates
+        .iter()
+        .find(|candidate| candidate.handle == child_handle)
+        .expect("child candidate should remain projected");
+    assert_eq!(child.parent_handle, None);
+    assert!(
+        child.values_by_key.is_empty(),
+        "flattened rebase should not carry stale candidate values"
+    );
+
+    let parent_discard = skin.try_discard_candidate(&parent_handle);
+    assert!(parent_discard.accepted, "{:?}", parent_discard.error);
+    assert!(skin.try_evaluate_candidate(&child_handle).accepted);
+    assert_eq!(
+        skin.state().candidates[0]
+            .values_by_key
+            .get(&b_key)
+            .map(NodeValueProjection::display_text)
+            .as_deref(),
+        Some("8")
+    );
+    skin.assert_scalar("Root.B", "3");
+
+    let commit = skin.try_commit_candidate(&child_handle);
+    assert!(commit.accepted, "{:?}", commit.error);
+    skin.assert_scalar("Root.B", "8");
+    assert!(skin.state().candidates.is_empty());
+}
+
+#[test]
 fn programmable_skin_projects_per_node_published_value_epochs() {
     let harness = Harness::empty();
     let skin = harness.driver.clone();

@@ -247,8 +247,9 @@ pub enum WorkspaceIntent {
     EvaluateCandidate {
         handle: String,
     },
-    /// Rebase an unparented candidate by replaying its engine-owned private
-    /// edit log onto the current workspace revision without publishing.
+    /// Rebase a candidate by replaying its engine-owned private edit log onto
+    /// the current workspace revision without publishing. Parented candidates
+    /// are flattened by the engine during rebase.
     RebaseCandidate {
         handle: String,
     },

@@ -45,10 +45,11 @@ receipts can carry the promoted private revision's real transaction id without h
 Candidate basis revisions are now retained under bounded revision retention while candidate handles
 are live, including shared-basis candidates and sibling candidates that survive another candidate's
 commit. Candidate-private node structure is now projected through `CandidateProjection.nodes`
-separately from published workspace nodes. Unparented stale candidates can now rebase by replaying
-their OxCalc-owned private edit log onto the current workspace revision through the closed
-`RebaseCandidate` intent; rebased candidates do not project stale values before explicit candidate
-evaluation. Parented/layered rebase remains open.
+separately from published workspace nodes. Stale candidates can now rebase by replaying their
+OxCalc-owned private edit log onto the current workspace revision through the closed
+`RebaseCandidate` intent; parented candidates flatten their captured layered private edits during
+rebase, and rebased candidates do not project stale values before explicit candidate evaluation.
+Optimized live layering/merge semantics remain open.
 OxCalc owns candidate state, publication/discard, overlay provenance, and value epochs; the
 DnaTreeCalc host exposes only typed handles, projections, and closed intents.
 
@@ -490,15 +491,17 @@ Use this as the per-tranche goal statement before implementation:
       projects candidate pin counts and exposes closed pin/unpin intents; programmable Skin IR tests
       prove pinned candidates survive reaping, pin/unpin updates project through candidate-change
       deltas, and unbalanced unpin rejects.
-- [x] `candidate-overlay-handle` unparented stale-candidate rebase slice:
+- [x] `candidate-overlay-handle` stale-candidate rebase and flattened parent-layer slice:
       OxCalc retains successful private candidate edit transactions and exposes
-      `rebase_candidate_to_current_revision` to replay an unparented candidate's private edit log
-      onto the current workspace revision without publishing. Parented and child-retained rebase
-      paths reject with typed engine errors in this slice. DnaTreeCalc exposes the closed
-      `RebaseCandidate` Skin IR intent and projects the rebased candidate without stale values until
-      explicit candidate evaluation. Focused OxCalc tests prove stale commit rejection, successful
-      unparented rebase, non-publishing evaluation, commit from the rebased basis, and parented
-      rebase rejection; programmable Skin IR tests prove the same path from outside the engine.
+      `rebase_candidate_to_current_revision` to replay a candidate's private edit log onto the
+      current workspace revision without publishing. Parented candidates flatten their captured
+      layered private edits during rebase and drop the parent handle; child-retained rebase still
+      rejects with a typed engine error. DnaTreeCalc exposes the closed `RebaseCandidate` Skin IR
+      intent and projects the rebased candidate without stale values until explicit candidate
+      evaluation. Focused OxCalc tests prove stale commit rejection, successful unparented rebase,
+      flattened parented rebase, non-publishing evaluation, commit from the rebased basis, and parent
+      lifecycle release after flattening; programmable Skin IR tests prove the same paths from
+      outside the engine.
 - [x] W4c `scenario-projection` first candidate-backed scenario rail slice:
       DnaTreeCalc projects `WorkspaceState.scenarios` as a host-owned manifest over existing OxCalc
       candidate handles and exposes closed create/activate/delete scenario intents. Creating a
@@ -542,9 +545,9 @@ Use this as the per-tranche goal statement before implementation:
       direct sweep/goal-seek series, richer value provenance, and engine-published scenario revision
       history remain open.
 - [ ] `candidate-overlay-handle`: continue toward fully addressable, layerable, non-publishing
-      candidate contexts with optimized parented/layered rebase, candidate add-node template initial
-      content, direct sweep/goal-seek comparison columns, scoped/unit series projection, and broader
-      what-if UX before goal seek or sweeps.
+      candidate contexts with optimized live layering/merge rebase, candidate add-node template
+      initial content, direct sweep/goal-seek comparison columns, scoped/unit series projection, and
+      broader what-if UX before goal seek or sweeps.
 - [x] `value-epoch-keying`: per-node published-value epoch is available for projection consumers.
 
 ## Next-Wave Parking Lot
