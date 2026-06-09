@@ -53,7 +53,8 @@ The second `paste-special` slice is landed for constant-source values:
 `PasteClipboardValues` consumes a single value clipboard carrier only when it has authored constant
 input text, applies it through the existing scoped content transaction path, and rejects computed
 formula results, arrays, multi-source value payloads, formula paste, OS clipboard transfer, source
-deletion, and subtree rebind.
+deletion, and subtree rebind. The remaining paste-special semantics are recorded in
+`../../handovers/HANDOVER_OXFML_paste_special_authoring.md`.
 
 Do not advance to W4 speculation/history or W5 platform polish as the default next step while W3
 authoring verbs remain incomplete.
@@ -203,6 +204,9 @@ Use this as the per-tranche goal statement before implementation:
       constant source through the scoped content transaction path with a real transaction id.
       Computed formula values, arrays, multi-source value payloads, formula paste, OS clipboard
       transfer, source deletion for cuts, and subtree rebind remain open.
+- [x] File OxFml handoff for the remaining W3 paste-special APIs:
+      computed value literalization, formula rebind, formula-and-format paste, and subtree
+      internal-reference rebind support.
 - [ ] Continue W3 with the next feasible tranche: continue `clipboard-transfer-model`
       toward source deletion or OS clipboard import/export where ownership is clear, or move to
       OxFml-unblocked formula authoring.
