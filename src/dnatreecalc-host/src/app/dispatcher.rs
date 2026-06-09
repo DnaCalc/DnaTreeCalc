@@ -303,6 +303,17 @@ impl Dispatcher for HostDispatcher {
                     session.delete_candidate_node(&handle, &node)
                 })
                 .map_or_else(IntentReceipt::rejected, receipt_for_candidate_change),
+            WorkspaceIntent::AddCandidateNode {
+                handle,
+                parent,
+                symbol,
+                initial,
+                is_meta,
+            } => self
+                .apply_candidate_projection_edit(|session| {
+                    session.add_candidate_node(&handle, parent.as_ref(), symbol, initial, is_meta)
+                })
+                .map_or_else(IntentReceipt::rejected, receipt_for_candidate_change),
             WorkspaceIntent::EvaluateCandidate { handle } => self
                 .apply_candidate_projection_edit(|session| session.evaluate_candidate(&handle))
                 .map_or_else(IntentReceipt::rejected, receipt_for_candidate_change),

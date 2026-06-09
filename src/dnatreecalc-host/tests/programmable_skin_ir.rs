@@ -597,6 +597,123 @@ fn programmable_skin_deletes_candidate_node_without_publishing_until_commit() {
 }
 
 #[test]
+fn programmable_skin_adds_candidate_node_without_publishing_until_commit() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    let published_revision = skin
+        .state()
+        .revision
+        .workspace_revision_id
+        .clone()
+        .expect("published revision should project");
+
+    let open = skin.try_open_candidate();
+    assert!(open.accepted, "{:?}", open.error);
+    let state = skin.state();
+    let candidate = state.candidates.first().expect("candidate should project");
+    let handle = candidate.handle.clone();
+    let root_key = candidate
+        .nodes
+        .iter()
+        .find(|node| node.id == NodeId::new("Root"))
+        .expect("candidate parent should project")
+        .key
+        .clone();
+
+    let added = skin.try_add_candidate_node(
+        &handle,
+        Some(root_key),
+        "Added",
+        InitialNodeContentProjection::Literal {
+            content: "7".to_string(),
+        },
+        false,
+    );
+    assert!(added.accepted, "{:?}", added.error);
+    assert_eq!(added.transaction_id, None);
+    assert_eq!(
+        skin.state().revision.workspace_revision_id.as_deref(),
+        Some(published_revision.as_str())
+    );
+    assert!(skin.state().node(&NodeId::new("Root.Added")).is_none());
+    let added_state = skin.state();
+    let added_candidate = added_state
+        .candidates
+        .iter()
+        .find(|candidate| candidate.handle == handle)
+        .expect("candidate should remain projected");
+    let added_node = added_candidate
+        .nodes
+        .iter()
+        .find(|node| node.id == NodeId::new("Root.Added"))
+        .expect("candidate-added node should project");
+    assert_eq!(added_node.content_text, "7");
+    let add_revision_entry = added_candidate
+        .revision_history
+        .entries
+        .iter()
+        .find(|entry| entry.revision_id == added_candidate.workspace_revision_id)
+        .expect("candidate add revision should project");
+    let candidate_transaction_id = add_revision_entry
+        .transaction_id
+        .as_deref()
+        .expect("candidate private add should project its real transaction id");
+
+    let commit = skin.try_commit_candidate(&handle);
+    assert!(commit.accepted, "{:?}", commit.error);
+    assert_eq!(
+        commit.transaction_id.as_deref(),
+        Some(candidate_transaction_id)
+    );
+    assert!(commit.produced_revision.is_some());
+    assert!(skin.state().node(&NodeId::new("Root.Added")).is_some());
+}
+
+#[test]
+fn programmable_skin_rejects_candidate_add_formula_initial_without_live_dry_bind() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    let open = skin.try_open_candidate();
+    assert!(open.accepted, "{:?}", open.error);
+    let state = skin.state();
+    let candidate = state.candidates.first().expect("candidate should project");
+    let handle = candidate.handle.clone();
+    let root_key = candidate
+        .nodes
+        .iter()
+        .find(|node| node.id == NodeId::new("Root"))
+        .expect("candidate parent should project")
+        .key
+        .clone();
+
+    let rejected = skin.try_add_candidate_node(
+        &handle,
+        Some(root_key),
+        "Formula",
+        InitialNodeContentProjection::Literal {
+            content: "=1+1".to_string(),
+        },
+        false,
+    );
+    assert!(!rejected.accepted);
+    assert!(matches!(
+        rejected.error,
+        Some(IntentError::UnsupportedInitialContent { .. })
+    ));
+    assert!(
+        skin.state()
+            .candidates
+            .iter()
+            .flat_map(|candidate| candidate.nodes.iter())
+            .all(|node| node.id != NodeId::new("Root.Formula"))
+    );
+}
+
+#[test]
 fn programmable_skin_rejects_stale_candidate_commit_without_losing_candidate() {
     let harness = Harness::empty();
     let skin = harness.driver.clone();

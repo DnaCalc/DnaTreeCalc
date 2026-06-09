@@ -264,6 +264,23 @@ impl ProgrammableDriver {
             })
     }
 
+    pub fn try_add_candidate_node(
+        &self,
+        handle: &str,
+        parent: Option<NodeKey>,
+        symbol: &str,
+        initial: InitialNodeContentProjection,
+        is_meta: bool,
+    ) -> IntentReceipt {
+        self.dispatch.dispatch(WorkspaceIntent::AddCandidateNode {
+            handle: handle.to_string(),
+            parent,
+            symbol: symbol.to_string(),
+            initial,
+            is_meta,
+        })
+    }
+
     pub fn try_evaluate_candidate(&self, handle: &str) -> IntentReceipt {
         self.dispatch.dispatch(WorkspaceIntent::EvaluateCandidate {
             handle: handle.to_string(),

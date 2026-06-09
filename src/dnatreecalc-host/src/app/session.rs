@@ -1361,6 +1361,52 @@ impl TreeWorkspaceSession {
         self.candidate_projection_for_view(&view)
     }
 
+    pub fn add_candidate_node(
+        &mut self,
+        handle: &str,
+        parent: Option<&NodeKey>,
+        symbol: impl Into<String>,
+        initial: InitialNodeContentProjection,
+        is_meta: bool,
+    ) -> Result<CandidateProjection, TreeWorkspaceSessionError> {
+        let handle = self.candidate_handle(handle)?;
+        let parent_tree_node_id = match parent {
+            Some(parent) => tree_node_id_from_node_key(parent)?,
+            None => self.engine_root_id,
+        };
+        let content = self.resolve_candidate_add_node_initial_content(&initial)?;
+        let reserved_node_id = self.context.reserve_node_id();
+        let view = self.context.apply_candidate_edit_transaction(
+            &handle,
+            OxCalcTreeEditTransaction::new(self.workspace_id.clone()).with_edit(
+                OxCalcTreeEdit::AddNode {
+                    request: OxCalcTreeNodeCreate::new(symbol, content)
+                        .under(parent_tree_node_id)
+                        .with_meta(is_meta)
+                        .with_reserved_node_id(reserved_node_id),
+                },
+            ),
+        )?;
+        self.candidate_projection_for_view(&view)
+    }
+
+    fn resolve_candidate_add_node_initial_content(
+        &self,
+        initial: &InitialNodeContentProjection,
+    ) -> Result<String, TreeWorkspaceSessionError> {
+        match initial {
+            InitialNodeContentProjection::Empty => Ok(String::new()),
+            InitialNodeContentProjection::Literal { content }
+                if !content.trim_start().starts_with('=') =>
+            {
+                Ok(content.clone())
+            }
+            _ => Err(TreeWorkspaceSessionError::UnsupportedInitialContent {
+                policy: initial.stable_id().to_string(),
+            }),
+        }
+    }
+
     pub fn evaluate_candidate(
         &mut self,
         handle: &str,

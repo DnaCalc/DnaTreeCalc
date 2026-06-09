@@ -233,6 +233,15 @@ pub enum WorkspaceIntent {
         handle: String,
         node: NodeKey,
     },
+    /// Add a node inside a candidate without publishing workspace state.
+    /// Parent is key-addressed for candidate-private structural views.
+    AddCandidateNode {
+        handle: String,
+        parent: Option<NodeKey>,
+        symbol: String,
+        initial: InitialNodeContentProjection,
+        is_meta: bool,
+    },
     /// Evaluate a candidate and publish the private result into the candidate
     /// projection only.
     EvaluateCandidate {
@@ -676,6 +685,7 @@ impl Dispatcher for InMemoryDispatcher {
             | WorkspaceIntent::RenameCandidateNode { .. }
             | WorkspaceIntent::MoveCandidateNode { .. }
             | WorkspaceIntent::DeleteCandidateNode { .. }
+            | WorkspaceIntent::AddCandidateNode { .. }
             | WorkspaceIntent::EvaluateCandidate { .. }
             | WorkspaceIntent::DiscardCandidate { .. }
             | WorkspaceIntent::CommitCandidate { .. }

@@ -451,10 +451,14 @@ Use this as the per-tranche goal statement before implementation:
       candidate move and delete by stable `NodeKey`, the host dispatches them through OxCalc's
       private candidate edit transaction, and programmable Skin IR tests prove candidate-private
       structure changes without publishing until commit.
+- [x] `candidate-overlay-handle` constant/empty candidate add-node intent: Skin IR exposes candidate
+      add by stable parent `NodeKey`, the host reserves the node id and dispatches the add through
+      OxCalc's private candidate edit transaction, and programmable Skin IR tests prove
+      candidate-private structure changes without publishing until commit.
 - [ ] `candidate-overlay-handle`: continue toward fully addressable, layerable, non-publishing
-      candidate contexts with optimized layering/rebase, candidate add-node intent, richer candidate
-      invalidation summaries, and overlay GC before scenarios, what-if previews, goal seek, sweeps,
-      or comparative overlays.
+      candidate contexts with optimized layering/rebase, candidate add-node formula/table/template
+      initial content, richer candidate invalidation summaries, and overlay GC before scenarios,
+      what-if previews, goal seek, sweeps, or comparative overlays.
 - [x] `value-epoch-keying`: per-node published-value epoch is available for projection consumers.
 
 ## Next-Wave Parking Lot
