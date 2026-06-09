@@ -28,6 +28,7 @@ Authored:
 - `HANDOVER_OXCALC_table_node_model.md` — how the engine unpacks the TreeCalc table-node concept into bind/graph constructs (Table is not an OxFunc value). Engine prereq §6 item 14.
 - `HANDOVER_OXFML_lambda_node_invocation.md` — invoking a lambda-valued node via a tree-path-resolved reference + call syntax. Engine prereq §6 item 15.
 - `HANDOVER_OXFML_dry_bind_preview.md` — dry-bind verdict for uncommitted formula edits, to complete the OxFml half of W2 legality-impact preview.
+- `HANDOVER_OXFML_formula_authoring_verbs.md` — OxFml-owned W3 formula rewrite/composition APIs for replicate/fill by id, F4 binding toggle, and point-mode reference insertion.
 - `HANDOVER_OXCALC_engine_handle_and_incremental_edit.md` — the host-driven engine-handle + incremental-edit interaction contract (sans-executor / host-as-executor; pinned-version model; steppable / cancellable / executor-agnostic forward-compat for async/parallel/GPU). Underpins §6 items 8 (transactional batch) and 13 (undo).
 
 Anticipated:

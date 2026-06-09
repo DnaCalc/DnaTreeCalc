@@ -2225,6 +2225,141 @@ fn programmable_skin_projects_effective_format_and_oxfml_rendered_display() {
 }
 
 #[test]
+fn programmable_skin_authors_number_format_via_skin_ir_intent() {
+    let harness = Harness::from_repo_fixture("formatting");
+    let skin = harness.driver.clone();
+    skin.recalc();
+
+    let state = skin.state();
+    let margin_key = state
+        .node(&NodeId::new("Book.Margin"))
+        .expect("Margin projects")
+        .key
+        .clone();
+    let receipt = skin.try_set_number_format(AuthoringScope::Node(margin_key), Some("0.00"));
+    assert!(receipt.accepted, "{:?}", receipt.error);
+    assert_any_transaction(&receipt);
+
+    let state = skin.state();
+    let margin = state.node(&NodeId::new("Book.Margin")).unwrap();
+    assert_eq!(
+        margin
+            .effective_format
+            .as_ref()
+            .and_then(|format| format.number_format_code.as_deref()),
+        Some("0.00")
+    );
+    assert_eq!(
+        margin
+            .effective_format
+            .as_ref()
+            .and_then(|format| format.inherited_from.as_ref())
+            .map(|source| &source.node),
+        Some(&NodeId::new("Book.Margin.Format"))
+    );
+    assert_eq!(margin.computed_value.display_text(), "0.20");
+}
+
+#[test]
+fn programmable_skin_clears_local_number_format_via_skin_ir_intent() {
+    let harness = Harness::from_repo_fixture("formatting");
+    let skin = harness.driver.clone();
+    skin.recalc();
+
+    let margin_key = skin
+        .state()
+        .node(&NodeId::new("Book.Margin"))
+        .expect("Margin projects")
+        .key
+        .clone();
+    let receipt = skin.try_set_number_format(AuthoringScope::Node(margin_key), None);
+    assert!(receipt.accepted, "{:?}", receipt.error);
+    assert_any_transaction(&receipt);
+
+    let state = skin.state();
+    let margin = state.node(&NodeId::new("Book.Margin")).unwrap();
+    assert_eq!(
+        margin
+            .effective_format
+            .as_ref()
+            .and_then(|format| format.number_format_code.as_deref()),
+        Some("0.00")
+    );
+    assert_eq!(
+        margin
+            .effective_format
+            .as_ref()
+            .and_then(|format| format.inherited_from.as_ref())
+            .map(|source| &source.node),
+        Some(&NodeId::new("Book.Format"))
+    );
+}
+
+#[test]
+fn programmable_skin_authors_number_format_over_ordered_scope() {
+    let harness = Harness::from_repo_fixture("formatting");
+    let skin = harness.driver.clone();
+    skin.recalc();
+
+    let state = skin.state();
+    let sales_key = state.node(&NodeId::new("Book.Sales")).unwrap().key.clone();
+    let margin_key = state.node(&NodeId::new("Book.Margin")).unwrap().key.clone();
+    let receipt =
+        skin.try_set_number_format(AuthoringScope::Nodes(vec![sales_key, margin_key]), Some("0%"));
+    assert!(receipt.accepted, "{:?}", receipt.error);
+    assert_any_transaction(&receipt);
+
+    let state = skin.state();
+    assert_eq!(
+        state
+            .node(&NodeId::new("Book.Sales"))
+            .unwrap()
+            .effective_format
+            .as_ref()
+            .and_then(|format| format.number_format_code.as_deref()),
+        Some("0%")
+    );
+    assert_eq!(
+        state
+            .node(&NodeId::new("Book.Margin"))
+            .unwrap()
+            .effective_format
+            .as_ref()
+            .and_then(|format| format.number_format_code.as_deref()),
+        Some("0%")
+    );
+}
+
+#[test]
+fn programmable_skin_rejects_number_format_when_meta_path_is_user_node() {
+    let harness = Harness::from_repo_fixture("formatting");
+    let skin = harness.driver.clone();
+    skin.recalc();
+
+    let add_parent = skin.try_add_node(Some("Book"), "Visible", "1");
+    assert!(add_parent.accepted, "{:?}", add_parent.error);
+    let add_reserved_path = skin.try_add_node(Some("Book.Visible"), "Format", "");
+    assert!(
+        add_reserved_path.accepted,
+        "{:?}",
+        add_reserved_path.error
+    );
+
+    let visible_key = skin
+        .state()
+        .node(&NodeId::new("Book.Visible"))
+        .expect("created node projects")
+        .key
+        .clone();
+    let receipt = skin.try_set_number_format(AuthoringScope::Node(visible_key), Some("0.00"));
+    assert!(!receipt.accepted);
+    assert!(matches!(
+        receipt.error,
+        Some(IntentError::FormatPathReserved { ref node }) if node == "Book.Visible.Format"
+    ));
+}
+
+#[test]
 fn programmable_skin_edits_table_cells_and_adds_rows_from_outside_ir() {
     let harness = Harness::from_repo_fixture("tables");
     let skin = harness.driver.clone();
@@ -3147,6 +3282,16 @@ fn assert_table_transaction(receipt: &dnatreecalc_skin_framework::IntentReceipt)
             .transaction_id
             .as_deref()
             .is_some_and(|id| id.starts_with("transaction:tables:")),
+        "{receipt:?}"
+    );
+}
+
+fn assert_any_transaction(receipt: &dnatreecalc_skin_framework::IntentReceipt) {
+    assert!(
+        receipt
+            .transaction_id
+            .as_deref()
+            .is_some_and(|id| id.starts_with("transaction:")),
         "{receipt:?}"
     );
 }

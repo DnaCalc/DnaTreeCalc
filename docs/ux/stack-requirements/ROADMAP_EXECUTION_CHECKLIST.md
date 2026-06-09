@@ -24,8 +24,14 @@ Current objective: assess and land the first W3 authoring verb slice while prese
 OxFml composes or rewrites formula text, OxCalc rebinds and schedules, the DnaTreeCalc host carries
 ids/handles/scopes through closed intents, and skins dispatch only.
 
+Current status: first W3 assessment is complete. The formula rewrite verbs
+(`replicate-by-id`, `f4-toggle-binding`, and `reference-insertion`) are blocked on an OxFml-owned
+authoring API and are recorded in `../../handovers/HANDOVER_OXFML_formula_authoring_verbs.md`.
+The first landed W3 slice is `format-write` for authored number formats via canonical meta nodes and
+real OxCalc transactions.
+
 Do not advance to W4 speculation/history or W5 platform polish as the default next step while W3
-authoring verbs remain unassessed.
+authoring verbs remain incomplete.
 
 ## Per-Iteration Gate
 
@@ -114,10 +120,18 @@ Use this as the per-tranche goal statement before implementation:
 
 ## W3 Execution Order
 
-- [ ] Assess W3 authoring verbs against live OxFml/OxCalc APIs:
+- [x] Assess W3 authoring verbs against live OxFml/OxCalc APIs:
       `replicate-by-id`, `f4-toggle-binding`, `reference-insertion`, `clipboard-transfer-model`,
       `paste-special`, `duplicate-subtree`, `set-membership-write`, `meta-and-attribute-write`,
       `note-write`, `format-write`, and `add-node-content-policy` widening.
+- [x] File OxFml handoff for W3 formula rewrite/composition verbs that cannot be implemented
+      ownership-correctly in DnaTreeCalc with the current editor facade.
+- [x] Land first ownership-correct `format-write` tranche:
+      `WorkspaceIntent::SetNumberFormat { scope, number_format_code }` creates, updates, or clears
+      `Format.NumberFormat` meta nodes through OxCalc transactions; receipts carry transaction ids;
+      Skin IR tests assert set, clear, multi-node scope, and reserved-path rejection.
+- [ ] Continue W3 with the next feasible tranche: likely `note-write` or
+      `meta-and-attribute-write`, unless OxFml lands the formula-authoring API first.
 
 ## Gated Workstreams
 

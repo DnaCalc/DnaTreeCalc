@@ -1162,6 +1162,89 @@ impl TreeWorkspaceSession {
         })
     }
 
+    pub fn set_number_format_transaction(
+        &mut self,
+        scope: AuthoringScope,
+        number_format_code: Option<String>,
+    ) -> Result<TreeWorkspaceTransactionEdit<()>, TreeWorkspaceSessionError> {
+        let state = self.workspace_state()?;
+        let target_keys = state.expand_authoring_scope(&scope).map_err(|error| {
+            TreeWorkspaceSessionError::ProjectionOutOfSync {
+                node: error.to_string(),
+            }
+        })?;
+        let mut transaction = OxCalcTreeEditTransaction::new(self.workspace_id.clone())
+            .with_recalc_policy(TransactionRecalcPolicy::ApplyOnly);
+
+        for key in target_keys {
+            let target = state.node_by_key(&key).ok_or_else(|| {
+                TreeWorkspaceSessionError::ProjectionOutOfSync {
+                    node: format!("node key {key}"),
+                }
+            })?;
+            let format_path = NodeId::new(format!("{}.Format", target.id.as_str()));
+            let number_format_path =
+                NodeId::new(format!("{}.NumberFormat", format_path.as_str()));
+
+            let format_tree_id = if let Some(format_view) = state.node(&format_path) {
+                if !format_view.is_meta {
+                    return Err(TreeWorkspaceSessionError::FormatPathReserved {
+                        node: format_path.to_string(),
+                    });
+                }
+                self.tree_node_id(format_path.as_str())?
+            } else if number_format_code.is_some() {
+                let reserved_format_id = self.context.reserve_node_id();
+                transaction = transaction.with_edit(OxCalcTreeEdit::AddNode {
+                    request: OxCalcTreeNodeCreate::new("Format", "")
+                        .under(self.tree_node_id(target.id.as_str())?)
+                        .with_meta(true)
+                        .with_reserved_node_id(reserved_format_id),
+                });
+                reserved_format_id
+            } else {
+                continue;
+            };
+
+            if let Some(number_format_view) = state.node(&number_format_path) {
+                if !number_format_view.is_meta {
+                    return Err(TreeWorkspaceSessionError::FormatPathReserved {
+                        node: number_format_path.to_string(),
+                    });
+                }
+                let number_format_tree_id = self.tree_node_id(number_format_path.as_str())?;
+                match &number_format_code {
+                    Some(code) => {
+                        transaction = transaction.with_edit(OxCalcTreeEdit::SetNodeFormulaText {
+                            node_id: number_format_tree_id,
+                            formula_text: code.clone(),
+                        });
+                    }
+                    None => {
+                        transaction = transaction.with_edit(OxCalcTreeEdit::DeleteNode {
+                            node_id: number_format_tree_id,
+                        });
+                    }
+                }
+            } else if let Some(code) = &number_format_code {
+                transaction = transaction.with_edit(OxCalcTreeEdit::AddNode {
+                    request: OxCalcTreeNodeCreate::new("NumberFormat", code.clone())
+                        .under(format_tree_id)
+                        .with_meta(true),
+                });
+            }
+        }
+
+        let outcome = self.context.apply_edit_transaction(transaction)?;
+        self.last_outcome = None;
+        self.refresh_projection_from_context()?;
+        self.recalculate()?;
+        Ok(TreeWorkspaceTransactionEdit {
+            result: (),
+            transaction_id: outcome.transaction_id.to_string(),
+        })
+    }
+
     pub fn add_node(
         &mut self,
         parent: Option<&NodeId>,
@@ -4393,6 +4476,8 @@ pub enum TreeWorkspaceSessionError {
     FormulaTableCellEdit { table: String, column_id: String },
     #[error("table constant column {column_id} in table {table} does not carry formula metadata")]
     ConstantTableColumnFormulaEdit { table: String, column_id: String },
+    #[error("format meta path {node} is occupied by a non-meta node")]
+    FormatPathReserved { node: String },
     #[error("OxCalc context projection is out of sync for {node}")]
     ProjectionOutOfSync { node: String },
 }

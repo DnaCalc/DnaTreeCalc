@@ -181,6 +181,14 @@ impl Dispatcher for HostDispatcher {
                     session.edit_scoped_content_transaction(scope, content)
                 })
                 .map_or_else(IntentReceipt::rejected, receipt_for_publication),
+            WorkspaceIntent::SetNumberFormat {
+                scope,
+                number_format_code,
+            } => self
+                .apply_workspace_transaction_edit(|session| {
+                    session.set_number_format_transaction(scope, number_format_code)
+                })
+                .map_or_else(IntentReceipt::rejected, receipt_for_publication),
             WorkspaceIntent::Recalculate => self
                 .apply_workspace_edit(|_| Ok(()), WorkspaceEditPublication::Recalculate)
                 .map_or_else(IntentReceipt::rejected, receipt_for_publication),
@@ -692,6 +700,9 @@ fn intent_error_from_session(error: TreeWorkspaceSessionError) -> IntentError {
         }
         TreeWorkspaceSessionError::ConstantTableColumnFormulaEdit { table, column_id } => {
             IntentError::ConstantTableColumnFormulaEdit { table, column_id }
+        }
+        TreeWorkspaceSessionError::FormatPathReserved { node } => {
+            IntentError::FormatPathReserved { node }
         }
         TreeWorkspaceSessionError::ProjectionOutOfSync { node } => {
             IntentError::ProjectionOutOfSync { node }

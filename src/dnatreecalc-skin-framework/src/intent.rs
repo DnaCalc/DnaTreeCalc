@@ -71,6 +71,12 @@ pub enum WorkspaceIntent {
         scope: AuthoringScope,
         content: String,
     },
+    /// Author or clear a number format over a typed scope. The host stores the
+    /// authored property in canonical meta nodes; OxFml owns format rendering.
+    SetNumberFormat {
+        scope: AuthoringScope,
+        number_format_code: Option<String>,
+    },
     AddNode {
         parent: Option<NodeId>,
         symbol: String,
@@ -288,6 +294,8 @@ pub enum IntentError {
     UnsupportedInitialContent { policy: String },
     #[error("host projection is out of sync for {node}")]
     ProjectionOutOfSync { node: String },
+    #[error("format meta path {node} is occupied by a non-meta node")]
+    FormatPathReserved { node: String },
     #[error("engine rejected the intent: {0}")]
     EngineRejected(String),
     #[error("host failed to dispatch the intent: {0}")]
@@ -417,6 +425,7 @@ impl Dispatcher for InMemoryDispatcher {
             | WorkspaceIntent::EditContent { .. }
             | WorkspaceIntent::EditContentDeferred { .. }
             | WorkspaceIntent::EditScopedContent { .. }
+            | WorkspaceIntent::SetNumberFormat { .. }
             | WorkspaceIntent::AddNode { .. }
             | WorkspaceIntent::RenameNode { .. }
             | WorkspaceIntent::MoveNode { .. }

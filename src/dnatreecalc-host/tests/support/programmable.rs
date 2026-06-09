@@ -84,6 +84,17 @@ impl ProgrammableDriver {
         })
     }
 
+    pub fn try_set_number_format(
+        &self,
+        scope: AuthoringScope,
+        number_format_code: Option<&str>,
+    ) -> IntentReceipt {
+        self.dispatch.dispatch(WorkspaceIntent::SetNumberFormat {
+            scope,
+            number_format_code: number_format_code.map(str::to_string),
+        })
+    }
+
     pub fn edit_deferred(&self, node: &str, content: &str) {
         self.accept(WorkspaceIntent::EditContentDeferred {
             node: NodeId::new(node),

@@ -27,7 +27,11 @@ The iteration loop is:
 Current cursor: **W3 - Reference and content authoring verbs**. W2 safe structural authoring is
 closed for the current Skin IR surface: receipts carry typed errors and real OxCalc transaction ids,
 previews use OxFml dry-bind plus OxCalc invalidation planning, and the closure review found no
-skin-side formula parsing, semantic value computation, or transaction-id fabrication.
+skin-side formula parsing, semantic value computation, or transaction-id fabrication. The first W3
+assessment found that formula rewrite verbs (`replicate-by-id`, `f4-toggle-binding`, and
+`reference-insertion`) require an OxFml-owned authoring API; DnaTreeCalc has filed a handoff and
+landed the first ownership-correct W3 slice: number-format write through host-owned meta nodes and
+real OxCalc transactions.
 
 ## Roadmap Position
 
@@ -153,13 +157,21 @@ The roadmap alignment rule is:
 
 ### W3 Reference / Content Authoring Tranche
 
-- [ ] Assess the first W3 authoring verb slice against live OxFml/OxCalc APIs:
+- [x] Assess the first W3 authoring verb slice against live OxFml/OxCalc APIs:
       `replicate-by-id`, `f4-toggle-binding`, `reference-insertion`, `clipboard-transfer-model`,
       `paste-special`, `duplicate-subtree`, `set-membership-write`, `meta-and-attribute-write`,
       `note-write`, `format-write`, and `add-node-content-policy` widening. Pick the earliest slice
       that preserves ownership: OxFml composes or rewrites formula text; OxCalc rebinds and
       schedules; DnaTreeCalc host carries ids, handles, and scopes through closed intents; skins
       dispatch only.
+- [x] File the OxFml W3 formula-authoring handoff for handle/id-based formula rewrite verbs.
+- [x] Implement first `format-write` slice: `WorkspaceIntent::SetNumberFormat` over
+      `AuthoringScope`, storing authored number-format codes in canonical `Format.NumberFormat`
+      meta nodes, rejecting non-meta reserved-path collisions with typed errors, and carrying real
+      OxCalc transaction ids through Skin IR receipts.
+- [ ] Continue W3 with the next ownership-correct slice. Candidate order after the OxFml-blocked
+      formula rewrite verbs: `note-write`, `meta-and-attribute-write`, then
+      `add-node-content-policy` widening or OxFml-unblocked formula authoring.
 
 ### Gating Engine Workstreams
 
