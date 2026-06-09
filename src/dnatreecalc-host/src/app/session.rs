@@ -10,7 +10,8 @@ use dnatreecalc_skin_framework::{
     FormulaBindPreviewDiagnosticProjection, FormulaBindPreviewDiagnosticStage,
     FormulaBindPreviewInputKind, FormulaBindPreviewProfileViolationKindProjection,
     FormulaBindPreviewProfileViolationProjection, FormulaBindPreviewProjection,
-    FormulaReferenceInsertionTarget, InitialNodeContentProjection, InvalidationReasonProjection,
+    FormulaReferenceInsertionProjection, FormulaReferenceInsertionTarget,
+    InitialNodeContentProjection, InvalidationReasonProjection,
     MutationImpactBlockedReasonProjection, MutationImpactIntentProjection,
     MutationImpactProjection, NameCollisionProjection, NodeAttributePatch, NodeCalcStateProjection,
     NodeContentKind as FrameworkContentKind, NodeId, NodeInvalidationProjection, NodeKey,
@@ -1296,7 +1297,10 @@ impl TreeWorkspaceSession {
         replacement_start: usize,
         replacement_len: usize,
         target: FormulaReferenceInsertionTarget,
-    ) -> Result<TreeWorkspaceTransactionEdit<()>, TreeWorkspaceSessionError> {
+    ) -> Result<
+        TreeWorkspaceTransactionEdit<FormulaReferenceInsertionProjection>,
+        TreeWorkspaceSessionError,
+    > {
         if replacement_start.saturating_add(replacement_len) > current_formula_text.chars().count()
         {
             return Err(TreeWorkspaceSessionError::FormulaReferenceInsertionFailed {
@@ -1368,11 +1372,22 @@ impl TreeWorkspaceSession {
             });
         }
 
-        self.edit_formula_transaction(
+        let transaction = self.edit_formula_transaction(
             &edited_node_id,
-            updated_formula_text,
+            updated_formula_text.clone(),
             TransactionRecalcPolicy::RecalculateAndPublishOnce,
-        )
+        )?;
+        Ok(TreeWorkspaceTransactionEdit {
+            result: FormulaReferenceInsertionProjection {
+                node,
+                target,
+                inserted_text: inserted.inserted_text,
+                updated_formula_text,
+                applied_start: inserted.applied_span.start,
+                applied_len: inserted.applied_span.len,
+            },
+            transaction_id: transaction.transaction_id,
+        })
     }
 
     pub fn paste_constant_value_transaction(

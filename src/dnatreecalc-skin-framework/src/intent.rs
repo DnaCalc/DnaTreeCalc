@@ -48,6 +48,16 @@ pub enum FormulaReferenceInsertionTarget {
     },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FormulaReferenceInsertionProjection {
+    pub node: NodeKey,
+    pub target: FormulaReferenceInsertionTarget,
+    pub inserted_text: String,
+    pub updated_formula_text: String,
+    pub applied_start: usize,
+    pub applied_len: usize,
+}
+
 impl NodeAttributePatch {
     #[must_use]
     pub fn set(key: impl Into<String>, value: impl Into<String>) -> Self {
@@ -468,6 +478,7 @@ pub enum WorkspaceDeltaChange {
     DepsChanged(Vec<DependencyDeltaProjection>),
     CalcRun(CalcRunProjection),
     ClipboardChanged(Option<ClipboardProjection>),
+    FormulaReferenceInserted(FormulaReferenceInsertionProjection),
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

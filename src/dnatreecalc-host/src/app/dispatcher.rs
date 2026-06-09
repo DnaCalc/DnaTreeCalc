@@ -227,17 +227,18 @@ impl Dispatcher for HostDispatcher {
                 replacement_start,
                 replacement_len,
                 target,
-            } => self
-                .apply_workspace_transaction_edit(|session| {
-                    session.insert_formula_reference_transaction(
-                        node,
-                        current_formula_text,
-                        replacement_start,
-                        replacement_len,
-                        target,
-                    )
-                })
-                .map_or_else(IntentReceipt::rejected, receipt_for_publication),
+            } => match self.apply_workspace_transaction_edit(|session| {
+                session.insert_formula_reference_transaction(
+                    node,
+                    current_formula_text,
+                    replacement_start,
+                    replacement_len,
+                    target,
+                )
+            }) {
+                Ok(publication) => receipt_for_formula_reference_insertion(publication),
+                Err(error) => IntentReceipt::rejected(error),
+            },
             WorkspaceIntent::Recalculate => self
                 .apply_workspace_edit(|_| Ok(()), WorkspaceEditPublication::Recalculate)
                 .map_or_else(IntentReceipt::rejected, receipt_for_publication),
@@ -499,6 +500,23 @@ impl<T> PublishedWorkspaceEdit<T> {
 fn receipt_for_publication<T>(publication: PublishedWorkspaceEdit<T>) -> IntentReceipt {
     IntentReceipt::accepted()
         .with_delta(publication.delta)
+        .with_produced_revision(publication.produced_revision)
+        .with_transaction_id(publication.transaction_id)
+}
+
+fn receipt_for_formula_reference_insertion(
+    publication: PublishedWorkspaceEdit<
+        dnatreecalc_skin_framework::FormulaReferenceInsertionProjection,
+    >,
+) -> IntentReceipt {
+    let mut delta = publication.delta;
+    delta
+        .changes
+        .push(WorkspaceDeltaChange::FormulaReferenceInserted(
+            publication.result,
+        ));
+    IntentReceipt::accepted()
+        .with_delta(delta)
         .with_produced_revision(publication.produced_revision)
         .with_transaction_id(publication.transaction_id)
 }

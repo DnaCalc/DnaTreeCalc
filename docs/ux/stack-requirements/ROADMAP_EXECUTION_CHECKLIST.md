@@ -34,9 +34,11 @@ including bracket escaping and profile-selected selector tokens, while DnaTreeCa
 and typed target. The host calls OxFml, dry-binds through OxCalc, and commits through a real content
 transaction. The second insertion tranche is now also landed for typed collection and structural
 selector targets: programmable Skin IR tests insert `Base.@CHILDREN` and `A.@NEXT` without host-side
-formula spelling and verify OxCalc dependencies and values. Full replicate/fill by id, F4 binding
-toggle, formula paste/rebind, formula-and-format paste, subtree internal-reference rebind, and richer
-editor UX around selector choice remain open.
+formula spelling and verify OxCalc dependencies and values. The third insertion tranche is also
+landed: successful receipts append a typed `FormulaReferenceInserted` delta with OxFml-composed
+inserted text, updated formula text, applied span, target, and edited node key. Full replicate/fill
+by id, F4 binding toggle, formula paste/rebind, formula-and-format paste, subtree internal-reference
+rebind, and richer editor UX around selector choice remain open.
 The first landed W3 write slice is `format-write` for authored number formats via canonical meta nodes and
 real OxCalc transactions. The second landed W3 slice is `note-write` via canonical `Note` meta nodes
 and `NodeView.note` projection. The `SetMeta` half of `meta-and-attribute-write` is landed through
@@ -203,6 +205,11 @@ Use this as the per-tranche goal statement before implementation:
       programmable Skin IR tests insert typed `HostReferenceCollection` and `HostStructuralSelector`
       targets, producing `=SUM(Base.@CHILDREN)` and `=SUM(A.@NEXT)` through OxFml composition and
       proving OxCalc dependency/value resolution from outside the engine.
+- [x] Add typed authored-output receipt projection for `reference-insertion`:
+      `WorkspaceDeltaChange::FormulaReferenceInserted` carries the edited node key, typed target,
+      inserted text, updated formula text, and applied span returned by the OxFml authoring path.
+      Programmable Skin IR tests assert this receipt delta for node, collection, and structural
+      selector insertion.
 - [x] Land first ownership-correct `format-write` tranche:
       `WorkspaceIntent::SetNumberFormat { scope, number_format_code }` creates, updates, or clears
       `Format.NumberFormat` meta nodes through OxCalc transactions; receipts carry transaction ids;
@@ -308,10 +315,10 @@ Use this as the per-tranche goal statement before implementation:
       applies matching cells in one OxCalc transaction, preserves single-node raw-text paste and
       single-cell broadcast behavior, and rejects item-count mismatches before mutation. Rich OS
       clipboard formats, formula rewrite paste, and subtree paste/rebind remain open.
-- [ ] Continue W3 with the next feasible tranche: add a typed authored-formula output/projection
-      receipt for `reference-insertion`, or move to the next OxFml-backed formula authoring verb
-      (`f4-toggle-binding`, `replicate-by-id`, formula paste/rebind) when its rewrite semantics are
-      available. Complete remaining `add-node-content-policy` only when template substrate exists.
+- [ ] Continue W3 with the next feasible tranche: move to the next OxFml-backed formula authoring
+      verb (`f4-toggle-binding`, `replicate-by-id`, formula paste/rebind) when its rewrite semantics
+      are available, or record a focused blocker if the current editor surface cannot support it.
+      Complete remaining `add-node-content-policy` only when template substrate exists.
 
 ## Gated Workstreams
 

@@ -269,6 +269,15 @@ fn programmable_skin_inserts_formula_reference_through_oxfml_authoring() {
     );
     assert!(receipt.accepted, "{:?}", receipt.error);
     assert_any_transaction(&receipt);
+    let insertion = formula_reference_inserted_delta(&receipt);
+    assert_eq!(insertion.inserted_text, "A");
+    assert_eq!(insertion.updated_formula_text, "=SUM(A)");
+    assert_eq!(insertion.applied_start, "=SUM(".chars().count());
+    assert_eq!(insertion.applied_len, 1);
+    assert!(matches!(
+        insertion.target,
+        FormulaReferenceInsertionTarget::Node(_)
+    ));
 
     let after = skin.state();
     let total = after
@@ -322,6 +331,13 @@ fn programmable_skin_inserts_reference_collection_through_oxfml_authoring() {
     );
     assert!(receipt.accepted, "{:?}", receipt.error);
     assert_any_transaction(&receipt);
+    let insertion = formula_reference_inserted_delta(&receipt);
+    assert_eq!(insertion.inserted_text, "Base.@CHILDREN");
+    assert_eq!(insertion.updated_formula_text, "=SUM(Base.@CHILDREN)");
+    assert!(matches!(
+        insertion.target,
+        FormulaReferenceInsertionTarget::HostReferenceCollection { .. }
+    ));
 
     let after = skin.state();
     let total = after
@@ -380,6 +396,13 @@ fn programmable_skin_inserts_structural_selector_through_oxfml_authoring() {
     );
     assert!(receipt.accepted, "{:?}", receipt.error);
     assert_any_transaction(&receipt);
+    let insertion = formula_reference_inserted_delta(&receipt);
+    assert_eq!(insertion.inserted_text, "A.@NEXT");
+    assert_eq!(insertion.updated_formula_text, "=SUM(A.@NEXT)");
+    assert!(matches!(
+        insertion.target,
+        FormulaReferenceInsertionTarget::HostStructuralSelector { .. }
+    ));
 
     let after = skin.state();
     let total = after
@@ -4698,6 +4721,20 @@ fn assert_any_transaction(receipt: &dnatreecalc_skin_framework::IntentReceipt) {
             .is_some_and(|id| id.starts_with("transaction:")),
         "{receipt:?}"
     );
+}
+
+fn formula_reference_inserted_delta(
+    receipt: &dnatreecalc_skin_framework::IntentReceipt,
+) -> &dnatreecalc_skin_framework::FormulaReferenceInsertionProjection {
+    receipt
+        .delta
+        .changes
+        .iter()
+        .find_map(|change| match change {
+            WorkspaceDeltaChange::FormulaReferenceInserted(insertion) => Some(insertion),
+            _ => None,
+        })
+        .expect("formula reference insertion receipt carries authored insertion delta")
 }
 
 fn table_totals_row(table: &dnatreecalc_skin_framework::TableProjection) -> Vec<String> {
