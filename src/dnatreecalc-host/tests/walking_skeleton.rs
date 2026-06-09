@@ -34,23 +34,36 @@ use dnatreecalc_skin_framework::{
     SkinMountSlot, ThemeTokens, WorkspaceDelta, WorkspaceIntent,
 };
 use dnatreecalc_skins::{
-    DEPENDENCY_INSPECTOR_ID, FLOW_ID, FORMULA_TREE_ID, OUTLINE_TABLE_ID, TRIPLE_EDITOR_ID,
-    VALUE_BOARD_ID,
+    BENCH_ID, CAPTURE_ID, DEPENDENCY_INSPECTOR_ID, FLOW_ID, FORMULA_TREE_ID, LEDGER_ID,
+    OUTLINE_TABLE_ID, SHEET_ID, TRANSPORT_ID, TREE_ID, TRIPLE_EDITOR_ID, VALUE_BOARD_ID,
 };
 use leptos::prelude::*;
 
 #[test]
 fn default_registry_ships_triple_editor_and_outline_table() {
     let registry = build_default_registry();
-    assert_eq!(registry.len(), 6);
+    assert_eq!(registry.len(), 12);
 
     let ids = registry.ids();
+    // The ATLAS suite occupies the first seven Ctrl+N slots in canonical
+    // grammar order; the legacy walking-skeleton skins follow.
+    assert_eq!(
+        &ids[..7],
+        &[
+            CAPTURE_ID,
+            TREE_ID,
+            LEDGER_ID,
+            SHEET_ID,
+            FLOW_ID,
+            BENCH_ID,
+            TRANSPORT_ID,
+        ]
+    );
     assert!(ids.contains(&TRIPLE_EDITOR_ID));
     assert!(ids.contains(&FORMULA_TREE_ID));
     assert!(ids.contains(&OUTLINE_TABLE_ID));
     assert!(ids.contains(&VALUE_BOARD_ID));
     assert!(ids.contains(&DEPENDENCY_INSPECTOR_ID));
-    assert!(ids.contains(&FLOW_ID));
 
     let flow = registry
         .get(FLOW_ID)

@@ -25,7 +25,7 @@ use dnatreecalc_skin_framework::{
     SkinStatePersistenceStore, ThemeTokens, WorkspaceDelta,
 };
 #[cfg(target_arch = "wasm32")]
-use dnatreecalc_skins::TRIPLE_EDITOR_ID;
+use dnatreecalc_skins::FLOW_ID;
 #[cfg(target_arch = "wasm32")]
 use leptos::mount::mount_to;
 #[cfg(target_arch = "wasm32")]
@@ -243,7 +243,7 @@ pub fn mount_dnatreecalc(element_id: &str) -> Result<(), JsValue> {
                 skin_state_store=skin_state_store.clone()
                 dispatch=dispatch.clone()
                 registry=registry.clone()
-                initial_skin=TRIPLE_EDITOR_ID
+                initial_skin=FLOW_ID
                 tokens=ThemeTokens::light()
             />
         }

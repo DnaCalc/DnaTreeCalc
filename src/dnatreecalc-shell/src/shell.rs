@@ -471,7 +471,8 @@ fn SkinSwitcher(registry: Arc<SkinRegistry>, current: RwSignal<SkinId>) -> impl 
                             }
                         >
                             <span>{name}</span>
-                            <kbd>{shortcut.to_string()}</kbd>
+                            // Only the first nine slots have Ctrl+N bindings.
+                            {(shortcut <= 9).then(|| view! { <kbd>{shortcut.to_string()}</kbd> })}
                         </button>
                     }
                 })
