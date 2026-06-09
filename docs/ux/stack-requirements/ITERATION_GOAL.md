@@ -61,9 +61,12 @@ candidate views carry private node structure, and DnaTreeCalc projects it throug
 `CandidateProjection.nodes` without rewriting published node state. The candidate run projection
 slice is now landed for candidate-only nodes: DnaTreeCalc resolves candidate-private tree ids through
 the candidate view when projecting candidate calculation runs, so evaluation order and invalidation
-records can name candidate-added nodes without publishing them. Optimized layering/rebase,
-candidate add-node inherited-table/template policy, scenario/what-if UX, richer candidate
-invalidation summaries, and broader candidate overlay GC remain open. Remaining W3
+records can name candidate-added nodes without publishing them. The candidate inherited table-column
+formula initial-content slice is now landed: candidate adds read formula text from candidate-private
+table metadata, dry-bind it in the candidate prospective-node context, and reject row-context table
+formulas before private mutation. Optimized layering/rebase, candidate add-node template policy,
+scenario/what-if UX, richer candidate invalidation summaries, and broader candidate overlay GC
+remain open. Remaining W3
 formula-rewrite/rebind verbs stay parked until their owning
 OxFml/OxCalc substrates are available. W2 safe structural authoring is
 closed for the current Skin IR surface: receipts carry typed errors and real OxCalc transaction ids,
@@ -531,14 +534,19 @@ The roadmap alignment rule is:
 - [x] `candidate-overlay-handle` formula-literal candidate add-node dry-bind: OxCalc exposes
       candidate-context dry-bind for prospective new nodes, DnaTreeCalc uses it for formula literal
       initial content, and programmable Skin IR tests prove a candidate-added formula can bind
-      against candidate-private structure. Inherited-table and template initial content remain open.
+      against candidate-private structure. Template initial content remains open.
 - [x] `candidate-overlay-handle` candidate run projection for candidate-only nodes: DnaTreeCalc
       resolves candidate-private tree ids from `OxCalcTreeCandidateView.nodes` while projecting
       candidate calculation runs, and programmable Skin IR tests prove a candidate-added formula node
       appears in candidate `run.evaluation_order` without publishing to `WorkspaceState.nodes`.
+- [x] `candidate-overlay-handle` inherited table-column formula candidate add-node policy:
+      DnaTreeCalc reads candidate-private table metadata from `OxCalcTreeCandidateView.nodes`, asks
+      OxCalc to dry-bind the inherited formula in the candidate prospective-node context, and
+      programmable Skin IR tests prove successful inherited formula projection plus row-context
+      rejection without private mutation.
 - [ ] `candidate-overlay-handle`: continue toward fully addressable, layerable, non-publishing
-      candidate contexts with optimized layering/rebase, candidate add-node inherited-table/template
-      initial content, richer candidate invalidation summaries, and overlay GC.
+      candidate contexts with optimized layering/rebase, candidate add-node template initial content,
+      richer candidate invalidation summaries, and overlay GC.
 - [x] `value-epoch-keying`: per-node published-value epoch distinct from input epoch.
 
 ## Status Template

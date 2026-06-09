@@ -756,6 +756,94 @@ fn programmable_skin_adds_candidate_formula_node_against_private_structure() {
 }
 
 #[test]
+fn programmable_skin_adds_candidate_node_from_inherited_table_column_formula() {
+    let harness = Harness::from_repo_fixture("tables");
+    let skin = harness.driver.clone();
+
+    let formula_column =
+        skin.try_add_table_formula_column("SalesTable", "col:fixed", "Fixed", "=1+1");
+    assert!(formula_column.accepted, "{:?}", formula_column.error);
+    let open = skin.try_open_candidate();
+    assert!(open.accepted, "{:?}", open.error);
+    let state = skin.state();
+    let candidate = state.candidates.first().expect("candidate should project");
+    let handle = candidate.handle.clone();
+    let table_key = candidate
+        .nodes
+        .iter()
+        .find(|node| node.id == NodeId::new("SalesTable"))
+        .expect("candidate table should project")
+        .key
+        .clone();
+
+    let added = skin.try_add_candidate_node(
+        &handle,
+        Some(table_key),
+        "Inherited",
+        InitialNodeContentProjection::InheritColumnFormula {
+            table: NodeId::new("SalesTable"),
+            column_id: "col:fixed".to_string(),
+        },
+        false,
+    );
+    assert!(added.accepted, "{:?}", added.error);
+    assert!(
+        skin.state()
+            .node(&NodeId::new("SalesTable.Inherited"))
+            .is_none()
+    );
+    let candidate_state = skin.state();
+    let candidate = candidate_state
+        .candidates
+        .iter()
+        .find(|candidate| candidate.handle == handle)
+        .expect("candidate should remain projected");
+    let inherited = candidate
+        .nodes
+        .iter()
+        .find(|node| node.id == NodeId::new("SalesTable.Inherited"))
+        .expect("candidate inherited node should project");
+    assert_eq!(inherited.content_text, "=1+1");
+}
+
+#[test]
+fn programmable_skin_rejects_candidate_row_context_column_formula_inheritance() {
+    let harness = Harness::from_repo_fixture("tables");
+    let skin = harness.driver.clone();
+
+    let open = skin.try_open_candidate();
+    assert!(open.accepted, "{:?}", open.error);
+    let state = skin.state();
+    let candidate = state.candidates.first().expect("candidate should project");
+    let handle = candidate.handle.clone();
+
+    let rejected = skin.try_add_candidate_node(
+        &handle,
+        None,
+        "InheritedTax",
+        InitialNodeContentProjection::InheritColumnFormula {
+            table: NodeId::new("SalesTable"),
+            column_id: "col:tax".to_string(),
+        },
+        false,
+    );
+    assert!(!rejected.accepted);
+    assert_eq!(
+        rejected.error,
+        Some(IntentError::InitialContentBindRejected {
+            policy: "inherit_column_formula".to_string()
+        })
+    );
+    assert!(
+        skin.state()
+            .candidates
+            .iter()
+            .flat_map(|candidate| candidate.nodes.iter())
+            .all(|node| node.id != NodeId::new("InheritedTax"))
+    );
+}
+
+#[test]
 fn programmable_skin_rejects_candidate_add_invalid_formula_initial() {
     let harness = Harness::empty();
     let skin = harness.driver.clone();

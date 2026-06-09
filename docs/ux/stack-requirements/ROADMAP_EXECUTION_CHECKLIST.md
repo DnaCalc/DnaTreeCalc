@@ -464,10 +464,15 @@ Use this as the per-tranche goal statement before implementation:
       projecting candidate calculation runs, and programmable Skin IR tests prove a candidate-added
       formula node appears in candidate `run.evaluation_order` without publishing to
       `WorkspaceState.nodes`.
+- [x] `candidate-overlay-handle` inherited table-column formula candidate add-node policy:
+      DnaTreeCalc reads candidate-private table metadata from `OxCalcTreeCandidateView.nodes`, asks
+      OxCalc to dry-bind the inherited formula in the candidate prospective-node context, and
+      programmable Skin IR tests prove successful inherited formula projection plus row-context
+      rejection without private mutation.
 - [ ] `candidate-overlay-handle`: continue toward fully addressable, layerable, non-publishing
-      candidate contexts with optimized layering/rebase, candidate add-node inherited-table/template
-      initial content, richer candidate invalidation summaries, and overlay GC before scenarios,
-      what-if previews, goal seek, sweeps, or comparative overlays.
+      candidate contexts with optimized layering/rebase, candidate add-node template initial content,
+      richer candidate invalidation summaries, and overlay GC before scenarios, what-if previews,
+      goal seek, sweeps, or comparative overlays.
 - [x] `value-epoch-keying`: per-node published-value epoch is available for projection consumers.
 
 ## Next-Wave Parking Lot

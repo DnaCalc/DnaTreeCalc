@@ -1375,8 +1375,10 @@ impl TreeWorkspaceSession {
             Some(parent) => tree_node_id_from_node_key(parent)?,
             None => self.engine_root_id,
         };
+        let candidate_view = self.context.candidate_view(&handle)?;
         let content = self.resolve_candidate_add_node_initial_content(
             &handle,
+            &candidate_view,
             parent_tree_node_id,
             symbol.as_str(),
             &initial,
@@ -1400,6 +1402,7 @@ impl TreeWorkspaceSession {
     fn resolve_candidate_add_node_initial_content(
         &self,
         handle: &CandidateOverlayHandle,
+        candidate_view: &OxCalcTreeCandidateView,
         parent_tree_node_id: TreeNodeId,
         symbol: &str,
         initial: &InitialNodeContentProjection,
@@ -1423,6 +1426,25 @@ impl TreeWorkspaceSession {
                     }
                 }
                 Ok(content.clone())
+            }
+            InitialNodeContentProjection::InheritColumnFormula { table, column_id } => {
+                let content =
+                    inherited_candidate_column_formula_content(candidate_view, table, column_id)?;
+                if content.trim_start().starts_with('=') {
+                    let verdict = self.context.dry_bind_candidate_new_node_formula_text(
+                        handle,
+                        OxCalcTreeNodeCreate::new(symbol, content.clone())
+                            .under(parent_tree_node_id)
+                            .with_meta(is_meta),
+                    )?;
+                    let bind = formula_bind_preview_from_oxcalc_verdict(verdict);
+                    if !bind.legal {
+                        return Err(TreeWorkspaceSessionError::InitialContentBindRejected {
+                            policy: initial.stable_id().to_string(),
+                        });
+                    }
+                }
+                Ok(content)
             }
             _ => Err(TreeWorkspaceSessionError::UnsupportedInitialContent {
                 policy: initial.stable_id().to_string(),
@@ -7145,6 +7167,44 @@ fn candidate_node_id_lookup_for_view(
         );
     }
     Ok(candidate_node_ids)
+}
+
+fn inherited_candidate_column_formula_content(
+    view: &OxCalcTreeCandidateView,
+    table: &NodeId,
+    column_id: &str,
+) -> Result<String, TreeWorkspaceSessionError> {
+    let candidate_node_ids = candidate_node_id_lookup_for_view(view)?;
+    let table_tree_node_id = candidate_node_ids
+        .iter()
+        .find_map(|(tree_node_id, node_id)| (node_id == table).then_some(*tree_node_id))
+        .ok_or_else(|| TreeWorkspaceSessionError::UnknownTable {
+            table: table.to_string(),
+        })?;
+    let table_view = view
+        .nodes
+        .iter()
+        .find(|node| node.node_id == table_tree_node_id)
+        .and_then(|node| node.table.as_ref())
+        .ok_or_else(|| TreeWorkspaceSessionError::UnknownTable {
+            table: table.to_string(),
+        })?;
+    let column = table_view
+        .snapshot
+        .columns
+        .iter()
+        .find(|column| column.column_id == column_id)
+        .ok_or_else(|| TreeWorkspaceSessionError::UnknownTableColumn {
+            table: table.to_string(),
+            column_id: column_id.to_string(),
+        })?;
+    let TreeCalcTableColumnBodyMetadata::Formula(formula) = &column.body_metadata else {
+        return Err(TreeWorkspaceSessionError::ConstantTableColumnFormulaEdit {
+            table: table.to_string(),
+            column_id: column_id.to_string(),
+        });
+    };
+    Ok(formula.formula_text.clone())
 }
 
 fn invalidation_reason_kind_for_projection(
