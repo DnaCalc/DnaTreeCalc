@@ -1629,6 +1629,128 @@ impl TreeWorkspaceSession {
         Ok(())
     }
 
+    pub fn add_table_row_transaction(
+        &mut self,
+        table: &NodeId,
+        row_id: impl Into<String>,
+        values: Vec<TableCellInput>,
+    ) -> Result<TreeWorkspaceTransactionEdit<()>, TreeWorkspaceSessionError> {
+        let row_id = row_id.into();
+        let table_node_id = self.tree_node_id(table.as_str())?;
+        let mut table_view = self
+            .context
+            .table_view(&self.workspace_id, table_node_id)?
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTable {
+                table: table.to_string(),
+            })?;
+        if table_view.snapshot.rows.iter().any(|row| row.0 == row_id) {
+            return Err(TreeWorkspaceSessionError::DuplicateTableRow {
+                table: table.to_string(),
+                row_id,
+            });
+        }
+
+        let mut values_by_column = BTreeMap::new();
+        for value in values {
+            if values_by_column
+                .insert(value.column_id.clone(), value.content)
+                .is_some()
+            {
+                return Err(TreeWorkspaceSessionError::DuplicateTableCellInput {
+                    table: table.to_string(),
+                    column_id: value.column_id,
+                });
+            }
+        }
+        for column_id in values_by_column.keys() {
+            let column = table_view
+                .snapshot
+                .columns
+                .iter()
+                .find(|column| column.column_id == *column_id)
+                .ok_or_else(|| TreeWorkspaceSessionError::UnknownTableColumn {
+                    table: table.to_string(),
+                    column_id: column_id.clone(),
+                })?;
+            if matches!(
+                column.body_metadata,
+                TreeCalcTableColumnBodyMetadata::Formula(_)
+            ) {
+                return Err(TreeWorkspaceSessionError::FormulaTableCellEdit {
+                    table: table.to_string(),
+                    column_id: column_id.clone(),
+                });
+            }
+        }
+
+        let row_ordinal = u32::try_from(table_view.snapshot.rows.len() + 1).unwrap_or(u32::MAX);
+        table_view
+            .snapshot
+            .rows
+            .push(TreeCalcTableRowId(row_id.clone()));
+
+        let mut transaction = OxCalcTreeEditTransaction::new(self.workspace_id.clone())
+            .with_recalc_policy(TransactionRecalcPolicy::ApplyOnly);
+        let mut generated_nodes = Vec::new();
+        let mut columns = table_view.snapshot.columns.clone();
+        columns.sort_by_key(|column| column.ordinal);
+        for column in columns {
+            if !matches!(
+                column.body_metadata,
+                TreeCalcTableColumnBodyMetadata::ConstantCells
+            ) {
+                continue;
+            }
+            let content = values_by_column
+                .get(&column.column_id)
+                .cloned()
+                .unwrap_or_default();
+            let symbol = table_body_cell_symbol(row_ordinal, column.ordinal);
+            let generated_node = NodeId::new(format!("{}.{}", table.as_str(), symbol));
+            if self.node_ids.contains_key(&generated_node) {
+                return Err(TreeWorkspaceSessionError::DuplicateNodePath {
+                    node: generated_node.to_string(),
+                });
+            }
+            let node_id = self.context.reserve_node_id();
+            transaction = transaction.with_edit(OxCalcTreeEdit::AddNode {
+                request: OxCalcTreeNodeCreate::new(symbol.clone(), content)
+                    .with_meta(true)
+                    .under(table_node_id)
+                    .with_reserved_node_id(node_id),
+            });
+            generated_nodes.push((symbol, node_id));
+            table_view
+                .snapshot
+                .body_cell_nodes
+                .push(TreeCalcTableBodyCellNodeBinding {
+                    row_id: TreeCalcTableRowId(row_id.clone()),
+                    column_id: column.column_id,
+                    node_id,
+                });
+        }
+
+        table_view.snapshot.row_membership_version =
+            bumped_table_version(&table_view.snapshot.row_membership_version, "row", &row_id);
+        table_view.snapshot.row_order_version =
+            bumped_table_version(&table_view.snapshot.row_order_version, "row", &row_id);
+        transaction = transaction.with_edit(OxCalcTreeEdit::SetNodeTable {
+            node_id: table_node_id,
+            snapshot: table_view.snapshot,
+        });
+        let outcome = self.context.apply_edit_transaction(transaction)?;
+        for (symbol, node_id) in generated_nodes {
+            self.register_generated_node(table, &symbol, node_id);
+        }
+        self.last_outcome = None;
+        self.refresh_projection_from_context()?;
+        self.recalculate()?;
+        Ok(TreeWorkspaceTransactionEdit {
+            result: (),
+            transaction_id: outcome.transaction_id.to_string(),
+        })
+    }
+
     pub fn delete_table_row(
         &mut self,
         table: &NodeId,
@@ -2027,6 +2149,131 @@ impl TreeWorkspaceSession {
         self.refresh_projection_from_context()?;
         self.last_outcome = None;
         Ok(())
+    }
+
+    pub fn add_table_column_transaction(
+        &mut self,
+        table: &NodeId,
+        column_id: impl Into<String>,
+        name: impl Into<String>,
+        values: Vec<TableRowInput>,
+    ) -> Result<TreeWorkspaceTransactionEdit<()>, TreeWorkspaceSessionError> {
+        let column_id = column_id.into();
+        let name = name.into();
+        let table_node_id = self.tree_node_id(table.as_str())?;
+        let mut table_view = self
+            .context
+            .table_view(&self.workspace_id, table_node_id)?
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTable {
+                table: table.to_string(),
+            })?;
+        if table_view
+            .snapshot
+            .columns
+            .iter()
+            .any(|column| column.column_id == column_id)
+        {
+            return Err(TreeWorkspaceSessionError::DuplicateTableColumn {
+                table: table.to_string(),
+                column_id,
+            });
+        }
+
+        let mut values_by_row = BTreeMap::new();
+        for value in values {
+            if values_by_row
+                .insert(value.row_id.clone(), value.content)
+                .is_some()
+            {
+                return Err(TreeWorkspaceSessionError::DuplicateTableRowInput {
+                    table: table.to_string(),
+                    row_id: value.row_id,
+                });
+            }
+        }
+        for row_id in values_by_row.keys() {
+            if !table_view.snapshot.rows.iter().any(|row| row.0 == *row_id) {
+                return Err(TreeWorkspaceSessionError::UnknownTableRow {
+                    table: table.to_string(),
+                    row_id: row_id.clone(),
+                });
+            }
+        }
+
+        let column_ordinal = table_view
+            .snapshot
+            .columns
+            .iter()
+            .map(|column| column.ordinal)
+            .max()
+            .unwrap_or(0)
+            .saturating_add(1);
+        for (row_index, _) in table_view.snapshot.rows.iter().enumerate() {
+            let row_ordinal = u32::try_from(row_index + 1).unwrap_or(u32::MAX);
+            let symbol = table_body_cell_symbol(row_ordinal, column_ordinal);
+            let generated_node = NodeId::new(format!("{}.{}", table.as_str(), symbol));
+            if self.node_ids.contains_key(&generated_node) {
+                return Err(TreeWorkspaceSessionError::DuplicateNodePath {
+                    node: generated_node.to_string(),
+                });
+            }
+        }
+
+        table_view
+            .snapshot
+            .columns
+            .push(TreeCalcTableColumnSnapshot {
+                column_id: column_id.clone(),
+                column_name: name,
+                ordinal: column_ordinal,
+                body_metadata: TreeCalcTableColumnBodyMetadata::ConstantCells,
+                totals_metadata: None,
+            });
+        let mut transaction = OxCalcTreeEditTransaction::new(self.workspace_id.clone())
+            .with_recalc_policy(TransactionRecalcPolicy::ApplyOnly);
+        let mut generated_nodes = Vec::new();
+        for (row_index, row) in table_view.snapshot.rows.iter().enumerate() {
+            let row_ordinal = u32::try_from(row_index + 1).unwrap_or(u32::MAX);
+            let symbol = table_body_cell_symbol(row_ordinal, column_ordinal);
+            let content = values_by_row.get(&row.0).cloned().unwrap_or_default();
+            let node_id = self.context.reserve_node_id();
+            transaction = transaction.with_edit(OxCalcTreeEdit::AddNode {
+                request: OxCalcTreeNodeCreate::new(symbol.clone(), content)
+                    .with_meta(true)
+                    .under(table_node_id)
+                    .with_reserved_node_id(node_id),
+            });
+            generated_nodes.push((symbol, node_id));
+            table_view
+                .snapshot
+                .body_cell_nodes
+                .push(TreeCalcTableBodyCellNodeBinding {
+                    row_id: row.clone(),
+                    column_id: column_id.clone(),
+                    node_id,
+                });
+        }
+
+        table_view.snapshot.column_identity_version = bumped_table_version(
+            &table_view.snapshot.column_identity_version,
+            "column",
+            &column_id,
+        );
+        transaction = transaction.with_edit(OxCalcTreeEdit::SetNodeTable {
+            node_id: table_node_id,
+            snapshot: table_view.snapshot,
+        });
+        let outcome = self.context.apply_edit_transaction(transaction)?;
+        for (symbol, node_id) in generated_nodes {
+            self.register_generated_node(table, &symbol, node_id);
+        }
+        self.last_outcome = None;
+        self.refresh_projection_from_context()?;
+        self.recalculate()?;
+        Ok(TreeWorkspaceTransactionEdit {
+            result: (),
+            transaction_id: outcome.transaction_id.to_string(),
+        })
     }
 
     pub fn add_table_formula_column(

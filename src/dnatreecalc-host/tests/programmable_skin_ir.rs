@@ -2284,6 +2284,7 @@ fn programmable_skin_edits_table_cells_and_adds_rows_from_outside_ir() {
         &[("col:region", "South"), ("col:amount", "40")],
     );
     assert!(add.accepted, "{:?}", add.error);
+    assert_table_transaction(&add);
     let added_state = skin.state();
     let added_table = added_state
         .tables
@@ -2510,6 +2511,7 @@ fn programmable_skin_adds_edits_and_deletes_constant_table_columns_from_outside_
         &[("row:west", "1"), ("row:east", "2"), ("row:north", "3")],
     );
     assert!(add.accepted, "{:?}", add.error);
+    assert_table_transaction(&add);
 
     let added_state = skin.state();
     let added_table = added_state

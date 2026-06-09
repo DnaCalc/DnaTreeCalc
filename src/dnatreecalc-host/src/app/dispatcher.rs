@@ -268,10 +268,9 @@ impl Dispatcher for HostDispatcher {
                 row_id,
                 values,
             } => self
-                .apply_workspace_edit(
-                    |session| session.add_table_row(&table, row_id, values),
-                    WorkspaceEditPublication::Recalculate,
-                )
+                .apply_workspace_transaction_edit(|session| {
+                    session.add_table_row_transaction(&table, row_id, values)
+                })
                 .map_or_else(IntentReceipt::rejected, receipt_for_publication),
             WorkspaceIntent::DeleteTableRow { table, row_id } => self
                 .apply_workspace_transaction_edit(|session| {
@@ -307,10 +306,9 @@ impl Dispatcher for HostDispatcher {
                 name,
                 values,
             } => self
-                .apply_workspace_edit(
-                    |session| session.add_table_column(&table, column_id, name, values),
-                    WorkspaceEditPublication::Recalculate,
-                )
+                .apply_workspace_transaction_edit(|session| {
+                    session.add_table_column_transaction(&table, column_id, name, values)
+                })
                 .map_or_else(IntentReceipt::rejected, receipt_for_publication),
             WorkspaceIntent::AddTableFormulaColumn {
                 table,

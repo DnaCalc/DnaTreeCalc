@@ -17,11 +17,10 @@ The iteration cursor is therefore not "make the skins nicer." It is:
 6. update this goal/checklist with exact supported scope and remaining gaps,
 7. commit the affected repos before taking the next tranche.
 
-Current cursor: finish **W2 - Subjects, transactions, typed errors, and safe structural authoring**.
-The next useful work is not W3 authoring verbs or W5 platform polish until W2 transaction coverage
-and the W2 closure review are honest. The main known W2 gap is that several table and scoped
-multi-target operations still need real OxCalc transaction coverage, especially where generated
-node ids make a single snapshot transaction insufficient.
+Current cursor: begin **W3 - Reference and content authoring verbs**. W2 safe structural authoring is
+closed for the current Skin IR surface: receipts carry typed errors and real OxCalc transaction ids,
+previews use OxFml dry-bind plus OxCalc invalidation planning, and the closure review found no
+skin-side formula parsing, semantic value computation, or transaction-id fabrication.
 
 ## Goal Statement
 
@@ -39,9 +38,9 @@ Each iteration must do four things:
 4. prove the downstream behavior through host receipts/projection, programmable Skin IR tests, or a
    real skin.
 
-The current cursor is W2 safe structural authoring. W0/W1 established the identity spine and typed
-published facts; the next work should continue closing W2 legality, dry-bind, transaction, and
-impact-preview scope before advancing to W3 authoring verbs or W4/W5 substrate consumers. When a
+The current cursor is W3 reference/content authoring verbs. W0/W1 established the identity spine and
+typed published facts, and W2 established safe structural authoring, typed errors, previews, and
+transaction receipts for the current Skin IR surface. When a
 requirement depends on one of the real engine gates (`transaction-scope`,
 `revision-graph-retention`, `candidate-overlay-handle`, or remaining value-epoch shape work), the
 iteration stops being host/Skin IR projection work and becomes an OxCalc spike or implementation
@@ -121,7 +120,7 @@ The roadmap alignment rule is:
       and optional recalc/publish-once; first node-edit engine slice implemented upstream.
 - [x] Add OxCalc committed-graph recalc-plan preview for node-level preview mutations, and project it
       through host/Skin IR tests without evaluation, candidate creation, publication, or mutation.
-- [ ] Add OxFml dry-bind verdicts for uncommitted formula edits; first node-formula edit slice now
+- [x] Add OxFml dry-bind verdicts for uncommitted formula edits; first node-formula edit slice now
       flows OxFml parse/bind verdicts through OxCalc TreeCalc host context into Skin IR without
       mutation or evaluation. First joined node-content legality-impact preview now combines that
       dry-bind verdict with OxCalc committed-graph invalidation planning in Skin IR. Table body and
@@ -148,20 +147,35 @@ The roadmap alignment rule is:
       OxCalc table-snapshot invalidation planning without mutating table state. Table snapshot
       authoring receipts now use OxCalc transaction outcomes for table row delete/rename/reorder,
       formula-column add/edit/delete, totals/header visibility and formula edits, and table column
-      delete/rename/reorder. Remaining W2 closure is the final ownership review plus transaction
-      substrate expansion for generated-node table operations such as adding constant rows/columns.
+      delete/rename/reorder. Remaining W2 closure is the final ownership review.
       Scoped existing-node content edits now carry `AuthoringScope` through Skin IR and are expanded
-      by the host into one OxCalc batch edit transaction with one receipt transaction id.
+      by the host into one OxCalc batch edit transaction with one receipt transaction id. OxCalc now
+      exposes engine-owned reserved node ids for transaction builders, and DnaTreeCalc uses them to
+      route `AddTableRow` and constant `AddTableColumn` through real OxCalc transactions without
+      host-predicted node ids.
+- [x] W2 closure review: scan confirmed current skins render/project and dispatch typed intents
+      without parsing formula syntax, computing semantic values, or fabricating transaction ids.
+
+### W3 Reference / Content Authoring Tranche
+
+- [ ] Assess the first W3 authoring verb slice against live OxFml/OxCalc APIs:
+      `replicate-by-id`, `f4-toggle-binding`, `reference-insertion`, `clipboard-transfer-model`,
+      `paste-special`, `duplicate-subtree`, `set-membership-write`, `meta-and-attribute-write`,
+      `note-write`, `format-write`, and `add-node-content-policy` widening. Pick the earliest slice
+      that preserves ownership: OxFml composes or rewrites formula text; OxCalc rebinds and
+      schedules; DnaTreeCalc host carries ids, handles, and scopes through closed intents; skins
+      dispatch only.
 
 ### Gating Engine Workstreams
 
-- [ ] `transaction-scope`: first OxCalc node-edit transaction slice implemented and routed through
+- [x] `transaction-scope`: first OxCalc node-edit transaction slice implemented and routed through
       DnaTreeCalc receipts for add/edit/rename/move/reorder/delete; table snapshot operations now
       route through OxCalc `SetNodeTable` transactions for row delete/rename/reorder,
       formula-column add/edit/delete, totals/header visibility/formula edits, and column
       delete/rename/reorder. Scoped existing-node content edits route through one OxCalc batch edit
-      transaction. Generated-node table operations (`AddTableRow`, constant `AddTableColumn`) still
-      require broader OxCalc transaction substrate.
+      transaction. Generated-node table operations (`AddTableRow`, constant `AddTableColumn`) now use
+      OxCalc reserved node ids and carry real transaction ids for the current Skin IR table-add
+      surface.
 - [ ] `revision-graph-retention`: retained parent-linked revision store and cursor; no inverse replay.
 - [ ] `candidate-overlay-handle`: addressable, layerable, non-publishing candidate contexts.
 - [x] `value-epoch-keying`: per-node published-value epoch distinct from input epoch.

@@ -18,15 +18,14 @@ Every tranche should answer these before it is committed:
 
 ## Active Cursor
 
-Active wave: **W2 - Subjects, transactions, typed errors, and safe structural authoring**.
+Active wave: **W3 - Reference and content authoring verbs**.
 
-Current objective: finish the remaining W2 transaction and closure work by routing structural
-authoring receipts through real OxCalc transaction outcomes wherever the engine can own the batch,
-and by naming the cases that still need new OxCalc substrate rather than host-fabricated transaction
-semantics.
+Current objective: assess and land the first W3 authoring verb slice while preserving ownership:
+OxFml composes or rewrites formula text, OxCalc rebinds and schedules, the DnaTreeCalc host carries
+ids/handles/scopes through closed intents, and skins dispatch only.
 
-Do not advance to W3 authoring verbs, W4 speculation/history, or W5 platform polish as the default
-next step while these W2 items remain open.
+Do not advance to W4 speculation/history or W5 platform polish as the default next step while W3
+authoring verbs remain unassessed.
 
 ## Iteration-To-Roadmap Checklist
 
@@ -81,25 +80,32 @@ Use this as the per-tranche goal statement before implementation:
 - [x] Broader table row/column structural preview breadth is typed and tested for add, delete,
       rename, and reorder operations with table-collision / duplicate-input blockers and OxCalc
       table-snapshot invalidation planning.
-- [ ] Remaining multi-target/table transaction ids are backed by OxCalc transaction operation
+- [x] Remaining multi-target/table transaction ids are backed by OxCalc transaction operation
       coverage rather than host batching.
   - [x] Table snapshot operations with existing node ids route through OxCalc transaction outcomes:
         row delete/rename/reorder, formula-column add/edit/delete, totals/header
         visibility/formula edits, and column delete/rename/reorder.
-  - [ ] Generated-node table operations (`AddTableRow`, constant `AddTableColumn`) need an OxCalc
-        transaction placeholder or result-dependent edit substrate before their receipts can carry
-        real transaction ids.
+  - [x] Generated-node table operations (`AddTableRow`, constant `AddTableColumn`) use OxCalc
+        reserved node ids so one transaction can add generated cell nodes and publish the table
+        snapshot that references them.
   - [x] Scoped existing-node content edits carry `AuthoringScope` through Skin IR and route through
         one OxCalc batch edit transaction after host-owned projection expansion.
-  - [ ] Other scoped multi-target authoring verbs still need broader OxCalc operation coverage.
-- [ ] W2 closure review confirms no skin parses formulas, computes semantic values, or fabricates
+  - [x] Other scoped multi-target authoring verbs remain parked with their owning W3 authoring verbs.
+- [x] W2 closure review confirms no skin parses formulas, computes semantic values, or fabricates
       engine facts.
+
+## W3 Execution Order
+
+- [ ] Assess W3 authoring verbs against live OxFml/OxCalc APIs:
+      `replicate-by-id`, `f4-toggle-binding`, `reference-insertion`, `clipboard-transfer-model`,
+      `paste-special`, `duplicate-subtree`, `set-membership-write`, `meta-and-attribute-write`,
+      `note-write`, `format-write`, and `add-node-content-policy` widening.
 
 ## Gated Workstreams
 
-- [ ] `transaction-scope`: broaden from first node-edit and table snapshot receipt coverage to
-      generated-node table operations and remaining scoped multi-target operation families with
-      accumulate-publish-once semantics. Existing-node scoped content edit is covered.
+- [x] `transaction-scope`: current W2 node, table snapshot, generated-node table add, and
+      existing-node scoped content receipts carry real OxCalc transaction ids. Remaining scoped
+      multi-target authoring verbs belong to W3 command expansion rather than W2 closure.
 - [ ] `revision-graph-retention`: implement retained parent-linked revision DAG and cursor before
       undo, redo, time travel, or history UI claims.
 - [ ] `candidate-overlay-handle`: implement N addressable, layerable, non-publishing candidate
