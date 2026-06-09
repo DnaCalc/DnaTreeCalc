@@ -1,10 +1,10 @@
 use std::sync::{Arc, Mutex};
 
 use dnatreecalc_skin_framework::{
-    DependencyDeltaProjection, Dispatcher, InitialNodeContentProjection, IntentError,
-    IntentReceipt, NodeId, NodeKey, NodeValueDeltaProjection, NodeView, SelectionState,
-    SharedSkinStateHandle, StructuralDeltaProjection, TableCellSelection, WorkspaceDelta,
-    WorkspaceDeltaChange, WorkspaceIntent, WorkspaceState,
+    DependencyDeltaProjection, Dispatcher, IntentError, IntentReceipt, NodeId, NodeKey,
+    NodeValueDeltaProjection, NodeView, SelectionState, SharedSkinStateHandle,
+    StructuralDeltaProjection, TableCellSelection, WorkspaceDelta, WorkspaceDeltaChange,
+    WorkspaceIntent, WorkspaceState,
 };
 use leptos::prelude::*;
 use oxcalc_core::consumer::TransactionRecalcPolicy;
@@ -212,15 +212,8 @@ impl Dispatcher for HostDispatcher {
                 symbol,
                 initial,
                 is_meta,
-            } => match initial_node_content(&initial).and_then(|content| {
-                self.apply_workspace_transaction_edit(|session| {
-                    session.add_node_transaction_with_meta(
-                        parent.as_ref(),
-                        symbol,
-                        content,
-                        is_meta,
-                    )
-                })
+            } => match self.apply_workspace_transaction_edit(|session| {
+                session.add_node_transaction_with_initial(parent.as_ref(), symbol, initial, is_meta)
             }) {
                 Ok(publication) => {
                     let created = publication.result.clone();
@@ -660,16 +653,6 @@ fn host_failure(message: impl Into<String>) -> IntentError {
     IntentError::HostFailure(message.into())
 }
 
-fn initial_node_content(initial: &InitialNodeContentProjection) -> Result<String, IntentError> {
-    if let Some(content) = initial.supported_content() {
-        Ok(content.to_string())
-    } else {
-        Err(IntentError::UnsupportedInitialContent {
-            policy: initial.stable_id().to_string(),
-        })
-    }
-}
-
 fn intent_error_from_session(error: TreeWorkspaceSessionError) -> IntentError {
     match error {
         TreeWorkspaceSessionError::UnknownNodePath { node } => IntentError::UnknownNode { node },
@@ -715,6 +698,12 @@ fn intent_error_from_session(error: TreeWorkspaceSessionError) -> IntentError {
         }
         TreeWorkspaceSessionError::ConstantTableColumnFormulaEdit { table, column_id } => {
             IntentError::ConstantTableColumnFormulaEdit { table, column_id }
+        }
+        TreeWorkspaceSessionError::UnsupportedInitialContent { policy } => {
+            IntentError::UnsupportedInitialContent { policy }
+        }
+        TreeWorkspaceSessionError::InitialContentBindRejected { policy } => {
+            IntentError::InitialContentBindRejected { policy }
         }
         TreeWorkspaceSessionError::FormatPathReserved { node } => {
             IntentError::FormatPathReserved { node }

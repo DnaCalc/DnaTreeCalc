@@ -32,7 +32,9 @@ real OxCalc transactions. The second landed W3 slice is `note-write` via canonic
 and `NodeView.note` projection. The `SetMeta` half of `meta-and-attribute-write` is landed through
 an OxCalc-owned revisioned meta-membership edit. The `SetNodeAttributes` half is landed for the
 current Skin IR surface as a revisioned host-owned string attribute bag stored in canonical meta
-nodes and projected through `NodeView.attributes`.
+nodes and projected through `NodeView.attributes`. The first `add-node-content-policy` widening is
+landed for literal formula initial content: OxCalc dry-binds prospective new-node formulas without
+mutation, and DnaTreeCalc previews/rejects invalid literal formulas before add-node commit.
 
 Do not advance to W4 speculation/history or W5 platform polish as the default next step while W3
 authoring verbs remain incomplete.
@@ -149,8 +151,15 @@ Use this as the per-tranche goal statement before implementation:
       canonical `Attributes.<key>` meta nodes, projects `NodeView.attributes` and active-node
       attributes, carries transaction receipts, and rejects invalid keys / reserved non-meta paths
       with typed errors.
-- [ ] Continue W3 with the next feasible tranche: `add-node-content-policy` widening, unless OxFml
-      lands the formula-authoring API first.
+- [x] Land first `add-node-content-policy` widening:
+      `InitialNodeContentProjection::Literal { content }` formula text is dry-bound by OxCalc in a
+      prospective new-node context without workspace mutation; add-node preview carries typed
+      syntax/bind/profile blockers; add-node commit rejects invalid literal formulas before
+      mutation. Empty, literal constants, and `is_meta` remain supported. `InheritColumnFormula`
+      remains blocked until the intent carries a table/column subject; `TemplateBound` remains
+      blocked on the template subsystem.
+- [ ] Continue W3 with the next feasible tranche: complete `add-node-content-policy`
+      subject/substrate design or OxFml-unblocked formula authoring.
 
 ## Gated Workstreams
 

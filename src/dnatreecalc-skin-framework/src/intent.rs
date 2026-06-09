@@ -344,6 +344,8 @@ pub enum IntentError {
     ConstantTableColumnFormulaEdit { table: String, column_id: String },
     #[error("initial node content policy {policy} is not yet supported")]
     UnsupportedInitialContent { policy: String },
+    #[error("initial node content policy {policy} was rejected by formula bind")]
+    InitialContentBindRejected { policy: String },
     #[error("host projection is out of sync for {node}")]
     ProjectionOutOfSync { node: String },
     #[error("format meta path {node} is occupied by a non-meta node")]

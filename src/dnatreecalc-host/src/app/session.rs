@@ -677,14 +677,22 @@ impl TreeWorkspaceSession {
         initial: InitialNodeContentProjection,
         is_meta: bool,
     ) -> Result<MutationImpactProjection, TreeWorkspaceSessionError> {
-        if let Some(parent) = parent {
-            self.tree_node_id(parent.as_str())?;
-        }
+        let parent_tree_node_id = match parent {
+            Some(parent) => self.tree_node_id(parent.as_str())?,
+            None => self.engine_root_id,
+        };
         let symbol = symbol.into();
         let attempted = added_node_path(parent, &symbol);
         let collisions = self.name_collisions_for_new_node(&attempted);
+        let bind = if collisions.is_empty() {
+            self.preview_add_node_initial_bind(parent_tree_node_id, &symbol, &initial, is_meta)?
+        } else {
+            None
+        };
         let blocked_reason = if !collisions.is_empty() {
             Some(MutationImpactBlockedReasonProjection::NameCollision)
+        } else if let Some(bind) = &bind {
+            mutation_impact_blocked_reason_for_bind_payload(bind)
         } else if initial.supported_content().is_some() {
             None
         } else {
@@ -699,14 +707,39 @@ impl TreeWorkspaceSession {
             },
             legal: blocked_reason.is_none(),
             blocked_reason,
-            profile_violations: Vec::new(),
-            bind_diagnostics: Vec::new(),
+            profile_violations: bind
+                .as_ref()
+                .map(|bind| bind.profile_violations.clone())
+                .unwrap_or_default(),
+            bind_diagnostics: bind.map(|bind| bind.diagnostics).unwrap_or_default(),
             requires_rebind: Vec::new(),
             affected_refs: Vec::new(),
             orphaned_dependents: Vec::new(),
             collisions,
             invalidation_plan: RecalcPlanProjection::default(),
         })
+    }
+
+    fn preview_add_node_initial_bind(
+        &self,
+        parent_tree_node_id: TreeNodeId,
+        symbol: &str,
+        initial: &InitialNodeContentProjection,
+        is_meta: bool,
+    ) -> Result<Option<FormulaBindPreviewPayload>, TreeWorkspaceSessionError> {
+        let InitialNodeContentProjection::Literal { content } = initial else {
+            return Ok(None);
+        };
+        if !content.trim_start().starts_with('=') {
+            return Ok(None);
+        }
+        let verdict = self.context.dry_bind_new_node_formula_text(
+            &self.workspace_id,
+            OxCalcTreeNodeCreate::new(symbol, content)
+                .under(parent_tree_node_id)
+                .with_meta(is_meta),
+        )?;
+        Ok(Some(formula_bind_preview_from_oxcalc_verdict(verdict)))
     }
 
     pub fn preview_delete_node_impact(
@@ -1478,6 +1511,57 @@ impl TreeWorkspaceSession {
         content: impl Into<String>,
     ) -> Result<TreeWorkspaceTransactionEdit<NodeId>, TreeWorkspaceSessionError> {
         self.add_node_transaction_with_meta(parent, symbol, content, false)
+    }
+
+    pub fn add_node_transaction_with_initial(
+        &mut self,
+        parent: Option<&NodeId>,
+        symbol: impl Into<String>,
+        initial: InitialNodeContentProjection,
+        is_meta: bool,
+    ) -> Result<TreeWorkspaceTransactionEdit<NodeId>, TreeWorkspaceSessionError> {
+        let symbol = symbol.into();
+        let parent_tree_node_id = match parent {
+            Some(parent) => self.tree_node_id(parent.as_str())?,
+            None => self.engine_root_id,
+        };
+        let content =
+            self.resolve_add_node_initial_content(parent_tree_node_id, &symbol, &initial, is_meta)?;
+        self.add_node_transaction_with_meta(parent, symbol, content, is_meta)
+    }
+
+    fn resolve_add_node_initial_content(
+        &self,
+        parent_tree_node_id: TreeNodeId,
+        symbol: &str,
+        initial: &InitialNodeContentProjection,
+        is_meta: bool,
+    ) -> Result<String, TreeWorkspaceSessionError> {
+        match initial {
+            InitialNodeContentProjection::Empty => Ok(String::new()),
+            InitialNodeContentProjection::Literal { content } => {
+                if content.trim_start().starts_with('=') {
+                    let bind = self.preview_add_node_initial_bind(
+                        parent_tree_node_id,
+                        symbol,
+                        initial,
+                        is_meta,
+                    )?;
+                    if bind.as_ref().is_some_and(|bind| !bind.legal) {
+                        return Err(TreeWorkspaceSessionError::InitialContentBindRejected {
+                            policy: initial.stable_id().to_string(),
+                        });
+                    }
+                }
+                Ok(content.clone())
+            }
+            InitialNodeContentProjection::InheritColumnFormula
+            | InitialNodeContentProjection::TemplateBound { .. } => {
+                Err(TreeWorkspaceSessionError::UnsupportedInitialContent {
+                    policy: initial.stable_id().to_string(),
+                })
+            }
+        }
     }
 
     pub fn add_node_transaction_with_meta(
@@ -4770,6 +4854,10 @@ pub enum TreeWorkspaceSessionError {
     FormulaTableCellEdit { table: String, column_id: String },
     #[error("table constant column {column_id} in table {table} does not carry formula metadata")]
     ConstantTableColumnFormulaEdit { table: String, column_id: String },
+    #[error("initial node content policy {policy} is not yet supported")]
+    UnsupportedInitialContent { policy: String },
+    #[error("initial node content policy {policy} was rejected by formula bind")]
+    InitialContentBindRejected { policy: String },
     #[error("format meta path {node} is occupied by a non-meta node")]
     FormatPathReserved { node: String },
     #[error("note meta path {node} is occupied by a non-meta node")]
@@ -5111,6 +5199,29 @@ fn formula_bind_preview_from_oxcalc_verdict(
 
 fn mutation_impact_blocked_reason_for_bind(
     bind: &FormulaBindPreviewProjection,
+) -> Option<MutationImpactBlockedReasonProjection> {
+    if !bind.profile_violations.is_empty() {
+        return Some(MutationImpactBlockedReasonProjection::ProfileViolation);
+    }
+    if bind
+        .diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.stage == FormulaBindPreviewDiagnosticStage::Syntax)
+    {
+        return Some(MutationImpactBlockedReasonProjection::SyntaxDiagnostics);
+    }
+    if bind
+        .diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.stage == FormulaBindPreviewDiagnosticStage::Bind)
+    {
+        return Some(MutationImpactBlockedReasonProjection::BindDiagnostics);
+    }
+    None
+}
+
+fn mutation_impact_blocked_reason_for_bind_payload(
+    bind: &FormulaBindPreviewPayload,
 ) -> Option<MutationImpactBlockedReasonProjection> {
     if !bind.profile_violations.is_empty() {
         return Some(MutationImpactBlockedReasonProjection::ProfileViolation);

@@ -733,6 +733,45 @@ fn programmable_skin_previews_add_node_initial_content_policy() {
     );
     assert!(!is_meta);
 
+    let syntax = harness.preview_add_node_impact(
+        Some("Root"),
+        "Broken",
+        InitialNodeContentProjection::Literal {
+            content: "=1+".to_string(),
+        },
+        false,
+    );
+    assert!(!syntax.legal, "{syntax:?}");
+    assert_eq!(
+        syntax.blocked_reason,
+        Some(MutationImpactBlockedReasonProjection::SyntaxDiagnostics)
+    );
+    assert!(
+        syntax
+            .bind_diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.stage == FormulaBindPreviewDiagnosticStage::Syntax)
+    );
+
+    let bind = harness.preview_add_node_impact(
+        Some("Root"),
+        "BadBind",
+        InitialNodeContentProjection::Literal {
+            content: "=LAMBDA(x,x,x)".to_string(),
+        },
+        false,
+    );
+    assert!(!bind.legal, "{bind:?}");
+    assert_eq!(
+        bind.blocked_reason,
+        Some(MutationImpactBlockedReasonProjection::BindDiagnostics)
+    );
+    assert!(
+        bind.bind_diagnostics
+            .iter()
+            .any(|diagnostic| { diagnostic.message == "duplicate LAMBDA parameter name 'x'" })
+    );
+
     let empty_meta = harness.preview_add_node_impact(
         None,
         "MetaRoot",
@@ -800,8 +839,29 @@ fn programmable_skin_previews_add_node_initial_content_policy() {
         before_revision
     );
     assert!(skin.state().node(&NodeId::new("Root.Child")).is_none());
+    assert!(skin.state().node(&NodeId::new("Root.Broken")).is_none());
     assert!(skin.state().node(&NodeId::new("MetaRoot")).is_none());
     skin.assert_scalar("Root.Existing", "1");
+
+    let rejected_formula = skin.try_add_node_initial(
+        Some("Root"),
+        "Broken",
+        InitialNodeContentProjection::Literal {
+            content: "=1+".to_string(),
+        },
+        false,
+    );
+    assert!(!rejected_formula.accepted);
+    assert_eq!(
+        rejected_formula.error,
+        Some(IntentError::InitialContentBindRejected {
+            policy: "literal".to_string()
+        })
+    );
+    assert_eq!(
+        revision_fingerprint(&skin.state().revision),
+        before_revision
+    );
 
     let meta_receipt =
         skin.try_add_node_initial(None, "MetaRoot", InitialNodeContentProjection::Empty, true);
@@ -3499,9 +3559,16 @@ fn programmable_skin_projects_errors_and_diagnostics_after_rejected_recalc() {
     let skin = harness.driver.clone();
 
     skin.add_node(None, "Root", "");
-    skin.add_node(Some("Root"), "A", "=Missing+1");
+    skin.add_node(Some("Root"), "A", "0");
+    let state = {
+        let mut session = harness.session.lock().unwrap();
+        session
+            .edit_formula(&NodeId::new("Root.A"), "=Missing+1")
+            .unwrap();
+        let _ = session.recalculate();
+        session.workspace_state().unwrap()
+    };
 
-    let state = skin.state();
     assert!(matches!(
         state.last_run.as_ref().map(|run| run.run_state),
         Some(CalcRunStateProjection::Rejected)

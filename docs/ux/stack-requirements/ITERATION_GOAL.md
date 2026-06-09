@@ -34,7 +34,12 @@ landed the first ownership-correct W3 slice: number-format write through host-ow
 real OxCalc transactions. The next W3 slice, `note-write`, is also landed through canonical
 host-owned `Note` meta nodes and Skin IR note projection. `meta-and-attribute-write` is now landed
 for the current Skin IR surface: `SetMeta` is an OxCalc-owned revisioned meta-membership edit, and
-`SetNodeAttributes` patches a host-owned string attribute bag through revisioned meta nodes.
+`SetNodeAttributes` patches a host-owned string attribute bag through revisioned meta nodes. The
+first `add-node-content-policy` widening is landed for literal formula initial content: OxCalc
+dry-binds the prospective node without mutating, DnaTreeCalc previews syntax/bind/profile blockers,
+and commit rejects invalid literal formulas before model mutation. `InheritColumnFormula` still
+needs a table/column subject on the intent, and `TemplateBound` still waits for the template
+subsystem.
 
 ## Roadmap Position
 
@@ -186,9 +191,15 @@ The roadmap alignment rule is:
       transactions, projects `NodeView.attributes` and active-node attributes, rejects invalid keys
       and non-meta reserved paths with typed errors, and keeps attributes formula-invisible. Richer
       typed/styling/template attributes remain separate future surfaces rather than hidden semantics.
+- [x] Implement the first `add-node-content-policy` widening: `Literal(content)` initial formulas are
+      dry-bound by OxCalc in a prospective new-node context without mutating the workspace; add-node
+      preview carries typed syntax/bind/profile blockers; and add-node commit rejects invalid literal
+      formulas before creating the node. `Empty`, literal constants, and `is_meta` remain supported.
+      `InheritColumnFormula` remains blocked until the intent carries a table/column subject, and
+      `TemplateBound` remains blocked on the template subsystem.
 - [ ] Continue W3 with the next ownership-correct slice. Candidate order after the OxFml-blocked
-      formula rewrite verbs: `add-node-content-policy` widening or OxFml-unblocked formula
-      authoring.
+      formula rewrite verbs: complete `add-node-content-policy` subject/substrate design, or move to
+      OxFml-unblocked formula authoring when that API lands.
 
 ### Gating Engine Workstreams
 
