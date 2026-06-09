@@ -9,6 +9,7 @@
 //! recursion limit so the tachys view types resolve.
 #![recursion_limit = "512"]
 
+pub mod capture;
 pub mod dependency_inspector;
 pub mod flow;
 pub mod formula_tree;
@@ -21,6 +22,7 @@ pub mod triple_editor;
 pub mod value_board;
 mod value_render;
 
+pub use capture::{CAPTURE_ID, CaptureLens, CaptureState};
 pub use dependency_inspector::{
     DEPENDENCY_INSPECTOR_ID, DependencyInspector, DependencyInspectorState,
 };
