@@ -194,6 +194,11 @@ impl Dispatcher for HostDispatcher {
                     session.set_note_transaction(node, note)
                 })
                 .map_or_else(IntentReceipt::rejected, receipt_for_publication),
+            WorkspaceIntent::SetMeta { node, is_meta } => self
+                .apply_workspace_transaction_edit(|session| {
+                    session.set_meta_transaction(node, is_meta)
+                })
+                .map_or_else(IntentReceipt::rejected, receipt_for_publication),
             WorkspaceIntent::Recalculate => self
                 .apply_workspace_edit(|_| Ok(()), WorkspaceEditPublication::Recalculate)
                 .map_or_else(IntentReceipt::rejected, receipt_for_publication),

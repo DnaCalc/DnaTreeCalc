@@ -29,7 +29,8 @@ Current status: first W3 assessment is complete. The formula rewrite verbs
 authoring API and are recorded in `../../handovers/HANDOVER_OXFML_formula_authoring_verbs.md`.
 The first landed W3 slice is `format-write` for authored number formats via canonical meta nodes and
 real OxCalc transactions. The second landed W3 slice is `note-write` via canonical `Note` meta nodes
-and `NodeView.note` projection.
+and `NodeView.note` projection. The `SetMeta` half of `meta-and-attribute-write` is landed through
+an OxCalc-owned revisioned meta-membership edit.
 
 Do not advance to W4 speculation/history or W5 platform polish as the default next step while W3
 authoring verbs remain incomplete.
@@ -135,8 +136,13 @@ Use this as the per-tranche goal statement before implementation:
       `WorkspaceIntent::SetNote { node, note }` creates, updates, or clears a `Note` meta node
       through OxCalc transactions; `NodeView.note` and active-node detail project it; tests assert
       set, clear, document round-trip, and reserved-path rejection.
-- [ ] Continue W3 with the next feasible tranche: likely `meta-and-attribute-write`, unless OxFml
-      lands the formula-authoring API first.
+- [x] Land the `SetMeta` half of `meta-and-attribute-write`:
+      OxCalc exposes `OxCalcTreeEdit::SetNodeMeta`, meta membership enters namespace/workspace
+      revision identity, DnaTreeCalc exposes `WorkspaceIntent::SetMeta`, and tests assert
+      transaction receipts, revision movement, projected `is_meta`, retained addressability, and
+      formula invisibility.
+- [ ] Continue W3 with the next feasible tranche: node-attribute patches or
+      `add-node-content-policy` widening, unless OxFml lands the formula-authoring API first.
 
 ## Gated Workstreams
 

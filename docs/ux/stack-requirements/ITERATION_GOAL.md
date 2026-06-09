@@ -32,7 +32,9 @@ assessment found that formula rewrite verbs (`replicate-by-id`, `f4-toggle-bindi
 `reference-insertion`) require an OxFml-owned authoring API; DnaTreeCalc has filed a handoff and
 landed the first ownership-correct W3 slice: number-format write through host-owned meta nodes and
 real OxCalc transactions. The next W3 slice, `note-write`, is also landed through canonical
-host-owned `Note` meta nodes and Skin IR note projection.
+host-owned `Note` meta nodes and Skin IR note projection. The `SetMeta` half of
+`meta-and-attribute-write` is landed as an OxCalc-owned revisioned meta-membership edit and exposed
+through Skin IR; broader node attribute patches remain open.
 
 ## Roadmap Position
 
@@ -174,8 +176,12 @@ The roadmap alignment rule is:
       clears a canonical `Note` meta node, projects `NodeView.note` and active-node note detail,
       round-trips through the OxCalc-backed workspace document, and rejects non-meta reserved-path
       collisions with typed errors.
+- [x] Implement the `SetMeta` half of `meta-and-attribute-write`: OxCalc owns
+      `OxCalcTreeEdit::SetNodeMeta`, meta membership participates in namespace/workspace revision
+      identity, DnaTreeCalc routes `WorkspaceIntent::SetMeta` through a real transaction, and Skin
+      IR tests prove revision movement, projected `is_meta`, and formula invisibility.
 - [ ] Continue W3 with the next ownership-correct slice. Candidate order after the OxFml-blocked
-      formula rewrite verbs: `meta-and-attribute-write`, then `add-node-content-policy` widening or
+      formula rewrite verbs: node-attribute patches, then `add-node-content-policy` widening or
       OxFml-unblocked formula authoring.
 
 ### Gating Engine Workstreams

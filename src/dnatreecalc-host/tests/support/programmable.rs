@@ -102,6 +102,11 @@ impl ProgrammableDriver {
         })
     }
 
+    pub fn try_set_meta(&self, node: NodeKey, is_meta: bool) -> IntentReceipt {
+        self.dispatch
+            .dispatch(WorkspaceIntent::SetMeta { node, is_meta })
+    }
+
     pub fn edit_deferred(&self, node: &str, content: &str) {
         self.accept(WorkspaceIntent::EditContentDeferred {
             node: NodeId::new(node),

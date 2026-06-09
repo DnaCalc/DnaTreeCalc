@@ -1307,6 +1307,35 @@ impl TreeWorkspaceSession {
         })
     }
 
+    pub fn set_meta_transaction(
+        &mut self,
+        node: NodeKey,
+        is_meta: bool,
+    ) -> Result<TreeWorkspaceTransactionEdit<()>, TreeWorkspaceSessionError> {
+        let state = self.workspace_state()?;
+        let target = state.node_by_key(&node).ok_or_else(|| {
+            TreeWorkspaceSessionError::ProjectionOutOfSync {
+                node: format!("node key {node}"),
+            }
+        })?;
+        let tree_node_id = self.tree_node_id(target.id.as_str())?;
+        let outcome = self.context.apply_edit_transaction(
+            OxCalcTreeEditTransaction::new(self.workspace_id.clone())
+                .with_recalc_policy(TransactionRecalcPolicy::ApplyOnly)
+                .with_edit(OxCalcTreeEdit::SetNodeMeta {
+                    node_id: tree_node_id,
+                    is_meta,
+                }),
+        )?;
+        self.last_outcome = None;
+        self.refresh_projection_from_context()?;
+        self.recalculate()?;
+        Ok(TreeWorkspaceTransactionEdit {
+            result: (),
+            transaction_id: outcome.transaction_id.to_string(),
+        })
+    }
+
     pub fn add_node(
         &mut self,
         parent: Option<&NodeId>,
@@ -3858,14 +3887,14 @@ impl TreeWorkspaceSession {
             })
             .collect::<Vec<_>>();
         let mut refreshed = BTreeMap::new();
-        let mut visible_refreshed = BTreeSet::new();
+        let mut non_meta_refreshed = BTreeSet::new();
         for view in workspace_view.nodes {
             if view.node_id == self.engine_root_id {
                 continue;
             }
             let node_id = node_id_from_canonical_path(&view.canonical_path)?;
             if !view.is_meta {
-                visible_refreshed.insert(view.node_id);
+                non_meta_refreshed.insert(view.node_id);
             }
             refreshed.insert(view.node_id, node_id);
         }
@@ -3874,16 +3903,13 @@ impl TreeWorkspaceSession {
         let mut display_order = old_order
             .into_iter()
             .filter_map(|(tree_node_id, _)| {
-                if !visible_refreshed.contains(&tree_node_id) {
-                    return None;
-                }
                 refreshed
                     .get(&tree_node_id)
                     .and_then(|node_id| seen.insert(tree_node_id).then(|| node_id.clone()))
             })
             .collect::<Vec<_>>();
         for (tree_node_id, node_id) in &refreshed {
-            if visible_refreshed.contains(tree_node_id) && seen.insert(*tree_node_id) {
+            if non_meta_refreshed.contains(tree_node_id) && seen.insert(*tree_node_id) {
                 display_order.push(node_id.clone());
             }
         }

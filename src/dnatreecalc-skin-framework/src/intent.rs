@@ -83,6 +83,12 @@ pub enum WorkspaceIntent {
         node: NodeKey,
         note: Option<String>,
     },
+    /// Mark or unmark a node as meta. Meta-effective nodes are invisible to
+    /// formula resolution, so the host routes this through OxCalc.
+    SetMeta {
+        node: NodeKey,
+        is_meta: bool,
+    },
     AddNode {
         parent: Option<NodeId>,
         symbol: String,
@@ -435,6 +441,7 @@ impl Dispatcher for InMemoryDispatcher {
             | WorkspaceIntent::EditScopedContent { .. }
             | WorkspaceIntent::SetNumberFormat { .. }
             | WorkspaceIntent::SetNote { .. }
+            | WorkspaceIntent::SetMeta { .. }
             | WorkspaceIntent::AddNode { .. }
             | WorkspaceIntent::RenameNode { .. }
             | WorkspaceIntent::MoveNode { .. }

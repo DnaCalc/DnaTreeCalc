@@ -2479,6 +2479,74 @@ fn programmable_skin_rejects_note_when_meta_path_is_user_node() {
 }
 
 #[test]
+fn programmable_skin_sets_meta_via_oxcalc_transaction() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+    assert!(skin.try_add_node(None, "Root", "").accepted);
+    assert!(skin.try_add_node(Some("Root"), "A", "1").accepted);
+    assert!(skin.try_add_node(Some("Root"), "B", "=A+1").accepted);
+    skin.recalc();
+    assert_eq!(
+        skin.state()
+            .node(&NodeId::new("Root.B"))
+            .unwrap()
+            .computed_value
+            .display_text(),
+        "2"
+    );
+
+    let before_revision = revision_fingerprint(&skin.state().revision);
+    let a_key = skin
+        .state()
+        .node(&NodeId::new("Root.A"))
+        .expect("A projects before meta toggle")
+        .key
+        .clone();
+    let hide = skin.try_set_meta(a_key.clone(), true);
+    assert!(hide.accepted, "{:?}", hide.error);
+    assert_any_transaction(&hide);
+    let hidden_state = skin.state();
+    assert_ne!(
+        revision_fingerprint(&hidden_state.revision),
+        before_revision
+    );
+    assert!(
+        hidden_state
+            .node(&NodeId::new("Root.A"))
+            .expect("meta node remains addressable")
+            .is_meta
+    );
+    assert!(matches!(
+        hidden_state
+            .node(&NodeId::new("Root.B"))
+            .unwrap()
+            .computed_value,
+        NodeValueProjection::Error(_)
+    ));
+
+    let hidden_revision = revision_fingerprint(&hidden_state.revision);
+    let show = skin.try_set_meta(a_key, false);
+    assert!(show.accepted, "{:?}", show.error);
+    assert_any_transaction(&show);
+    let shown_state = skin.state();
+    assert_ne!(revision_fingerprint(&shown_state.revision), hidden_revision);
+    assert!(
+        !shown_state
+            .node(&NodeId::new("Root.A"))
+            .expect("A remains addressable after unhide")
+            .is_meta
+    );
+    assert_eq!(
+        shown_state
+            .node(&NodeId::new("Root.B"))
+            .unwrap()
+            .computed_value
+            .display_text(),
+        "2"
+    );
+}
+
+#[test]
 fn programmable_skin_edits_table_cells_and_adds_rows_from_outside_ir() {
     let harness = Harness::from_repo_fixture("tables");
     let skin = harness.driver.clone();
