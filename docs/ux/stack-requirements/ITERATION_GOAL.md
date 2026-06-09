@@ -120,8 +120,11 @@ The roadmap alignment rule is:
       mutating state. Add-node preview now carries typed initial-content policy and `is_meta`,
       reports name collisions before mutation, accepts empty/literal policies, and returns typed
       unsupported-policy blockers for inherited column formulas and template-bound content until
-      those later substrates exist. Remaining closure is broader table row/column structural preview
-      breadth and a final W2 ownership review.
+      those later substrates exist. Table row/column structural previews now cover add, delete,
+      rename, and reorder operations with typed table-collision and duplicate-input blockers and
+      OxCalc table-snapshot invalidation planning without mutating table state. Remaining W2 closure
+      is the final ownership review plus transaction-scope expansion for multi-target/table operation
+      families.
 
 ### Gating Engine Workstreams
 

@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 use crate::identity::{NodeId, NodeKey};
-use crate::intent::AuthoringScope;
+use crate::intent::{AuthoringScope, TableCellInput, TableRowInput};
 use crate::selection::SelectionState;
 
 /// Read-side projection of the workspace, as seen by a mounted skin.
@@ -618,6 +618,45 @@ pub enum RecalcPlanMutation {
         name: String,
         formula_text: String,
     },
+    AddTableRow {
+        table: NodeId,
+        row_id: String,
+        values: Vec<TableCellInput>,
+    },
+    DeleteTableRow {
+        table: NodeId,
+        row_id: String,
+    },
+    RenameTableRow {
+        table: NodeId,
+        row_id: String,
+        new_row_id: String,
+    },
+    ReorderTableRow {
+        table: NodeId,
+        row_id: String,
+        new_index: usize,
+    },
+    AddTableColumn {
+        table: NodeId,
+        column_id: String,
+        name: String,
+        values: Vec<TableRowInput>,
+    },
+    DeleteTableColumn {
+        table: NodeId,
+        column_id: String,
+    },
+    RenameTableColumn {
+        table: NodeId,
+        column_id: String,
+        name: String,
+    },
+    ReorderTableColumn {
+        table: NodeId,
+        column_id: String,
+        new_index: usize,
+    },
     RenameNode {
         node: NodeId,
     },
@@ -807,6 +846,45 @@ pub enum MutationImpactIntentProjection {
         name: String,
         formula_text: String,
     },
+    AddTableRow {
+        table: NodeId,
+        row_id: String,
+        values: Vec<TableCellInput>,
+    },
+    DeleteTableRow {
+        table: NodeId,
+        row_id: String,
+    },
+    RenameTableRow {
+        table: NodeId,
+        row_id: String,
+        new_row_id: String,
+    },
+    ReorderTableRow {
+        table: NodeId,
+        row_id: String,
+        new_index: usize,
+    },
+    AddTableColumn {
+        table: NodeId,
+        column_id: String,
+        name: String,
+        values: Vec<TableRowInput>,
+    },
+    DeleteTableColumn {
+        table: NodeId,
+        column_id: String,
+    },
+    RenameTableColumn {
+        table: NodeId,
+        column_id: String,
+        name: String,
+    },
+    ReorderTableColumn {
+        table: NodeId,
+        column_id: String,
+        new_index: usize,
+    },
 }
 
 impl MutationImpactIntentProjection {
@@ -820,6 +898,14 @@ impl MutationImpactIntentProjection {
             Self::MoveNode { .. } => "move_node",
             Self::DeleteNode { .. } => "delete_node",
             Self::AddTableFormulaColumn { .. } => "add_table_formula_column",
+            Self::AddTableRow { .. } => "add_table_row",
+            Self::DeleteTableRow { .. } => "delete_table_row",
+            Self::RenameTableRow { .. } => "rename_table_row",
+            Self::ReorderTableRow { .. } => "reorder_table_row",
+            Self::AddTableColumn { .. } => "add_table_column",
+            Self::DeleteTableColumn { .. } => "delete_table_column",
+            Self::RenameTableColumn { .. } => "rename_table_column",
+            Self::ReorderTableColumn { .. } => "reorder_table_column",
         }
     }
 }
@@ -832,6 +918,8 @@ pub enum MutationImpactBlockedReasonProjection {
     NameCollision,
     InvalidDrop,
     UnsupportedInitialContent,
+    TableCollision,
+    DuplicateInput,
 }
 
 impl MutationImpactBlockedReasonProjection {
@@ -844,6 +932,8 @@ impl MutationImpactBlockedReasonProjection {
             Self::NameCollision => "name_collision",
             Self::InvalidDrop => "invalid_drop",
             Self::UnsupportedInitialContent => "unsupported_initial_content",
+            Self::TableCollision => "table_collision",
+            Self::DuplicateInput => "duplicate_input",
         }
     }
 }

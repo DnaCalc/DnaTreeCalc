@@ -363,6 +363,199 @@ fn programmable_skin_previews_table_formula_bind_from_table_subjects() {
 }
 
 #[test]
+fn programmable_skin_previews_table_row_column_structural_impact() {
+    let harness = Harness::from_repo_fixture("tables");
+    let skin = harness.driver.clone();
+    let before_revision = revision_fingerprint(&skin.state().revision);
+
+    let add_row = harness.preview_add_table_row_impact(
+        "SalesTable",
+        "row:south",
+        &[("col:region", "South"), ("col:amount", "7")],
+    );
+    assert!(add_row.legal, "{add_row:?}");
+    assert!(add_row.blocked_reason.is_none());
+    assert!(add_row.requires_rebind.contains(&NodeId::new("SalesTable")));
+    let MutationImpactIntentProjection::AddTableRow {
+        table,
+        row_id,
+        values,
+    } = &add_row.intent
+    else {
+        panic!("expected add-table-row impact intent");
+    };
+    assert_eq!(table, &NodeId::new("SalesTable"));
+    assert_eq!(row_id, "row:south");
+    assert_eq!(values.len(), 2);
+
+    let duplicate_row =
+        harness.preview_add_table_row_impact("SalesTable", "row:east", &[("col:amount", "9")]);
+    assert!(!duplicate_row.legal);
+    assert_eq!(
+        duplicate_row.blocked_reason,
+        Some(MutationImpactBlockedReasonProjection::TableCollision)
+    );
+    let duplicate_row_input = harness.preview_add_table_row_impact(
+        "SalesTable",
+        "row:dup",
+        &[("col:amount", "9"), ("col:amount", "10")],
+    );
+    assert!(!duplicate_row_input.legal);
+    assert_eq!(
+        duplicate_row_input.blocked_reason,
+        Some(MutationImpactBlockedReasonProjection::DuplicateInput)
+    );
+
+    let delete_row = harness.preview_delete_table_row_impact("SalesTable", "row:east");
+    assert!(delete_row.legal, "{delete_row:?}");
+    assert!(
+        delete_row
+            .requires_rebind
+            .contains(&NodeId::new("SalesTable"))
+    );
+    let MutationImpactIntentProjection::DeleteTableRow { table, row_id } = &delete_row.intent
+    else {
+        panic!("expected delete-table-row impact intent");
+    };
+    assert_eq!(table, &NodeId::new("SalesTable"));
+    assert_eq!(row_id, "row:east");
+
+    let rename_row =
+        harness.preview_rename_table_row_impact("SalesTable", "row:west", "row:west-renamed");
+    assert!(rename_row.legal, "{rename_row:?}");
+    let MutationImpactIntentProjection::RenameTableRow {
+        table,
+        row_id,
+        new_row_id,
+    } = &rename_row.intent
+    else {
+        panic!("expected rename-table-row impact intent");
+    };
+    assert_eq!(table, &NodeId::new("SalesTable"));
+    assert_eq!(row_id, "row:west");
+    assert_eq!(new_row_id, "row:west-renamed");
+
+    let reorder_row = harness.preview_reorder_table_row_impact("SalesTable", "row:north", 0);
+    assert!(reorder_row.legal, "{reorder_row:?}");
+    let MutationImpactIntentProjection::ReorderTableRow {
+        table,
+        row_id,
+        new_index,
+    } = &reorder_row.intent
+    else {
+        panic!("expected reorder-table-row impact intent");
+    };
+    assert_eq!(table, &NodeId::new("SalesTable"));
+    assert_eq!(row_id, "row:north");
+    assert_eq!(new_index, &0);
+
+    let add_column = harness.preview_add_table_column_impact(
+        "SalesTable",
+        "col:notes",
+        "Notes",
+        &[("row:east", "ok")],
+    );
+    assert!(add_column.legal, "{add_column:?}");
+    assert!(
+        add_column
+            .requires_rebind
+            .contains(&NodeId::new("SalesTable"))
+    );
+    let MutationImpactIntentProjection::AddTableColumn {
+        table,
+        column_id,
+        name,
+        values,
+    } = &add_column.intent
+    else {
+        panic!("expected add-table-column impact intent");
+    };
+    assert_eq!(table, &NodeId::new("SalesTable"));
+    assert_eq!(column_id, "col:notes");
+    assert_eq!(name, "Notes");
+    assert_eq!(values.len(), 1);
+
+    let duplicate_column =
+        harness.preview_add_table_column_impact("SalesTable", "col:amount", "Amount", &[]);
+    assert!(!duplicate_column.legal);
+    assert_eq!(
+        duplicate_column.blocked_reason,
+        Some(MutationImpactBlockedReasonProjection::TableCollision)
+    );
+    let duplicate_column_input = harness.preview_add_table_column_impact(
+        "SalesTable",
+        "col:dup",
+        "Dup",
+        &[("row:east", "9"), ("row:east", "10")],
+    );
+    assert!(!duplicate_column_input.legal);
+    assert_eq!(
+        duplicate_column_input.blocked_reason,
+        Some(MutationImpactBlockedReasonProjection::DuplicateInput)
+    );
+
+    let delete_column = harness.preview_delete_table_column_impact("SalesTable", "col:region");
+    assert!(delete_column.legal, "{delete_column:?}");
+    let MutationImpactIntentProjection::DeleteTableColumn { table, column_id } =
+        &delete_column.intent
+    else {
+        panic!("expected delete-table-column impact intent");
+    };
+    assert_eq!(table, &NodeId::new("SalesTable"));
+    assert_eq!(column_id, "col:region");
+
+    let rename_column =
+        harness.preview_rename_table_column_impact("SalesTable", "col:amount", "Amount USD");
+    assert!(rename_column.legal, "{rename_column:?}");
+    let MutationImpactIntentProjection::RenameTableColumn {
+        table,
+        column_id,
+        name,
+    } = &rename_column.intent
+    else {
+        panic!("expected rename-table-column impact intent");
+    };
+    assert_eq!(table, &NodeId::new("SalesTable"));
+    assert_eq!(column_id, "col:amount");
+    assert_eq!(name, "Amount USD");
+
+    let reorder_column = harness.preview_reorder_table_column_impact("SalesTable", "col:tax", 0);
+    assert!(reorder_column.legal, "{reorder_column:?}");
+    let MutationImpactIntentProjection::ReorderTableColumn {
+        table,
+        column_id,
+        new_index,
+    } = &reorder_column.intent
+    else {
+        panic!("expected reorder-table-column impact intent");
+    };
+    assert_eq!(table, &NodeId::new("SalesTable"));
+    assert_eq!(column_id, "col:tax");
+    assert_eq!(new_index, &0);
+
+    assert_eq!(
+        revision_fingerprint(&skin.state().revision),
+        before_revision
+    );
+    let state = skin.state();
+    let table = state.tables.get(&NodeId::new("SalesTable")).unwrap();
+    assert!(!table.rows.iter().any(|row| row.row_id == "row:south"));
+    assert!(
+        !table
+            .columns
+            .iter()
+            .any(|column| column.column_id == "col:notes")
+    );
+    assert!(table.rows.iter().any(|row| row.row_id == "row:east"));
+    assert!(
+        table
+            .columns
+            .iter()
+            .any(|column| column.column_id == "col:region")
+    );
+}
+
+#[test]
 fn programmable_skin_previews_content_edit_legality_impact_from_host_projection() {
     let harness = Harness::empty();
     let skin = harness.driver.clone();

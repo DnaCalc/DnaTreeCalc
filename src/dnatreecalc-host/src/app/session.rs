@@ -790,6 +790,228 @@ impl TreeWorkspaceSession {
         })
     }
 
+    pub fn preview_add_table_row_impact(
+        &self,
+        table: &NodeId,
+        row_id: impl Into<String>,
+        values: Vec<TableCellInput>,
+    ) -> Result<MutationImpactProjection, TreeWorkspaceSessionError> {
+        let row_id = row_id.into();
+        let blocked_reason = self.table_row_add_blocker(table, &row_id, &values)?;
+        let invalidation_plan = if blocked_reason.is_none() {
+            self.preview_recalc_plan(&[RecalcPlanMutation::AddTableRow {
+                table: table.clone(),
+                row_id: row_id.clone(),
+                values: values.clone(),
+            }])?
+        } else {
+            RecalcPlanProjection::default()
+        };
+        Ok(table_mutation_impact(
+            MutationImpactIntentProjection::AddTableRow {
+                table: table.clone(),
+                row_id,
+                values,
+            },
+            blocked_reason,
+            invalidation_plan,
+            table,
+        ))
+    }
+
+    pub fn preview_delete_table_row_impact(
+        &self,
+        table: &NodeId,
+        row_id: impl Into<String>,
+    ) -> Result<MutationImpactProjection, TreeWorkspaceSessionError> {
+        let row_id = row_id.into();
+        self.table_row_index(table, &row_id)?;
+        let invalidation_plan =
+            self.preview_recalc_plan(&[RecalcPlanMutation::DeleteTableRow {
+                table: table.clone(),
+                row_id: row_id.clone(),
+            }])?;
+        Ok(table_mutation_impact(
+            MutationImpactIntentProjection::DeleteTableRow {
+                table: table.clone(),
+                row_id,
+            },
+            None,
+            invalidation_plan,
+            table,
+        ))
+    }
+
+    pub fn preview_rename_table_row_impact(
+        &self,
+        table: &NodeId,
+        row_id: impl Into<String>,
+        new_row_id: impl Into<String>,
+    ) -> Result<MutationImpactProjection, TreeWorkspaceSessionError> {
+        let row_id = row_id.into();
+        let new_row_id = new_row_id.into();
+        self.table_row_index(table, &row_id)?;
+        let blocked_reason = if row_id != new_row_id && self.table_has_row(table, &new_row_id)? {
+            Some(MutationImpactBlockedReasonProjection::TableCollision)
+        } else {
+            None
+        };
+        let invalidation_plan = if blocked_reason.is_none() {
+            self.preview_recalc_plan(&[RecalcPlanMutation::RenameTableRow {
+                table: table.clone(),
+                row_id: row_id.clone(),
+                new_row_id: new_row_id.clone(),
+            }])?
+        } else {
+            RecalcPlanProjection::default()
+        };
+        Ok(table_mutation_impact(
+            MutationImpactIntentProjection::RenameTableRow {
+                table: table.clone(),
+                row_id,
+                new_row_id,
+            },
+            blocked_reason,
+            invalidation_plan,
+            table,
+        ))
+    }
+
+    pub fn preview_reorder_table_row_impact(
+        &self,
+        table: &NodeId,
+        row_id: impl Into<String>,
+        new_index: usize,
+    ) -> Result<MutationImpactProjection, TreeWorkspaceSessionError> {
+        let row_id = row_id.into();
+        self.table_row_index(table, &row_id)?;
+        let invalidation_plan =
+            self.preview_recalc_plan(&[RecalcPlanMutation::ReorderTableRow {
+                table: table.clone(),
+                row_id: row_id.clone(),
+                new_index,
+            }])?;
+        Ok(table_mutation_impact(
+            MutationImpactIntentProjection::ReorderTableRow {
+                table: table.clone(),
+                row_id,
+                new_index,
+            },
+            None,
+            invalidation_plan,
+            table,
+        ))
+    }
+
+    pub fn preview_add_table_column_impact(
+        &self,
+        table: &NodeId,
+        column_id: impl Into<String>,
+        name: impl Into<String>,
+        values: Vec<TableRowInput>,
+    ) -> Result<MutationImpactProjection, TreeWorkspaceSessionError> {
+        let column_id = column_id.into();
+        let name = name.into();
+        let blocked_reason = self.table_column_add_blocker(table, &column_id, &values)?;
+        let invalidation_plan = if blocked_reason.is_none() {
+            self.preview_recalc_plan(&[RecalcPlanMutation::AddTableColumn {
+                table: table.clone(),
+                column_id: column_id.clone(),
+                name: name.clone(),
+                values: values.clone(),
+            }])?
+        } else {
+            RecalcPlanProjection::default()
+        };
+        Ok(table_mutation_impact(
+            MutationImpactIntentProjection::AddTableColumn {
+                table: table.clone(),
+                column_id,
+                name,
+                values,
+            },
+            blocked_reason,
+            invalidation_plan,
+            table,
+        ))
+    }
+
+    pub fn preview_delete_table_column_impact(
+        &self,
+        table: &NodeId,
+        column_id: impl Into<String>,
+    ) -> Result<MutationImpactProjection, TreeWorkspaceSessionError> {
+        let column_id = column_id.into();
+        self.table_column_index(table, &column_id)?;
+        let invalidation_plan =
+            self.preview_recalc_plan(&[RecalcPlanMutation::DeleteTableColumn {
+                table: table.clone(),
+                column_id: column_id.clone(),
+            }])?;
+        Ok(table_mutation_impact(
+            MutationImpactIntentProjection::DeleteTableColumn {
+                table: table.clone(),
+                column_id,
+            },
+            None,
+            invalidation_plan,
+            table,
+        ))
+    }
+
+    pub fn preview_rename_table_column_impact(
+        &self,
+        table: &NodeId,
+        column_id: impl Into<String>,
+        name: impl Into<String>,
+    ) -> Result<MutationImpactProjection, TreeWorkspaceSessionError> {
+        let column_id = column_id.into();
+        let name = name.into();
+        self.table_column_index(table, &column_id)?;
+        let invalidation_plan =
+            self.preview_recalc_plan(&[RecalcPlanMutation::RenameTableColumn {
+                table: table.clone(),
+                column_id: column_id.clone(),
+                name: name.clone(),
+            }])?;
+        Ok(table_mutation_impact(
+            MutationImpactIntentProjection::RenameTableColumn {
+                table: table.clone(),
+                column_id,
+                name,
+            },
+            None,
+            invalidation_plan,
+            table,
+        ))
+    }
+
+    pub fn preview_reorder_table_column_impact(
+        &self,
+        table: &NodeId,
+        column_id: impl Into<String>,
+        new_index: usize,
+    ) -> Result<MutationImpactProjection, TreeWorkspaceSessionError> {
+        let column_id = column_id.into();
+        self.table_column_index(table, &column_id)?;
+        let invalidation_plan =
+            self.preview_recalc_plan(&[RecalcPlanMutation::ReorderTableColumn {
+                table: table.clone(),
+                column_id: column_id.clone(),
+                new_index,
+            }])?;
+        Ok(table_mutation_impact(
+            MutationImpactIntentProjection::ReorderTableColumn {
+                table: table.clone(),
+                column_id,
+                new_index,
+            },
+            None,
+            invalidation_plan,
+            table,
+        ))
+    }
+
     fn apply_single_edit_transaction(
         &mut self,
         edit: OxCalcTreeEdit,
@@ -2308,6 +2530,351 @@ impl TreeWorkspaceSession {
             .unwrap_or_default()
     }
 
+    fn table_row_add_blocker(
+        &self,
+        table: &NodeId,
+        row_id: &str,
+        values: &[TableCellInput],
+    ) -> Result<Option<MutationImpactBlockedReasonProjection>, TreeWorkspaceSessionError> {
+        let snapshot = self.table_snapshot(table)?;
+        if snapshot.rows.iter().any(|row| row.0 == row_id) {
+            return Ok(Some(MutationImpactBlockedReasonProjection::TableCollision));
+        }
+        let mut columns_seen = BTreeSet::new();
+        for value in values {
+            if !columns_seen.insert(value.column_id.clone()) {
+                return Ok(Some(MutationImpactBlockedReasonProjection::DuplicateInput));
+            }
+            let column = snapshot
+                .columns
+                .iter()
+                .find(|column| column.column_id == value.column_id)
+                .ok_or_else(|| TreeWorkspaceSessionError::UnknownTableColumn {
+                    table: table.to_string(),
+                    column_id: value.column_id.clone(),
+                })?;
+            if matches!(
+                column.body_metadata,
+                TreeCalcTableColumnBodyMetadata::Formula(_)
+            ) {
+                return Err(TreeWorkspaceSessionError::FormulaTableCellEdit {
+                    table: table.to_string(),
+                    column_id: value.column_id.clone(),
+                });
+            }
+        }
+        Ok(None)
+    }
+
+    fn table_column_add_blocker(
+        &self,
+        table: &NodeId,
+        column_id: &str,
+        values: &[TableRowInput],
+    ) -> Result<Option<MutationImpactBlockedReasonProjection>, TreeWorkspaceSessionError> {
+        let snapshot = self.table_snapshot(table)?;
+        if snapshot
+            .columns
+            .iter()
+            .any(|column| column.column_id == column_id)
+        {
+            return Ok(Some(MutationImpactBlockedReasonProjection::TableCollision));
+        }
+        let mut rows_seen = BTreeSet::new();
+        for value in values {
+            if !rows_seen.insert(value.row_id.clone()) {
+                return Ok(Some(MutationImpactBlockedReasonProjection::DuplicateInput));
+            }
+            if !snapshot.rows.iter().any(|row| row.0 == value.row_id) {
+                return Err(TreeWorkspaceSessionError::UnknownTableRow {
+                    table: table.to_string(),
+                    row_id: value.row_id.clone(),
+                });
+            }
+        }
+        Ok(None)
+    }
+
+    fn table_has_row(
+        &self,
+        table: &NodeId,
+        row_id: &str,
+    ) -> Result<bool, TreeWorkspaceSessionError> {
+        Ok(self
+            .table_snapshot(table)?
+            .rows
+            .iter()
+            .any(|row| row.0 == row_id))
+    }
+
+    fn table_row_index(
+        &self,
+        table: &NodeId,
+        row_id: &str,
+    ) -> Result<usize, TreeWorkspaceSessionError> {
+        self.table_snapshot(table)?
+            .rows
+            .iter()
+            .position(|row| row.0 == row_id)
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTableRow {
+                table: table.to_string(),
+                row_id: row_id.to_string(),
+            })
+    }
+
+    fn table_column_index(
+        &self,
+        table: &NodeId,
+        column_id: &str,
+    ) -> Result<usize, TreeWorkspaceSessionError> {
+        self.table_snapshot(table)?
+            .columns
+            .iter()
+            .position(|column| column.column_id == column_id)
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTableColumn {
+                table: table.to_string(),
+                column_id: column_id.to_string(),
+            })
+    }
+
+    fn table_snapshot(
+        &self,
+        table: &NodeId,
+    ) -> Result<TreeCalcTableNodeSnapshot, TreeWorkspaceSessionError> {
+        let table_node_id = self.tree_node_id(table.as_str())?;
+        self.context
+            .table_view(&self.workspace_id, table_node_id)?
+            .map(|view| view.snapshot)
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTable {
+                table: table.to_string(),
+            })
+    }
+
+    fn table_snapshot_preview_mutation(
+        &self,
+        table: &NodeId,
+        snapshot: TreeCalcTableNodeSnapshot,
+        scenario: TreeCalcTableUpdateScenarioKind,
+    ) -> Result<Vec<OxCalcTreePreviewMutation>, TreeWorkspaceSessionError> {
+        Ok(vec![OxCalcTreePreviewMutation::SetNodeTable {
+            node_id: self.tree_node_id(table.as_str())?,
+            snapshot,
+            scenario,
+        }])
+    }
+
+    fn preview_add_table_row_snapshot(
+        &self,
+        table: &NodeId,
+        row_id: String,
+        values: Vec<TableCellInput>,
+    ) -> Result<TreeCalcTableNodeSnapshot, TreeWorkspaceSessionError> {
+        self.table_row_add_blocker(table, &row_id, &values)?;
+        let mut snapshot = self.table_snapshot(table)?;
+        snapshot.rows.push(TreeCalcTableRowId(row_id.clone()));
+        snapshot.row_membership_version =
+            bumped_table_version(&snapshot.row_membership_version, "row-preview", &row_id);
+        snapshot.row_order_version =
+            bumped_table_version(&snapshot.row_order_version, "row-preview", &row_id);
+        Ok(snapshot)
+    }
+
+    fn preview_delete_table_row_snapshot(
+        &self,
+        table: &NodeId,
+        row_id: &str,
+    ) -> Result<TreeCalcTableNodeSnapshot, TreeWorkspaceSessionError> {
+        let mut snapshot = self.table_snapshot(table)?;
+        let row_index = snapshot
+            .rows
+            .iter()
+            .position(|row| row.0 == row_id)
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTableRow {
+                table: table.to_string(),
+                row_id: row_id.to_string(),
+            })?;
+        snapshot.rows.remove(row_index);
+        snapshot
+            .body_cell_nodes
+            .retain(|binding| binding.row_id.0 != row_id);
+        snapshot.row_membership_version = bumped_table_version(
+            &snapshot.row_membership_version,
+            "row-removed-preview",
+            row_id,
+        );
+        snapshot.row_order_version =
+            bumped_table_version(&snapshot.row_order_version, "row-removed-preview", row_id);
+        Ok(snapshot)
+    }
+
+    fn preview_rename_table_row_snapshot(
+        &self,
+        table: &NodeId,
+        row_id: &str,
+        new_row_id: String,
+    ) -> Result<TreeCalcTableNodeSnapshot, TreeWorkspaceSessionError> {
+        let mut snapshot = self.table_snapshot(table)?;
+        let row_index = snapshot
+            .rows
+            .iter()
+            .position(|row| row.0 == row_id)
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTableRow {
+                table: table.to_string(),
+                row_id: row_id.to_string(),
+            })?;
+        snapshot.rows[row_index] = TreeCalcTableRowId(new_row_id.clone());
+        for binding in &mut snapshot.body_cell_nodes {
+            if binding.row_id.0 == row_id {
+                binding.row_id = TreeCalcTableRowId(new_row_id.clone());
+            }
+        }
+        snapshot.row_membership_version = bumped_table_version(
+            &snapshot.row_membership_version,
+            "row-renamed-preview",
+            row_id,
+        );
+        Ok(snapshot)
+    }
+
+    fn preview_reorder_table_row_snapshot(
+        &self,
+        table: &NodeId,
+        row_id: &str,
+        new_index: usize,
+    ) -> Result<TreeCalcTableNodeSnapshot, TreeWorkspaceSessionError> {
+        let mut snapshot = self.table_snapshot(table)?;
+        let row_index = snapshot
+            .rows
+            .iter()
+            .position(|row| row.0 == row_id)
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTableRow {
+                table: table.to_string(),
+                row_id: row_id.to_string(),
+            })?;
+        let row = snapshot.rows.remove(row_index);
+        let bounded_index = new_index.min(snapshot.rows.len());
+        snapshot.rows.insert(bounded_index, row);
+        snapshot.row_order_version =
+            bumped_table_version(&snapshot.row_order_version, "row-reordered-preview", row_id);
+        Ok(snapshot)
+    }
+
+    fn preview_add_table_column_snapshot(
+        &self,
+        table: &NodeId,
+        column_id: String,
+        name: String,
+        values: Vec<TableRowInput>,
+    ) -> Result<TreeCalcTableNodeSnapshot, TreeWorkspaceSessionError> {
+        self.table_column_add_blocker(table, &column_id, &values)?;
+        let mut snapshot = self.table_snapshot(table)?;
+        let column_ordinal = snapshot
+            .columns
+            .iter()
+            .map(|column| column.ordinal)
+            .max()
+            .unwrap_or(0)
+            .saturating_add(1);
+        snapshot.columns.push(TreeCalcTableColumnSnapshot {
+            column_id: column_id.clone(),
+            column_name: name,
+            ordinal: column_ordinal,
+            body_metadata: TreeCalcTableColumnBodyMetadata::ConstantCells,
+            totals_metadata: None,
+        });
+        snapshot.column_identity_version = bumped_table_version(
+            &snapshot.column_identity_version,
+            "column-preview",
+            &column_id,
+        );
+        Ok(snapshot)
+    }
+
+    fn preview_delete_table_column_snapshot(
+        &self,
+        table: &NodeId,
+        column_id: &str,
+    ) -> Result<TreeCalcTableNodeSnapshot, TreeWorkspaceSessionError> {
+        let mut snapshot = self.table_snapshot(table)?;
+        let column_index = snapshot
+            .columns
+            .iter()
+            .position(|column| column.column_id == column_id)
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTableColumn {
+                table: table.to_string(),
+                column_id: column_id.to_string(),
+            })?;
+        snapshot.columns.remove(column_index);
+        snapshot.columns.sort_by_key(|column| column.ordinal);
+        for (index, column) in snapshot.columns.iter_mut().enumerate() {
+            column.ordinal = u32::try_from(index + 1).unwrap_or(u32::MAX);
+        }
+        snapshot
+            .body_cell_nodes
+            .retain(|binding| binding.column_id != column_id);
+        snapshot.column_identity_version = bumped_table_version(
+            &snapshot.column_identity_version,
+            "column-removed-preview",
+            column_id,
+        );
+        Ok(snapshot)
+    }
+
+    fn preview_rename_table_column_snapshot(
+        &self,
+        table: &NodeId,
+        column_id: &str,
+        name: String,
+    ) -> Result<TreeCalcTableNodeSnapshot, TreeWorkspaceSessionError> {
+        let mut snapshot = self.table_snapshot(table)?;
+        let column = snapshot
+            .columns
+            .iter_mut()
+            .find(|column| column.column_id == column_id)
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTableColumn {
+                table: table.to_string(),
+                column_id: column_id.to_string(),
+            })?;
+        column.column_name = name;
+        snapshot.column_identity_version = bumped_table_version(
+            &snapshot.column_identity_version,
+            "column-renamed-preview",
+            column_id,
+        );
+        Ok(snapshot)
+    }
+
+    fn preview_reorder_table_column_snapshot(
+        &self,
+        table: &NodeId,
+        column_id: &str,
+        new_index: usize,
+    ) -> Result<TreeCalcTableNodeSnapshot, TreeWorkspaceSessionError> {
+        let mut snapshot = self.table_snapshot(table)?;
+        let mut columns = std::mem::take(&mut snapshot.columns);
+        columns.sort_by_key(|column| column.ordinal);
+        let current_index = columns
+            .iter()
+            .position(|column| column.column_id == column_id)
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTableColumn {
+                table: table.to_string(),
+                column_id: column_id.to_string(),
+            })?;
+        let column = columns.remove(current_index);
+        let bounded_index = new_index.min(columns.len());
+        columns.insert(bounded_index, column);
+        for (index, column) in columns.iter_mut().enumerate() {
+            column.ordinal = u32::try_from(index + 1).unwrap_or(u32::MAX);
+        }
+        snapshot.columns = columns;
+        snapshot.column_identity_version = bumped_table_version(
+            &snapshot.column_identity_version,
+            "column-reordered-preview",
+            column_id,
+        );
+        Ok(snapshot)
+    }
+
     fn move_would_target_self_or_descendant(
         &self,
         state: &WorkspaceState,
@@ -2415,6 +2982,78 @@ impl TreeWorkspaceSession {
                     scenario: TreeCalcTableUpdateScenarioKind::ColumnInsert,
                 }])
             }
+            RecalcPlanMutation::AddTableRow {
+                table,
+                row_id,
+                values,
+            } => self.table_snapshot_preview_mutation(
+                table,
+                self.preview_add_table_row_snapshot(table, row_id.clone(), values.clone())?,
+                TreeCalcTableUpdateScenarioKind::RowInsert,
+            ),
+            RecalcPlanMutation::DeleteTableRow { table, row_id } => self
+                .table_snapshot_preview_mutation(
+                    table,
+                    self.preview_delete_table_row_snapshot(table, row_id)?,
+                    TreeCalcTableUpdateScenarioKind::RowDelete,
+                ),
+            RecalcPlanMutation::RenameTableRow {
+                table,
+                row_id,
+                new_row_id,
+            } => self.table_snapshot_preview_mutation(
+                table,
+                self.preview_rename_table_row_snapshot(table, row_id, new_row_id.clone())?,
+                TreeCalcTableUpdateScenarioKind::RowInsert,
+            ),
+            RecalcPlanMutation::ReorderTableRow {
+                table,
+                row_id,
+                new_index,
+            } => self.table_snapshot_preview_mutation(
+                table,
+                self.preview_reorder_table_row_snapshot(table, row_id, *new_index)?,
+                TreeCalcTableUpdateScenarioKind::RowReorder,
+            ),
+            RecalcPlanMutation::AddTableColumn {
+                table,
+                column_id,
+                name,
+                values,
+            } => self.table_snapshot_preview_mutation(
+                table,
+                self.preview_add_table_column_snapshot(
+                    table,
+                    column_id.clone(),
+                    name.clone(),
+                    values.clone(),
+                )?,
+                TreeCalcTableUpdateScenarioKind::ColumnInsert,
+            ),
+            RecalcPlanMutation::DeleteTableColumn { table, column_id } => self
+                .table_snapshot_preview_mutation(
+                    table,
+                    self.preview_delete_table_column_snapshot(table, column_id)?,
+                    TreeCalcTableUpdateScenarioKind::ColumnDelete,
+                ),
+            RecalcPlanMutation::RenameTableColumn {
+                table,
+                column_id,
+                name,
+            } => self.table_snapshot_preview_mutation(
+                table,
+                self.preview_rename_table_column_snapshot(table, column_id, name.clone())?,
+                TreeCalcTableUpdateScenarioKind::ColumnRename,
+            ),
+            RecalcPlanMutation::ReorderTableColumn {
+                table,
+                column_id,
+                new_index,
+            } => self.table_snapshot_preview_mutation(
+                table,
+                self.preview_reorder_table_column_snapshot(table, column_id, *new_index)?,
+                TreeCalcTableUpdateScenarioKind::ColumnReorder,
+            ),
             RecalcPlanMutation::RenameNode { node } => {
                 Ok(vec![OxCalcTreePreviewMutation::RenameNode {
                     node_id: self.tree_node_id(node.as_str())?,
@@ -3561,6 +4200,31 @@ fn mutation_impact_blocked_reason_for_table_bind(
         return Some(MutationImpactBlockedReasonProjection::BindDiagnostics);
     }
     None
+}
+
+fn table_mutation_impact(
+    intent: MutationImpactIntentProjection,
+    blocked_reason: Option<MutationImpactBlockedReasonProjection>,
+    invalidation_plan: RecalcPlanProjection,
+    table: &NodeId,
+) -> MutationImpactProjection {
+    MutationImpactProjection {
+        intent,
+        legal: blocked_reason.is_none(),
+        blocked_reason,
+        profile_violations: Vec::new(),
+        bind_diagnostics: Vec::new(),
+        requires_rebind: invalidation_plan.requires_rebind.clone(),
+        affected_refs: invalidation_plan
+            .invalidated_nodes
+            .iter()
+            .filter(|entry| entry.node != *table)
+            .map(|entry| entry.node.clone())
+            .collect(),
+        orphaned_dependents: Vec::new(),
+        collisions: Vec::new(),
+        invalidation_plan,
+    }
 }
 
 fn orphaned_dependents_for_deleted_keys(

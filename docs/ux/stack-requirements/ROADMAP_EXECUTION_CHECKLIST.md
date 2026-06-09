@@ -59,7 +59,9 @@ next step while these W2 items remain open.
 - [x] Add/default-content policy preview is typed and tested for empty/literal content, meta-node
       flagging, name-collision blocking, and typed unsupported blockers for inherited/template
       policies.
-- [ ] Broader table row/column structural preview breadth is typed and tested.
+- [x] Broader table row/column structural preview breadth is typed and tested for add, delete,
+      rename, and reorder operations with table-collision / duplicate-input blockers and OxCalc
+      table-snapshot invalidation planning.
 - [ ] Remaining multi-target/table transaction ids are backed by OxCalc transaction operation
       coverage rather than host batching.
 - [ ] W2 closure review confirms no skin parses formulas, computes semantic values, or fabricates

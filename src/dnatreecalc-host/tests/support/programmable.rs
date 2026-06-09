@@ -1003,6 +1003,130 @@ impl Harness {
             )
             .unwrap()
     }
+
+    pub fn preview_add_table_row_impact(
+        &self,
+        table: &str,
+        row_id: &str,
+        values: &[(&str, &str)],
+    ) -> MutationImpactProjection {
+        self.session
+            .lock()
+            .unwrap()
+            .preview_add_table_row_impact(
+                &NodeId::new(table),
+                row_id,
+                values
+                    .iter()
+                    .map(|(column_id, content)| TableCellInput {
+                        column_id: (*column_id).to_string(),
+                        content: (*content).to_string(),
+                    })
+                    .collect(),
+            )
+            .unwrap()
+    }
+
+    pub fn preview_delete_table_row_impact(
+        &self,
+        table: &str,
+        row_id: &str,
+    ) -> MutationImpactProjection {
+        self.session
+            .lock()
+            .unwrap()
+            .preview_delete_table_row_impact(&NodeId::new(table), row_id)
+            .unwrap()
+    }
+
+    pub fn preview_rename_table_row_impact(
+        &self,
+        table: &str,
+        row_id: &str,
+        new_row_id: &str,
+    ) -> MutationImpactProjection {
+        self.session
+            .lock()
+            .unwrap()
+            .preview_rename_table_row_impact(&NodeId::new(table), row_id, new_row_id)
+            .unwrap()
+    }
+
+    pub fn preview_reorder_table_row_impact(
+        &self,
+        table: &str,
+        row_id: &str,
+        new_index: usize,
+    ) -> MutationImpactProjection {
+        self.session
+            .lock()
+            .unwrap()
+            .preview_reorder_table_row_impact(&NodeId::new(table), row_id, new_index)
+            .unwrap()
+    }
+
+    pub fn preview_add_table_column_impact(
+        &self,
+        table: &str,
+        column_id: &str,
+        name: &str,
+        values: &[(&str, &str)],
+    ) -> MutationImpactProjection {
+        self.session
+            .lock()
+            .unwrap()
+            .preview_add_table_column_impact(
+                &NodeId::new(table),
+                column_id,
+                name,
+                values
+                    .iter()
+                    .map(|(row_id, content)| TableRowInput {
+                        row_id: (*row_id).to_string(),
+                        content: (*content).to_string(),
+                    })
+                    .collect(),
+            )
+            .unwrap()
+    }
+
+    pub fn preview_delete_table_column_impact(
+        &self,
+        table: &str,
+        column_id: &str,
+    ) -> MutationImpactProjection {
+        self.session
+            .lock()
+            .unwrap()
+            .preview_delete_table_column_impact(&NodeId::new(table), column_id)
+            .unwrap()
+    }
+
+    pub fn preview_rename_table_column_impact(
+        &self,
+        table: &str,
+        column_id: &str,
+        name: &str,
+    ) -> MutationImpactProjection {
+        self.session
+            .lock()
+            .unwrap()
+            .preview_rename_table_column_impact(&NodeId::new(table), column_id, name)
+            .unwrap()
+    }
+
+    pub fn preview_reorder_table_column_impact(
+        &self,
+        table: &str,
+        column_id: &str,
+        new_index: usize,
+    ) -> MutationImpactProjection {
+        self.session
+            .lock()
+            .unwrap()
+            .preview_reorder_table_column_impact(&NodeId::new(table), column_id, new_index)
+            .unwrap()
+    }
 }
 
 pub fn scalar_value<'a>(state: &'a WorkspaceState, node_id: &str) -> Option<&'a str> {
