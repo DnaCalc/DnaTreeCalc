@@ -307,6 +307,11 @@ pub enum WorkspaceIntent {
     NavigateRevision {
         revision_id: String,
     },
+    /// Navigate to the previous host command boundary using OxCalc-retained
+    /// revisions. The host owns the cursor stack; OxCalc owns restoration.
+    Undo,
+    /// Navigate forward after undo using OxCalc-retained revisions.
+    Redo,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -624,7 +629,9 @@ impl Dispatcher for InMemoryDispatcher {
             | WorkspaceIntent::DeleteTableColumn { .. }
             | WorkspaceIntent::NewWorkspace
             | WorkspaceIntent::SwitchWorkspace { .. }
-            | WorkspaceIntent::NavigateRevision { .. } => IntentReceipt::accepted(),
+            | WorkspaceIntent::NavigateRevision { .. }
+            | WorkspaceIntent::Undo
+            | WorkspaceIntent::Redo => IntentReceipt::accepted(),
         }
     }
 }

@@ -168,6 +168,73 @@ fn programmable_skin_projects_and_navigates_retained_revision_history() {
 }
 
 #[test]
+fn programmable_skin_undo_redo_routes_through_retained_revisions() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    skin.add_node(Some("Root"), "A", "1");
+    skin.add_node(Some("Root"), "B", "=A+1");
+    skin.select(Some("Root.A"));
+    let original_revision = skin
+        .state()
+        .revision
+        .workspace_revision_id
+        .clone()
+        .expect("original revision should project");
+    skin.assert_scalar("Root.B", "2");
+
+    skin.edit("Root.A", "5");
+    let edited_revision = skin
+        .state()
+        .revision
+        .workspace_revision_id
+        .clone()
+        .expect("edited revision should project");
+    assert_ne!(edited_revision, original_revision);
+    skin.assert_scalar("Root.B", "6");
+
+    let undo = skin.undo();
+    assert!(undo.accepted, "{:?}", undo.error);
+    assert_eq!(
+        undo.produced_revision.as_deref(),
+        Some(original_revision.as_str())
+    );
+    assert_eq!(
+        skin.state().revision.workspace_revision_id.as_deref(),
+        Some(original_revision.as_str())
+    );
+    assert_eq!(skin.selected().as_deref(), Some("Root.A"));
+    skin.assert_scalar("Root.B", "2");
+
+    let redo = skin.redo();
+    assert!(redo.accepted, "{:?}", redo.error);
+    assert_eq!(
+        redo.produced_revision.as_deref(),
+        Some(edited_revision.as_str())
+    );
+    assert_eq!(
+        skin.state().revision.workspace_revision_id.as_deref(),
+        Some(edited_revision.as_str())
+    );
+    assert_eq!(skin.selected().as_deref(), Some("Root.A"));
+    skin.assert_scalar("Root.B", "6");
+
+    assert!(skin.undo().accepted);
+    skin.edit("Root.A", "7");
+    let branch_revision = skin
+        .state()
+        .revision
+        .workspace_revision_id
+        .clone()
+        .expect("branch revision should project");
+    assert_ne!(branch_revision, edited_revision);
+    skin.assert_scalar("Root.B", "8");
+    let redo_after_branch = skin.redo();
+    assert!(!redo_after_branch.accepted);
+}
+
+#[test]
 fn programmable_skin_projects_per_node_published_value_epochs() {
     let harness = Harness::empty();
     let skin = harness.driver.clone();

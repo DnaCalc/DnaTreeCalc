@@ -28,13 +28,13 @@ Use this decision rule when picking the next item:
 
 ## Active Cursor
 
-Active wave: **W3 - Reference and content authoring verbs**.
+Active wave: **W4a - Revision graph**.
 
-Current objective: assess and land the first W3 authoring verb slice while preserving ownership:
-OxFml composes or rewrites formula text, OxCalc rebinds and schedules, the DnaTreeCalc host carries
-ids/handles/scopes through closed intents, and skins dispatch only.
+Current objective: finish the first product-usable revision-navigation tranche without inventing
+undo semantics in the host or skins. OxCalc owns retained revision restoration; the DnaTreeCalc host
+owns closed intents, command cursor stacks, projection refresh, and selection restoration.
 
-Current status: first W3 assessment is complete. The formula rewrite verbs
+Context: first W3 assessment is complete. The formula rewrite verbs
 (`replicate-by-id`, `f4-toggle-binding`, and broader `reference-insertion`) require OxFml-owned
 authoring APIs and are recorded in `../../handovers/HANDOVER_OXFML_formula_authoring_verbs.md`.
 The first formula-authoring slice is now landed for point-mode node reference insertion:
@@ -119,8 +119,8 @@ new generated node ids in one transaction. Formula-backed table columns, totals 
 formula-bearing table cell nodes, and formula-visible table-name collisions remain rejected before
 mutation until table formula rebind support exists.
 
-Do not advance to W4 speculation/history or W5 platform polish as the default next step while W3
-authoring verbs remain incomplete.
+Do not advance to W4b/W4c speculation or W5 platform polish as the default next step while the W4a
+revision substrate still lacks bounded retention/persistence and invalidation summaries.
 
 ## Per-Iteration Gate
 
@@ -381,9 +381,12 @@ Use this as the per-tranche goal statement before implementation:
       navigation to retained revisions and restores OxCalc-owned structural/input/namespace,
       table, publication, runtime-overlay, value-epoch, and diagnostic state. Current DnaTreeCalc
       slice projects retained revision history into `WorkspaceState` and routes `NavigateRevision`
-      through the host dispatcher to OxCalc without inverse replay. Still required before undo,
-      redo, time travel, or history UI claims: product undo/redo command routing, bounded
-      eviction/persistence policy, and transaction invalidation summaries.
+      through the host dispatcher to OxCalc without inverse replay. Follow-on DnaTreeCalc command
+      routing adds `WorkspaceIntent::Undo` and `WorkspaceIntent::Redo` over host-owned cursor stacks:
+      successful edit transactions record previous revisions as undo boundaries, redo clears on
+      branch edits, and undo/redo republish the OxCalc-restored snapshot while restoring host
+      selection. Still required before full time-travel or history UI claims: bounded
+      eviction/persistence policy and transaction invalidation summaries.
 - [ ] `candidate-overlay-handle`: implement N addressable, layerable, non-publishing candidate
       contexts before scenarios, what-if previews, goal seek, sweeps, or comparative overlays.
 - [x] `value-epoch-keying`: per-node published-value epoch is available for projection consumers.

@@ -84,6 +84,14 @@ impl ProgrammableDriver {
         })
     }
 
+    pub fn undo(&self) -> IntentReceipt {
+        self.dispatch.dispatch(WorkspaceIntent::Undo)
+    }
+
+    pub fn redo(&self) -> IntentReceipt {
+        self.dispatch.dispatch(WorkspaceIntent::Redo)
+    }
+
     pub fn try_edit_scoped_content(&self, scope: AuthoringScope, content: &str) -> IntentReceipt {
         self.dispatch.dispatch(WorkspaceIntent::EditScopedContent {
             scope,

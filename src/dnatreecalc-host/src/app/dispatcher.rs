@@ -39,7 +39,15 @@ pub struct HostDispatcher {
     workspace_sessions: Mutex<BTreeMap<String, u64>>,
     next_workspace_ordinal: AtomicU64,
     next_projection_seq: AtomicU64,
+    undo_stack: Mutex<Vec<RevisionCursorEntry>>,
+    redo_stack: Mutex<Vec<RevisionCursorEntry>>,
     log: Mutex<Vec<WorkspaceIntent>>,
+}
+
+#[derive(Debug, Clone)]
+struct RevisionCursorEntry {
+    revision_id: String,
+    selection: SelectionState,
 }
 
 impl HostDispatcher {
@@ -53,6 +61,8 @@ impl HostDispatcher {
             workspace_sessions: Mutex::new(BTreeMap::new()),
             next_workspace_ordinal: AtomicU64::new(1),
             next_projection_seq: AtomicU64::new(1),
+            undo_stack: Mutex::new(Vec::new()),
+            redo_stack: Mutex::new(Vec::new()),
             log: Mutex::new(Vec::new()),
         }
     }
@@ -99,6 +109,8 @@ impl HostDispatcher {
             workspace_sessions: Mutex::new(workspace_sessions),
             next_workspace_ordinal: AtomicU64::new(1),
             next_projection_seq: AtomicU64::new(1),
+            undo_stack: Mutex::new(Vec::new()),
+            redo_stack: Mutex::new(Vec::new()),
             log: Mutex::new(Vec::new()),
         }
     }
@@ -451,6 +463,12 @@ impl Dispatcher for HostDispatcher {
                     WorkspaceEditPublication::ProjectOnly,
                 )
                 .map_or_else(IntentReceipt::rejected, receipt_for_publication),
+            WorkspaceIntent::Undo => self
+                .undo_revision()
+                .map_or_else(IntentReceipt::rejected, receipt_for_publication),
+            WorkspaceIntent::Redo => self
+                .redo_revision()
+                .map_or_else(IntentReceipt::rejected, receipt_for_publication),
             WorkspaceIntent::NewWorkspace => self
                 .create_workspace()
                 .map_or_else(IntentReceipt::rejected, receipt_for_publication),
@@ -772,6 +790,7 @@ impl HostDispatcher {
             after.projection_seq = self.next_projection_seq.fetch_add(1, Ordering::Relaxed);
             let delta = workspace_delta(before.as_ref(), &after, false);
             let produced_revision = after.revision.workspace_revision_id.clone();
+            self.record_revision_undo_boundary(before.as_ref(), &after)?;
             if let Some(workspace) = self.workspace {
                 workspace.set(after);
             }
@@ -795,6 +814,124 @@ impl HostDispatcher {
         self.workspace
             .map(|workspace| workspace.get_untracked().projection_seq)
             .unwrap_or(0)
+    }
+
+    fn undo_revision(&self) -> Result<PublishedWorkspaceEdit<()>, IntentError> {
+        let target = self.pop_cursor_entry(&self.undo_stack, "undo history is empty")?;
+        let current = match self.current_revision_cursor_entry() {
+            Ok(current) => current,
+            Err(error) => {
+                self.push_cursor_entry(&self.undo_stack, target)?;
+                return Err(error);
+            }
+        };
+        self.push_cursor_entry(&self.redo_stack, current)?;
+        match self.apply_workspace_edit(
+            |session| session.navigate_workspace_revision(&target.revision_id),
+            WorkspaceEditPublication::ProjectOnly,
+        ) {
+            Ok(publication) => {
+                self.selection.set(target.selection);
+                Ok(publication)
+            }
+            Err(error) => {
+                let _ = self.pop_cursor_entry(&self.redo_stack, "redo rollback entry is missing");
+                self.push_cursor_entry(&self.undo_stack, target)?;
+                Err(error)
+            }
+        }
+    }
+
+    fn redo_revision(&self) -> Result<PublishedWorkspaceEdit<()>, IntentError> {
+        let target = self.pop_cursor_entry(&self.redo_stack, "redo history is empty")?;
+        let current = match self.current_revision_cursor_entry() {
+            Ok(current) => current,
+            Err(error) => {
+                self.push_cursor_entry(&self.redo_stack, target)?;
+                return Err(error);
+            }
+        };
+        self.push_cursor_entry(&self.undo_stack, current)?;
+        match self.apply_workspace_edit(
+            |session| session.navigate_workspace_revision(&target.revision_id),
+            WorkspaceEditPublication::ProjectOnly,
+        ) {
+            Ok(publication) => {
+                self.selection.set(target.selection);
+                Ok(publication)
+            }
+            Err(error) => {
+                let _ = self.pop_cursor_entry(&self.undo_stack, "undo rollback entry is missing");
+                self.push_cursor_entry(&self.redo_stack, target)?;
+                Err(error)
+            }
+        }
+    }
+
+    fn current_revision_cursor_entry(&self) -> Result<RevisionCursorEntry, IntentError> {
+        let revision_id = self
+            .workspace
+            .ok_or_else(|| host_failure("workspace projection handle is not attached"))?
+            .get_untracked()
+            .revision
+            .workspace_revision_id
+            .ok_or_else(|| host_failure("current workspace revision is not projected"))?;
+        Ok(RevisionCursorEntry {
+            revision_id,
+            selection: self.selection.get_untracked(),
+        })
+    }
+
+    fn pop_cursor_entry(
+        &self,
+        stack: &Mutex<Vec<RevisionCursorEntry>>,
+        empty_message: &'static str,
+    ) -> Result<RevisionCursorEntry, IntentError> {
+        stack
+            .lock()
+            .map_err(|_| host_failure("revision cursor mutex poisoned"))?
+            .pop()
+            .ok_or_else(|| host_failure(empty_message))
+    }
+
+    fn push_cursor_entry(
+        &self,
+        stack: &Mutex<Vec<RevisionCursorEntry>>,
+        entry: RevisionCursorEntry,
+    ) -> Result<(), IntentError> {
+        stack
+            .lock()
+            .map_err(|_| host_failure("revision cursor mutex poisoned"))?
+            .push(entry);
+        Ok(())
+    }
+
+    fn record_revision_undo_boundary(
+        &self,
+        before: Option<&WorkspaceState>,
+        after: &WorkspaceState,
+    ) -> Result<(), IntentError> {
+        let Some(before) = before else {
+            return Ok(());
+        };
+        let Some(before_revision) = before.revision.workspace_revision_id.clone() else {
+            return Ok(());
+        };
+        if Some(before_revision.as_str()) == after.revision.workspace_revision_id.as_deref() {
+            return Ok(());
+        }
+        self.push_cursor_entry(
+            &self.undo_stack,
+            RevisionCursorEntry {
+                revision_id: before_revision,
+                selection: self.selection.get_untracked(),
+            },
+        )?;
+        self.redo_stack
+            .lock()
+            .map_err(|_| host_failure("revision cursor mutex poisoned"))?
+            .clear();
+        Ok(())
     }
 
     fn create_workspace(&self) -> Result<PublishedWorkspaceEdit<String>, IntentError> {
@@ -860,6 +997,14 @@ impl HostDispatcher {
         if let Some(workspace) = self.workspace {
             workspace.set(state);
         }
+        self.undo_stack
+            .lock()
+            .map_err(|_| host_failure("revision cursor mutex poisoned"))?
+            .clear();
+        self.redo_stack
+            .lock()
+            .map_err(|_| host_failure("revision cursor mutex poisoned"))?
+            .clear();
         self.selection.set(SelectionState::default());
         if let Some(shared) = self.shared {
             let workspace_ids = self

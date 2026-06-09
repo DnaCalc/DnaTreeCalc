@@ -37,7 +37,8 @@ The standard iteration loop is:
 The running success test is: a future skin can become richer because it reads more typed truth or
 sends a better typed command, while the semantic boundary remains obvious in code and tests.
 
-Current cursor: **W3 - Reference and content authoring verbs**. W2 safe structural authoring is
+Current cursor: **W4a - Revision graph**, with the remaining W3 formula-rewrite/rebind verbs parked
+until their owning OxFml/OxCalc substrates are available. W2 safe structural authoring is
 closed for the current Skin IR surface: receipts carry typed errors and real OxCalc transaction ids,
 previews use OxFml dry-bind plus OxCalc invalidation planning, and the closure review found no
 skin-side formula parsing, semantic value computation, or transaction-id fabrication. The first W3
@@ -426,8 +427,13 @@ The roadmap alignment rule is:
       revisions and restores OxCalc-owned structural/input/namespace, table, publication,
       runtime-overlay, value-epoch, and diagnostic state. Current DnaTreeCalc slice projects the
       retained revision history into `WorkspaceState` and routes `NavigateRevision` through the
-      host dispatcher to OxCalc without inverse replay. Still open: product undo/redo command
-      routing, bounded eviction/persistence policy, and transaction invalidation summaries.
+      host dispatcher to OxCalc without inverse replay. Current DnaTreeCalc follow-on adds
+      `WorkspaceIntent::Undo` and `WorkspaceIntent::Redo` as host-owned cursor commands over the
+      retained OxCalc revision graph: normal edit transactions record the previous revision as an
+      undo boundary, redo is cleared on branch edits, successful undo/redo republishes the restored
+      OxCalc snapshot, and selection is restored from the host cursor entry. Still open before full
+      time-travel/history claims: bounded eviction/persistence policy and transaction invalidation
+      summaries.
 - [ ] `candidate-overlay-handle`: addressable, layerable, non-publishing candidate contexts.
 - [x] `value-epoch-keying`: per-node published-value epoch distinct from input epoch.
 
