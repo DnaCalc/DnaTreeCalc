@@ -2103,35 +2103,75 @@ impl WorkspaceState {
         keys.sort_by(|a, b| {
             let na = self.node_by_key(a);
             let nb = self.node_by_key(b);
-            let ordering = match sort {
-                CleaveSort::NameAsc | CleaveSort::NameDesc => na
-                    .map(|n| n.display_name.as_str())
-                    .unwrap_or_default()
-                    .cmp(nb.map(|n| n.display_name.as_str()).unwrap_or_default()),
-                CleaveSort::DepthAsc | CleaveSort::DepthDesc => na
-                    .map(|n| n.depth)
-                    .unwrap_or(0)
-                    .cmp(&nb.map(|n| n.depth).unwrap_or(0)),
+            match sort {
+                CleaveSort::NameAsc | CleaveSort::NameDesc => {
+                    let ordering = na
+                        .map(|n| n.display_name.as_str())
+                        .unwrap_or_default()
+                        .cmp(nb.map(|n| n.display_name.as_str()).unwrap_or_default());
+                    if sort == CleaveSort::NameDesc {
+                        ordering.reverse()
+                    } else {
+                        ordering
+                    }
+                }
+                CleaveSort::DepthAsc | CleaveSort::DepthDesc => {
+                    let ordering = na
+                        .map(|n| n.depth)
+                        .unwrap_or(0)
+                        .cmp(&nb.map(|n| n.depth).unwrap_or(0));
+                    if sort == CleaveSort::DepthDesc {
+                        ordering.reverse()
+                    } else {
+                        ordering
+                    }
+                }
+                // Value sorts reverse only the within-class comparison: numbers
+                // always sort before non-numbers, ascending or descending.
                 CleaveSort::ValueAsc | CleaveSort::ValueDesc => {
                     match (cleave_number(na), cleave_number(nb)) {
                         (Some(x), Some(y)) => {
-                            x.partial_cmp(&y).unwrap_or(std::cmp::Ordering::Equal)
+                            let ordering = x.partial_cmp(&y).unwrap_or(std::cmp::Ordering::Equal);
+                            if sort == CleaveSort::ValueDesc {
+                                ordering.reverse()
+                            } else {
+                                ordering
+                            }
                         }
                         (Some(_), None) => std::cmp::Ordering::Less,
                         (None, Some(_)) => std::cmp::Ordering::Greater,
                         (None, None) => std::cmp::Ordering::Equal,
                     }
                 }
-            };
-            if matches!(
-                sort,
-                CleaveSort::NameDesc | CleaveSort::DepthDesc | CleaveSort::ValueDesc
-            ) {
-                ordering.reverse()
-            } else {
-                ordering
             }
         });
+    }
+
+    /// Effective meta visibility per `docs/model/META_NODES.md`: a node is
+    /// effectively meta when it or ANY ancestor carries `is_meta`. The walk is
+    /// defined once here so skins never re-derive the contagion rule.
+    #[must_use]
+    pub fn is_effective_meta(&self, key: &NodeKey) -> bool {
+        let Some(mut node) = self.node_by_key(key) else {
+            return false;
+        };
+        let mut hops = 0usize;
+        loop {
+            if node.is_meta {
+                return true;
+            }
+            let Some(parent_id) = node.parent.as_ref() else {
+                return false;
+            };
+            let Some(parent) = self.node(parent_id) else {
+                return false;
+            };
+            node = parent;
+            hops += 1;
+            if hops > self.nodes.len() {
+                return false; // projection out of sync; fail open as visible
+            }
+        }
     }
 }
 

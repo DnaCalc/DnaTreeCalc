@@ -17,23 +17,26 @@
 //! makes goes through the closed `WorkspaceIntent` surface. It never parses
 //! formula text, fabricates a value, or uses grid coordinates.
 //!
-//! Embedded for the Phase-A mono-lens core: the **Lens** inspector (selection
-//! detail) and the **Console** health/Name-Box strip live inside Flow; they
-//! become real companion slots in the Phase-B cockpit.
+//! The embedded **Lens** inspector and **Console** strip are the shared
+//! [`crate::spine_widgets`] components — identical in every Phase-A mono-lens,
+//! promoted to companion slots in the Phase-B cockpit.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use dnatreecalc_skin_framework::{
     ATLAS_SPINE_CSS, DerivationInvocationProjection, Dispatcher, KeyChord, KeybindingRegistry,
-    NodeId, NodeKey, NodeValueProjection, NodeView, SkinCapabilities, SkinCategory, SkinContext,
-    SkinHandle, SkinId, SkinManifest, SkinState, SkinVerb, WorkspaceIntent, WorkspaceRecalcMode,
-    WorkspaceSkin, WorkspaceState, calc_state_class, provenance_tint, selection_mode_class,
+    NodeId, NodeKey, NodeView, SkinCapabilities, SkinCategory, SkinContext, SkinHandle, SkinId,
+    SkinManifest, SkinState, SkinVerb, WorkspaceIntent, WorkspaceSkin, WorkspaceState,
+    calc_state_class, provenance_tint, selection_mode_class,
 };
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::value_render::render_value;
+use crate::spine_widgets::{
+    ConsoleBar, NameBoxBar, NodeInspector, SPINE_WIDGETS_CSS, commit_content_edit,
+    event_target_is_interactive, event_target_is_text_entry, focus_edit_buffer,
+};
 
 pub const FLOW_ID: SkinId = SkinId::new("flow");
 
@@ -142,11 +145,14 @@ struct FlowLayout {
 
 /// Structure-stable layered layout: column = longest precedent-chain rank, so
 /// inputs sit left and results right. Depends only on topology, not values.
+/// Effectively-meta nodes (self or any ancestor) stay off the stage.
 fn compute_layout(workspace: &WorkspaceState) -> FlowLayout {
     let layout_keys: Vec<NodeKey> = workspace
         .key_order
         .iter()
-        .filter(|key| workspace.node_by_key(key).is_some_and(|node| !node.is_meta))
+        .filter(|key| {
+            workspace.node_by_key(key).is_some() && !workspace.is_effective_meta(key)
+        })
         .cloned()
         .collect();
     let key_set: BTreeSet<NodeKey> = layout_keys.iter().cloned().collect();
@@ -265,7 +271,8 @@ fn trace_keys(
 
 /// Build the dependency-wire SVG as markup (injected via `inner_html` to avoid
 /// SVG-namespace handling). Endpoints are computed from the fixed cell grid, so
-/// the overlay maps 1:1 onto the chip pixels.
+/// the overlay maps 1:1 onto the chip pixels. The markup contains only numeric
+/// coordinates and fixed class names — never node-supplied text.
 fn wires_svg(workspace: &WorkspaceState, layout: &FlowLayout, trace: &BTreeSet<NodeKey>) -> String {
     let mut paths = String::new();
     for (owner_key, owner_cell) in &layout.cells {
@@ -316,44 +323,54 @@ fn FlowView(cx: SkinContext<FlowState>) -> impl IntoView {
     let editor_text = RwSignal::new(String::new());
     let name_box = RwSignal::new(Option::<String>::None);
     let reading_head = RwSignal::new(Option::<usize>::None);
+    let edit_ref = NodeRef::<leptos::html::Textarea>::new();
+    let stage_ref = NodeRef::<leptos::html::Section>::new();
 
     let selected = Memo::new(move |_| {
         let primary = selection.with(|s| s.primary.clone());
         workspace.with(|ws| primary.as_ref().and_then(|id| ws.node(id).cloned()))
     });
+    // Selection *identity*, distinct from node contents — the edit buffer must
+    // reset when the user selects a different node, but never when the same
+    // node merely republishes (recalc, undo elsewhere, epoch bumps).
+    let selected_id = Memo::new(move |_| selection.with(|s| s.primary.clone()));
 
-    // Sync the edit buffer to the selection and leave edit mode on reselect.
+    // Reset the buffer and leave edit mode only when the selection target
+    // changes.
     Effect::new(move |_| {
-        if let Some(node) = selected.get() {
+        let _identity = selected_id.get();
+        if let Some(node) = selected.get_untracked() {
             editor_text.set(node.content_text);
-            editing.set(false);
+        } else {
+            editor_text.set(String::new());
+        }
+        editing.set(false);
+    });
+    // While NOT editing, keep the buffer synced to the published content (so
+    // undo/redo and external commits refresh it); while editing, never clobber.
+    Effect::new(move |_| {
+        if let Some(node) = selected.get()
+            && !editing.get_untracked()
+        {
+            editor_text.set(node.content_text);
         }
     });
 
-    // The commit path: respects the shared recalc mode, like the other skins.
+    // The one commit path, shared with every lens.
     let commit_dispatch = dispatch.clone();
     let commit = move || {
         let Some(node) = selected.get_untracked() else {
             return;
         };
-        let content = editor_text.get_untracked();
-        match shared.get_untracked().recalc_mode {
-            WorkspaceRecalcMode::Auto => {
-                commit_dispatch.dispatch(WorkspaceIntent::EditContent {
-                    node: node.id,
-                    content,
-                });
-                shared.update(|state| state.manual_recalc_pending = false);
-            }
-            WorkspaceRecalcMode::Manual => {
-                commit_dispatch.dispatch(WorkspaceIntent::EditContentDeferred {
-                    node: node.id,
-                    content,
-                });
-                shared.update(|state| state.manual_recalc_pending = true);
-            }
+        let receipt = commit_content_edit(
+            &commit_dispatch,
+            shared,
+            node.id,
+            editor_text.get_untracked(),
+        );
+        if receipt.accepted {
+            editing.set(false);
         }
-        editing.set(false);
     };
 
     // Lens-local grammar, resolved through the one registry. Global verbs
@@ -361,8 +378,9 @@ fn FlowView(cx: SkinContext<FlowState>) -> impl IntoView {
     let grammar = KeybindingRegistry::universal();
     let grammar_state = state.clone();
     let root_keydown = move |ev: leptos::ev::KeyboardEvent| {
-        if editing.get_untracked() {
-            return; // the edit buffer owns keys while editing
+        // Bare-key grammar never fires while typing — the contract.
+        if event_target_is_text_entry(&ev) || editing.get_untracked() {
+            return;
         }
         let command = ev.ctrl_key() || ev.meta_key();
         let chord = KeyChord::from_parts(ev.key(), command, ev.alt_key(), ev.shift_key());
@@ -371,9 +389,14 @@ fn FlowView(cx: SkinContext<FlowState>) -> impl IntoView {
         };
         match verb {
             SkinVerb::Commit => {
+                // Enter on a focused button must activate the button.
+                if event_target_is_interactive(&ev) {
+                    return;
+                }
                 if selected.get_untracked().is_some() {
                     ev.prevent_default();
                     editing.set(true);
+                    focus_edit_buffer(edit_ref);
                 }
             }
             SkinVerb::Explain => {
@@ -382,11 +405,13 @@ fn FlowView(cx: SkinContext<FlowState>) -> impl IntoView {
             }
             SkinVerb::TraceForward => {
                 ev.prevent_default();
-                grammar_state.update(|s| s.forward_depth = (s.forward_depth + 1) % (MAX_TRACE_DEPTH + 1));
+                grammar_state
+                    .update(|s| s.forward_depth = (s.forward_depth + 1) % (MAX_TRACE_DEPTH + 1));
             }
             SkinVerb::TraceBack => {
                 ev.prevent_default();
-                grammar_state.update(|s| s.back_depth = (s.back_depth + 1) % (MAX_TRACE_DEPTH + 1));
+                grammar_state
+                    .update(|s| s.back_depth = (s.back_depth + 1) % (MAX_TRACE_DEPTH + 1));
             }
             SkinVerb::NameBox => {
                 ev.prevent_default();
@@ -394,10 +419,19 @@ fn FlowView(cx: SkinContext<FlowState>) -> impl IntoView {
             }
             SkinVerb::Escape => {
                 name_box.set(None);
+                editing.set(false);
             }
             _ => {} // global verb: leave for the shell
         }
     };
+
+    // Land keyboard focus on the stage when the lens mounts, so the grammar
+    // works without a preparatory click.
+    Effect::new(move |_| {
+        if let Some(section) = stage_ref.get() {
+            let _ = section.focus();
+        }
+    });
 
     let stage_workspace = workspace;
     let stage_selection = selection;
@@ -412,8 +446,7 @@ fn FlowView(cx: SkinContext<FlowState>) -> impl IntoView {
                 .map(|node| node.key.clone())
         });
         let editing_now = editing.get();
-        let (back_depth, forward_depth) =
-            stage_state.with(|s| (s.back_depth, s.forward_depth));
+        let (back_depth, forward_depth) = stage_state.with(|s| (s.back_depth, s.forward_depth));
         let layout = compute_layout(&ws);
         let trace = match &sel_key {
             Some(focus) => trace_keys(&ws, focus, back_depth, forward_depth),
@@ -450,6 +483,7 @@ fn FlowView(cx: SkinContext<FlowState>) -> impl IntoView {
                     &eval_index,
                     &ws,
                     stage_dispatch.clone(),
+                    stage_ref,
                 ))
             })
             .collect::<Vec<_>>();
@@ -463,29 +497,89 @@ fn FlowView(cx: SkinContext<FlowState>) -> impl IntoView {
         }
     };
 
-    let css = format!("{ATLAS_SPINE_CSS}\n{FLOW_CSS}");
-    let inspector_state = state.clone();
+    let css = format!("{ATLAS_SPINE_CSS}\n{SPINE_WIDGETS_CSS}\n{FLOW_CSS}");
+    let explain_state = state.clone();
     let console_dispatch = dispatch.clone();
+
+    // The explain stack renders as the lens-specific extra inside the shared
+    // inspector.
+    let explain_detail = Memo::new(move |_| {
+        selection.with(|sel| {
+            workspace.with(|ws| ws.active_node_detail(sel).map(|d| d.node_key))
+        })
+    });
+    let traces = Memo::new(move |_| {
+        let owner = explain_detail.get();
+        workspace.with(|ws| {
+            let Some(owner) = owner else {
+                return Vec::new();
+            };
+            ws.last_run
+                .as_ref()
+                .map(|run| {
+                    run.derivation_traces
+                        .iter()
+                        .filter(|trace| trace.owner_key == owner)
+                        .cloned()
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default()
+        })
+    });
+    let explain_open = {
+        let explain_state = explain_state.clone();
+        Memo::new(move |_| explain_state.with(|s| s.explain_open))
+    };
 
     view! {
         <style>{css}</style>
-        <section class="dtc-flow" on:keydown=root_keydown>
+        <section class="dtc-flow" tabindex="0" node_ref=stage_ref on:keydown=root_keydown>
             <div class="dtc-flow__body">
                 <div class="dtc-flow__stage-scroll">
-                    <NameBoxBar name_box=name_box workspace=workspace selection=selection dispatch=dispatch.clone() />
+                    <NameBoxBar name_box=name_box workspace=workspace dispatch=dispatch.clone() />
                     <TraceBar state=state.clone() reading_head=reading_head workspace=workspace dispatch=dispatch.clone() />
                     {stage}
                 </div>
-                <InspectorPanel
-                    cx_state=inspector_state
+                <NodeInspector
                     workspace=workspace
                     selection=selection
                     editing=editing
                     editor_text=editor_text
+                    edit_ref=edit_ref
                     commit=Arc::new(commit)
-                />
+                >
+                    {move || {
+                        view! {
+                            <div class="dtc-flow-explain-block">
+                                <div class="dtc-section-label">"Explain (E)"</div>
+                                {move || explain_open.get().then(|| {
+                                    let traces = traces.get();
+                                    if traces.is_empty() {
+                                        view! { <p class="dtc-inspector__empty">"No derivation trace for this node yet — recalculate."</p> }.into_any()
+                                    } else {
+                                        view! {
+                                            <div class="dtc-flow-explain">
+                                                {traces.into_iter().map(|trace| view! {
+                                                    <div class="dtc-flow-explain__trace">
+                                                        <div class="dtc-flow-explain__result">
+                                                            "= "{trace.kernel_returned_value.clone()}
+                                                        </div>
+                                                        <ul class="dtc-flow-explain__tree">
+                                                            {trace.sub_invocation_tree.iter().map(render_invocation).collect::<Vec<_>>()}
+                                                        </ul>
+                                                    </div>
+                                                }).collect::<Vec<_>>()}
+                                            </div>
+                                        }.into_any()
+                                    }
+                                })}
+                            </div>
+                        }
+                        .into_any()
+                    }}
+                </NodeInspector>
             </div>
-            <ConsoleBar workspace=workspace selection=selection dispatch=console_dispatch />
+            <ConsoleBar workspace=workspace dispatch=console_dispatch />
         </section>
     }
 }
@@ -501,6 +595,7 @@ fn chip_view(
     eval_index: &BTreeMap<NodeId, usize>,
     workspace: &WorkspaceState,
     dispatch: Arc<dyn Dispatcher>,
+    stage_ref: NodeRef<leptos::html::Section>,
 ) -> AnyView {
     let calc_class = calc_state_class(node.calc_state);
     let prov = provenance_tint(&node, workspace);
@@ -537,8 +632,16 @@ fn chip_view(
             type="button"
             class=class_attr
             style=style
+            tabindex="-1"
+            // Chips never take keyboard focus: focus stays on the stage so the
+            // grammar keeps working and Space/Enter can never re-activate a
+            // stale chip after arrow navigation.
+            on:mousedown=move |ev| ev.prevent_default()
             on:click=move |_| {
                 dispatch.dispatch(WorkspaceIntent::SelectNode(Some(id_for_click.clone())));
+                if let Some(section) = stage_ref.get_untracked() {
+                    let _ = section.focus();
+                }
             }
             title=node.key.to_string()
             data-node-key=key_for_click.to_string()
@@ -551,71 +654,6 @@ fn chip_view(
         </button>
     }
     .into_any()
-}
-
-#[component]
-fn NameBoxBar(
-    name_box: RwSignal<Option<String>>,
-    workspace: ReadSignal<WorkspaceState>,
-    selection: ReadSignal<dnatreecalc_skin_framework::SelectionState>,
-    dispatch: Arc<dyn Dispatcher>,
-) -> impl IntoView {
-    let _ = selection;
-    let jump_dispatch = dispatch.clone();
-    view! {
-        {move || {
-            name_box.get().map(|query| {
-                let jump_dispatch = jump_dispatch.clone();
-                let query_for_jump = query.clone();
-                view! {
-                    <div class="dtc-flow-namebox">
-                        <span class="dtc-flow-namebox__sigil">"/"</span>
-                        <input
-                            class="dtc-flow-namebox__input"
-                            autofocus=true
-                            placeholder="jump to node…"
-                            prop:value=query.clone()
-                            on:input=move |ev| name_box.set(Some(event_target_value(&ev)))
-                            on:keydown=move |ev: leptos::ev::KeyboardEvent| {
-                                match ev.key().as_str() {
-                                    "Enter" => {
-                                        ev.prevent_default();
-                                        if let Some(id) = first_match(&workspace.get_untracked(), &query_for_jump) {
-                                            jump_dispatch.dispatch(WorkspaceIntent::SelectNode(Some(id)));
-                                        }
-                                        name_box.set(None);
-                                    }
-                                    "Escape" => {
-                                        ev.prevent_default();
-                                        name_box.set(None);
-                                    }
-                                    _ => {}
-                                }
-                            }
-                        />
-                    </div>
-                }
-                .into_any()
-            })
-            .unwrap_or_else(|| ().into_any())
-        }}
-    }
-}
-
-fn first_match(workspace: &WorkspaceState, query: &str) -> Option<NodeId> {
-    let needle = query.trim().to_lowercase();
-    if needle.is_empty() {
-        return None;
-    }
-    workspace.node_order.iter().find_map(|id| {
-        let node = workspace.node(id)?;
-        if node.is_meta {
-            return None;
-        }
-        let matches = id.as_str().to_lowercase().contains(&needle)
-            || node.display_name.to_lowercase().contains(&needle);
-        matches.then(|| id.clone())
-    })
 }
 
 #[component]
@@ -684,6 +722,9 @@ fn TraceBar(
                     type="button"
                     on:click=move |_| {
                         let len = eval_len.get_untracked();
+                        if len == 0 {
+                            return; // no run yet — nothing to sweep
+                        }
                         reading_head.update(|head| {
                             let next = head.map_or(0, |value| value + 1);
                             *head = Some(next.min(len.saturating_sub(1)));
@@ -695,146 +736,6 @@ fn TraceBar(
                 <button type="button" on:click=move |_| reading_head.set(None)>"stop"</button>
             </span>
         </div>
-    }
-}
-
-#[component]
-fn InspectorPanel(
-    cx_state: dnatreecalc_skin_framework::SkinStateHandle<FlowState>,
-    workspace: ReadSignal<WorkspaceState>,
-    selection: ReadSignal<dnatreecalc_skin_framework::SelectionState>,
-    editing: RwSignal<bool>,
-    editor_text: RwSignal<String>,
-    commit: Arc<dyn Fn() + Send + Sync>,
-) -> impl IntoView {
-    let detail = Memo::new(move |_| {
-        selection.with(|sel| workspace.with(|ws| ws.active_node_detail(sel)))
-    });
-    let explain_open = {
-        let cx_state = cx_state.clone();
-        Memo::new(move |_| cx_state.with(|s| s.explain_open))
-    };
-    let traces = Memo::new(move |_| {
-        let owner = detail.with(|d| d.as_ref().map(|d| d.node_key.clone()));
-        workspace.with(|ws| {
-            let Some(owner) = owner else {
-                return Vec::new();
-            };
-            ws.last_run
-                .as_ref()
-                .map(|run| {
-                    run.derivation_traces
-                        .iter()
-                        .filter(|trace| trace.owner_key == owner)
-                        .cloned()
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default()
-        })
-    });
-    let commit_for_button = commit.clone();
-    let commit_for_keys = commit;
-
-    view! {
-        <aside class="dtc-flow-inspector" aria-label="Selection inspector">
-            {move || match detail.get() {
-                None => view! { <p class="dtc-flow-inspector__empty">"Select a node to inspect it."</p> }.into_any(),
-                Some(detail) => {
-                    let calc = detail.calc_state.map_or("—".to_string(), |state| state.to_string());
-                    let format = detail
-                        .effective_format
-                        .as_ref()
-                        .and_then(|fmt| fmt.number_format_code.clone())
-                        .unwrap_or_else(|| "General".to_string());
-                    let out_refs = detail.outgoing_references.len();
-                    let in_refs = detail.incoming_reference_handles.len();
-                    let diagnostics = detail.binding_diagnostics.clone();
-                    view! {
-                        <header class="dtc-flow-inspector__header">
-                            <span class="dtc-flow-inspector__name">{detail.display_name.clone()}</span>
-                            <code class="dtc-flow-inspector__path">{detail.node.to_string()}</code>
-                        </header>
-                        <dl class="dtc-flow-inspector__facts">
-                            <div><dt>"calc-state"</dt><dd>{calc}</dd></div>
-                            <div><dt>"format"</dt><dd>{format}</dd></div>
-                            <div><dt>"precedents"</dt><dd>{out_refs}</dd></div>
-                            <div><dt>"dependents"</dt><dd>{in_refs}</dd></div>
-                        </dl>
-                        <div class="dtc-section-label">"Value"</div>
-                        {render_value(&detail.value)}
-                        <div class="dtc-section-label">"Content"</div>
-                        <textarea
-                            class="dtc-flow-inspector__edit"
-                            class:dtc-flow-inspector__edit--active=move || editing.get()
-                            prop:value=move || editor_text.get()
-                            on:focus=move |_| editing.set(true)
-                            on:input=move |ev| editor_text.set(event_target_value(&ev))
-                            on:keydown={
-                                let commit_for_keys = commit_for_keys.clone();
-                                move |ev: leptos::ev::KeyboardEvent| {
-                                    match ev.key().as_str() {
-                                        "Enter" if !ev.shift_key() => {
-                                            ev.prevent_default();
-                                            ev.stop_propagation();
-                                            (commit_for_keys)();
-                                        }
-                                        "Escape" => {
-                                            ev.prevent_default();
-                                            ev.stop_propagation();
-                                            editing.set(false);
-                                        }
-                                        _ => {}
-                                    }
-                                }
-                            }
-                        />
-                        <button
-                            type="button"
-                            class="dtc-flow-inspector__commit"
-                            on:click={
-                                let commit_for_button = commit_for_button.clone();
-                                move |_| (commit_for_button)()
-                            }
-                        >
-                            "Commit (Enter)"
-                        </button>
-                        {(!diagnostics.is_empty()).then(|| view! {
-                            <div class="dtc-section-label">"Binding diagnostics"</div>
-                            <ul class="dtc-flow-inspector__diagnostics">
-                                {diagnostics.into_iter().map(|diag| view! {
-                                    <li>{diag.message}</li>
-                                }).collect::<Vec<_>>()}
-                            </ul>
-                        }.into_any())}
-                        <div class="dtc-flow-inspector__explain-head">
-                            <div class="dtc-section-label">"Explain (E)"</div>
-                        </div>
-                        {move || explain_open.get().then(|| {
-                            let traces = traces.get();
-                            if traces.is_empty() {
-                                view! { <p class="dtc-flow-inspector__empty">"No derivation trace for this node yet — recalculate."</p> }.into_any()
-                            } else {
-                                view! {
-                                    <div class="dtc-flow-explain">
-                                        {traces.into_iter().map(|trace| view! {
-                                            <div class="dtc-flow-explain__trace">
-                                                <div class="dtc-flow-explain__result">
-                                                    "= "{trace.kernel_returned_value.clone()}
-                                                </div>
-                                                <ul class="dtc-flow-explain__tree">
-                                                    {trace.sub_invocation_tree.iter().map(render_invocation).collect::<Vec<_>>()}
-                                                </ul>
-                                            </div>
-                                        }).collect::<Vec<_>>()}
-                                    </div>
-                                }.into_any()
-                            }
-                        })}
-                    }
-                    .into_any()
-                }
-            }}
-        </aside>
     }
 }
 
@@ -861,65 +762,12 @@ fn render_invocation(invocation: &DerivationInvocationProjection) -> AnyView {
     .into_any()
 }
 
-#[component]
-fn ConsoleBar(
-    workspace: ReadSignal<WorkspaceState>,
-    selection: ReadSignal<dnatreecalc_skin_framework::SelectionState>,
-    dispatch: Arc<dyn Dispatcher>,
-) -> impl IntoView {
-    let _ = selection;
-    let health = Memo::new(move |_| {
-        workspace.with(|ws| {
-            let mut clean = 0usize;
-            let mut stale = 0usize;
-            let mut error = 0usize;
-            for node in ws.nodes_by_key.values() {
-                if node.is_meta {
-                    continue;
-                }
-                if matches!(node.computed_value, NodeValueProjection::Error(_)) {
-                    error += 1;
-                }
-                let class = calc_state_class(node.calc_state);
-                if class == "dtc-calc--clean" {
-                    clean += 1;
-                } else if class == "dtc-calc--stale" || class == "dtc-calc--unknown" {
-                    stale += 1;
-                }
-            }
-            (ws.nodes_by_key.values().filter(|n| !n.is_meta).count(), clean, stale, error)
-        })
-    });
-    let recalc_dispatch = dispatch.clone();
-
-    view! {
-        <footer class="dtc-flow-console" aria-label="Model health">
-            <span class="dtc-flow-console__group">
-                <span class="dtc-calc-dot dtc-calc--clean"></span>
-                <span>{move || format!("{} clean", health.get().1)}</span>
-            </span>
-            <span class="dtc-flow-console__group">
-                <span class="dtc-calc-dot dtc-calc--stale"></span>
-                <span>{move || format!("{} stale", health.get().2)}</span>
-            </span>
-            <span class="dtc-flow-console__group">
-                <span class="dtc-calc-dot dtc-calc--rejected"></span>
-                <span>{move || format!("{} error", health.get().3)}</span>
-            </span>
-            <span class="dtc-flow-tracebar__spacer"></span>
-            <span class="dtc-flow-console__group">{move || format!("{} nodes", health.get().0)}</span>
-            <button type="button" on:click=move |_| { recalc_dispatch.dispatch(WorkspaceIntent::Recalculate); }>
-                "Recalculate (F9)"
-            </button>
-        </footer>
-    }
-}
-
 const FLOW_CSS: &str = r#"
 .dtc-flow {
   display: flex; flex-direction: column; height: 100%;
   background: var(--dtc-surface); color: var(--dtc-text);
   font: 13px/1.4 var(--dtc-font, system-ui, sans-serif);
+  outline: none;
 }
 .dtc-flow__body { display: flex; flex: 1; min-height: 0; }
 .dtc-flow__stage-scroll { flex: 1; overflow: auto; padding: 8px 12px; min-width: 0; }
@@ -943,7 +791,7 @@ const FLOW_CSS: &str = r#"
 .dtc-flow-chip__name { display: flex; align-items: center; gap: 6px; font-weight: 600; color: var(--dtc-text); }
 .dtc-flow-chip__value { font-variant-numeric: tabular-nums; color: var(--dtc-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-.dtc-flow-tracebar, .dtc-flow-namebox {
+.dtc-flow-tracebar {
   display: flex; align-items: center; gap: 8px; padding: 6px 8px; margin-bottom: 8px;
   background: var(--dtc-surface-subtle); border: 1px solid var(--dtc-border-muted); border-radius: 6px;
 }
@@ -951,49 +799,22 @@ const FLOW_CSS: &str = r#"
 .dtc-flow-tracebar__label { color: var(--dtc-text-subtle); text-transform: uppercase; font-size: 11px; letter-spacing: 0.04em; }
 .dtc-flow-tracebar__count { font-variant-numeric: tabular-nums; color: var(--dtc-text-muted); }
 .dtc-flow-tracebar__spacer { flex: 1; }
-.dtc-flow-tracebar button, .dtc-flow-console button, .dtc-flow-inspector__commit {
+.dtc-flow-tracebar button {
   background: var(--dtc-surface-panel); border: 1px solid var(--dtc-border); border-radius: 5px;
   padding: 2px 8px; cursor: pointer; color: var(--dtc-text);
 }
-.dtc-flow-namebox__sigil { font-weight: 700; color: var(--dtc-accent); }
-.dtc-flow-namebox__input { flex: 1; padding: 3px 6px; border: 1px solid var(--dtc-border); border-radius: 5px; background: var(--dtc-surface-input); color: var(--dtc-text); }
 
-.dtc-flow-inspector {
-  width: 320px; flex-shrink: 0; overflow: auto; padding: 12px;
-  border-left: 1px solid var(--dtc-border-muted); background: var(--dtc-surface-panel);
-}
-.dtc-flow-inspector__empty { color: var(--dtc-text-subtle); font-style: italic; }
-.dtc-flow-inspector__header { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; }
-.dtc-flow-inspector__name { font-weight: 700; font-size: 15px; }
-.dtc-flow-inspector__path { color: var(--dtc-text-subtle); font-size: 12px; }
-.dtc-flow-inspector__facts { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; margin: 0 0 8px; }
-.dtc-flow-inspector__facts div { display: flex; justify-content: space-between; }
-.dtc-flow-inspector__facts dt { color: var(--dtc-text-subtle); }
-.dtc-flow-inspector__facts dd { margin: 0; font-variant-numeric: tabular-nums; }
-.dtc-flow-inspector__edit { width: 100%; min-height: 60px; box-sizing: border-box; padding: 6px; border: 1px solid var(--dtc-border); border-radius: 5px; background: var(--dtc-surface-input); color: var(--dtc-text); font-family: ui-monospace, monospace; }
-.dtc-flow-inspector__edit--active { border-color: var(--dtc-warning); box-shadow: inset 0 0 0 1px var(--dtc-warning); }
-.dtc-flow-inspector__commit { margin-top: 6px; }
-.dtc-flow-inspector__diagnostics { margin: 4px 0; padding-left: 16px; color: var(--dtc-danger-text); }
 .dtc-flow-explain__result { font-weight: 600; margin-bottom: 4px; }
 .dtc-flow-explain__tree { list-style: none; padding-left: 14px; margin: 2px 0; border-left: 1px dashed var(--dtc-border); }
 .dtc-flow-explain__node { padding: 1px 0; }
-
-.dtc-section-label { margin: 10px 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--dtc-text-subtle); }
-
-.dtc-flow-console {
-  display: flex; align-items: center; gap: 14px; padding: 6px 12px;
-  border-top: 1px solid var(--dtc-border-muted); background: var(--dtc-surface-subtle);
-}
-.dtc-flow-console__group { display: inline-flex; align-items: center; gap: 6px; color: var(--dtc-text-muted); }
-.dtc-value-display { padding: 4px 0; font-variant-numeric: tabular-nums; }
-.dtc-value-display--error { color: var(--dtc-danger-text); }
 "#;
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::spine_widgets::first_match;
     use dnatreecalc_skin_framework::{
-        DependencyEdgeProjection, DependencyKindProjection, NodeContentKind,
+        DependencyEdgeProjection, DependencyKindProjection, NodeContentKind, NodeValueProjection,
     };
 
     fn node(key: &str, path: &str) -> NodeView {
@@ -1068,6 +889,28 @@ mod tests {
         assert_eq!(layout.cells[&NodeKey::new("k:A")].col, 0);
         assert_eq!(layout.cells[&NodeKey::new("k:B")].col, 1);
         assert_eq!(layout.cells[&NodeKey::new("k:C")].col, 2);
+    }
+
+    #[test]
+    fn layout_excludes_effective_meta_descendants() {
+        let mut ws = linear_workspace();
+        // Make A a meta node with a regular-flagged child: both must leave the
+        // stage (effective-meta contagion), B/C stay.
+        ws.nodes_by_key.get_mut(&NodeKey::new("k:A")).unwrap().is_meta = true;
+        ws.nodes.get_mut(&NodeId::new("A")).unwrap().is_meta = true;
+        let mut child = node("k:AC", "A.Child");
+        child.parent = Some(NodeId::new("A"));
+        ws.node_order.push(child.id.clone());
+        ws.key_order.push(child.key.clone());
+        ws.paths_by_key.insert(child.key.clone(), child.id.clone());
+        ws.nodes.insert(child.id.clone(), child.clone());
+        ws.nodes_by_key.insert(child.key.clone(), child);
+
+        let layout = compute_layout(&ws);
+        assert!(!layout.cells.contains_key(&NodeKey::new("k:A")));
+        assert!(!layout.cells.contains_key(&NodeKey::new("k:AC")));
+        assert!(layout.cells.contains_key(&NodeKey::new("k:B")));
+        assert!(layout.cells.contains_key(&NodeKey::new("k:C")));
     }
 
     #[test]

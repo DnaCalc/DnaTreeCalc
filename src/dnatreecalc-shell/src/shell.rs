@@ -183,10 +183,11 @@ fn handle_shell_keydown(
         return;
     };
 
-    // While the user is typing, honor only modified global verbs — bare-key
-    // grammar (Commit, Fold, NameBox, Explain, arrows, …) belongs to the edit
-    // buffer, not the shell.
-    if keyboard_target_is_text_entry(&ev) && !command {
+    // While the user is typing, honor only modified global verbs and function
+    // keys (F9 must recalculate from anywhere, exactly like Excel) — other
+    // bare-key grammar (Commit, Fold, NameBox, Explain, arrows, …) belongs to
+    // the edit buffer, not the shell.
+    if keyboard_target_is_text_entry(&ev) && !command && !is_function_key(&chord.key) {
         return;
     }
 
@@ -263,6 +264,14 @@ fn handle_shell_keydown(
 fn skin_id_for_slot(skin_ids: &[SkinId], slot: u8) -> Option<SkinId> {
     let index = (slot as usize).checked_sub(1)?;
     skin_ids.get(index).copied()
+}
+
+/// `F1`..`F24` style keys — exempt from the typing suppression so F9
+/// recalculates from inside any edit buffer.
+fn is_function_key(key: &str) -> bool {
+    key.len() >= 2
+        && key.starts_with('F')
+        && key[1..].chars().all(|ch| ch.is_ascii_digit())
 }
 
 fn parent_of_selection(workspace: &WorkspaceState, selection: &SelectionState) -> Option<NodeId> {
@@ -475,6 +484,17 @@ fn SkinSwitcher(registry: Arc<SkinRegistry>, current: RwSignal<SkinId>) -> impl 
 mod tests {
     use super::*;
     use dnatreecalc_skin_framework::WorkspaceState;
+
+    #[test]
+    fn function_keys_are_exempt_from_typing_suppression() {
+        assert!(is_function_key("F9"));
+        assert!(is_function_key("F12"));
+        assert!(!is_function_key("F"));
+        assert!(!is_function_key("Enter"));
+        assert!(!is_function_key("e"));
+        // 'Fn' style or alphabetic suffixes are not function keys.
+        assert!(!is_function_key("Fn"));
+    }
 
     #[test]
     fn skin_slot_maps_lens_numbers_to_ordered_ids() {

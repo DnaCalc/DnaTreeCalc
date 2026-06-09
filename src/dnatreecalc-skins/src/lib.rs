@@ -14,6 +14,7 @@ pub mod flow;
 pub mod formula_tree;
 mod node_management;
 pub mod outline_table;
+mod spine_widgets;
 pub mod triple_editor;
 pub mod value_board;
 mod value_render;
