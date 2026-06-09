@@ -95,9 +95,11 @@ collision discovered during replay validation is surfaced as a typed candidate r
 The first same-parent order/name merge slice is now landed as well: candidate rename can rebase over
 live sibling reorder and candidate reorder can rebase over live sibling rename. Skin IR now exposes
 a closed `ReorderCandidateNode` intent so candidate-private order edits are testable without skin
-semantics. Candidate add-node template policy, competing structural order/delete/name merge algebra
-beyond these rename/move, rename/add, and rename/reorder facets, and full scenario/what-if UX
-remain open. The
+semantics. The first sibling add/delete merge slice is now landed too: candidate add over live
+sibling delete and candidate delete over live sibling add rebase and commit when the touched nodes
+are distinct, while deleted-subtree overlap remains rejected. Candidate add-node template policy,
+competing structural order/delete/name merge algebra beyond these rename/move, rename/add,
+rename/reorder, and sibling add/delete facets, and full scenario/what-if UX remain open. The
 first richer host-pin retention slice
 is also landed: OxCalc exposes explicit candidate retention pins that protect active candidates from
 budget reaping, DnaTreeCalc projects pin counts and pressure reason counts, and Skin IR exposes
@@ -703,6 +705,13 @@ The roadmap alignment rule is:
       programmable Skin IR tests proving both directions from outside the engine. Reorder/add index
       semantics, order/delete merge algebra, template initial content, and broader what-if UX remain
       open.
+- [x] `candidate-overlay-handle` sibling add/delete structural merge slice:
+      OxCalc now treats same-parent add/delete lane touches as compatible when the deleted/touched
+      node sets do not overlap and replay validation succeeds. Candidate add over live sibling
+      delete and candidate delete over live sibling add both rebase and commit, while the existing
+      delete-descendant overlap test keeps destructive overlaps rejected. Programmable Skin IR tests
+      prove both directions from outside the engine. Reorder/add index semantics, deeper delete
+      merge algebra, template initial content, and broader what-if UX remain open.
 - [x] W4c `scenario-projection` first candidate-backed scenario rail slice:
       DnaTreeCalc projects `WorkspaceState.scenarios` as a host-owned manifest over existing OxCalc
       candidate handles, with closed `CreateScenarioFromCandidate`, `ActivateScenario`, and
@@ -807,8 +816,8 @@ The roadmap alignment rule is:
 - [ ] `candidate-overlay-handle`: continue toward fully addressable, layerable, non-publishing
       candidate contexts with broader structural order/delete/name-collision merge algebra beyond
       same-node rename/move, same-parent rename/add, and same-parent rename/reorder facet merging,
-      candidate add-node template initial content, direct sweep/goal-seek comparison columns/series,
-      and broader what-if UX.
+      sibling add/delete merging, candidate add-node template initial content, direct sweep/goal-seek
+      comparison columns/series, and broader what-if UX.
 - [x] `value-epoch-keying`: per-node published-value epoch distinct from input epoch.
 
 ## Status Template
