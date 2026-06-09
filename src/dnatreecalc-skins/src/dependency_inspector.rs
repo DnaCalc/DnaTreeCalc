@@ -1,6 +1,6 @@
 use dnatreecalc_skin_framework::{
-    NodeId, SkinCapabilities, SkinCategory, SkinContext, SkinHandle, SkinId, SkinManifest,
-    SkinState, WorkspaceIntent, WorkspaceSkin,
+    NodeId, NodeKey, SelectableItemA11y, SkinCapabilities, SkinCategory, SkinContext, SkinHandle,
+    SkinId, SkinManifest, SkinState, WorkspaceIntent, WorkspaceSkin, listbox_a11y,
 };
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -74,25 +74,59 @@ fn DependencyInspectorView(cx: SkinContext<DependencyInspectorState>) -> impl In
                     let node = ws.node(id)?;
                     let outgoing = ws.dependencies.outgoing_count_by_key(&node.key);
                     let incoming = ws.dependencies.incoming_count_by_key(&node.key);
-                    Some((id.clone(), node.display_name.clone(), outgoing, incoming))
+                    Some((
+                        id.clone(),
+                        node.key.clone(),
+                        node.display_name.clone(),
+                        outgoing,
+                        incoming,
+                    ))
                 })
                 .collect::<Vec<_>>()
+        })
+    });
+    let listbox_attrs = Memo::new(move |_| {
+        rows.with(|rs| {
+            let active_key = selected_id.with(|selected| {
+                selected
+                    .as_ref()
+                    .and_then(|selected| rs.iter().find(|(id, _, _, _, _)| id == selected))
+                    .map(|(_, key, _, _, _)| key.clone())
+            });
+            listbox_a11y(
+                "Nodes with dependency counts",
+                "dtc-dependency-node",
+                active_key.as_ref(),
+            )
         })
     });
 
     view! {
         <section class="dtc-dependency-inspector">
-            <div class="dtc-dependency-inspector__list">
+            <div
+                class="dtc-dependency-inspector__list"
+                role=move || listbox_attrs.get().role
+                aria-label=move || listbox_attrs.get().aria_label
+                attr:aria-activedescendant=move || listbox_attrs.get().aria_activedescendant
+            >
                 {move || {
                     let dispatch = dispatch.clone();
                     rows.with(|rs| {
+                        let has_visible_selection = selected_id.with(|selected| {
+                            selected
+                                .as_ref()
+                                .is_some_and(|selected| rs.iter().any(|(id, _, _, _, _)| id == selected))
+                        });
                         rs.iter()
-                            .map(|(id, name, outgoing, incoming)| {
+                            .enumerate()
+                            .map(|(index, (id, key, name, outgoing, incoming))| {
                                 dependency_summary_row(
                                     id.clone(),
+                                    key.clone(),
                                     name.clone(),
                                     *outgoing,
                                     *incoming,
+                                    !has_visible_selection && index == 0,
                                     selected_id,
                                     dispatch.clone(),
                                 )
@@ -146,20 +180,32 @@ fn DependencyInspectorView(cx: SkinContext<DependencyInspectorState>) -> impl In
 
 fn dependency_summary_row(
     id: NodeId,
+    key: NodeKey,
     name: String,
     outgoing: usize,
     incoming: usize,
+    fallback_focusable: bool,
     selected_id: Memo<Option<NodeId>>,
     dispatch: std::sync::Arc<dyn dnatreecalc_skin_framework::Dispatcher>,
 ) -> impl IntoView {
     let id_for_active = id.clone();
+    let id_for_focus = id.clone();
     let id_for_click = id.clone();
     let is_active = Memo::new(move |_| selected_id.get() == Some(id_for_active.clone()));
+    let a11y = Memo::new(move |_| {
+        let selected = selected_id.get() == Some(id_for_focus.clone());
+        let focusable = selected || fallback_focusable;
+        SelectableItemA11y::for_option("dtc-dependency-node", &key, selected, focusable)
+    });
     view! {
         <button
             type="button"
+            id=move || a11y.get().id
             class="dtc-dependency-row"
             class:dtc-dependency-row--selected=move || is_active.get()
+            role=move || a11y.get().role
+            aria-selected=move || a11y.get().aria_selected
+            tabindex=move || a11y.get().tabindex
             on:click=move |_| {
                 dispatch.dispatch(WorkspaceIntent::SelectNode(Some(id_for_click.clone())));
             }

@@ -1,6 +1,7 @@
 use dnatreecalc_skin_framework::{
-    NodeId, NodeValueProjection, SkinCapabilities, SkinCategory, SkinContext, SkinHandle, SkinId,
-    SkinManifest, SkinState, WorkspaceIntent, WorkspaceRecalcMode, WorkspaceSkin,
+    NodeId, NodeKey, NodeValueProjection, SelectableRowA11y, SkinCapabilities, SkinCategory,
+    SkinContext, SkinHandle, SkinId, SkinManifest, SkinState, WorkspaceIntent, WorkspaceRecalcMode,
+    WorkspaceSkin, table_a11y,
 };
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -90,6 +91,7 @@ fn OutlineTableView(cx: SkinContext<OutlineTableState>) -> impl IntoView {
                     }
                     Some(OutlineRow {
                         id: node.id.clone(),
+                        key: node.key.clone(),
                         path: node.id.as_str().to_string(),
                         formula: if node.content_text.is_empty() {
                             String::new()
@@ -104,9 +106,28 @@ fn OutlineTableView(cx: SkinContext<OutlineTableState>) -> impl IntoView {
                 .collect::<Vec<_>>()
         })
     });
+    let table_attrs = Memo::new(move |_| {
+        rows.with(|rs| {
+            let active_key = selection.with(|s| {
+                s.primary
+                    .as_ref()
+                    .and_then(|selected| rs.iter().find(|row| &row.id == selected))
+                    .map(|row| row.key.clone())
+            });
+            table_a11y(
+                "Workspace outline table",
+                "dtc-outline-node",
+                active_key.as_ref(),
+            )
+        })
+    });
 
     view! {
-        <table class="dtc-outline-table">
+        <table
+            class="dtc-outline-table"
+            aria-label=move || table_attrs.get().aria_label
+            attr:aria-activedescendant=move || table_attrs.get().aria_activedescendant
+        >
             <thead>
                 <tr>
                     <th>"Path"</th>
@@ -118,8 +139,22 @@ fn OutlineTableView(cx: SkinContext<OutlineTableState>) -> impl IntoView {
                 {move || {
                     let dispatch = dispatch.clone();
                     rows.with(|rs| {
+                        let has_visible_selection = selection.with(|s| {
+                            s.primary
+                                .as_ref()
+                                .is_some_and(|selected| rs.iter().any(|row| &row.id == selected))
+                        });
                         rs.iter()
-                            .map(|row| outline_row(row.clone(), selection, shared, dispatch.clone()))
+                            .enumerate()
+                            .map(|(index, row)| {
+                                outline_row(
+                                    row.clone(),
+                                    !has_visible_selection && index == 0,
+                                    selection,
+                                    shared,
+                                    dispatch.clone(),
+                                )
+                            })
                             .collect::<Vec<_>>()
                     })
                 }}
@@ -131,6 +166,7 @@ fn OutlineTableView(cx: SkinContext<OutlineTableState>) -> impl IntoView {
 #[derive(Clone, PartialEq, Eq)]
 struct OutlineRow {
     id: NodeId,
+    key: NodeKey,
     path: String,
     formula: String,
     value: String,
@@ -140,6 +176,7 @@ struct OutlineRow {
 
 fn outline_row(
     row: OutlineRow,
+    fallback_focusable: bool,
     selection: ReadSignal<dnatreecalc_skin_framework::SelectionState>,
     shared: dnatreecalc_skin_framework::SharedSkinStateHandle,
     dispatch: std::sync::Arc<dyn dnatreecalc_skin_framework::Dispatcher>,
@@ -156,10 +193,21 @@ fn outline_row(
     let is_error = row.is_error;
     let is_selected =
         Memo::new(move |_| selection.with(|s| s.primary.as_ref() == Some(&id_for_selection)));
+    let id_for_a11y = row.id.clone();
+    let a11y = Memo::new(move |_| {
+        selection.with(|s| {
+            let selected = s.primary.as_ref() == Some(&id_for_a11y);
+            let focusable = selected || fallback_focusable;
+            SelectableRowA11y::new("dtc-outline-node", &row.key, selected, focusable)
+        })
+    });
 
     view! {
         <tr
+            id=move || a11y.get().id
             class:dtc-outline-row--selected=move || is_selected.get()
+            aria-selected=move || a11y.get().aria_selected
+            tabindex=move || a11y.get().tabindex
             on:click=move |_| {
                 dispatch.dispatch(WorkspaceIntent::SelectNode(Some(id_for_click.clone())));
             }

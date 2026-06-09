@@ -681,6 +681,18 @@ The roadmap alignment rule is:
       token emission for light/dark/high-contrast modes, while walking-skeleton and programmable Skin
       IR tests prove token context wiring through real mounts. Runtime theme selection, per-skin
       overrides, locale tokens, and a11y helpers remain later W5 work.
+- [x] W5 early `a11y-primitives` first selection-surface slice:
+      Skin IR now exposes framework-owned `tree_a11y`, `listbox_a11y`, `table_a11y`,
+      `stable_node_dom_id`, selectable item/row ARIA attribute carriers, and roving-tabindex helpers.
+      Tree/list/table active descendants are derived from stable `NodeKey` ids rather than display
+      paths. TripleEditor and FormulaTree node rails now render tree/treeitem semantics with
+      `aria-level`, `aria-posinset`, `aria-setsize`, `aria-selected`, and selection-bound roving
+      focus. DependencyInspector uses listbox/option semantics, and OutlineTable publishes row
+      selection plus an active descendant over stable node ids. Framework tests prove the helper
+      contract; walking-skeleton and programmable Skin IR tests prove the updated real skins still
+      mount and dispatch through the host without adding skin-side semantics. Table-cell-grid-specific
+      a11y helpers for ValueBoard's `TableCellSelection`, focus-boundary helpers for future
+      multi-slot composition, and broader screen-reader/browser audits remain later W5 work.
 - [ ] `candidate-overlay-handle`: continue toward fully addressable, layerable, non-publishing
       candidate contexts with optimized live layering/merge rebase, candidate add-node template
       initial content, direct sweep/goal-seek comparison columns, scoped/unit series projection, and

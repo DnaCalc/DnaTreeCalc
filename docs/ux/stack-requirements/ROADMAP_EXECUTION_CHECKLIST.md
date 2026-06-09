@@ -568,6 +568,13 @@ Use this as the per-tranche goal statement before implementation:
       object through each mounted `SkinContext`. Built-in shell/skin CSS consumes `var(--dtc-...)`
       presentation tokens instead of literal colors. Framework tests prove token CSS emission;
       walking-skeleton and programmable Skin IR tests prove the token context reaches real mounts.
+- [x] W5 early `a11y-primitives` first selection-surface slice:
+      Skin IR now exposes framework-owned tree/listbox/table ARIA helpers, stable NodeKey-derived
+      DOM ids, selectable item/row attribute carriers, and roving-tabindex policy. TripleEditor,
+      FormulaTree, DependencyInspector, and OutlineTable consume those helpers so selected node
+      surfaces publish `aria-selected`, stable active descendants, and one focusable visible item
+      when no visible selection exists. Framework tests prove helper output; walking-skeleton and
+      programmable Skin IR tests prove the real skins still mount and route host selection/dispatch.
 - [ ] `candidate-overlay-handle`: continue toward fully addressable, layerable, non-publishing
       candidate contexts with optimized live layering/merge rebase, candidate add-node template
       initial content, direct sweep/goal-seek comparison columns, scoped/unit series projection, and
@@ -582,9 +589,9 @@ Only pull these forward when their prerequisites above are met:
   insertion, paste special, duplicate subtree, set membership, notes, formats).
 - W4a/W4b/W4c: revision navigation, candidate overlays, speculation, scenarios, and comparative
   projections.
-- W5 early remaining subset: a11y plus delta-only resync/gap-recovery policy on top of the landed
-  projection delta/version stream, with runtime theme switching and per-skin token overrides as later
-  token-layer follow-through.
+- W5 early remaining subset: delta-only resync/gap-recovery policy on top of the landed projection
+  delta/version stream, plus table-cell-grid-specific a11y helpers and runtime theme switching as
+  follow-through.
 - W5+ later platform: worker calc, multi-slot composition, keybinding registry, virtualization,
   capability negotiation, error isolation, telemetry.
 - W6: templates, table structural authoring, import/export, external feeds, sensitivity/goal seek,

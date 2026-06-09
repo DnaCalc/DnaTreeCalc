@@ -8,6 +8,7 @@
 //! the trait live in `dnatreecalc-skins`; the shell that composes
 //! mounted skins lives in `dnatreecalc-shell`.
 
+pub mod accessibility;
 pub mod identity;
 pub mod intent;
 pub mod manifest;
@@ -18,6 +19,10 @@ pub mod state;
 pub mod theme;
 pub mod workspace;
 
+pub use accessibility::{
+    AriaAttrs, SelectableItemA11y, SelectableRowA11y, aria_bool, listbox_a11y, roving_tabindex,
+    stable_node_dom_id, table_a11y, tree_a11y,
+};
 pub use identity::{NodeId, NodeKey, SkinId, SkinMountSlot};
 pub use intent::{
     AuthoringScope, ClipboardPayloadKind, DependencyDeltaProjection, Dispatcher,

@@ -1,6 +1,7 @@
 use dnatreecalc_skin_framework::{
-    NodeId, NodeView, SkinCapabilities, SkinCategory, SkinContext, SkinHandle, SkinId,
-    SkinManifest, SkinState, WorkspaceIntent, WorkspaceRecalcMode, WorkspaceSkin,
+    NodeId, NodeKey, NodeView, SelectableItemA11y, SkinCapabilities, SkinCategory, SkinContext,
+    SkinHandle, SkinId, SkinManifest, SkinState, WorkspaceIntent, WorkspaceRecalcMode,
+    WorkspaceSkin, tree_a11y,
 };
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -102,6 +103,17 @@ fn TripleEditorView(cx: SkinContext<TripleEditorState>) -> impl IntoView {
                 .collect::<Vec<_>>()
         })
     });
+    let tree_attrs = Memo::new(move |_| {
+        rows.with(|rs| {
+            let active_key = selection.with(|s| {
+                s.primary
+                    .as_ref()
+                    .and_then(|selected| rs.iter().find(|row| &row.id == selected))
+                    .map(|row| row.key.clone())
+            });
+            tree_a11y("Workspace nodes", "dtc-triple-node", active_key.as_ref())
+        })
+    });
 
     let selected_snapshot = Memo::new(move |_| {
         let selected = selection.with(|s| s.primary.clone());
@@ -121,14 +133,36 @@ fn TripleEditorView(cx: SkinContext<TripleEditorState>) -> impl IntoView {
         <section class="dtc-triple-editor">
             <aside class="dtc-triple-editor__nav" aria-label="Workspace navigation">
                 <div class="dtc-section-label">"Nodes"</div>
+                <div
+                    role=move || tree_attrs.get().role
+                    aria-label=move || tree_attrs.get().aria_label
+                    attr:aria-activedescendant=move || tree_attrs.get().aria_activedescendant
+                >
                 {move || {
                     let dispatch = nav_dispatch.clone();
                     rows.with(|rs| {
+                        let setsize = rs.len();
+                        let has_visible_selection = selection.with(|s| {
+                            s.primary
+                                .as_ref()
+                                .is_some_and(|selected| rs.iter().any(|row| &row.id == selected))
+                        });
                         rs.iter()
-                            .map(|row| nav_row(row.clone(), selection, dispatch.clone()))
+                            .enumerate()
+                            .map(|(index, row)| {
+                                nav_row(
+                                    row.clone(),
+                                    index + 1,
+                                    setsize,
+                                    !has_visible_selection && index == 0,
+                                    selection,
+                                    dispatch.clone(),
+                                )
+                            })
                             .collect::<Vec<_>>()
                     })
                 }}
+                </div>
             </aside>
             <section class="dtc-triple-editor__editor">
                 <NodeManagementPanel
@@ -202,6 +236,7 @@ fn TripleEditorView(cx: SkinContext<TripleEditorState>) -> impl IntoView {
 #[derive(Clone, PartialEq, Eq)]
 struct NavRow {
     id: NodeId,
+    key: NodeKey,
     label: String,
     depth: u32,
     is_meta: bool,
@@ -210,6 +245,7 @@ struct NavRow {
 fn row_for(node: &NodeView) -> NavRow {
     NavRow {
         id: node.id.clone(),
+        key: node.key.clone(),
         label: node.display_name.clone(),
         depth: node.depth,
         is_meta: node.is_meta,
@@ -218,26 +254,53 @@ fn row_for(node: &NodeView) -> NavRow {
 
 fn nav_row(
     row: NavRow,
+    posinset: usize,
+    setsize: usize,
+    fallback_focusable: bool,
     selection: ReadSignal<dnatreecalc_skin_framework::SelectionState>,
     dispatch: std::sync::Arc<dyn dnatreecalc_skin_framework::Dispatcher>,
 ) -> impl IntoView {
     let id_for_selection = row.id.clone();
+    let id_for_focus = row.id.clone();
     let id_for_click = row.id.clone();
     let is_selected =
         Memo::new(move |_| selection.with(|s| s.primary.as_ref() == Some(&id_for_selection)));
+    let a11y = Memo::new(move |_| {
+        selection.with(|s| {
+            let selected = s.primary.as_ref() == Some(&id_for_focus);
+            let focusable = selected || fallback_focusable;
+            SelectableItemA11y::for_tree_item(
+                "dtc-triple-node",
+                &row.key,
+                selected,
+                focusable,
+                row.depth + 1,
+                posinset,
+                setsize,
+            )
+        })
+    });
     let indent = format!("padding-left: {}rem;", 0.25 + (row.depth as f32) * 0.75);
 
     view! {
-        <div
+        <button
+            type="button"
+            id=move || a11y.get().id
             class="dtc-tree-row"
             class:dtc-tree-row--selected=move || is_selected.get()
             class:dtc-tree-row--meta=row.is_meta
             style=indent
+            role=move || a11y.get().role
+            attr:aria-selected=move || a11y.get().aria_selected
+            attr:aria-level=move || a11y.get().aria_level
+            attr:aria-posinset=move || a11y.get().aria_posinset
+            attr:aria-setsize=move || a11y.get().aria_setsize
+            tabindex=move || a11y.get().tabindex
             on:click=move |_| {
                 dispatch.dispatch(WorkspaceIntent::SelectNode(Some(id_for_click.clone())));
             }
         >
             <span>{row.label}</span>
-        </div>
+        </button>
     }
 }

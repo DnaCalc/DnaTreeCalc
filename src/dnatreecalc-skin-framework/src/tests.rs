@@ -26,6 +26,10 @@ use crate::state::{
 };
 use crate::theme::{ThemeMode, ThemeTokens};
 use crate::workspace::WorkspaceState;
+use crate::{
+    SelectableItemA11y, SelectableRowA11y, listbox_a11y, roving_tabindex, stable_node_dom_id,
+    tree_a11y,
+};
 
 #[derive(Default, Clone, Serialize, Deserialize)]
 struct InertState {
@@ -376,6 +380,30 @@ fn theme_tokens_emit_skin_css_custom_properties() {
             .css_custom_properties()
             .contains("--dtc-focus: #ffff00;")
     );
+}
+
+#[test]
+fn a11y_helpers_encode_selection_and_roving_focus() {
+    let key = NodeKey::new("tree-node:42");
+    let selected = SelectableItemA11y::for_tree_item("dtc-node", &key, true, true, 3, 2, 7);
+    assert_eq!(selected.id, "dtc-node-tree-node-42");
+    assert_eq!(selected.role, "treeitem");
+    assert_eq!(selected.aria_selected, "true");
+    assert_eq!(selected.aria_level.as_deref(), Some("3"));
+    assert_eq!(selected.aria_posinset.as_deref(), Some("2"));
+    assert_eq!(selected.aria_setsize.as_deref(), Some("7"));
+    assert_eq!(selected.tabindex, "0");
+
+    let unselected_focusable = SelectableRowA11y::new("dtc-row", &key, false, true);
+    assert_eq!(unselected_focusable.aria_selected, "false");
+    assert_eq!(unselected_focusable.tabindex, "0");
+    assert_eq!(roving_tabindex(false), "-1");
+    assert_eq!(stable_node_dom_id("prefix", &key), "prefix-tree-node-42");
+    assert_eq!(
+        tree_a11y("Nodes", "dtc-node", Some(&key)).aria_activedescendant,
+        Some("dtc-node-tree-node-42".to_string())
+    );
+    assert_eq!(listbox_a11y("Nodes", "dtc-node", None).role, "listbox");
 }
 
 fn mount_persisted_skin(
