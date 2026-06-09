@@ -75,9 +75,11 @@ captured layered private edits and dropping the parent handle, and DnaTreeCalc e
 explicitly evaluated. The live layering and first conservative merge/rebase conflict-policy slices
 are also landed: parented candidates refresh from parent-private edits made after child open, and
 stale candidate rebase returns a typed conflict report when live and candidate edits overlap on the
-same stable node while non-overlapping edits still rebase. Richer structural merge algebra,
-candidate add-node template policy, and full scenario/what-if UX remain open. The first richer
-host-pin retention slice
+same stable node while non-overlapping edits still rebase. Candidate add-node parent/order conflict
+classification is also landed: candidate adds mark their parent lane so a live sibling/ordering
+change rejects stale rebase instead of silently merging. Richer structural merge algebra, candidate
+add-node template policy, and full scenario/what-if UX remain open. The first richer host-pin
+retention slice
 is also landed: OxCalc exposes explicit candidate retention pins that protect active candidates from
 budget reaping, DnaTreeCalc projects pin counts and pressure reason counts, and Skin IR exposes
 closed pin/unpin intents without owning lifecycle semantics. The first W4c scenario-projection slice
@@ -619,9 +621,17 @@ The roadmap alignment rule is:
       edits still rebase. DnaTreeCalc maps the report to a typed Skin IR `IntentError` with stable
       `NodeKey` overlaps. Focused OxCalc candidate tests prove conflict rejection, clean unparented
       rebase, clean parented flattening, and live child refresh; programmable Skin IR tests prove the
-      same conflict/success paths from outside the engine. Richer structural merge algebra, add-node
-      parent/order conflict classification, template initial content, and scenario/what-if UX remain
-      open.
+      same conflict/success paths from outside the engine. Richer structural merge algebra, template
+      initial content, and scenario/what-if UX remain open.
+- [x] `candidate-overlay-handle` add-node parent/order conflict slice:
+      OxCalc now classifies candidate `AddNode` edits as touching their parent lane, so stale rebase
+      rejects with typed `CandidateRebaseConflict` when the live workspace changes the same parent
+      structure/order before rebase. Candidate `MoveNode` edits also mark the destination parent
+      lane. DnaTreeCalc projects the same conflict as stable `NodeKey` overlaps through Skin IR.
+      Focused OxCalc tests prove candidate-add versus live sibling-add conflict on the parent node;
+      programmable Skin IR tests prove the same rebase rejection from outside the engine. Richer
+      multi-edit merge algebra, old-parent/delete-descendant classification, template initial
+      content, and scenario/what-if UX remain open.
 - [x] W4c `scenario-projection` first candidate-backed scenario rail slice:
       DnaTreeCalc projects `WorkspaceState.scenarios` as a host-owned manifest over existing OxCalc
       candidate handles, with closed `CreateScenarioFromCandidate`, `ActivateScenario`, and

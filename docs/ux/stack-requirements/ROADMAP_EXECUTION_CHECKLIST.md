@@ -511,6 +511,13 @@ Use this as the per-tranche goal statement before implementation:
       `CandidateRebaseConflict` with stable `NodeKey` overlaps. Focused OxCalc candidate tests and
       programmable Skin IR tests prove same-node conflict rejection, non-overlap rebase, parented
       flattening, and live child refresh.
+- [x] `candidate-overlay-handle` add-node parent/order conflict slice:
+      OxCalc marks candidate `AddNode` edits as touching their parent lane and marks candidate
+      `MoveNode` edits as touching their destination parent lane. Stale candidate rebase now rejects
+      with typed `CandidateRebaseConflict` when the live workspace changes the same parent
+      structure/order before rebase. DnaTreeCalc maps the parent overlap to stable Skin IR `NodeKey`
+      conflict payloads. Focused OxCalc candidate tests and programmable Skin IR tests prove
+      candidate-add versus live sibling-add conflict without publishing the candidate node.
 - [x] W4c `scenario-projection` first candidate-backed scenario rail slice:
       DnaTreeCalc projects `WorkspaceState.scenarios` as a host-owned manifest over existing OxCalc
       candidate handles and exposes closed create/activate/delete scenario intents. Creating a
@@ -584,10 +591,10 @@ Use this as the per-tranche goal statement before implementation:
       surfaces publish `aria-selected`, stable active descendants, and one focusable visible item
       when no visible selection exists. Framework tests prove helper output; walking-skeleton and
       programmable Skin IR tests prove the real skins still mount and route host selection/dispatch.
-- [ ] `candidate-overlay-handle`: continue W4b with richer structural merge algebra, add-node
-      parent/order conflict classification, candidate add-node template initial content, direct
-      sweep/goal-seek comparison columns, scoped/unit series projection, and broader what-if UX
-      before goal seek or sweeps.
+- [ ] `candidate-overlay-handle`: continue W4b with richer structural merge algebra,
+      old-parent/delete-descendant conflict classification, candidate add-node template initial
+      content, direct sweep/goal-seek comparison columns, scoped/unit series projection, and broader
+      what-if UX before goal seek or sweeps.
 - [x] `value-epoch-keying`: per-node published-value epoch is available for projection consumers.
 
 ## Next-Wave Parking Lot

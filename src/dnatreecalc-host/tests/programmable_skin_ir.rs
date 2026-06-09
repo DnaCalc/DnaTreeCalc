@@ -1602,6 +1602,107 @@ fn programmable_skin_rejects_stale_candidate_commit_without_losing_candidate() {
 }
 
 #[test]
+fn programmable_skin_rejects_candidate_add_rebase_when_live_parent_order_changed() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    let root_key = skin
+        .state()
+        .node(&NodeId::new("Root"))
+        .expect("Root should project")
+        .key
+        .clone();
+    let open = skin.try_open_candidate();
+    assert!(open.accepted, "{:?}", open.error);
+    let handle = skin.state().candidates[0].handle.clone();
+    let added = skin.try_add_candidate_node(
+        &handle,
+        Some(root_key.clone()),
+        "CandidateChild",
+        InitialNodeContentProjection::Literal {
+            content: "7".to_string(),
+        },
+        false,
+    );
+    assert!(added.accepted, "{:?}", added.error);
+
+    skin.add_node(Some("Root"), "LiveChild", "9");
+    let rebase = skin.try_rebase_candidate(&handle);
+
+    assert!(!rebase.accepted);
+    assert!(matches!(
+        rebase.error,
+        Some(IntentError::CandidateRebaseConflict {
+            overlapping_nodes,
+            ..
+        }) if overlapping_nodes == vec![root_key.clone()]
+    ));
+    assert!(
+        skin.state()
+            .node(&NodeId::new("Root.CandidateChild"))
+            .is_none()
+    );
+    assert!(skin.state().node(&NodeId::new("Root.LiveChild")).is_some());
+    assert!(
+        skin.state()
+            .candidates
+            .iter()
+            .any(|candidate| candidate.handle == handle)
+    );
+}
+
+#[test]
+fn programmable_skin_rejects_candidate_move_rebase_when_live_destination_order_changed() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    skin.add_node(Some("Root"), "Group", "");
+    skin.add_node(Some("Root"), "A", "1");
+    let state = skin.state();
+    let group_key = state
+        .node(&NodeId::new("Root.Group"))
+        .expect("Group should project")
+        .key
+        .clone();
+    let a_key = state
+        .node(&NodeId::new("Root.A"))
+        .expect("A should project")
+        .key
+        .clone();
+    let open = skin.try_open_candidate();
+    assert!(open.accepted, "{:?}", open.error);
+    let handle = skin.state().candidates[0].handle.clone();
+    let moved = skin.try_move_candidate_node(&handle, a_key, Some(group_key.clone()), None);
+    assert!(moved.accepted, "{:?}", moved.error);
+
+    skin.add_node(Some("Root.Group"), "LiveChild", "9");
+    let rebase = skin.try_rebase_candidate(&handle);
+
+    assert!(!rebase.accepted);
+    assert!(matches!(
+        rebase.error,
+        Some(IntentError::CandidateRebaseConflict {
+            overlapping_nodes,
+            ..
+        }) if overlapping_nodes == vec![group_key.clone()]
+    ));
+    assert!(skin.state().node(&NodeId::new("Root.Group.A")).is_none());
+    assert!(
+        skin.state()
+            .node(&NodeId::new("Root.Group.LiveChild"))
+            .is_some()
+    );
+    assert!(
+        skin.state()
+            .candidates
+            .iter()
+            .any(|candidate| candidate.handle == handle)
+    );
+}
+
+#[test]
 fn programmable_skin_rebases_stale_candidate_before_commit() {
     let harness = Harness::empty();
     let skin = harness.driver.clone();
