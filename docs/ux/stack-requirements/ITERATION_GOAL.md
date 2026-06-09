@@ -1,47 +1,42 @@
 # Stack Improvement Iteration Goal
 
-## Operational Goal
+## Goal Statement
 
-Drive the stack-requirements roadmap as an engine-first execution program for DNA TreeCalc: each
-iteration must move the earliest unclosed roadmap capability from verified engine/language truth,
-through the DnaTreeCalc host projection or closed intent seam, into Skin IR evidence that a skin can
-consume without owning semantics.
+Execute the DNA TreeCalc stack-requirements roadmap as an engine-first product program: each
+iteration takes the earliest unclosed roadmap capability, verifies where the truth lives in the
+current code, implements the smallest useful tranche in that owning layer, and proves the result
+through the DnaTreeCalc host projection, closed intent seam, or Skin IR test plumbing.
 
-The iteration cursor is therefore not "make the skins nicer." It is:
+The purpose is not to polish skins opportunistically. The purpose is to make richer skins possible
+without giving them semantic ownership. OxFml must own formula parsing, binding, rewriting, and
+format rendering; OxCalc must own dependency facts, invalidation, transactions, publication,
+overlays, epochs, revisions, and scheduling; the DnaTreeCalc host must project typed facts and
+dispatch closed intents; skins must only render state and send typed commands.
 
-1. pick the earliest unmet item in `ROADMAP.md`,
-2. confirm whether it is an exposure, an extension, or genuinely new substrate in the live code,
-3. implement the smallest useful tranche in the owning repo,
-4. thread it through the host/Skin IR seam,
-5. prove it from outside the engine with programmable Skin IR or real-skin tests,
-6. update this goal/checklist with exact supported scope and remaining gaps,
-7. commit the affected repos before taking the next tranche.
+The iteration loop is:
 
-Current cursor: begin **W3 - Reference and content authoring verbs**. W2 safe structural authoring is
+1. choose the earliest unmet `ROADMAP.md` wave item,
+2. confirm the readiness tag against live OxFml/OxCalc/DnaTreeCalc code,
+3. classify the work as `expose`, `extend`, or `new substrate`,
+4. implement in the repo that owns the truth,
+5. thread the capability through the host projection or intent receipt,
+6. prove it from outside the engine with programmable Skin IR tests or a real skin,
+7. record exact supported scope, evidence, exclusions, and the next cursor, and
+8. commit the affected repos before starting the next tranche.
+
+Current cursor: **W3 - Reference and content authoring verbs**. W2 safe structural authoring is
 closed for the current Skin IR surface: receipts carry typed errors and real OxCalc transaction ids,
 previews use OxFml dry-bind plus OxCalc invalidation planning, and the closure review found no
 skin-side formula parsing, semantic value computation, or transaction-id fabrication.
 
-## Goal Statement
+## Roadmap Position
 
-Execute the DNA TreeCalc stack-requirements roadmap in dependency order, with each iteration tied to
-the earliest unmet wave item rather than to incidental UI polish. The purpose of the loop is to move
-semantic truth upward from the owning engine or language layer into the host projection and Skin IR,
-so skins can become richer without parsing formulas, inventing values, reinterpreting dependency
-facts, or owning calculation behavior.
+W0/W1 established the identity spine and typed published facts. W2 established safe structural
+authoring, typed errors, legality/impact previews, and transaction receipts for the current Skin IR
+surface. W3 now tests the next ownership boundary: authoring commands that carry ids, handles, and
+scopes while OxFml composes formula text and OxCalc rebinds and schedules.
 
-Each iteration must do four things:
-
-1. identify the active roadmap slice and the exact requirement it advances,
-2. verify the readiness tag against the current OxCalc, OxFml, and DnaTreeCalc code,
-3. implement or expose the capability in the repo that owns the truth, and
-4. prove the downstream behavior through host receipts/projection, programmable Skin IR tests, or a
-   real skin.
-
-The current cursor is W3 reference/content authoring verbs. W0/W1 established the identity spine and
-typed published facts, and W2 established safe structural authoring, typed errors, previews, and
-transaction receipts for the current Skin IR surface. When a
-requirement depends on one of the real engine gates (`transaction-scope`,
+When a requirement depends on a real engine gate (`transaction-scope`,
 `revision-graph-retention`, `candidate-overlay-handle`, or remaining value-epoch shape work), the
 iteration stops being host/Skin IR projection work and becomes an OxCalc spike or implementation
 until that substrate is genuinely available.

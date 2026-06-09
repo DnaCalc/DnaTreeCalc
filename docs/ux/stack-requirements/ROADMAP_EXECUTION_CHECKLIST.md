@@ -27,6 +27,24 @@ ids/handles/scopes through closed intents, and skins dispatch only.
 Do not advance to W4 speculation/history or W5 platform polish as the default next step while W3
 authoring verbs remain unassessed.
 
+## Per-Iteration Gate
+
+Before implementation, write the tranche in this form:
+
+| Field | Required answer |
+|---|---|
+| Roadmap wave | The exact `ROADMAP.md` wave and requirement id. |
+| User-visible capability | What a skin or host can now do that it could not do before. |
+| Owning truth | Which layer owns the semantic fact or mutation: OxFml, OxCalc, DnaTreeCalc host, or skin. |
+| Readiness result | `expose`, `extend`, or `new substrate`, corrected against live code. |
+| Seam change | Projection field, closed intent, receipt shape, Skin IR shape, or handoff doc. |
+| Evidence | Engine test plus programmable Skin IR or real-skin exercise, unless the tranche is a spike only. |
+| Exclusions | Concrete unsupported cases and the next blocked or unblocked requirement. |
+
+After implementation, close the tranche only when the evidence row is true and the owning-truth row
+has not drifted. If the owning layer lacks the needed API, record a handoff and move only to the next
+roadmap item that can be implemented without fabricating semantics host-side.
+
 ## Iteration-To-Roadmap Checklist
 
 Use this as the per-tranche goal statement before implementation:
