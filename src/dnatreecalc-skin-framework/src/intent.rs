@@ -5,7 +5,7 @@ use crate::identity::{NodeId, NodeKey};
 use crate::selection::{SelectionState, TableCellSelection};
 use crate::workspace::{
     CalcRunProjection, CandidateProjection, ClipboardProjection, DependencyKindProjection,
-    InitialNodeContentProjection, NodeValueProjection,
+    InitialNodeContentProjection, NodeValueProjection, ScenarioProjection,
 };
 use leptos::prelude::*;
 
@@ -269,6 +269,22 @@ pub enum WorkspaceIntent {
     /// still current. Stale basis is a typed engine rejection.
     CommitCandidate {
         handle: String,
+    },
+    /// Register a host-owned scenario label over an existing OxCalc candidate
+    /// handle. Values remain candidate projection truth.
+    CreateScenarioFromCandidate {
+        scenario_id: String,
+        name: String,
+        candidate_handle: String,
+    },
+    /// Set or clear the active scenario rail selection.
+    ActivateScenario {
+        scenario_id: Option<String>,
+    },
+    /// Delete a host-owned scenario label and release its candidate retention
+    /// pin.
+    DeleteScenario {
+        scenario_id: String,
     },
     AddNode {
         parent: Option<NodeId>,
@@ -550,6 +566,10 @@ pub enum IntentError {
         handle: String,
         child_handle: String,
     },
+    #[error("scenario {scenario_id} already exists")]
+    ScenarioAlreadyExists { scenario_id: String },
+    #[error("unknown scenario {scenario_id}")]
+    UnknownScenario { scenario_id: String },
     #[error("engine rejected the intent: {0}")]
     EngineRejected(String),
     #[error("host failed to dispatch the intent: {0}")]
@@ -586,6 +606,8 @@ pub enum WorkspaceDeltaChange {
     FormulaReferenceInserted(FormulaReferenceInsertionProjection),
     CandidateChanged(CandidateProjection),
     CandidateRemoved(String),
+    ScenarioChanged(ScenarioProjection),
+    ScenarioRemoved(String),
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -706,6 +728,9 @@ impl Dispatcher for InMemoryDispatcher {
             | WorkspaceIntent::UnpinCandidateRetention { .. }
             | WorkspaceIntent::ReapCandidates { .. }
             | WorkspaceIntent::CommitCandidate { .. }
+            | WorkspaceIntent::CreateScenarioFromCandidate { .. }
+            | WorkspaceIntent::ActivateScenario { .. }
+            | WorkspaceIntent::DeleteScenario { .. }
             | WorkspaceIntent::AddNode { .. }
             | WorkspaceIntent::RenameNode { .. }
             | WorkspaceIntent::MoveNode { .. }

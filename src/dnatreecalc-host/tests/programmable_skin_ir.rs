@@ -14,10 +14,10 @@ use dnatreecalc_skin_framework::{
     InvalidationReasonProjection, MutationImpactBlockedReasonProjection,
     MutationImpactIntentProjection, NodeAttributePatch, NodeContentKind, NodeId,
     NodeValueProjection, RecalcPlanMutation, ReferenceTargetProjection,
-    RuntimeEffectFamilyProjection, RuntimeOverlayKindProjection, TableCellEditabilityProjection,
-    TableCellRegionProjection, TableColumnBodyProjection, TableDependencyFactKindProjection,
-    TableDependencyFactStatusProjection, TreeReferenceCollectionFamilyProjection,
-    WorkspaceDeltaChange, WorkspaceRecalcMode,
+    RuntimeEffectFamilyProjection, RuntimeOverlayKindProjection, ScenarioSourceProjection,
+    TableCellEditabilityProjection, TableCellRegionProjection, TableColumnBodyProjection,
+    TableDependencyFactKindProjection, TableDependencyFactStatusProjection,
+    TreeReferenceCollectionFamilyProjection, WorkspaceDeltaChange, WorkspaceRecalcMode,
 };
 
 use support::programmable::{Harness, revision_fingerprint};
@@ -1004,6 +1004,97 @@ fn programmable_skin_pins_candidate_retention_against_reaping() {
 
     let extra_unpin = skin.try_unpin_candidate_retention(&pinned_handle);
     assert!(!extra_unpin.accepted);
+}
+
+#[test]
+fn programmable_skin_projects_scenario_manifest_over_candidate_handles() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    assert!(skin.try_open_candidate().accepted);
+    assert!(skin.try_open_candidate().accepted);
+    let before = skin.state();
+    let scenario_handle = before.candidates[0].handle.clone();
+    let reclaimable_handle = before.candidates[1].handle.clone();
+
+    let create = skin.try_create_scenario_from_candidate("scenario:bull", "Bull", &scenario_handle);
+    assert!(create.accepted, "{:?}", create.error);
+    let created_state = skin.state();
+    assert_eq!(created_state.scenarios.entries.len(), 1);
+    let scenario = &created_state.scenarios.entries[0];
+    assert_eq!(scenario.id, "scenario:bull");
+    assert_eq!(scenario.name, "Bull");
+    assert_eq!(
+        scenario.source,
+        ScenarioSourceProjection::Candidate {
+            handle: scenario_handle.clone()
+        }
+    );
+    assert_eq!(scenario.override_count, 0);
+    assert!(scenario.overridden_nodes.is_empty());
+    assert!(!scenario.is_active);
+    assert_eq!(
+        created_state
+            .candidates
+            .iter()
+            .find(|candidate| candidate.handle == scenario_handle)
+            .unwrap()
+            .retention_pin_count,
+        1
+    );
+    assert!(create.delta.changes.iter().any(|change| {
+        matches!(change, WorkspaceDeltaChange::ScenarioChanged(changed) if changed.id == "scenario:bull")
+    }));
+
+    let activate = skin.try_activate_scenario(Some("scenario:bull"));
+    assert!(activate.accepted, "{:?}", activate.error);
+    let active_state = skin.state();
+    assert_eq!(
+        active_state.scenarios.active.as_deref(),
+        Some("scenario:bull")
+    );
+    assert!(active_state.scenarios.entries[0].is_active);
+
+    let reap = skin.try_reap_candidates(1);
+    assert!(reap.accepted, "{:?}", reap.error);
+    let reaped_state = skin.state();
+    assert_eq!(reaped_state.candidates.len(), 1);
+    assert_eq!(reaped_state.candidates[0].handle, scenario_handle);
+    assert_eq!(reaped_state.scenarios.entries.len(), 1);
+    assert!(reap.delta.changes.iter().any(|change| {
+        matches!(change, WorkspaceDeltaChange::CandidateRemoved(handle) if handle == &reclaimable_handle)
+    }));
+
+    let duplicate =
+        skin.try_create_scenario_from_candidate("scenario:bull", "Other", &scenario_handle);
+    assert!(!duplicate.accepted);
+    assert!(matches!(
+        duplicate.error,
+        Some(IntentError::ScenarioAlreadyExists { .. })
+    ));
+
+    let manual_unpin = skin.try_unpin_candidate_retention(&scenario_handle);
+    assert!(manual_unpin.accepted, "{:?}", manual_unpin.error);
+    assert_eq!(
+        skin.state()
+            .candidates
+            .iter()
+            .find(|candidate| candidate.handle == scenario_handle)
+            .unwrap()
+            .retention_pin_count,
+        0
+    );
+
+    let delete = skin.try_delete_scenario("scenario:bull");
+    assert!(delete.accepted, "{:?}", delete.error);
+    let deleted_state = skin.state();
+    assert!(deleted_state.scenarios.entries.is_empty());
+    assert_eq!(deleted_state.scenarios.active, None);
+    assert_eq!(deleted_state.candidates[0].retention_pin_count, 0);
+    assert!(delete.delta.changes.iter().any(|change| {
+        matches!(change, WorkspaceDeltaChange::ScenarioRemoved(id) if id == "scenario:bull")
+    }));
 }
 
 #[test]

@@ -318,6 +318,32 @@ impl ProgrammableDriver {
         })
     }
 
+    pub fn try_create_scenario_from_candidate(
+        &self,
+        scenario_id: &str,
+        name: &str,
+        candidate_handle: &str,
+    ) -> IntentReceipt {
+        self.dispatch
+            .dispatch(WorkspaceIntent::CreateScenarioFromCandidate {
+                scenario_id: scenario_id.to_string(),
+                name: name.to_string(),
+                candidate_handle: candidate_handle.to_string(),
+            })
+    }
+
+    pub fn try_activate_scenario(&self, scenario_id: Option<&str>) -> IntentReceipt {
+        self.dispatch.dispatch(WorkspaceIntent::ActivateScenario {
+            scenario_id: scenario_id.map(ToString::to_string),
+        })
+    }
+
+    pub fn try_delete_scenario(&self, scenario_id: &str) -> IntentReceipt {
+        self.dispatch.dispatch(WorkspaceIntent::DeleteScenario {
+            scenario_id: scenario_id.to_string(),
+        })
+    }
+
     pub fn edit_deferred(&self, node: &str, content: &str) {
         self.accept(WorkspaceIntent::EditContentDeferred {
             node: NodeId::new(node),

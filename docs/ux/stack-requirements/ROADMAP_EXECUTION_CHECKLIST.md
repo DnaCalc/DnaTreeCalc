@@ -487,9 +487,17 @@ Use this as the per-tranche goal statement before implementation:
       projects candidate pin counts and exposes closed pin/unpin intents; programmable Skin IR tests
       prove pinned candidates survive reaping, pin/unpin updates project through candidate-change
       deltas, and unbalanced unpin rejects.
+- [x] W4c `scenario-projection` first candidate-backed scenario rail slice:
+      DnaTreeCalc projects `WorkspaceState.scenarios` as a host-owned manifest over existing OxCalc
+      candidate handles and exposes closed create/activate/delete scenario intents. Creating a
+      scenario pins its backing candidate, budget reaping preserves pinned scenario candidates,
+      deleting a scenario releases the pin, and programmable Skin IR tests prove manifest deltas and
+      candidate lifecycle interaction from outside the skin layer. Scenario override values,
+      scenario-local value epochs, comparative overlays, and series projection remain open.
 - [ ] `candidate-overlay-handle`: continue toward fully addressable, layerable, non-publishing
       candidate contexts with optimized layering/rebase, candidate add-node template initial content,
-      and scenario/what-if UX before goal seek, sweeps, or comparative overlays.
+      scenario override substrate, comparative projection, and broader what-if UX before goal seek
+      or sweeps.
 - [x] `value-epoch-keying`: per-node published-value epoch is available for projection consumers.
 
 ## Next-Wave Parking Lot

@@ -21,7 +21,8 @@ use dnatreecalc_skin_framework::{
     ReferenceResolutionProjection, ReferenceTargetProjection, RevisionHistoryEntryProjection,
     RevisionHistoryProjection, RevisionInvalidationSummaryEntryProjection,
     RevisionTransactionSummaryProjection, RuntimeEffectFamilyProjection, RuntimeEffectProjection,
-    RuntimeOverlayKindProjection, RuntimeOverlayProjection, SourceSpanProjection,
+    RuntimeOverlayKindProjection, RuntimeOverlayProjection, ScenarioManifestProjection,
+    ScenarioProjection, ScenarioSourceProjection, SourceSpanProjection,
     SpeculationPressureProjection, TableAnchorProjection, TableCellInput, TableCellProjection,
     TableCellRegionProjection, TableCellsProjection, TableColumnBodyProjection,
     TableColumnProjection, TableDependencyFactBlockerProjection, TableDependencyFactKindProjection,
@@ -122,6 +123,8 @@ pub struct TreeWorkspaceSession {
     recalc_count: usize,
     last_outcome: Option<OxCalcTreeCalculationOutcome>,
     candidate_handles: BTreeMap<String, CandidateOverlayHandle>,
+    scenarios: BTreeMap<String, TreeWorkspaceScenarioState>,
+    active_scenario_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -134,6 +137,13 @@ pub struct TreeWorkspaceTransactionEdit<T> {
 pub struct TreeWorkspaceCandidateCommit {
     pub handle: String,
     pub transaction_id: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TreeWorkspaceScenarioState {
+    id: String,
+    name: String,
+    candidate_handle: String,
 }
 
 #[derive(Debug, Clone)]
@@ -192,6 +202,8 @@ impl TreeWorkspaceSession {
             recalc_count: 0,
             last_outcome: None,
             candidate_handles: BTreeMap::new(),
+            scenarios: BTreeMap::new(),
+            active_scenario_id: None,
         };
 
         for path in &model.node_order {
@@ -254,6 +266,8 @@ impl TreeWorkspaceSession {
             recalc_count: 0,
             last_outcome: None,
             candidate_handles: BTreeMap::new(),
+            scenarios: BTreeMap::new(),
+            active_scenario_id: None,
         };
         session.refresh_projection_from_context()?;
         Ok(session)
@@ -1466,6 +1480,7 @@ impl TreeWorkspaceSession {
         let handle_value = self.candidate_handle(handle)?;
         self.context.discard_candidate(&handle_value)?;
         self.candidate_handles.remove(handle);
+        self.remove_scenarios_for_candidate(handle);
         Ok(handle.to_string())
     }
 
@@ -1487,6 +1502,65 @@ impl TreeWorkspaceSession {
         self.candidate_projection_for_view(&view)
     }
 
+    pub fn create_scenario_from_candidate(
+        &mut self,
+        scenario_id: impl Into<String>,
+        name: impl Into<String>,
+        candidate_handle: &str,
+    ) -> Result<ScenarioProjection, TreeWorkspaceSessionError> {
+        let scenario_id = scenario_id.into();
+        if self.scenarios.contains_key(&scenario_id) {
+            return Err(TreeWorkspaceSessionError::ScenarioAlreadyExists { scenario_id });
+        }
+        let candidate = self.candidate_handle(candidate_handle)?;
+        self.context.pin_candidate_retention(&candidate)?;
+        let scenario = TreeWorkspaceScenarioState {
+            id: scenario_id.clone(),
+            name: name.into(),
+            candidate_handle: candidate_handle.to_string(),
+        };
+        self.scenarios.insert(scenario_id.clone(), scenario);
+        self.scenario_projection(&scenario_id)
+    }
+
+    pub fn activate_scenario(
+        &mut self,
+        scenario_id: Option<&str>,
+    ) -> Result<ScenarioManifestProjection, TreeWorkspaceSessionError> {
+        if let Some(scenario_id) = scenario_id {
+            if !self.scenarios.contains_key(scenario_id) {
+                return Err(TreeWorkspaceSessionError::UnknownScenario {
+                    scenario_id: scenario_id.to_string(),
+                });
+            }
+        }
+        self.active_scenario_id = scenario_id.map(ToString::to_string);
+        self.scenario_manifest_projection()
+    }
+
+    pub fn delete_scenario(
+        &mut self,
+        scenario_id: &str,
+    ) -> Result<String, TreeWorkspaceSessionError> {
+        let scenario = self.scenarios.get(scenario_id).cloned().ok_or_else(|| {
+            TreeWorkspaceSessionError::UnknownScenario {
+                scenario_id: scenario_id.to_string(),
+            }
+        })?;
+        if let Some(candidate) = self.candidate_handles.get(&scenario.candidate_handle) {
+            match self.context.unpin_candidate_retention(candidate) {
+                Ok(_) => {}
+                Err(OxCalcTreeContextError::CandidateRetentionPinNotHeld { .. }) => {}
+                Err(error) => return Err(error.into()),
+            }
+        }
+        self.scenarios.remove(scenario_id);
+        if self.active_scenario_id.as_deref() == Some(scenario_id) {
+            self.active_scenario_id = None;
+        }
+        Ok(scenario_id.to_string())
+    }
+
     pub fn reap_candidates(
         &mut self,
         max_retained: usize,
@@ -1501,6 +1575,7 @@ impl TreeWorkspaceSession {
             .collect::<Vec<_>>();
         for handle in &reaped {
             self.candidate_handles.remove(handle);
+            self.remove_scenarios_for_candidate(handle);
         }
         Ok(reaped)
     }
@@ -1517,6 +1592,7 @@ impl TreeWorkspaceSession {
             .find(|entry| entry.revision_id == outcome.successor_workspace_revision_id)
             .and_then(|entry| entry.transaction_id.clone());
         self.candidate_handles.remove(handle);
+        self.remove_scenarios_for_candidate(handle);
         if let Some(calculation) = outcome.calculation {
             self.recalc_count += 1;
             self.last_outcome = Some(calculation);
@@ -4574,6 +4650,7 @@ impl TreeWorkspaceSession {
             revision_history,
             candidates: self.candidate_projections()?,
             speculation_pressure,
+            scenarios: self.scenario_manifest_projection()?,
             last_run,
             node_order: self.display_order.clone(),
             key_order: self
@@ -4743,6 +4820,58 @@ impl TreeWorkspaceSession {
             values_by_key,
             run,
         })
+    }
+
+    fn scenario_manifest_projection(
+        &self,
+    ) -> Result<ScenarioManifestProjection, TreeWorkspaceSessionError> {
+        Ok(ScenarioManifestProjection {
+            active: self.active_scenario_id.clone(),
+            entries: self
+                .scenarios
+                .keys()
+                .map(|scenario_id| self.scenario_projection(scenario_id))
+                .collect::<Result<Vec<_>, _>>()?,
+        })
+    }
+
+    fn scenario_projection(
+        &self,
+        scenario_id: &str,
+    ) -> Result<ScenarioProjection, TreeWorkspaceSessionError> {
+        let scenario = self.scenarios.get(scenario_id).ok_or_else(|| {
+            TreeWorkspaceSessionError::UnknownScenario {
+                scenario_id: scenario_id.to_string(),
+            }
+        })?;
+        self.candidate_handle(&scenario.candidate_handle)?;
+        Ok(ScenarioProjection {
+            id: scenario.id.clone(),
+            name: scenario.name.clone(),
+            source: ScenarioSourceProjection::Candidate {
+                handle: scenario.candidate_handle.clone(),
+            },
+            override_count: 0,
+            overridden_nodes: Vec::new(),
+            value_epoch: None,
+            is_active: self.active_scenario_id.as_deref() == Some(scenario_id),
+        })
+    }
+
+    fn remove_scenarios_for_candidate(&mut self, handle: &str) {
+        let removed = self
+            .scenarios
+            .iter()
+            .filter_map(|(scenario_id, scenario)| {
+                (scenario.candidate_handle == handle).then(|| scenario_id.clone())
+            })
+            .collect::<Vec<_>>();
+        for scenario_id in removed {
+            self.scenarios.remove(&scenario_id);
+            if self.active_scenario_id.as_deref() == Some(scenario_id.as_str()) {
+                self.active_scenario_id = None;
+            }
+        }
     }
 
     fn current_views_by_tree_id(
@@ -6206,6 +6335,10 @@ pub enum TreeWorkspaceSessionError {
     DuplicateSubtreeUnsupported { node: String, detail: String },
     #[error("unknown candidate {handle}")]
     UnknownCandidate { handle: String },
+    #[error("scenario {scenario_id} already exists")]
+    ScenarioAlreadyExists { scenario_id: String },
+    #[error("unknown scenario {scenario_id}")]
+    UnknownScenario { scenario_id: String },
     #[error("OxCalc context projection is out of sync for {node}")]
     ProjectionOutOfSync { node: String },
 }

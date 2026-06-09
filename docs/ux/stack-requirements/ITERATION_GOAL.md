@@ -68,10 +68,15 @@ formulas before private mutation. The first candidate speculation-budget/GC slic
 OxCalc computes typed candidate pressure from live candidate handles, reaps unprotected candidates
 to a requested budget, and DnaTreeCalc projects the pressure plus a closed `ReapCandidates` Skin IR
 intent without host-side lifecycle fabrication. Optimized layering/rebase, candidate add-node
-template policy, and scenario/what-if UX remain open. The first richer host-pin retention slice is
+template policy, and full scenario/what-if UX remain open. The first richer host-pin retention slice is
 also landed: OxCalc exposes explicit candidate retention pins that protect active candidates from
 budget reaping, DnaTreeCalc projects pin counts and pressure reason counts, and Skin IR exposes
-closed pin/unpin intents without owning lifecycle semantics. Remaining W3
+closed pin/unpin intents without owning lifecycle semantics. The first W4c scenario-projection slice
+is also landed: DnaTreeCalc projects a host-owned scenario manifest over existing OxCalc candidate
+handles, creates/activates/deletes scenario labels through closed Skin IR intents, and pins the
+backing candidate while the scenario exists so budget reaping does not erase the scenario rail.
+This slice deliberately does not implement scenario override values, scenario-local value epochs,
+comparative multi-overlay projection, or chart/feed series projection. Remaining W3
 formula-rewrite/rebind verbs stay parked until their owning
 OxFml/OxCalc substrates are available. W2 safe structural authoring is
 closed for the current Skin IR surface: receipts carry typed errors and real OxCalc transaction ids,
@@ -570,9 +575,17 @@ The roadmap alignment rule is:
       closed `PinCandidateRetention` / `UnpinCandidateRetention` Skin IR intents. Programmable Skin
       IR tests prove a pinned candidate survives reaping while an unpinned candidate is reclaimed,
       pin/unpin emits candidate-change deltas, and an unbalanced unpin is rejected.
+- [x] W4c `scenario-projection` first candidate-backed scenario rail slice:
+      DnaTreeCalc projects `WorkspaceState.scenarios` as a host-owned manifest over existing OxCalc
+      candidate handles, with closed `CreateScenarioFromCandidate`, `ActivateScenario`, and
+      `DeleteScenario` intents. Creating a scenario pins its backing candidate, budget reaping
+      preserves pinned scenario candidates, deleting a scenario releases the pin, and programmable
+      Skin IR tests prove manifest deltas plus candidate lifecycle interaction from outside the
+      skin layer. Scenario override values, scenario-local value epochs, comparative overlays, and
+      series projection remain open.
 - [ ] `candidate-overlay-handle`: continue toward fully addressable, layerable, non-publishing
       candidate contexts with optimized layering/rebase, candidate add-node template initial content,
-      and scenario/what-if UX.
+      scenario override substrate, comparative projection, and broader what-if UX.
 - [x] `value-epoch-keying`: per-node published-value epoch distinct from input epoch.
 
 ## Status Template

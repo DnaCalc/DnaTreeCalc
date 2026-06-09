@@ -83,6 +83,7 @@ pub fn workspace_state_from_model(model: &WorkspaceModel) -> WorkspaceState {
         revision_history: Default::default(),
         candidates: Vec::new(),
         speculation_pressure: Default::default(),
+        scenarios: Default::default(),
         last_run: None,
         node_order: model
             .node_order

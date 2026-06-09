@@ -23,6 +23,7 @@ pub struct WorkspaceState {
     pub revision_history: RevisionHistoryProjection,
     pub candidates: Vec<CandidateProjection>,
     pub speculation_pressure: SpeculationPressureProjection,
+    pub scenarios: ScenarioManifestProjection,
     pub last_run: Option<CalcRunProjection>,
     pub node_order: Vec<NodeId>,
     pub key_order: Vec<NodeKey>,
@@ -45,6 +46,28 @@ pub struct SpeculationPressureProjection {
     pub protected_candidate_count: usize,
     pub reclaimable_candidate_count: usize,
     pub over_budget_candidate_count: usize,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ScenarioManifestProjection {
+    pub active: Option<String>,
+    pub entries: Vec<ScenarioProjection>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScenarioProjection {
+    pub id: String,
+    pub name: String,
+    pub source: ScenarioSourceProjection,
+    pub override_count: usize,
+    pub overridden_nodes: Vec<NodeKey>,
+    pub value_epoch: Option<u64>,
+    pub is_active: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ScenarioSourceProjection {
+    Candidate { handle: String },
 }
 
 impl WorkspaceState {

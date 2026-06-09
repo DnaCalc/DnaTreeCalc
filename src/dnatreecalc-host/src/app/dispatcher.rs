@@ -334,6 +334,21 @@ impl Dispatcher for HostDispatcher {
             WorkspaceIntent::CommitCandidate { handle } => self
                 .commit_candidate(&handle)
                 .map_or_else(IntentReceipt::rejected, receipt_for_publication),
+            WorkspaceIntent::CreateScenarioFromCandidate {
+                scenario_id,
+                name,
+                candidate_handle,
+            } => self
+                .apply_projection_edit(|session| {
+                    session.create_scenario_from_candidate(scenario_id, name, &candidate_handle)
+                })
+                .map_or_else(IntentReceipt::rejected, receipt_for_projection_change),
+            WorkspaceIntent::ActivateScenario { scenario_id } => self
+                .apply_projection_edit(|session| session.activate_scenario(scenario_id.as_deref()))
+                .map_or_else(IntentReceipt::rejected, receipt_for_projection_change),
+            WorkspaceIntent::DeleteScenario { scenario_id } => self
+                .apply_projection_edit(|session| session.delete_scenario(&scenario_id))
+                .map_or_else(IntentReceipt::rejected, receipt_for_projection_change),
             WorkspaceIntent::Recalculate => self
                 .apply_workspace_edit(|_| Ok(()), WorkspaceEditPublication::Recalculate)
                 .map_or_else(IntentReceipt::rejected, receipt_for_publication),
@@ -638,6 +653,13 @@ fn receipt_for_candidate_change(
         .with_transaction_id(publication.transaction_id)
 }
 
+fn receipt_for_projection_change<T>(publication: PublishedWorkspaceEdit<T>) -> IntentReceipt {
+    IntentReceipt::accepted()
+        .with_delta(publication.delta)
+        .with_produced_revision(publication.produced_revision)
+        .with_transaction_id(publication.transaction_id)
+}
+
 impl HostDispatcher {
     fn populate_clipboard(
         &self,
@@ -898,6 +920,40 @@ impl HostDispatcher {
             &mut TreeWorkspaceSession,
         ) -> Result<CandidateProjection, TreeWorkspaceSessionError>,
     ) -> Result<PublishedWorkspaceEdit<CandidateProjection>, IntentError> {
+        let session_id = self.active_session_id()?;
+        HOST_SESSIONS.with(|sessions| {
+            let session = sessions
+                .borrow()
+                .get(&session_id)
+                .cloned()
+                .ok_or_else(|| host_failure("workspace session handle is not available"))?;
+            let mut session = session
+                .lock()
+                .map_err(|_| host_failure("workspace session mutex poisoned"))?;
+            let before = self.workspace.map(|workspace| workspace.get_untracked());
+            let result = edit(&mut session).map_err(intent_error_from_session)?;
+            let mut after = session
+                .workspace_state()
+                .map_err(intent_error_from_session)?;
+            after.clipboard = before.as_ref().and_then(|state| state.clipboard.clone());
+            after.projection_seq = self.next_projection_seq.fetch_add(1, Ordering::Relaxed);
+            let delta = workspace_delta(before.as_ref(), &after, false);
+            if let Some(workspace) = self.workspace {
+                workspace.set(after);
+            }
+            Ok(PublishedWorkspaceEdit {
+                result,
+                delta,
+                produced_revision: None,
+                transaction_id: None,
+            })
+        })
+    }
+
+    fn apply_projection_edit<T>(
+        &self,
+        edit: impl FnOnce(&mut TreeWorkspaceSession) -> Result<T, TreeWorkspaceSessionError>,
+    ) -> Result<PublishedWorkspaceEdit<T>, IntentError> {
         let session_id = self.active_session_id()?;
         HOST_SESSIONS.with(|sessions| {
             let session = sessions
@@ -1592,6 +1648,12 @@ fn intent_error_from_session(error: TreeWorkspaceSessionError) -> IntentError {
         TreeWorkspaceSessionError::UnknownCandidate { handle } => {
             IntentError::UnknownCandidate { handle }
         }
+        TreeWorkspaceSessionError::ScenarioAlreadyExists { scenario_id } => {
+            IntentError::ScenarioAlreadyExists { scenario_id }
+        }
+        TreeWorkspaceSessionError::UnknownScenario { scenario_id } => {
+            IntentError::UnknownScenario { scenario_id }
+        }
         TreeWorkspaceSessionError::ProjectionOutOfSync { node } => {
             IntentError::ProjectionOutOfSync { node }
         }
@@ -1698,6 +1760,27 @@ fn workspace_delta(
             changes.push(WorkspaceDeltaChange::CandidateRemoved(
                 candidate.handle.clone(),
             ));
+        }
+    }
+
+    for scenario in &after.scenarios.entries {
+        let before_scenario = before
+            .scenarios
+            .entries
+            .iter()
+            .find(|before| before.id == scenario.id);
+        if before_scenario != Some(scenario) {
+            changes.push(WorkspaceDeltaChange::ScenarioChanged(scenario.clone()));
+        }
+    }
+    for scenario in &before.scenarios.entries {
+        if !after
+            .scenarios
+            .entries
+            .iter()
+            .any(|after| after.id == scenario.id)
+        {
+            changes.push(WorkspaceDeltaChange::ScenarioRemoved(scenario.id.clone()));
         }
     }
 
