@@ -3192,14 +3192,13 @@ fn programmable_skin_pastes_constant_clipboard_values_through_content_write_path
     );
     assert!(formula_copy.accepted, "{:?}", formula_copy.error);
     let formula_paste = skin.try_paste_clipboard_values(AuthoringScope::Node(target_key.clone()));
-    assert!(!formula_paste.accepted);
-    assert_eq!(
-        formula_paste.error,
-        Some(IntentError::ClipboardPayloadMismatch {
-            expected: "single_constant_value".to_string(),
-            actual: "source_content_kind=formula".to_string()
-        })
-    );
+    assert!(formula_paste.accepted, "{:?}", formula_paste.error);
+    assert_any_transaction(&formula_paste);
+    let state = skin.state();
+    let target = state.node(&NodeId::new("Book.Target")).unwrap();
+    assert_eq!(target.content_kind, NodeContentKind::Constant);
+    assert_eq!(target.content_text, "1001");
+    assert_eq!(target.computed_value.display_text(), "1001");
 
     let multi_copy = skin.try_copy_to_clipboard(
         AuthoringScope::Nodes(vec![source_key.clone(), source2_key.clone()]),
@@ -3226,7 +3225,7 @@ fn programmable_skin_pastes_constant_clipboard_values_through_content_write_path
     assert_eq!(
         mismatched_multi_paste.error,
         Some(IntentError::ClipboardPayloadMismatch {
-            expected: "ordered_constant_values".to_string(),
+            expected: "ordered_literal_values".to_string(),
             actual: "value_count=2,target_count=1".to_string()
         })
     );
@@ -3295,20 +3294,27 @@ fn programmable_skin_commits_multi_source_constant_clipboard_value_cut_paste_ato
 fn programmable_skin_rejects_nonconstant_multi_source_value_paste() {
     let harness = Harness::empty();
     let skin = harness.driver.clone();
-    assert!(skin.try_add_node(None, "Book", "").accepted);
-    assert!(skin.try_add_node(Some("Book"), "Source", "1000").accepted);
-    assert!(
-        skin.try_add_node(Some("Book"), "FormulaSource", "=Source+1")
-            .accepted
-    );
-    assert!(skin.try_add_node(Some("Book"), "Target", "0").accepted);
-    assert!(skin.try_add_node(Some("Book"), "Target2", "0").accepted);
-    skin.recalc();
+    skin.add_node(None, "Book", "");
+    skin.add_node(Some("Book"), "Source", "1000");
+    skin.add_node(Some("Book"), "ArraySource", "=RANDARRAY(5,5)");
+    skin.add_node(Some("Book"), "Target", "0");
+    skin.add_node(Some("Book"), "Target2", "0");
 
     let state = skin.state();
+    let array_source = state.node(&NodeId::new("Book.ArraySource")).unwrap();
+    assert_eq!(array_source.content_kind, NodeContentKind::Formula);
+    assert!(
+        matches!(
+            array_source.computed_value,
+            NodeValueProjection::Array { .. }
+        ),
+        "expected array source to project as array, got {:?}",
+        array_source.computed_value
+    );
+    assert_eq!(array_source.literalized_value_input, None);
     let source_key = state.node(&NodeId::new("Book.Source")).unwrap().key.clone();
-    let formula_source_key = state
-        .node(&NodeId::new("Book.FormulaSource"))
+    let array_source_key = state
+        .node(&NodeId::new("Book.ArraySource"))
         .unwrap()
         .key
         .clone();
@@ -3319,7 +3325,7 @@ fn programmable_skin_rejects_nonconstant_multi_source_value_paste() {
         .key
         .clone();
     let multi_copy = skin.try_copy_to_clipboard(
-        AuthoringScope::Nodes(vec![source_key, formula_source_key]),
+        AuthoringScope::Nodes(vec![source_key, array_source_key]),
         ClipboardPayloadKind::Values,
     );
     assert!(multi_copy.accepted, "{:?}", multi_copy.error);
@@ -3329,8 +3335,9 @@ fn programmable_skin_rejects_nonconstant_multi_source_value_paste() {
     assert_eq!(
         multi_paste.error,
         Some(IntentError::ClipboardPayloadMismatch {
-            expected: "ordered_constant_values".to_string(),
-            actual: "source_content_kind=formula at index 1".to_string()
+            expected: "ordered_literal_values".to_string(),
+            actual: "source_content_kind=formula,value_literalization=unsupported at index 1"
+                .to_string()
         })
     );
 }
@@ -3378,24 +3385,30 @@ fn programmable_skin_commits_constant_clipboard_value_cut_paste_atomically() {
 fn programmable_skin_rejected_value_cut_paste_preserves_source_and_clipboard() {
     let harness = Harness::empty();
     let skin = harness.driver.clone();
-    assert!(skin.try_add_node(None, "Book", "").accepted);
-    assert!(skin.try_add_node(Some("Book"), "Source", "1000").accepted);
-    assert!(
-        skin.try_add_node(Some("Book"), "FormulaSource", "=Source+1")
-            .accepted
-    );
-    assert!(skin.try_add_node(Some("Book"), "Target", "0").accepted);
-    skin.recalc();
+    skin.add_node(None, "Book", "");
+    skin.add_node(Some("Book"), "ArraySource", "=RANDARRAY(5,5)");
+    skin.add_node(Some("Book"), "Target", "0");
 
     let state = skin.state();
-    let formula_source_key = state
-        .node(&NodeId::new("Book.FormulaSource"))
+    let array_source = state.node(&NodeId::new("Book.ArraySource")).unwrap();
+    assert_eq!(array_source.content_kind, NodeContentKind::Formula);
+    assert!(
+        matches!(
+            array_source.computed_value,
+            NodeValueProjection::Array { .. }
+        ),
+        "expected array source to project as array, got {:?}",
+        array_source.computed_value
+    );
+    assert_eq!(array_source.literalized_value_input, None);
+    let array_source_key = state
+        .node(&NodeId::new("Book.ArraySource"))
         .unwrap()
         .key
         .clone();
     let target_key = state.node(&NodeId::new("Book.Target")).unwrap().key.clone();
     let cut = skin.try_cut_to_clipboard(
-        AuthoringScope::Node(formula_source_key),
+        AuthoringScope::Node(array_source_key),
         ClipboardPayloadKind::Values,
     );
     assert!(cut.accepted, "{:?}", cut.error);
@@ -3405,15 +3418,15 @@ fn programmable_skin_rejected_value_cut_paste_preserves_source_and_clipboard() {
     assert_eq!(
         paste.error,
         Some(IntentError::ClipboardPayloadMismatch {
-            expected: "single_constant_value".to_string(),
-            actual: "source_content_kind=formula".to_string()
+            expected: "single_literal_value".to_string(),
+            actual: "source_content_kind=formula,value_literalization=unsupported".to_string()
         })
     );
     let state = skin.state();
-    let formula_source = state.node(&NodeId::new("Book.FormulaSource")).unwrap();
+    let array_source = state.node(&NodeId::new("Book.ArraySource")).unwrap();
     let target = state.node(&NodeId::new("Book.Target")).unwrap();
-    assert_eq!(formula_source.content_kind, NodeContentKind::Formula);
-    assert_eq!(formula_source.content_text, "=Source+1");
+    assert_eq!(array_source.content_kind, NodeContentKind::Formula);
+    assert_eq!(array_source.content_text, "=RANDARRAY(5,5)");
     assert_eq!(target.content_text, "0");
     assert!(matches!(
         state.clipboard.as_ref().map(|clipboard| &clipboard.payload),

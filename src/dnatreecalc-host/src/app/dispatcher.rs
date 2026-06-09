@@ -533,13 +533,13 @@ impl HostDispatcher {
                 "value paste requires at least one target",
             ));
         }
-        let payload = clipboard_constant_value_payload(&before)?;
+        let payload = clipboard_literal_value_payload(&before)?;
         if payload.items.len() > 1
             && (!matches!(&target, AuthoringScope::Nodes(_))
                 || payload.items.len() != targets.len())
         {
             return Err(clipboard_payload_mismatch(
-                "ordered_constant_values",
+                "ordered_literal_values",
                 format!(
                     "value_count={},target_count={}",
                     payload.items.len(),
@@ -547,7 +547,7 @@ impl HostDispatcher {
                 ),
             ));
         }
-        match self.apply_constant_value_paste_transaction(target, payload) {
+        match self.apply_literal_value_paste_transaction(target, payload) {
             Ok(publication) => Ok(receipt_for_publication(publication)),
             Err(error) => Ok(IntentReceipt::rejected(error)),
         }
@@ -600,10 +600,10 @@ impl HostDispatcher {
         }
     }
 
-    fn apply_constant_value_paste_transaction(
+    fn apply_literal_value_paste_transaction(
         &self,
         target: AuthoringScope,
-        payload: ClipboardConstantValuePayload,
+        payload: ClipboardLiteralValuePayload,
     ) -> Result<PublishedWorkspaceEdit<Vec<NodeKey>>, IntentError> {
         let session_id = self.active_session_id()?;
         HOST_SESSIONS.with(|sessions| {
@@ -855,6 +855,7 @@ fn clipboard_from_projection(
                         content_kind: node.content_kind,
                         constant_input_text: (node.content_kind == NodeContentKind::Constant)
                             .then(|| node.content_text.clone()),
+                        literalized_input_text: node.literalized_value_input.clone(),
                         value: node.computed_value.clone(),
                     })
                 })
@@ -987,20 +988,20 @@ fn clipboard_number_format_code(workspace: &WorkspaceState) -> Result<Option<Str
 }
 
 #[derive(Debug, Clone)]
-struct ClipboardConstantValuePayload {
+struct ClipboardLiteralValuePayload {
     operation: ClipboardOperationProjection,
-    items: Vec<ClipboardConstantValueItem>,
+    items: Vec<ClipboardLiteralValueItem>,
 }
 
 #[derive(Debug, Clone)]
-struct ClipboardConstantValueItem {
+struct ClipboardLiteralValueItem {
     source: NodeKey,
     content: String,
 }
 
-fn clipboard_constant_value_payload(
+fn clipboard_literal_value_payload(
     workspace: &WorkspaceState,
-) -> Result<ClipboardConstantValuePayload, IntentError> {
+) -> Result<ClipboardLiteralValuePayload, IntentError> {
     let Some(clipboard) = &workspace.clipboard else {
         return Err(clipboard_payload_mismatch("values", "empty"));
     };
@@ -1012,25 +1013,35 @@ fn clipboard_constant_value_payload(
     };
     let mut items = Vec::new();
     for (index, node) in nodes.iter().enumerate() {
-        let content = node.constant_input_text.clone().ok_or_else(|| {
-            if nodes.len() == 1 {
-                clipboard_payload_mismatch(
-                    "single_constant_value",
-                    format!("source_content_kind={}", node.content_kind),
-                )
-            } else {
-                clipboard_payload_mismatch(
-                    "ordered_constant_values",
-                    format!("source_content_kind={} at index {index}", node.content_kind),
-                )
-            }
-        })?;
-        items.push(ClipboardConstantValueItem {
+        let content = node
+            .constant_input_text
+            .clone()
+            .or_else(|| node.literalized_input_text.clone())
+            .ok_or_else(|| {
+                if nodes.len() == 1 {
+                    clipboard_payload_mismatch(
+                        "single_literal_value",
+                        format!(
+                            "source_content_kind={},value_literalization=unsupported",
+                            node.content_kind
+                        ),
+                    )
+                } else {
+                    clipboard_payload_mismatch(
+                        "ordered_literal_values",
+                        format!(
+                            "source_content_kind={},value_literalization=unsupported at index {index}",
+                            node.content_kind
+                        ),
+                    )
+                }
+            })?;
+        items.push(ClipboardLiteralValueItem {
             source: node.node.clone(),
             content,
         });
     }
-    Ok(ClipboardConstantValuePayload {
+    Ok(ClipboardLiteralValuePayload {
         operation: clipboard.operation,
         items,
     })

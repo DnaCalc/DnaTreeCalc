@@ -368,6 +368,10 @@ pub struct ClipboardNodeValueProjection {
     /// Authored input text that can be pasted back without converting a
     /// rendered value into source text. Present only for constant inputs.
     pub constant_input_text: Option<String>,
+    /// OxFml-authored literal text for supported computed scalar values.
+    /// Consumers may paste this only as a value-literal operation, not as a
+    /// replacement for formula rewrite or array/subtree rebind semantics.
+    pub literalized_input_text: Option<String>,
     pub value: NodeValueProjection,
 }
 
@@ -504,6 +508,7 @@ pub struct NodeView {
     pub content_kind: NodeContentKind,
     pub content_text: String,
     pub computed_value: NodeValueProjection,
+    pub literalized_value_input: Option<String>,
     pub value_epoch: Option<u64>,
     pub calc_state: Option<NodeCalcStateProjection>,
     pub effective_format: Option<EffectiveFormatProjection>,

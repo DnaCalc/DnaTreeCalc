@@ -60,6 +60,7 @@ use oxcalc_core::treecalc::{
     DerivationInvocationTraceNode, DerivationPreparedArgumentTrace, DerivationTraceRecord,
     LocalTreeCalcPhaseKey,
 };
+use oxfml_core::consumer::runtime::{RuntimeEnvironment, RuntimeValueLiteralizationResult};
 use oxfml_core::format::{oxfml_en_us_format_profile, render_with_code};
 use oxfunc_core::locale_format::WorkbookDateSystem;
 use oxfunc_core::value::{CalcValue, CoreValue, ExcelText};
@@ -3489,6 +3490,7 @@ impl TreeWorkspaceSession {
                 calc_value,
                 effective_format.as_ref(),
             );
+            let literalized_value_input = literalized_value_input_for(calc_value);
             let table = table_views_by_tree_id.get(&tree_node_id).cloned();
             let binding_diagnostics = binding_diagnostics_by_tree_id
                 .get(&tree_node_id)
@@ -3506,6 +3508,7 @@ impl TreeWorkspaceSession {
                     content_kind,
                     content_text: tree_view.formula_text.clone(),
                     computed_value,
+                    literalized_value_input,
                     value_epoch: tree_view.published_value_epoch,
                     calc_state: tree_view.calc_state.map(calc_state_projection_for),
                     effective_format,
@@ -5234,6 +5237,16 @@ fn value_projection_for(
             },
             |value| calc_value_projection(value, effective_format),
         ),
+    }
+}
+
+fn literalized_value_input_for(calc_value: Option<&CalcValue>) -> Option<String> {
+    let value = calc_value?;
+    match RuntimeEnvironment::new().literalize_calc_value_for_authoring(value) {
+        RuntimeValueLiteralizationResult::AuthoredInput(literalized) => {
+            Some(literalized.authored_input_text)
+        }
+        RuntimeValueLiteralizationResult::Unsupported(_) => None,
     }
 }
 
