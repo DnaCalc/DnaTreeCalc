@@ -38,8 +38,11 @@ The running success test is: a future skin can become richer because it reads mo
 sends a better typed command, while the semantic boundary remains obvious in code and tests.
 
 Current cursor: **W4b - Candidate substrate**, with scoped W4a revision graph work complete and the
-remaining W3 formula-rewrite/rebind verbs parked until their owning OxFml/OxCalc substrates are
-available. W2 safe structural authoring is
+W4b OxCalc spike answered: `candidate-overlay-handle` is new OxCalc substrate, not an exposure of
+the current candidate/publication lane or the published-basis `RuntimeOverlaySet`. The first build
+slice is an opaque non-publishing candidate handle over a retained revision, with discard before
+commit/layering. Remaining W3 formula-rewrite/rebind verbs stay parked until their owning
+OxFml/OxCalc substrates are available. W2 safe structural authoring is
 closed for the current Skin IR surface: receipts carry typed errors and real OxCalc transaction ids,
 previews use OxFml dry-bind plus OxCalc invalidation planning, and the closure review found no
 skin-side formula parsing, semantic value computation, or transaction-id fabrication. The first W3
@@ -442,6 +445,11 @@ The roadmap alignment rule is:
       persist the active revision/layer state, not the navigable retained history DAG. This closes
       scoped W4a for in-memory undo/history/time-scrub substrate; durable cross-session history is a
       future product/storage layer rather than hidden engine state.
+- [x] `candidate-overlay-handle` spike: live OxCalc code inspection confirms the current
+      `recalculate` / `AcceptedCandidateResult` / `RuntimeOverlaySet` path is one synchronous
+      publish-or-reject lane, not addressable non-publishing speculation. OxCalc recorded the go
+      decision and first build slice in
+      `docs/spec/core-engine/CORE_ENGINE_CANDIDATE_OVERLAY_HANDLE_SPIKE.md` under bead `calc-etez`.
 - [ ] `candidate-overlay-handle`: addressable, layerable, non-publishing candidate contexts.
 - [x] `value-epoch-keying`: per-node published-value epoch distinct from input epoch.
 

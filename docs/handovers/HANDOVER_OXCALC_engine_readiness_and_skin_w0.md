@@ -28,7 +28,7 @@ OxCalc code inspection confirms the stack-requirement docs are directionally rig
 |---|---|---|---|---|
 | `transaction-scope` | Go after a focused design spike. | L | Current recalc path updates node inputs, schedules, and publishes as one `recalculate()` call, but conceptual multi-edit transaction receipts/rollback are not exposed. Stage tracker still moves nodes through per-node `PublishReady`. | Best first engine substrate. Define an edit batch API and rollback boundary before multi-target verbs. |
 | `revision-graph-retention` | Go as new substrate after transaction ids exist. | L/XL | `WorkspaceRevision` is an immutable identity over structure/input/namespace snapshots, but there is no retained parent-linked store or cursor. | Existing snapshot identities are useful nodes for a graph, not the graph itself. Needs memory/GC policy alignment with W054. |
-| `candidate-overlay-handle` | No-go for implementation until a spike settles shape. | XL | `RuntimeOverlaySet` is keyed from `PublicationSnapshotId`; no `open_candidate`, addressable handles, layering, or non-publishing run context exists. | Largest risk. Do not schedule scenario/what-if/goal-seek features on current overlay set. |
+| `candidate-overlay-handle` | Go for implementation as new OxCalc substrate after W4b spike. | XL | `RuntimeOverlaySet` is keyed from `PublicationSnapshotId`; current candidate results are one-run publish/reject packets; no retained `open_candidate`, addressable handles, layering, or non-publishing run context exists. | Largest risk. Do not schedule scenario/what-if/goal-seek features until OxCalc returns real candidate handles and non-published candidate projections. |
 | `value-epoch-keying` | Go as bounded bookkeeping after transaction/revision shape is clear. | M/L | Current context has workspace-level `value_epoch`; per-node `input_epoch` exists in `NodeInputRecord`; no per-node published-value epoch found. | Delta channel can proceed without this using invalidated-node sets; shape-diff/memoization should wait. |
 
 ### Additional open-question answers
@@ -64,3 +64,22 @@ Still open:
 - Add typed scalar `CalcValue` variants beyond the current scalar-display fallback.
 - Add reference-resolution map, typed binding diagnostics intake, and derivation-trace payload audit.
 - Spike `transaction-scope`, `revision-graph-retention`, and `candidate-overlay-handle` as separate engine beads before dependent Skin IR features are scheduled.
+
+## W4b candidate-overlay spike update
+
+Status: Responded
+OxCalc artifact: `OxCalc/docs/spec/core-engine/CORE_ENGINE_CANDIDATE_OVERLAY_HANDLE_SPIKE.md`
+Execution bead: `calc-etez`
+
+OxCalc has now answered the `candidate-overlay-handle` spike from live code:
+
+| Question | Answer |
+|---|---|
+| Can W4b expose existing candidate/overlay state? | No. `OxCalcTreeContext::recalculate` creates one run-local candidate id and then publishes or rejects. `TreeCalcCoordinator` has one in-flight/accepted candidate lane. `RuntimeOverlaySet` is keyed to the current `PublicationSnapshotId`. |
+| Is W4b schedulable? | Yes, as new OxCalc substrate. |
+| First build slice | Opaque candidate handle over a retained revision; apply one private candidate edit; evaluate without advancing published revision, publication snapshot, published values, or published value epochs; discard and prove the handle is gone. |
+| Host/Skin IR rule | Do not expose scenario/what-if/provenance features until OxCalc returns real candidate handles and non-published candidate projections. |
+
+The naming risk is explicit: prior W047/W048 docs use "candidate overlay" for one-run CTRO
+consequences before a publish/reject decision. W4b should use `CandidateOverlayHandle` or
+`candidate context` when discussing retained host-addressable speculation.
