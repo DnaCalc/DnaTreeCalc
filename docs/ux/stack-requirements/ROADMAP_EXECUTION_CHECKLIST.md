@@ -42,6 +42,9 @@ implemented: child candidates open from a parent candidate's private state, proj
 handle, and keep parent lifecycle guarded while children are retained. Candidate-private revision
 history is now projected with real transaction ids and optional invalidation summaries, so commit
 receipts can carry the promoted private revision's real transaction id without host fabrication.
+Candidate basis revisions are now retained under bounded revision retention while candidate handles
+are live, including shared-basis candidates and sibling candidates that survive another candidate's
+commit.
 OxCalc owns candidate state, publication/discard, overlay provenance, and value epochs; the
 DnaTreeCalc host exposes only typed handles, projections, and closed intents.
 
@@ -429,6 +432,11 @@ Use this as the per-tranche goal statement before implementation:
       views/commit outcomes expose private graph entries, and DnaTreeCalc projects
       `CandidateProjection.revision_history`. Programmable Skin IR tests prove candidate edit/evaluate
       remain non-publishing while commit receipts use a real promoted-revision transaction id.
+- [x] `candidate-overlay-handle` candidate basis-retention pin slice: OxCalc keeps candidate basis
+      revisions retained while candidate handles are live, counts shared-basis pins, and preserves
+      sibling candidate pins when another candidate commits. Focused OxCalc tests prove pinned bases
+      remain navigable under bounded retention and become evictable after the last candidate releases
+      them.
 - [ ] `candidate-overlay-handle`: implement N addressable, layerable, non-publishing candidate
       contexts before scenarios, what-if previews, goal seek, sweeps, or comparative overlays.
 - [x] `value-epoch-keying`: per-node published-value epoch is available for projection consumers.

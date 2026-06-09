@@ -53,8 +53,11 @@ project its parent handle, and commit the stacked private state while parent lif
 The candidate-private revision-history slice is now landed: candidate projections carry private
 revision graph entries, apply-only private edit revisions carry real engine transaction ids without
 fabricated invalidation summaries, and candidate commit receipts use the promoted revision's real
-transaction id when one exists. Optimized layering/rebase, structural candidate edits,
-scenario/what-if UX, and richer candidate invalidation summaries remain open. Remaining W3
+transaction id when one exists. The candidate basis-retention pin slice is also landed: OxCalc keeps
+host-visible candidate basis revisions retained under bounded revision retention while candidate
+handles are live, including shared-basis candidates and sibling candidates that survive another
+candidate's commit. Optimized layering/rebase, structural candidate edits, scenario/what-if UX,
+richer candidate invalidation summaries, and broader candidate overlay GC remain open. Remaining W3
 formula-rewrite/rebind verbs stay parked until their owning
 OxFml/OxCalc substrates are available. W2 safe structural authoring is
 closed for the current Skin IR surface: receipts carry typed errors and real OxCalc transaction ids,
@@ -495,6 +498,11 @@ The roadmap alignment rule is:
       private revision's real transaction id when present. Focused OxCalc and programmable Skin IR
       tests prove the transaction id is real and no invalidation summary is fabricated for
       apply-only candidate edits.
+- [x] `candidate-overlay-handle` candidate basis-retention pin slice: OxCalc pins retained workspace
+      revisions that are the basis of live candidates, reference-counts shared-basis candidates, and
+      preserves sibling candidate basis pins when another candidate commits and replaces the live
+      workspace state. Focused OxCalc tests prove the basis stays navigable while pinned and becomes
+      evictable again under bounded-retention pressure after the last candidate releases it.
 - [ ] `candidate-overlay-handle`: addressable, layerable, non-publishing candidate contexts.
 - [x] `value-epoch-keying`: per-node published-value epoch distinct from input epoch.
 
