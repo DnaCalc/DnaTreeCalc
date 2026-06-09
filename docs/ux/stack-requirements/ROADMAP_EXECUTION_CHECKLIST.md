@@ -35,6 +35,10 @@ current Skin IR surface as a revisioned host-owned string attribute bag stored i
 nodes and projected through `NodeView.attributes`. The first `add-node-content-policy` widening is
 landed for literal formula initial content: OxCalc dry-binds prospective new-node formulas without
 mutation, and DnaTreeCalc previews/rejects invalid literal formulas before add-node commit.
+The second `add-node-content-policy` widening is landed for
+`InheritColumnFormula { table, column_id }`: table-column formula metadata can seed a new node when
+OxCalc dry-binds it in the prospective node context; row-context/table-only formulas reject before
+mutation; constant columns reject with typed table-column errors.
 
 Do not advance to W4 speculation/history or W5 platform polish as the default next step while W3
 authoring verbs remain incomplete.
@@ -155,9 +159,14 @@ Use this as the per-tranche goal statement before implementation:
       `InitialNodeContentProjection::Literal { content }` formula text is dry-bound by OxCalc in a
       prospective new-node context without workspace mutation; add-node preview carries typed
       syntax/bind/profile blockers; add-node commit rejects invalid literal formulas before
-      mutation. Empty, literal constants, and `is_meta` remain supported. `InheritColumnFormula`
-      remains blocked until the intent carries a table/column subject; `TemplateBound` remains
-      blocked on the template subsystem.
+      mutation. Empty, literal constants, and `is_meta` remain supported.
+- [x] Land second `add-node-content-policy` widening:
+      `InitialNodeContentProjection::InheritColumnFormula { table, column_id }` reads the source
+      formula from host-owned table column metadata, asks OxCalc to dry-bind that formula in the
+      prospective new-node context, and commits only formulas that bind as ordinary node formulas.
+      Row-context/table-only formulas reject with bind diagnostics before mutation; constant columns
+      reject with typed table-column errors. `TemplateBound` remains blocked on the template
+      subsystem.
 - [ ] Continue W3 with the next feasible tranche: complete `add-node-content-policy`
       subject/substrate design or OxFml-unblocked formula authoring.
 

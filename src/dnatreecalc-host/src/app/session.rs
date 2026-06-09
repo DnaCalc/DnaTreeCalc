@@ -727,8 +727,15 @@ impl TreeWorkspaceSession {
         initial: &InitialNodeContentProjection,
         is_meta: bool,
     ) -> Result<Option<FormulaBindPreviewPayload>, TreeWorkspaceSessionError> {
-        let InitialNodeContentProjection::Literal { content } = initial else {
-            return Ok(None);
+        let content = match initial {
+            InitialNodeContentProjection::Literal { content } => content.clone(),
+            InitialNodeContentProjection::InheritColumnFormula { table, column_id } => {
+                self.inherited_column_formula_content(table, column_id)?
+            }
+            InitialNodeContentProjection::Empty
+            | InitialNodeContentProjection::TemplateBound { .. } => {
+                return Ok(None);
+            }
         };
         if !content.trim_start().starts_with('=') {
             return Ok(None);
@@ -740,6 +747,36 @@ impl TreeWorkspaceSession {
                 .with_meta(is_meta),
         )?;
         Ok(Some(formula_bind_preview_from_oxcalc_verdict(verdict)))
+    }
+
+    fn inherited_column_formula_content(
+        &self,
+        table: &NodeId,
+        column_id: &str,
+    ) -> Result<String, TreeWorkspaceSessionError> {
+        let table_node_id = self.tree_node_id(table.as_str())?;
+        let table_view = self
+            .context
+            .table_view(&self.workspace_id, table_node_id)?
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTable {
+                table: table.to_string(),
+            })?;
+        let column = table_view
+            .snapshot
+            .columns
+            .iter()
+            .find(|column| column.column_id == column_id)
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTableColumn {
+                table: table.to_string(),
+                column_id: column_id.to_string(),
+            })?;
+        let TreeCalcTableColumnBodyMetadata::Formula(formula) = &column.body_metadata else {
+            return Err(TreeWorkspaceSessionError::ConstantTableColumnFormulaEdit {
+                table: table.to_string(),
+                column_id: column_id.to_string(),
+            });
+        };
+        Ok(formula.formula_text.clone())
     }
 
     pub fn preview_delete_node_impact(
@@ -1555,8 +1592,24 @@ impl TreeWorkspaceSession {
                 }
                 Ok(content.clone())
             }
-            InitialNodeContentProjection::InheritColumnFormula
-            | InitialNodeContentProjection::TemplateBound { .. } => {
+            InitialNodeContentProjection::InheritColumnFormula { table, column_id } => {
+                let content = self.inherited_column_formula_content(table, column_id)?;
+                if content.trim_start().starts_with('=') {
+                    let bind = self.preview_add_node_initial_bind(
+                        parent_tree_node_id,
+                        symbol,
+                        initial,
+                        is_meta,
+                    )?;
+                    if bind.as_ref().is_some_and(|bind| !bind.legal) {
+                        return Err(TreeWorkspaceSessionError::InitialContentBindRejected {
+                            policy: initial.stable_id().to_string(),
+                        });
+                    }
+                }
+                Ok(content)
+            }
+            InitialNodeContentProjection::TemplateBound { .. } => {
                 Err(TreeWorkspaceSessionError::UnsupportedInitialContent {
                     policy: initial.stable_id().to_string(),
                 })

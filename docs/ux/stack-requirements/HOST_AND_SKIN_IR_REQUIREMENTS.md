@@ -244,7 +244,7 @@ one-line shape. Every field is verbatim in
 
 ### Enriching / frontier
 - `clipboard-transfer-model` · new · M — `Clipboard { payload: Values | Formula{source} | Format | Subtree{root} }`; Copy/Cut populate, Paste/PasteSubtree consume. Host-owned, distinct from OS clipboard.
-- `add-node-content-policy` · extend · S — `AddNode` gains `initial: Empty|InheritColumnFormula|TemplateBound{id}|Literal` and `is_meta: bool`.
+- `add-node-content-policy` · extend · S — `AddNode` gains `initial: Empty|InheritColumnFormula{table,column_id}|TemplateBound{id}|Literal` and `is_meta: bool`.
 - `note-write` · extend · S — `::SetNote{node, note:Option<NoteContent>}`; `NodeView.note`. *Authored notes that round-trip to Excel comments; may stay allowed for Reviewer.*
 - `template-subsystem` · new · L — `::PromoteToTemplate`, `::InstantiateTemplate{template_id, parent, bindings}`, `::EditTemplate`, `::SyncInstance`, `::DetachInstance`; `template_index` + `NodeView.instance_of/drift`.
 - `import-workbook` · new · L — `::ImportWorkbook{source, mode:DryRun|Commit}`; DryRun → `ImportManifestProjection{proposed_nodes, binding_diagnostics, unsupported_features}` without mutating.

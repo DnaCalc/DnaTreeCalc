@@ -697,7 +697,7 @@ pub enum RecalcPlanMutation {
 pub enum InitialNodeContentProjection {
     Empty,
     Literal { content: String },
-    InheritColumnFormula,
+    InheritColumnFormula { table: NodeId, column_id: String },
     TemplateBound { template_id: String },
 }
 
@@ -707,7 +707,7 @@ impl InitialNodeContentProjection {
         match self {
             Self::Empty => "empty",
             Self::Literal { .. } => "literal",
-            Self::InheritColumnFormula => "inherit_column_formula",
+            Self::InheritColumnFormula { .. } => "inherit_column_formula",
             Self::TemplateBound { .. } => "template_bound",
         }
     }
@@ -717,7 +717,7 @@ impl InitialNodeContentProjection {
         match self {
             Self::Empty => Some(""),
             Self::Literal { content } => Some(content),
-            Self::InheritColumnFormula | Self::TemplateBound { .. } => None,
+            Self::InheritColumnFormula { .. } | Self::TemplateBound { .. } => None,
         }
     }
 }

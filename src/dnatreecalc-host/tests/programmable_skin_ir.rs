@@ -821,17 +821,19 @@ fn programmable_skin_previews_add_node_initial_content_policy() {
         Some(MutationImpactBlockedReasonProjection::UnsupportedInitialContent)
     );
 
-    let unsupported_receipt = skin.try_add_node_initial(
+    let template_receipt = skin.try_add_node_initial(
         Some("Root"),
         "Templated",
-        InitialNodeContentProjection::InheritColumnFormula,
+        InitialNodeContentProjection::TemplateBound {
+            template_id: "starter".to_string(),
+        },
         false,
     );
-    assert!(!unsupported_receipt.accepted);
+    assert!(!template_receipt.accepted);
     assert_eq!(
-        unsupported_receipt.error,
+        template_receipt.error,
         Some(IntentError::UnsupportedInitialContent {
-            policy: "inherit_column_formula".to_string()
+            policy: "template_bound".to_string()
         })
     );
     assert_eq!(
@@ -867,6 +869,105 @@ fn programmable_skin_previews_add_node_initial_content_policy() {
         skin.try_add_node_initial(None, "MetaRoot", InitialNodeContentProjection::Empty, true);
     assert!(meta_receipt.accepted, "{:?}", meta_receipt.error);
     assert!(skin.state().node(&NodeId::new("MetaRoot")).unwrap().is_meta);
+}
+
+#[test]
+fn programmable_skin_inherits_table_column_formula_for_add_node_initial_content() {
+    let harness = Harness::from_repo_fixture("tables");
+    let skin = harness.driver.clone();
+
+    let formula_column =
+        skin.try_add_table_formula_column("SalesTable", "col:fixed", "Fixed", "=1+1");
+    assert!(formula_column.accepted, "{:?}", formula_column.error);
+    assert_table_transaction(&formula_column);
+
+    let preview = harness.preview_add_node_impact(
+        Some("SalesTable"),
+        "Inherited",
+        InitialNodeContentProjection::InheritColumnFormula {
+            table: NodeId::new("SalesTable"),
+            column_id: "col:fixed".to_string(),
+        },
+        false,
+    );
+    assert!(preview.legal, "{preview:?}");
+    assert!(preview.bind_diagnostics.is_empty());
+    assert!(preview.profile_violations.is_empty());
+
+    let add = skin.try_add_node_initial(
+        Some("SalesTable"),
+        "Inherited",
+        InitialNodeContentProjection::InheritColumnFormula {
+            table: NodeId::new("SalesTable"),
+            column_id: "col:fixed".to_string(),
+        },
+        false,
+    );
+    assert!(add.accepted, "{:?}", add.error);
+    assert_any_transaction(&add);
+    let state = skin.state();
+    let inherited = state
+        .node(&NodeId::new("SalesTable.Inherited"))
+        .expect("inherited node projects after add");
+    assert_eq!(inherited.content_text, "=1+1");
+}
+
+#[test]
+fn programmable_skin_rejects_row_context_column_formula_inheritance_without_faking_context() {
+    let harness = Harness::from_repo_fixture("tables");
+    let skin = harness.driver.clone();
+
+    let preview = harness.preview_add_node_impact(
+        None,
+        "InheritedTax",
+        InitialNodeContentProjection::InheritColumnFormula {
+            table: NodeId::new("SalesTable"),
+            column_id: "col:tax".to_string(),
+        },
+        false,
+    );
+    assert!(!preview.legal, "{preview:?}");
+    assert_eq!(
+        preview.blocked_reason,
+        Some(MutationImpactBlockedReasonProjection::BindDiagnostics)
+    );
+    assert!(!preview.bind_diagnostics.is_empty());
+
+    let rejected = skin.try_add_node_initial(
+        None,
+        "InheritedTax",
+        InitialNodeContentProjection::InheritColumnFormula {
+            table: NodeId::new("SalesTable"),
+            column_id: "col:tax".to_string(),
+        },
+        false,
+    );
+    assert!(!rejected.accepted);
+    assert_eq!(
+        rejected.error,
+        Some(IntentError::InitialContentBindRejected {
+            policy: "inherit_column_formula".to_string()
+        })
+    );
+    assert!(skin.state().node(&NodeId::new("InheritedTax")).is_none());
+
+    let constant_column = skin.try_add_node_initial(
+        None,
+        "InheritedAmount",
+        InitialNodeContentProjection::InheritColumnFormula {
+            table: NodeId::new("SalesTable"),
+            column_id: "col:amount".to_string(),
+        },
+        false,
+    );
+    assert!(!constant_column.accepted);
+    assert_eq!(
+        constant_column.error,
+        Some(IntentError::ConstantTableColumnFormulaEdit {
+            table: "SalesTable".to_string(),
+            column_id: "col:amount".to_string()
+        })
+    );
 }
 
 #[test]

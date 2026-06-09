@@ -37,9 +37,11 @@ for the current Skin IR surface: `SetMeta` is an OxCalc-owned revisioned meta-me
 `SetNodeAttributes` patches a host-owned string attribute bag through revisioned meta nodes. The
 first `add-node-content-policy` widening is landed for literal formula initial content: OxCalc
 dry-binds the prospective node without mutating, DnaTreeCalc previews syntax/bind/profile blockers,
-and commit rejects invalid literal formulas before model mutation. `InheritColumnFormula` still
-needs a table/column subject on the intent, and `TemplateBound` still waits for the template
-subsystem.
+and commit rejects invalid literal formulas before model mutation. The next `add-node-content-policy`
+slice is now implemented for `InheritColumnFormula { table, column_id }`: the host reads formula
+text from table column metadata, OxCalc dry-binds it in the prospective new-node context, and
+row-context/table-only formulas are rejected rather than faking table context. `TemplateBound` still
+waits for the template subsystem.
 
 ## Roadmap Position
 
@@ -195,8 +197,11 @@ The roadmap alignment rule is:
       dry-bound by OxCalc in a prospective new-node context without mutating the workspace; add-node
       preview carries typed syntax/bind/profile blockers; and add-node commit rejects invalid literal
       formulas before creating the node. `Empty`, literal constants, and `is_meta` remain supported.
-      `InheritColumnFormula` remains blocked until the intent carries a table/column subject, and
-      `TemplateBound` remains blocked on the template subsystem.
+      `InheritColumnFormula { table, column_id }` is now supported for table-column formula metadata
+      that dry-binds as an ordinary node formula in the prospective target context; row-context or
+      table-only formulas are rejected with bind diagnostics before mutation, and constant columns are
+      rejected with typed table-column errors. `TemplateBound` remains blocked on the template
+      subsystem.
 - [ ] Continue W3 with the next ownership-correct slice. Candidate order after the OxFml-blocked
       formula rewrite verbs: complete `add-node-content-policy` subject/substrate design, or move to
       OxFml-unblocked formula authoring when that API lands.
