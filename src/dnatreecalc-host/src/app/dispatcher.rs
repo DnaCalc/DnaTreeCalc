@@ -209,6 +209,9 @@ impl Dispatcher for HostDispatcher {
             WorkspaceIntent::CopyToClipboard { scope, payload } => self
                 .copy_to_clipboard(scope, payload)
                 .unwrap_or_else(IntentReceipt::rejected),
+            WorkspaceIntent::PasteClipboardFormat { target } => self
+                .paste_clipboard_format(target)
+                .unwrap_or_else(IntentReceipt::rejected),
             WorkspaceIntent::Recalculate => self
                 .apply_workspace_edit(|_| Ok(()), WorkspaceEditPublication::Recalculate)
                 .map_or_else(IntentReceipt::rejected, receipt_for_publication),
@@ -493,6 +496,19 @@ impl HostDispatcher {
         Ok(IntentReceipt::accepted().with_delta(delta))
     }
 
+    fn paste_clipboard_format(&self, target: AuthoringScope) -> Result<IntentReceipt, IntentError> {
+        let number_format_code = self
+            .workspace
+            .ok_or_else(|| host_failure("workspace projection handle is not attached"))
+            .and_then(|workspace| clipboard_number_format_code(&workspace.get_untracked()))?;
+        match self.apply_workspace_transaction_edit(|session| {
+            session.set_number_format_transaction(target, number_format_code)
+        }) {
+            Ok(publication) => Ok(receipt_for_publication(publication)),
+            Err(error) => Ok(IntentReceipt::rejected(error)),
+        }
+    }
+
     fn apply_workspace_edit<T>(
         &self,
         edit: impl FnOnce(
@@ -756,6 +772,37 @@ fn clipboard_from_projection(
     Ok(ClipboardProjection { payload })
 }
 
+fn clipboard_number_format_code(workspace: &WorkspaceState) -> Result<Option<String>, IntentError> {
+    let Some(clipboard) = &workspace.clipboard else {
+        return Err(clipboard_payload_mismatch("format", "empty"));
+    };
+    let ClipboardPayloadProjection::Format { nodes } = &clipboard.payload else {
+        return Err(clipboard_payload_mismatch(
+            "format",
+            clipboard_payload_actual(&clipboard.payload),
+        ));
+    };
+    let [node] = nodes.as_slice() else {
+        return Err(clipboard_payload_mismatch(
+            "single_format",
+            format!("format_count={}", nodes.len()),
+        ));
+    };
+    Ok(node
+        .effective_format
+        .as_ref()
+        .and_then(|format| format.number_format_code.clone()))
+}
+
+fn clipboard_payload_actual(payload: &ClipboardPayloadProjection) -> String {
+    match payload {
+        ClipboardPayloadProjection::Values { .. } => "values".to_string(),
+        ClipboardPayloadProjection::Formula { .. } => "formula".to_string(),
+        ClipboardPayloadProjection::Format { nodes } => format!("format_count={}", nodes.len()),
+        ClipboardPayloadProjection::Subtree { .. } => "subtree".to_string(),
+    }
+}
+
 fn single_clipboard_node<'a>(
     workspace: &'a WorkspaceState,
     node_keys: &[NodeKey],
@@ -783,6 +830,16 @@ fn clipboard_scope_error(payload: ClipboardPayloadKind, detail: impl Into<String
     IntentError::ClipboardScopeUnsupported {
         payload: payload.stable_id().to_string(),
         detail: detail.into(),
+    }
+}
+
+fn clipboard_payload_mismatch(
+    expected: impl Into<String>,
+    actual: impl Into<String>,
+) -> IntentError {
+    IntentError::ClipboardPayloadMismatch {
+        expected: expected.into(),
+        actual: actual.into(),
     }
 }
 

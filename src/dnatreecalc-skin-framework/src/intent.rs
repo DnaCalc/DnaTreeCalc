@@ -137,6 +137,11 @@ pub enum WorkspaceIntent {
         scope: AuthoringScope,
         payload: ClipboardPayloadKind,
     },
+    /// Paste the current clipboard format payload onto a typed target scope.
+    /// Formula and value paste are separate ownership-sensitive verbs.
+    PasteClipboardFormat {
+        target: AuthoringScope,
+    },
     AddNode {
         parent: Option<NodeId>,
         symbol: String,
@@ -386,6 +391,8 @@ pub enum IntentError {
     InvalidAttributeKey { key: String },
     #[error("clipboard payload {payload} cannot be built from this scope: {detail}")]
     ClipboardScopeUnsupported { payload: String, detail: String },
+    #[error("clipboard does not contain a usable {expected} payload: {actual}")]
+    ClipboardPayloadMismatch { expected: String, actual: String },
     #[error("engine rejected the intent: {0}")]
     EngineRejected(String),
     #[error("host failed to dispatch the intent: {0}")]
@@ -521,6 +528,7 @@ impl Dispatcher for InMemoryDispatcher {
             | WorkspaceIntent::SetMeta { .. }
             | WorkspaceIntent::SetNodeAttributes { .. }
             | WorkspaceIntent::CopyToClipboard { .. }
+            | WorkspaceIntent::PasteClipboardFormat { .. }
             | WorkspaceIntent::AddNode { .. }
             | WorkspaceIntent::RenameNode { .. }
             | WorkspaceIntent::MoveNode { .. }

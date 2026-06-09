@@ -2934,6 +2934,94 @@ fn programmable_skin_populates_typed_clipboard_carriers_from_projection() {
 }
 
 #[test]
+fn programmable_skin_pastes_clipboard_format_through_format_write_path() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+    assert!(skin.try_add_node(None, "Book", "").accepted);
+    assert!(skin.try_add_node(Some("Book"), "Source", "1000").accepted);
+    assert!(skin.try_add_node(Some("Book"), "Target", "0.2").accepted);
+    assert!(skin.try_add_node(Some("Book"), "Plain", "42").accepted);
+    skin.recalc();
+
+    let state = skin.state();
+    let source_key = state.node(&NodeId::new("Book.Source")).unwrap().key.clone();
+    let target_key = state.node(&NodeId::new("Book.Target")).unwrap().key.clone();
+    let plain_key = state.node(&NodeId::new("Book.Plain")).unwrap().key.clone();
+
+    let empty_paste = skin.try_paste_clipboard_format(AuthoringScope::Node(target_key.clone()));
+    assert!(!empty_paste.accepted);
+    assert_eq!(
+        empty_paste.error,
+        Some(IntentError::ClipboardPayloadMismatch {
+            expected: "format".to_string(),
+            actual: "empty".to_string()
+        })
+    );
+
+    let source_format =
+        skin.try_set_number_format(AuthoringScope::Node(source_key.clone()), Some("0.00"));
+    assert!(source_format.accepted, "{:?}", source_format.error);
+    assert_any_transaction(&source_format);
+    let copy = skin.try_copy_to_clipboard(
+        AuthoringScope::Node(source_key.clone()),
+        ClipboardPayloadKind::Format,
+    );
+    assert!(copy.accepted, "{:?}", copy.error);
+
+    let paste = skin.try_paste_clipboard_format(AuthoringScope::Node(target_key.clone()));
+    assert!(paste.accepted, "{:?}", paste.error);
+    assert_any_transaction(&paste);
+    let state = skin.state();
+    assert_eq!(
+        state
+            .node(&NodeId::new("Book.Target"))
+            .unwrap()
+            .effective_format
+            .as_ref()
+            .and_then(|format| format.number_format_code.as_deref()),
+        Some("0.00")
+    );
+    assert!(matches!(
+        state.clipboard.as_ref().map(|clipboard| &clipboard.payload),
+        Some(ClipboardPayloadProjection::Format { .. })
+    ));
+
+    let clear_source = skin.try_copy_to_clipboard(
+        AuthoringScope::Node(plain_key.clone()),
+        ClipboardPayloadKind::Format,
+    );
+    assert!(clear_source.accepted, "{:?}", clear_source.error);
+    let clear = skin.try_paste_clipboard_format(AuthoringScope::Node(target_key.clone()));
+    assert!(clear.accepted, "{:?}", clear.error);
+    assert_any_transaction(&clear);
+    let state = skin.state();
+    assert_eq!(
+        state
+            .node(&NodeId::new("Book.Target"))
+            .unwrap()
+            .effective_format
+            .as_ref()
+            .and_then(|format| format.number_format_code.as_deref()),
+        None
+    );
+
+    let multi_copy = skin.try_copy_to_clipboard(
+        AuthoringScope::Nodes(vec![source_key, plain_key]),
+        ClipboardPayloadKind::Format,
+    );
+    assert!(multi_copy.accepted, "{:?}", multi_copy.error);
+    let multi_paste = skin.try_paste_clipboard_format(AuthoringScope::Node(target_key));
+    assert!(!multi_paste.accepted);
+    assert_eq!(
+        multi_paste.error,
+        Some(IntentError::ClipboardPayloadMismatch {
+            expected: "single_format".to_string(),
+            actual: "format_count=2".to_string()
+        })
+    );
+}
+
+#[test]
 fn programmable_skin_edits_table_cells_and_adds_rows_from_outside_ir() {
     let harness = Harness::from_repo_fixture("tables");
     let skin = harness.driver.clone();

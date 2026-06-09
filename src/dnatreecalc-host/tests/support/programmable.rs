@@ -125,6 +125,11 @@ impl ProgrammableDriver {
             .dispatch(WorkspaceIntent::CopyToClipboard { scope, payload })
     }
 
+    pub fn try_paste_clipboard_format(&self, target: AuthoringScope) -> IntentReceipt {
+        self.dispatch
+            .dispatch(WorkspaceIntent::PasteClipboardFormat { target })
+    }
+
     pub fn edit_deferred(&self, node: &str, content: &str) {
         self.accept(WorkspaceIntent::EditContentDeferred {
             node: NodeId::new(node),

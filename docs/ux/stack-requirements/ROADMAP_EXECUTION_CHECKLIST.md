@@ -43,6 +43,9 @@ The first `clipboard-transfer-model` tranche is landed: `CopyToClipboard` popula
 typed `WorkspaceState.clipboard` carrier for values, formula source, formats, and subtrees from
 `AuthoringScope`, with a `ClipboardChanged` projection delta. Paste/cut, OS clipboard integration,
 formula rewrite, and subtree rebind remain separate work.
+The first `paste-special` slice is landed for format payloads: `PasteClipboardFormat` consumes one
+copied format carrier and applies it through the existing canonical number-format transaction path.
+Value paste, formula paste, OS clipboard integration, and subtree paste/rebind remain open.
 
 Do not advance to W4 speculation/history or W5 platform polish as the default next step while W3
 authoring verbs remain incomplete.
@@ -177,8 +180,14 @@ Use this as the per-tranche goal statement before implementation:
       `WorkspaceDeltaChange::ClipboardChanged`. This is a transfer artifact only; paste-special,
       cut/delete coupling, OS clipboard export/import, formula rewrite, and subtree rebind remain
       open.
+- [x] Land first `paste-special` tranche:
+      `WorkspaceIntent::PasteClipboardFormat { target }` accepts a single copied `Format` carrier and
+      applies its `number_format_code` to a target `AuthoringScope` through the existing
+      `set_number_format_transaction` path. Pasting an unformatted source clears the target format.
+      Value paste, formula paste, OS clipboard integration, and subtree paste/rebind remain open.
 - [ ] Continue W3 with the next feasible tranche: continue `clipboard-transfer-model`
-      toward paste/cut where ownership is clear, or move to OxFml-unblocked formula authoring.
+      toward cut or non-formula paste where ownership is clear, or move to OxFml-unblocked formula
+      authoring.
 
 ## Gated Workstreams
 
