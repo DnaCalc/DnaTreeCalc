@@ -7,12 +7,13 @@ use dnatreecalc_host::model::{WorkspaceFixture, WorkspaceModel};
 use dnatreecalc_skin_framework::{
     ActiveNodeDetailProjection, ActiveSelectionDetailProjection, ActiveTableCellDetailProjection,
     AuthoringScope, ClipboardPayloadKind, Dispatcher, ErasedSkinContext,
-    FormulaBindPreviewProjection, InitialNodeContentProjection, IntentError, IntentReceipt,
-    MutationImpactProjection, NodeAttributePatch, NodeId, NodeKey, RecalcPlanMutation,
-    RecalcPlanProjection, RegisteredSkin, SelectionState, SharedSkinState, SharedSkinStateHandle,
-    SkinCapabilities, SkinCategory, SkinContext, SkinHandle, SkinId, SkinManifest, SkinState,
-    TableCellInput, TableFormulaBindPreviewProjection, TableRowInput, WorkspaceIntent,
-    WorkspaceRecalcMode, WorkspaceRevisionProjection, WorkspaceSkin, WorkspaceState,
+    FormulaBindPreviewProjection, FormulaReferenceInsertionTarget, InitialNodeContentProjection,
+    IntentError, IntentReceipt, MutationImpactProjection, NodeAttributePatch, NodeId, NodeKey,
+    RecalcPlanMutation, RecalcPlanProjection, RegisteredSkin, SelectionState, SharedSkinState,
+    SharedSkinStateHandle, SkinCapabilities, SkinCategory, SkinContext, SkinHandle, SkinId,
+    SkinManifest, SkinState, TableCellInput, TableFormulaBindPreviewProjection, TableRowInput,
+    WorkspaceIntent, WorkspaceRecalcMode, WorkspaceRevisionProjection, WorkspaceSkin,
+    WorkspaceState,
 };
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -153,6 +154,24 @@ impl ProgrammableDriver {
             .dispatch(WorkspaceIntent::PasteExternalClipboardText {
                 target,
                 text: text.to_string(),
+            })
+    }
+
+    pub fn try_insert_formula_reference(
+        &self,
+        node: NodeKey,
+        current_formula_text: &str,
+        replacement_start: usize,
+        replacement_len: usize,
+        target: FormulaReferenceInsertionTarget,
+    ) -> IntentReceipt {
+        self.dispatch
+            .dispatch(WorkspaceIntent::InsertFormulaReference {
+                node,
+                current_formula_text: current_formula_text.to_string(),
+                replacement_start,
+                replacement_len,
+                target,
             })
     }
 

@@ -35,6 +35,19 @@ pub struct NodeAttributePatch {
     pub clear: BTreeSet<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FormulaReferenceInsertionTarget {
+    Node(NodeKey),
+    HostReferenceCollection {
+        base: Option<NodeKey>,
+        collection_family: String,
+    },
+    HostStructuralSelector {
+        base: NodeKey,
+        selector_family: String,
+    },
+}
+
 impl NodeAttributePatch {
     #[must_use]
     pub fn set(key: impl Into<String>, value: impl Into<String>) -> Self {
@@ -159,6 +172,15 @@ pub enum WorkspaceIntent {
     PasteExternalClipboardText {
         target: AuthoringScope,
         text: String,
+    },
+    /// Insert a host reference into a formula edit buffer. The skin owns the
+    /// buffer/caret span; OxFml owns reference text composition and rebind.
+    InsertFormulaReference {
+        node: NodeKey,
+        current_formula_text: String,
+        replacement_start: usize,
+        replacement_len: usize,
+        target: FormulaReferenceInsertionTarget,
     },
     AddNode {
         parent: Option<NodeId>,
@@ -411,6 +433,8 @@ pub enum IntentError {
     ClipboardScopeUnsupported { payload: String, detail: String },
     #[error("clipboard does not contain a usable {expected} payload: {actual}")]
     ClipboardPayloadMismatch { expected: String, actual: String },
+    #[error("formula reference insertion failed for {node}: {detail}")]
+    FormulaReferenceInsertionFailed { node: String, detail: String },
     #[error("engine rejected the intent: {0}")]
     EngineRejected(String),
     #[error("host failed to dispatch the intent: {0}")]
@@ -550,6 +574,7 @@ impl Dispatcher for InMemoryDispatcher {
             | WorkspaceIntent::PasteClipboardFormat { .. }
             | WorkspaceIntent::PasteClipboardValues { .. }
             | WorkspaceIntent::PasteExternalClipboardText { .. }
+            | WorkspaceIntent::InsertFormulaReference { .. }
             | WorkspaceIntent::AddNode { .. }
             | WorkspaceIntent::RenameNode { .. }
             | WorkspaceIntent::MoveNode { .. }

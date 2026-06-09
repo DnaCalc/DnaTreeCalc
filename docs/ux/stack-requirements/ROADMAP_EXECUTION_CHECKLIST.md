@@ -25,9 +25,16 @@ OxFml composes or rewrites formula text, OxCalc rebinds and schedules, the DnaTr
 ids/handles/scopes through closed intents, and skins dispatch only.
 
 Current status: first W3 assessment is complete. The formula rewrite verbs
-(`replicate-by-id`, `f4-toggle-binding`, and `reference-insertion`) are blocked on an OxFml-owned
-authoring API and are recorded in `../../handovers/HANDOVER_OXFML_formula_authoring_verbs.md`.
-The first landed W3 slice is `format-write` for authored number formats via canonical meta nodes and
+(`replicate-by-id`, `f4-toggle-binding`, and broader `reference-insertion`) require OxFml-owned
+authoring APIs and are recorded in `../../handovers/HANDOVER_OXFML_formula_authoring_verbs.md`.
+The first formula-authoring slice is now landed for point-mode node reference insertion:
+OxFml composes host reference text from typed targets and the TreeCalc host-reference syntax profile,
+including bracket escaping and profile-selected selector tokens, while DnaTreeCalc exposes a closed
+`InsertFormulaReference` Skin IR intent that carries node keys, edit-buffer text, replacement span,
+and typed target. The host calls OxFml, dry-binds through OxCalc, and commits through a real content
+transaction. Full replicate/fill by id, F4 binding toggle, formula paste/rebind, formula-and-format
+paste, subtree internal-reference rebind, and richer selector insertion UX remain open.
+The first landed W3 write slice is `format-write` for authored number formats via canonical meta nodes and
 real OxCalc transactions. The second landed W3 slice is `note-write` via canonical `Note` meta nodes
 and `NodeView.note` projection. The `SetMeta` half of `meta-and-attribute-write` is landed through
 an OxCalc-owned revisioned meta-membership edit. The `SetNodeAttributes` half is landed for the
@@ -178,6 +185,17 @@ Use this as the per-tranche goal statement before implementation:
       `note-write`, `format-write`, and `add-node-content-policy` widening.
 - [x] File OxFml handoff for W3 formula rewrite/composition verbs that cannot be implemented
       ownership-correctly in DnaTreeCalc with the current editor facade.
+- [x] Land first `reference-insertion` formula-authoring tranche:
+      OxFml exposes a typed editor host-reference insertion operation for host names,
+      host-reference collections, and host structural selectors, composes source text from the
+      host-reference syntax profile, bracket-escapes host names, fixes editor incremental parsing to
+      use the same host-reference syntax profile as binding, and tests `Base.@PARENT`,
+      `Base.@CHILDREN`, `Base.*`, and bracketed names. DnaTreeCalc exposes
+      `WorkspaceIntent::InsertFormulaReference` with node key, current formula text, replacement
+      span, and typed target; the host maps keys to projected facts, calls OxFml, dry-binds through
+      OxCalc, and commits through a real transaction. Programmable Skin IR tests prove point-mode
+      node insertion updates formula text, dependencies, and calculated value from outside the
+      engine.
 - [x] Land first ownership-correct `format-write` tranche:
       `WorkspaceIntent::SetNumberFormat { scope, number_format_code }` creates, updates, or clears
       `Format.NumberFormat` meta nodes through OxCalc transactions; receipts carry transaction ids;
@@ -283,8 +301,10 @@ Use this as the per-tranche goal statement before implementation:
       applies matching cells in one OxCalc transaction, preserves single-node raw-text paste and
       single-cell broadcast behavior, and rejects item-count mismatches before mutation. Rich OS
       clipboard formats, formula rewrite paste, and subtree paste/rebind remain open.
-- [ ] Continue W3 with the next feasible tranche: complete remaining `add-node-content-policy` only
-      when template substrate exists, or move to OxFml-unblocked formula authoring.
+- [ ] Continue W3 with the next feasible tranche: widen `reference-insertion` beyond the first
+      node-target point-mode tranche, or move to the next OxFml-backed formula authoring verb
+      (`f4-toggle-binding`, `replicate-by-id`, formula paste/rebind) when its rewrite semantics are
+      available. Complete remaining `add-node-content-policy` only when template substrate exists.
 
 ## Gated Workstreams
 

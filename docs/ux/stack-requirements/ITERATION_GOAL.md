@@ -38,8 +38,17 @@ closed for the current Skin IR surface: receipts carry typed errors and real OxC
 previews use OxFml dry-bind plus OxCalc invalidation planning, and the closure review found no
 skin-side formula parsing, semantic value computation, or transaction-id fabrication. The first W3
 assessment found that formula rewrite verbs (`replicate-by-id`, `f4-toggle-binding`, and
-`reference-insertion`) require an OxFml-owned authoring API; DnaTreeCalc has filed a handoff and
-landed the first ownership-correct W3 slice: number-format write through host-owned meta nodes and
+`reference-insertion`) require an OxFml-owned authoring API; DnaTreeCalc filed a handoff and now has
+the first formula-authoring slice landed for point-mode node reference insertion. OxFml composes
+host-reference text from typed targets and the TreeCalc host-reference syntax profile, including
+bracket escaping and profile-selected selector spellings, and the editor path now parses incremental
+edits with the same host-reference profile it binds with. DnaTreeCalc exposes a closed
+`InsertFormulaReference` Skin IR intent that carries the edited node key, current edit-buffer text,
+replacement span, and typed target; the host maps keys to projected node facts, calls OxFml, dry-binds
+the recomposed formula through OxCalc, and commits it through a real content transaction.
+`replicate-by-id`, `f4-toggle-binding`, formula paste/rebind, formula-and-format paste, subtree
+internal-reference rebind, and broader selector/collection insertion UX remain open. DnaTreeCalc has
+also landed the first ownership-correct W3 slice: number-format write through host-owned meta nodes and
 real OxCalc transactions. The next W3 slice, `note-write`, is also landed through canonical
 host-owned `Note` meta nodes and Skin IR note projection. `meta-and-attribute-write` is now landed
 for the current Skin IR surface: `SetMeta` is an OxCalc-owned revisioned meta-membership edit, and
@@ -230,6 +239,17 @@ The roadmap alignment rule is:
       schedules; DnaTreeCalc host carries ids, handles, and scopes through closed intents; skins
       dispatch only.
 - [x] File the OxFml W3 formula-authoring handoff for handle/id-based formula rewrite verbs.
+- [x] Land the first `reference-insertion` formula-authoring tranche:
+      OxFml exposes `EditorEditService::insert_host_reference`, composes host-name,
+      host-reference-collection, and host-structural-selector text from typed targets and the
+      host-reference syntax profile, bracket-escapes non-identifier host names, and reparses editor
+      edits with the same host-reference syntax profile used by binding. DnaTreeCalc exposes
+      `WorkspaceIntent::InsertFormulaReference` over node keys, edit-buffer text, replacement span,
+      and typed target; the host calls OxFml, dry-binds the recomposed formula through OxCalc, and
+      commits it through the existing transaction path. The current Skin IR test covers node
+      point-mode insertion into a formula and proves the resulting dependency/value after recalc.
+      Full replicate/fill by id, F4 binding toggle, formula paste/rebind, formula-and-format paste,
+      subtree internal-reference rebind, and richer multi-selector insertion UX remain open.
 - [x] Implement first `format-write` slice: `WorkspaceIntent::SetNumberFormat` over
       `AuthoringScope`, storing authored number-format codes in canonical `Format.NumberFormat`
       meta nodes, rejecting non-meta reserved-path collisions with typed errors, and carrying real
@@ -342,9 +362,11 @@ The roadmap alignment rule is:
       and a single pasted text item still broadcasts through the existing scoped-content path.
       Item/target count mismatches reject before mutation. Rich OS clipboard formats, formula
       rewrite/rebind paste, and subtree paste remain open.
-- [ ] Continue W3 with the next ownership-correct slice. Candidate order after the OxFml-blocked
-      formula rewrite verbs: complete remaining `add-node-content-policy` only when template
-      substrate exists, or move to OxFml-unblocked formula authoring when that API lands.
+- [ ] Continue W3 with the next ownership-correct slice. Candidate order: widen
+      `reference-insertion` beyond the first node-target point-mode tranche, or implement the next
+      OxFml-backed formula authoring verb (`f4-toggle-binding`, `replicate-by-id`, formula
+      paste/rebind) when its rewrite semantics are available. Complete remaining
+      `add-node-content-policy` only when template substrate exists.
 
 ### Gating Engine Workstreams
 

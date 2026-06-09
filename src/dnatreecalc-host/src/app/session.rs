@@ -10,7 +10,7 @@ use dnatreecalc_skin_framework::{
     FormulaBindPreviewDiagnosticProjection, FormulaBindPreviewDiagnosticStage,
     FormulaBindPreviewInputKind, FormulaBindPreviewProfileViolationKindProjection,
     FormulaBindPreviewProfileViolationProjection, FormulaBindPreviewProjection,
-    InitialNodeContentProjection, InvalidationReasonProjection,
+    FormulaReferenceInsertionTarget, InitialNodeContentProjection, InvalidationReasonProjection,
     MutationImpactBlockedReasonProjection, MutationImpactIntentProjection,
     MutationImpactProjection, NameCollisionProjection, NodeAttributePatch, NodeCalcStateProjection,
     NodeContentKind as FrameworkContentKind, NodeId, NodeInvalidationProjection, NodeKey,
@@ -60,8 +60,18 @@ use oxcalc_core::treecalc::{
     DerivationInvocationTraceNode, DerivationPreparedArgumentTrace, DerivationTraceRecord,
     LocalTreeCalcPhaseKey,
 };
+use oxfml_core::binding::NameKind;
+use oxfml_core::consumer::editor::{
+    EditorAnalysisStage, EditorEditService, EditorEnvironment, EditorHostReferenceInsertionError,
+    EditorHostReferenceInsertionRequest, EditorHostReferenceTarget,
+};
 use oxfml_core::consumer::runtime::{RuntimeEnvironment, RuntimeValueLiteralizationResult};
 use oxfml_core::format::{oxfml_en_us_format_profile, render_with_code};
+use oxfml_core::syntax::token::TextSpan;
+use oxfml_core::{
+    BindContext, FormulaSourceRecord, HostNameBindRecord, HostReferenceCollectionSyntax,
+    HostReferenceStructuralSelectorSyntax, HostReferenceSyntaxProfile,
+};
 use oxfunc_core::locale_format::WorkbookDateSystem;
 use oxfunc_core::value::{CalcValue, CoreValue, ExcelText};
 use serde::{Deserialize, Serialize};
@@ -1277,6 +1287,92 @@ impl TreeWorkspaceSession {
             result: (),
             transaction_id: outcome.transaction_id.to_string(),
         })
+    }
+
+    pub fn insert_formula_reference_transaction(
+        &mut self,
+        node: NodeKey,
+        current_formula_text: String,
+        replacement_start: usize,
+        replacement_len: usize,
+        target: FormulaReferenceInsertionTarget,
+    ) -> Result<TreeWorkspaceTransactionEdit<()>, TreeWorkspaceSessionError> {
+        if replacement_start.saturating_add(replacement_len) > current_formula_text.chars().count()
+        {
+            return Err(TreeWorkspaceSessionError::FormulaReferenceInsertionFailed {
+                node: node.to_string(),
+                detail: format!(
+                    "replacement span {replacement_start}:{replacement_len} is outside the edit buffer"
+                ),
+            });
+        }
+
+        let state = self.workspace_state()?;
+        let edited_node = state.node_by_key(&node).ok_or_else(|| {
+            TreeWorkspaceSessionError::ProjectionOutOfSync {
+                node: format!("node key {node}"),
+            }
+        })?;
+        if edited_node.content_text != current_formula_text {
+            return Err(TreeWorkspaceSessionError::FormulaReferenceInsertionFailed {
+                node: edited_node.id.to_string(),
+                detail: "current formula text does not match the published host projection"
+                    .to_string(),
+            });
+        }
+        let edited_node_id = edited_node.id.clone();
+        let oxfml_target = oxfml_reference_target_from_projection(&state, &target)?;
+        let bind_context = oxfml_editor_bind_context_from_projection(&state);
+        let service = EditorEditService::new(EditorEnvironment::new(bind_context));
+        let document = service.open_document(
+            FormulaSourceRecord::new(
+                format!("dnatreecalc:{}:reference-insert", edited_node_id.as_str()),
+                1,
+                current_formula_text,
+            ),
+            None,
+        );
+        let inserted = service
+            .insert_host_reference(
+                &document,
+                EditorHostReferenceInsertionRequest {
+                    target: oxfml_target,
+                    replacement_span: Some(TextSpan::new(replacement_start, replacement_len)),
+                },
+                EditorAnalysisStage::SyntaxAndBind,
+                None,
+            )
+            .map_err(
+                |error| TreeWorkspaceSessionError::FormulaReferenceInsertionFailed {
+                    node: edited_node_id.to_string(),
+                    detail: oxfml_reference_insertion_error_detail(error),
+                },
+            )?;
+        let updated_formula_text = inserted
+            .interaction_result
+            .document
+            .source
+            .entered_formula_text;
+
+        let dry_bind = self.context.dry_bind_node_formula_text(
+            &self.workspace_id,
+            self.tree_node_id(edited_node_id.as_str())?,
+            updated_formula_text.clone(),
+        )?;
+        let bind_preview = formula_bind_preview_from_oxcalc_verdict(dry_bind);
+        if !bind_preview.legal {
+            let detail = bind_preview_rejection_detail(&bind_preview);
+            return Err(TreeWorkspaceSessionError::FormulaReferenceInsertionFailed {
+                node: edited_node_id.to_string(),
+                detail,
+            });
+        }
+
+        self.edit_formula_transaction(
+            &edited_node_id,
+            updated_formula_text,
+            TransactionRecalcPolicy::RecalculateAndPublishOnce,
+        )
     }
 
     pub fn paste_constant_value_transaction(
@@ -5072,6 +5168,8 @@ pub enum TreeWorkspaceSessionError {
     AttributePathReserved { node: String },
     #[error("attribute key {key} is not path-safe")]
     InvalidAttributeKey { key: String },
+    #[error("formula reference insertion failed for {node}: {detail}")]
+    FormulaReferenceInsertionFailed { node: String, detail: String },
     #[error("OxCalc context projection is out of sync for {node}")]
     ProjectionOutOfSync { node: String },
 }
@@ -5410,6 +5508,141 @@ fn formula_bind_preview_from_oxcalc_verdict(
                 },
             })
             .collect(),
+    }
+}
+
+fn oxfml_reference_target_from_projection(
+    state: &WorkspaceState,
+    target: &FormulaReferenceInsertionTarget,
+) -> Result<EditorHostReferenceTarget, TreeWorkspaceSessionError> {
+    match target {
+        FormulaReferenceInsertionTarget::Node(node) => {
+            let target = state.node_by_key(node).ok_or_else(|| {
+                TreeWorkspaceSessionError::ProjectionOutOfSync {
+                    node: format!("node key {node}"),
+                }
+            })?;
+            Ok(EditorHostReferenceTarget::HostName {
+                canonical_name: target.display_name.clone(),
+            })
+        }
+        FormulaReferenceInsertionTarget::HostReferenceCollection {
+            base,
+            collection_family,
+        } => {
+            let base_canonical_name = base
+                .as_ref()
+                .map(|base| {
+                    state
+                        .node_by_key(base)
+                        .map(|node| node.display_name.clone())
+                        .ok_or_else(|| TreeWorkspaceSessionError::ProjectionOutOfSync {
+                            node: format!("node key {base}"),
+                        })
+                })
+                .transpose()?;
+            Ok(EditorHostReferenceTarget::HostReferenceCollection {
+                base_canonical_name,
+                collection_family: collection_family.clone(),
+            })
+        }
+        FormulaReferenceInsertionTarget::HostStructuralSelector {
+            base,
+            selector_family,
+        } => {
+            let base = state.node_by_key(base).ok_or_else(|| {
+                TreeWorkspaceSessionError::ProjectionOutOfSync {
+                    node: format!("node key {base}"),
+                }
+            })?;
+            Ok(EditorHostReferenceTarget::HostStructuralSelector {
+                base_canonical_name: base.display_name.clone(),
+                selector_family: selector_family.clone(),
+            })
+        }
+    }
+}
+
+fn oxfml_editor_bind_context_from_projection(state: &WorkspaceState) -> BindContext {
+    let mut context = BindContext {
+        host_reference_syntax: treecalc_oxfml_host_reference_syntax(),
+        ..BindContext::default()
+    };
+    for node in state.nodes_by_key.values().filter(|node| !node.is_meta) {
+        context
+            .names
+            .entry(node.display_name.clone())
+            .or_insert(NameKind::ReferenceLike);
+        context
+            .host_name_bind_records
+            .entry(node.display_name.clone())
+            .or_insert_with(|| oxfml_host_name_bind_record(node));
+    }
+    context
+}
+
+fn treecalc_oxfml_host_reference_syntax() -> HostReferenceSyntaxProfile {
+    HostReferenceSyntaxProfile::with_members_and_structural_selectors(
+        [
+            HostReferenceCollectionSyntax::new("CHILDREN", "children"),
+            HostReferenceCollectionSyntax::new("*", "children"),
+        ],
+        [
+            HostReferenceStructuralSelectorSyntax::new("PARENT", "parent"),
+            HostReferenceStructuralSelectorSyntax::new("SELF", "self"),
+            HostReferenceStructuralSelectorSyntax::new("PREV", "previous"),
+            HostReferenceStructuralSelectorSyntax::new("NEXT", "next"),
+        ],
+    )
+}
+
+fn oxfml_host_name_bind_record(node: &NodeView) -> HostNameBindRecord {
+    HostNameBindRecord {
+        host_name_handle: format!("dnatreecalc:node:{}", node.key),
+        canonical_name: node.display_name.clone(),
+        host_dependency_key: Some(node.key.to_string()),
+        source_span: TextSpan::new(0, 0),
+        source_token_text: node.display_name.clone(),
+        resolution_layer: "dnatreecalc_projection".to_string(),
+        binding_kind: "tree_node_reference".to_string(),
+        shape_hint: Some("tree_node_value".to_string()),
+        caller_context_dependent: true,
+        diagnostics: Vec::new(),
+        replay_identity_contribution: format!("dnatreecalc:node:{}:{}", node.key, node.id),
+    }
+}
+
+fn oxfml_reference_insertion_error_detail(error: EditorHostReferenceInsertionError) -> String {
+    match error {
+        EditorHostReferenceInsertionError::EmptyHostName => "empty host name".to_string(),
+        EditorHostReferenceInsertionError::EmptySelectorFamily => {
+            "empty host-reference selector family".to_string()
+        }
+        EditorHostReferenceInsertionError::UnknownCollectionFamily(family) => {
+            format!("unknown host-reference collection family {family}")
+        }
+        EditorHostReferenceInsertionError::UnknownStructuralSelectorFamily(family) => {
+            format!("unknown host-reference structural selector family {family}")
+        }
+    }
+}
+
+fn bind_preview_rejection_detail(bind: &FormulaBindPreviewPayload) -> String {
+    let mut parts = Vec::new();
+    parts.extend(
+        bind.diagnostics
+            .iter()
+            .map(|diagnostic| format!("{}:{}", diagnostic.stage.stable_id(), diagnostic.message)),
+    );
+    parts.extend(
+        bind.profile_violations
+            .iter()
+            .map(|violation| format!("profile:{:?}", violation.kind)),
+    );
+    if parts.is_empty() {
+        "OxCalc dry-bind rejected the inserted formula".to_string()
+    } else {
+        parts.join("; ")
     }
 }
 

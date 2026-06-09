@@ -221,6 +221,23 @@ impl Dispatcher for HostDispatcher {
             WorkspaceIntent::PasteExternalClipboardText { target, text } => self
                 .paste_external_clipboard_text(target, text)
                 .unwrap_or_else(IntentReceipt::rejected),
+            WorkspaceIntent::InsertFormulaReference {
+                node,
+                current_formula_text,
+                replacement_start,
+                replacement_len,
+                target,
+            } => self
+                .apply_workspace_transaction_edit(|session| {
+                    session.insert_formula_reference_transaction(
+                        node,
+                        current_formula_text,
+                        replacement_start,
+                        replacement_len,
+                        target,
+                    )
+                })
+                .map_or_else(IntentReceipt::rejected, receipt_for_publication),
             WorkspaceIntent::Recalculate => self
                 .apply_workspace_edit(|_| Ok(()), WorkspaceEditPublication::Recalculate)
                 .map_or_else(IntentReceipt::rejected, receipt_for_publication),
@@ -1163,6 +1180,9 @@ fn intent_error_from_session(error: TreeWorkspaceSessionError) -> IntentError {
         }
         TreeWorkspaceSessionError::InvalidAttributeKey { key } => {
             IntentError::InvalidAttributeKey { key }
+        }
+        TreeWorkspaceSessionError::FormulaReferenceInsertionFailed { node, detail } => {
+            IntentError::FormulaReferenceInsertionFailed { node, detail }
         }
         TreeWorkspaceSessionError::ProjectionOutOfSync { node } => {
             IntentError::ProjectionOutOfSync { node }

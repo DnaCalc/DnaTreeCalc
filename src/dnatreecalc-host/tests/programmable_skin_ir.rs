@@ -4,8 +4,9 @@ use dnatreecalc_host::app::TreeWorkspaceSession;
 use dnatreecalc_skin_framework::{
     ActiveSelectionDetailProjection, AuthoringScope, CalcRunStateProjection,
     ClipboardOperationProjection, ClipboardPayloadKind, ClipboardPayloadProjection,
-    FormulaBindPreviewDiagnosticStage, FormulaBindPreviewInputKind, InitialNodeContentProjection,
-    IntentError, InvalidationReasonProjection, MutationImpactBlockedReasonProjection,
+    FormulaBindPreviewDiagnosticStage, FormulaBindPreviewInputKind,
+    FormulaReferenceInsertionTarget, InitialNodeContentProjection, IntentError,
+    InvalidationReasonProjection, MutationImpactBlockedReasonProjection,
     MutationImpactIntentProjection, NodeAttributePatch, NodeContentKind, NodeId,
     NodeValueProjection, RecalcPlanMutation, ReferenceTargetProjection,
     RuntimeEffectFamilyProjection, RuntimeOverlayKindProjection, TableCellEditabilityProjection,
@@ -236,6 +237,55 @@ fn programmable_skin_previews_formula_bind_from_host_projection() {
     assert_eq!(literal.input_kind, FormulaBindPreviewInputKind::Literal);
     assert!(literal.legal);
     assert!(literal.diagnostics.is_empty());
+}
+
+#[test]
+fn programmable_skin_inserts_formula_reference_through_oxfml_authoring() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    skin.add_node(Some("Root"), "A", "7");
+    skin.add_node(Some("Root"), "Total", "=SUM(0)");
+
+    let before = skin.state();
+    let total_key = before
+        .node(&NodeId::new("Root.Total"))
+        .expect("formula target projects")
+        .key
+        .clone();
+    let a_key = before
+        .node(&NodeId::new("Root.A"))
+        .expect("reference target projects")
+        .key
+        .clone();
+
+    let receipt = skin.try_insert_formula_reference(
+        total_key,
+        "=SUM(0)",
+        "=SUM(".chars().count(),
+        1,
+        FormulaReferenceInsertionTarget::Node(a_key),
+    );
+    assert!(receipt.accepted, "{:?}", receipt.error);
+    assert_any_transaction(&receipt);
+
+    let after = skin.state();
+    let total = after
+        .node(&NodeId::new("Root.Total"))
+        .expect("formula target still projects");
+    assert_eq!(total.content_text, "=SUM(A)");
+    assert_eq!(total.computed_value.display_text(), "7");
+    assert!(
+        after
+            .dependencies
+            .edges_by_owner_key
+            .get(&total.key)
+            .is_some_and(|edges| edges
+                .iter()
+                .any(|edge| edge.target == NodeId::new("Root.A"))),
+        "inserted reference should be resolved by OxCalc after OxFml composition"
+    );
 }
 
 #[test]
