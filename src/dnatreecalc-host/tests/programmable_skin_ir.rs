@@ -389,6 +389,76 @@ fn programmable_skin_projects_candidate_values_without_publishing_until_commit()
 }
 
 #[test]
+fn programmable_skin_renames_candidate_node_without_publishing_until_commit() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    skin.add_node(Some("Root"), "A", "1");
+    let published_revision = skin
+        .state()
+        .revision
+        .workspace_revision_id
+        .clone()
+        .expect("published revision should project");
+
+    let open = skin.try_open_candidate();
+    assert!(open.accepted, "{:?}", open.error);
+    let state = skin.state();
+    let candidate = state.candidates.first().expect("candidate should project");
+    let handle = candidate.handle.clone();
+    let a_key = candidate
+        .nodes
+        .iter()
+        .find(|node| node.id == NodeId::new("Root.A"))
+        .expect("candidate node should project")
+        .key
+        .clone();
+
+    let rename = skin.try_rename_candidate_node(&handle, a_key.clone(), "Renamed");
+    assert!(rename.accepted, "{:?}", rename.error);
+    assert_eq!(rename.transaction_id, None);
+    assert_eq!(
+        skin.state().revision.workspace_revision_id.as_deref(),
+        Some(published_revision.as_str())
+    );
+    assert!(skin.state().node(&NodeId::new("Root.A")).is_some());
+    assert!(skin.state().node(&NodeId::new("Root.Renamed")).is_none());
+    let renamed_state = skin.state();
+    let renamed_candidate = renamed_state
+        .candidates
+        .iter()
+        .find(|candidate| candidate.handle == handle)
+        .expect("candidate should remain projected");
+    assert!(
+        renamed_candidate
+            .nodes
+            .iter()
+            .any(|node| node.key == a_key && node.id == NodeId::new("Root.Renamed"))
+    );
+    let rename_revision_entry = renamed_candidate
+        .revision_history
+        .entries
+        .iter()
+        .find(|entry| entry.revision_id == renamed_candidate.workspace_revision_id)
+        .expect("candidate rename revision should project");
+    let candidate_transaction_id = rename_revision_entry
+        .transaction_id
+        .as_deref()
+        .expect("candidate private rename should project its real transaction id");
+
+    let commit = skin.try_commit_candidate(&handle);
+    assert!(commit.accepted, "{:?}", commit.error);
+    assert_eq!(
+        commit.transaction_id.as_deref(),
+        Some(candidate_transaction_id)
+    );
+    assert!(commit.produced_revision.is_some());
+    assert!(skin.state().node(&NodeId::new("Root.A")).is_none());
+    assert!(skin.state().node(&NodeId::new("Root.Renamed")).is_some());
+}
+
+#[test]
 fn programmable_skin_rejects_stale_candidate_commit_without_losing_candidate() {
     let harness = Harness::empty();
     let skin = harness.driver.clone();

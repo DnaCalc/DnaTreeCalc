@@ -1297,6 +1297,26 @@ impl TreeWorkspaceSession {
         self.candidate_projection_for_view(&view)
     }
 
+    pub fn rename_candidate_node(
+        &mut self,
+        handle: &str,
+        node: &NodeKey,
+        new_symbol: impl Into<String>,
+    ) -> Result<CandidateProjection, TreeWorkspaceSessionError> {
+        let handle = self.candidate_handle(handle)?;
+        let tree_node_id = tree_node_id_from_node_key(node)?;
+        let view = self.context.apply_candidate_edit_transaction(
+            &handle,
+            OxCalcTreeEditTransaction::new(self.workspace_id.clone()).with_edit(
+                OxCalcTreeEdit::RenameNode {
+                    node_id: tree_node_id,
+                    new_symbol: new_symbol.into(),
+                },
+            ),
+        )?;
+        self.candidate_projection_for_view(&view)
+    }
+
     pub fn evaluate_candidate(
         &mut self,
         handle: &str,
@@ -6249,6 +6269,20 @@ fn calc_state_projection_for(calc_state: NodeCalcState) -> NodeCalcStateProjecti
 
 fn node_key_for_tree_node(tree_node_id: TreeNodeId) -> NodeKey {
     NodeKey::from_engine_id(tree_node_id.0)
+}
+
+fn tree_node_id_from_node_key(key: &NodeKey) -> Result<TreeNodeId, TreeWorkspaceSessionError> {
+    let Some(raw) = key.as_str().strip_prefix("tree-node:") else {
+        return Err(TreeWorkspaceSessionError::ProjectionOutOfSync {
+            node: key.to_string(),
+        });
+    };
+    let value = raw
+        .parse::<u64>()
+        .map_err(|_| TreeWorkspaceSessionError::ProjectionOutOfSync {
+            node: key.to_string(),
+        })?;
+    Ok(TreeNodeId(value))
 }
 
 fn local_note_text(node: &NodeView) -> Option<String> {

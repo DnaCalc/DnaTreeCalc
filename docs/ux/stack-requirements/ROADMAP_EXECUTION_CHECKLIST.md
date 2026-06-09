@@ -443,10 +443,14 @@ Use this as the per-tranche goal statement before implementation:
       them through `CandidateProjection.nodes` without rewriting published workspace nodes.
       Focused OxCalc and programmable Skin IR tests prove the projection remains non-publishing
       until commit.
+- [x] `candidate-overlay-handle` first closed structural candidate mutation intent: Skin IR exposes
+      candidate rename by stable `NodeKey`, the host dispatches it through OxCalc's private candidate
+      edit transaction, and programmable Skin IR tests prove candidate-private structure changes
+      without publishing until commit.
 - [ ] `candidate-overlay-handle`: continue toward fully addressable, layerable, non-publishing
-      candidate contexts with optimized layering/rebase, closed structural candidate mutation
-      intents, richer candidate invalidation summaries, and overlay GC before scenarios, what-if
-      previews, goal seek, sweeps, or comparative overlays.
+      candidate contexts with optimized layering/rebase, remaining structural candidate mutation
+      intents such as move/delete/add, richer candidate invalidation summaries, and overlay GC before
+      scenarios, what-if previews, goal seek, sweeps, or comparative overlays.
 - [x] `value-epoch-keying`: per-node published-value epoch is available for projection consumers.
 
 ## Next-Wave Parking Lot

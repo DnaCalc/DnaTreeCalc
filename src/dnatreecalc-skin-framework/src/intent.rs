@@ -212,6 +212,14 @@ pub enum WorkspaceIntent {
         node: NodeId,
         content: String,
     },
+    /// Rename a node inside a candidate without publishing workspace state.
+    /// Nodes are addressed by stable key because candidate-private structural
+    /// paths may diverge from the published workspace projection.
+    RenameCandidateNode {
+        handle: String,
+        node: NodeKey,
+        new_symbol: String,
+    },
     /// Evaluate a candidate and publish the private result into the candidate
     /// projection only.
     EvaluateCandidate {
@@ -652,6 +660,7 @@ impl Dispatcher for InMemoryDispatcher {
             | WorkspaceIntent::InsertFormulaReference { .. }
             | WorkspaceIntent::OpenCandidate { .. }
             | WorkspaceIntent::EditCandidateContent { .. }
+            | WorkspaceIntent::RenameCandidateNode { .. }
             | WorkspaceIntent::EvaluateCandidate { .. }
             | WorkspaceIntent::DiscardCandidate { .. }
             | WorkspaceIntent::CommitCandidate { .. }

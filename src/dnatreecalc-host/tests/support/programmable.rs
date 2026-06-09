@@ -227,6 +227,20 @@ impl ProgrammableDriver {
             })
     }
 
+    pub fn try_rename_candidate_node(
+        &self,
+        handle: &str,
+        node: NodeKey,
+        new_symbol: &str,
+    ) -> IntentReceipt {
+        self.dispatch
+            .dispatch(WorkspaceIntent::RenameCandidateNode {
+                handle: handle.to_string(),
+                node,
+                new_symbol: new_symbol.to_string(),
+            })
+    }
+
     pub fn try_evaluate_candidate(&self, handle: &str) -> IntentReceipt {
         self.dispatch.dispatch(WorkspaceIntent::EvaluateCandidate {
             handle: handle.to_string(),

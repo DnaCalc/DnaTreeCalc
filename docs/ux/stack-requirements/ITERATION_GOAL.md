@@ -59,8 +59,8 @@ handles are live, including shared-basis candidates and sibling candidates that 
 candidate's commit. The candidate-private structural projection slice is now landed: OxCalc
 candidate views carry private node structure, and DnaTreeCalc projects it through
 `CandidateProjection.nodes` without rewriting published node state. Optimized layering/rebase,
-closed structural candidate mutation intents, scenario/what-if UX, richer candidate invalidation
-summaries, and broader candidate overlay GC remain open. Remaining W3
+broader structural candidate mutation intents beyond rename, scenario/what-if UX, richer candidate
+invalidation summaries, and broader candidate overlay GC remain open. Remaining W3
 formula-rewrite/rebind verbs stay parked until their owning
 OxFml/OxCalc substrates are available. W2 safe structural authoring is
 closed for the current Skin IR surface: receipts carry typed errors and real OxCalc transaction ids,
@@ -511,9 +511,14 @@ The roadmap alignment rule is:
       through `CandidateProjection.nodes` separately from published `WorkspaceState.nodes`.
       Engine and programmable Skin IR tests prove a candidate-private structural shape can be read
       without rewriting the live workspace projection.
+- [x] `candidate-overlay-handle` first closed structural candidate mutation intent: Skin IR exposes
+      `RenameCandidateNode { handle, node: NodeKey, new_symbol }`, the host sends it through
+      OxCalc's private candidate edit transaction, and programmable Skin IR tests prove the rename
+      changes only candidate-private node structure until commit while preserving the real promoted
+      transaction id.
 - [ ] `candidate-overlay-handle`: continue toward fully addressable, layerable, non-publishing
-      candidate contexts with optimized layering/rebase, closed structural candidate mutation
-      intents, richer candidate invalidation summaries, and overlay GC.
+      candidate contexts with optimized layering/rebase, remaining structural candidate mutation
+      intents such as move/delete/add, richer candidate invalidation summaries, and overlay GC.
 - [x] `value-epoch-keying`: per-node published-value epoch distinct from input epoch.
 
 ## Status Template

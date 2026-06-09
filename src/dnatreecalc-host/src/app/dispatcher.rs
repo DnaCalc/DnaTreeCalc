@@ -279,6 +279,15 @@ impl Dispatcher for HostDispatcher {
                     session.edit_candidate_content(&handle, &node, content)
                 })
                 .map_or_else(IntentReceipt::rejected, receipt_for_candidate_change),
+            WorkspaceIntent::RenameCandidateNode {
+                handle,
+                node,
+                new_symbol,
+            } => self
+                .apply_candidate_projection_edit(|session| {
+                    session.rename_candidate_node(&handle, &node, new_symbol)
+                })
+                .map_or_else(IntentReceipt::rejected, receipt_for_candidate_change),
             WorkspaceIntent::EvaluateCandidate { handle } => self
                 .apply_candidate_projection_edit(|session| session.evaluate_candidate(&handle))
                 .map_or_else(IntentReceipt::rejected, receipt_for_candidate_change),
