@@ -1033,6 +1033,7 @@ fn programmable_skin_projects_scenario_manifest_over_candidate_handles() {
     );
     assert_eq!(scenario.override_count, 0);
     assert!(scenario.overridden_nodes.is_empty());
+    assert!(scenario.value_epoch.is_some());
     assert!(!scenario.is_active);
     assert_eq!(
         created_state
@@ -1123,6 +1124,9 @@ fn programmable_skin_sets_and_clears_candidate_backed_scenario_overrides() {
     let handle = skin.state().candidates[0].handle.clone();
     let create = skin.try_create_scenario_from_candidate("scenario:bull", "Bull", &handle);
     assert!(create.accepted, "{:?}", create.error);
+    let create_epoch = skin.state().scenarios.entries[0]
+        .value_epoch
+        .expect("created scenario should carry an epoch");
 
     let set = skin.try_set_scenario_override(
         "scenario:bull",
@@ -1137,12 +1141,35 @@ fn programmable_skin_sets_and_clears_candidate_backed_scenario_overrides() {
     let scenario = &overridden.scenarios.entries[0];
     assert_eq!(scenario.override_count, 1);
     assert_eq!(scenario.overridden_nodes, vec![root_a.clone()]);
+    let set_epoch = scenario
+        .value_epoch
+        .expect("scenario override should advance epoch");
+    assert!(set_epoch > create_epoch);
     assert!(set.delta.changes.iter().any(|change| {
         matches!(change, WorkspaceDeltaChange::ScenarioChanged(changed) if changed.override_count == 1)
     }));
 
+    assert!(skin.try_activate_scenario(Some("scenario:bull")).accepted);
+    let active_projection = skin.state();
+    let active_override = active_projection
+        .node(&NodeId::new("Root.A"))
+        .and_then(|node| node.scenario_override.as_ref())
+        .expect("active scenario should project node override");
+    assert_eq!(active_override.display_text(), "5");
+    assert_eq!(
+        skin.state()
+            .node(&NodeId::new("Root.B"))
+            .unwrap()
+            .scenario_override,
+        None
+    );
+
     assert!(skin.try_evaluate_candidate(&handle).accepted);
     let evaluated = skin.state();
+    let evaluate_epoch = evaluated.scenarios.entries[0]
+        .value_epoch
+        .expect("candidate evaluation should advance scenario epoch");
+    assert!(evaluate_epoch > set_epoch);
     let candidate = &evaluated.candidates[0];
     assert_eq!(
         candidate
@@ -1162,6 +1189,16 @@ fn programmable_skin_sets_and_clears_candidate_backed_scenario_overrides() {
     );
     skin.assert_scalar("Root.B", "2");
 
+    assert!(skin.try_activate_scenario(None).accepted);
+    assert_eq!(
+        skin.state()
+            .node(&NodeId::new("Root.A"))
+            .unwrap()
+            .scenario_override,
+        None
+    );
+    assert!(skin.try_activate_scenario(Some("scenario:bull")).accepted);
+
     let update = skin.try_set_scenario_override(
         "scenario:bull",
         root_a.clone(),
@@ -1171,6 +1208,10 @@ fn programmable_skin_sets_and_clears_candidate_backed_scenario_overrides() {
         },
     );
     assert!(update.accepted, "{:?}", update.error);
+    let update_epoch = skin.state().scenarios.entries[0]
+        .value_epoch
+        .expect("scenario update should carry an epoch");
+    assert!(update_epoch > evaluate_epoch);
     assert!(skin.try_evaluate_candidate(&handle).accepted);
     assert_eq!(
         skin.state().candidates[0]
@@ -1183,6 +1224,10 @@ fn programmable_skin_sets_and_clears_candidate_backed_scenario_overrides() {
 
     let clear = skin.try_clear_scenario_override("scenario:bull", root_a.clone());
     assert!(clear.accepted, "{:?}", clear.error);
+    let clear_epoch = skin.state().scenarios.entries[0]
+        .value_epoch
+        .expect("scenario clear should carry an epoch");
+    assert!(clear_epoch > update_epoch);
     assert_eq!(skin.state().scenarios.entries[0].override_count, 0);
     assert!(
         skin.state().scenarios.entries[0]
@@ -1218,6 +1263,19 @@ fn programmable_skin_sets_and_clears_candidate_backed_scenario_overrides() {
         },
     );
     assert!(array_override.accepted, "{:?}", array_override.error);
+    let array_projection = skin.state();
+    let array_override_projection = array_projection
+        .node(&NodeId::new("Root.A"))
+        .and_then(|node| node.scenario_override.as_ref())
+        .expect("active scenario should project array override");
+    assert!(matches!(
+        array_override_projection,
+        NodeValueProjection::Array {
+            rows: 1,
+            cols: 2,
+            ..
+        }
+    ));
     assert!(skin.try_evaluate_candidate(&handle).accepted);
     let array_state = skin.state();
     let Some(NodeValueProjection::Array { rows, cols, cells }) =

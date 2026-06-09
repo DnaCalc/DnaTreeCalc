@@ -544,6 +544,7 @@ pub struct NodeView {
     pub content_kind: NodeContentKind,
     pub content_text: String,
     pub computed_value: NodeValueProjection,
+    pub scenario_override: Option<NodeValueProjection>,
     pub literalized_value_input: Option<String>,
     pub value_epoch: Option<u64>,
     pub calc_state: Option<NodeCalcStateProjection>,

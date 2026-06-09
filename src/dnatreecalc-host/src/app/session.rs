@@ -125,6 +125,7 @@ pub struct TreeWorkspaceSession {
     candidate_handles: BTreeMap<String, CandidateOverlayHandle>,
     scenarios: BTreeMap<String, TreeWorkspaceScenarioState>,
     active_scenario_id: Option<String>,
+    next_scenario_value_epoch: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -145,11 +146,13 @@ struct TreeWorkspaceScenarioState {
     name: String,
     candidate_handle: String,
     overrides: BTreeMap<NodeKey, TreeWorkspaceScenarioOverrideState>,
+    value_epoch: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct TreeWorkspaceScenarioOverrideState {
     original_content_text: String,
+    value: NodeValueProjection,
 }
 
 #[derive(Debug, Clone)]
@@ -210,6 +213,7 @@ impl TreeWorkspaceSession {
             candidate_handles: BTreeMap::new(),
             scenarios: BTreeMap::new(),
             active_scenario_id: None,
+            next_scenario_value_epoch: 1,
         };
 
         for path in &model.node_order {
@@ -274,6 +278,7 @@ impl TreeWorkspaceSession {
             candidate_handles: BTreeMap::new(),
             scenarios: BTreeMap::new(),
             active_scenario_id: None,
+            next_scenario_value_epoch: 1,
         };
         session.refresh_projection_from_context()?;
         Ok(session)
@@ -1305,6 +1310,7 @@ impl TreeWorkspaceSession {
         content: impl Into<String>,
     ) -> Result<CandidateProjection, TreeWorkspaceSessionError> {
         let handle = self.candidate_handle(handle)?;
+        let handle_text = handle.to_string();
         let tree_node_id = self.tree_node_id(node.as_str())?;
         let view = self.context.apply_candidate_edit_transaction(
             &handle,
@@ -1315,6 +1321,7 @@ impl TreeWorkspaceSession {
                 },
             ),
         )?;
+        self.bump_scenarios_for_candidate(&handle_text);
         self.candidate_projection_for_view(&view)
     }
 
@@ -1325,6 +1332,7 @@ impl TreeWorkspaceSession {
         new_symbol: impl Into<String>,
     ) -> Result<CandidateProjection, TreeWorkspaceSessionError> {
         let handle = self.candidate_handle(handle)?;
+        let handle_text = handle.to_string();
         let tree_node_id = tree_node_id_from_node_key(node)?;
         let view = self.context.apply_candidate_edit_transaction(
             &handle,
@@ -1335,6 +1343,7 @@ impl TreeWorkspaceSession {
                 },
             ),
         )?;
+        self.bump_scenarios_for_candidate(&handle_text);
         self.candidate_projection_for_view(&view)
     }
 
@@ -1346,6 +1355,7 @@ impl TreeWorkspaceSession {
         new_index: Option<usize>,
     ) -> Result<CandidateProjection, TreeWorkspaceSessionError> {
         let handle = self.candidate_handle(handle)?;
+        let handle_text = handle.to_string();
         let tree_node_id = tree_node_id_from_node_key(node)?;
         let new_parent_id = match new_parent {
             Some(parent) => tree_node_id_from_node_key(parent)?,
@@ -1361,6 +1371,7 @@ impl TreeWorkspaceSession {
                 },
             ),
         )?;
+        self.bump_scenarios_for_candidate(&handle_text);
         self.candidate_projection_for_view(&view)
     }
 
@@ -1381,6 +1392,7 @@ impl TreeWorkspaceSession {
             ),
         )?;
         self.remove_scenario_overrides_for_candidate_node(&handle_text, node);
+        self.bump_scenarios_for_candidate(&handle_text);
         self.candidate_projection_for_view(&view)
     }
 
@@ -1393,6 +1405,7 @@ impl TreeWorkspaceSession {
         is_meta: bool,
     ) -> Result<CandidateProjection, TreeWorkspaceSessionError> {
         let handle = self.candidate_handle(handle)?;
+        let handle_text = handle.to_string();
         let symbol = symbol.into();
         let parent_tree_node_id = match parent {
             Some(parent) => tree_node_id_from_node_key(parent)?,
@@ -1419,6 +1432,7 @@ impl TreeWorkspaceSession {
                 },
             ),
         )?;
+        self.bump_scenarios_for_candidate(&handle_text);
         self.candidate_projection_for_view(&view)
     }
 
@@ -1480,7 +1494,9 @@ impl TreeWorkspaceSession {
         handle: &str,
     ) -> Result<CandidateProjection, TreeWorkspaceSessionError> {
         let handle = self.candidate_handle(handle)?;
+        let handle_text = handle.to_string();
         let view = self.context.evaluate_candidate(&handle)?;
+        self.bump_scenarios_for_candidate(&handle_text);
         self.candidate_projection_for_view(&view)
     }
 
@@ -1522,11 +1538,13 @@ impl TreeWorkspaceSession {
         }
         let candidate = self.candidate_handle(candidate_handle)?;
         self.context.pin_candidate_retention(&candidate)?;
+        let value_epoch = self.next_scenario_value_epoch();
         let scenario = TreeWorkspaceScenarioState {
             id: scenario_id.clone(),
             name: name.into(),
             candidate_handle: candidate_handle.to_string(),
             overrides: BTreeMap::new(),
+            value_epoch,
         };
         self.scenarios.insert(scenario_id.clone(), scenario);
         self.scenario_projection(&scenario_id)
@@ -1588,6 +1606,7 @@ impl TreeWorkspaceSession {
         )?;
         let authored_input_text = scenario_override_authored_input(scenario_id, value)?;
         self.apply_candidate_content_edit_by_key(&candidate, node, authored_input_text)?;
+        let value_epoch = self.next_scenario_value_epoch();
         self.scenarios
             .get_mut(scenario_id)
             .ok_or_else(|| TreeWorkspaceSessionError::UnknownScenario {
@@ -1597,7 +1616,12 @@ impl TreeWorkspaceSession {
             .entry(node.clone())
             .or_insert(TreeWorkspaceScenarioOverrideState {
                 original_content_text,
-            });
+                value: value.clone(),
+            })
+            .value = value.clone();
+        if let Some(scenario) = self.scenarios.get_mut(scenario_id) {
+            scenario.value_epoch = value_epoch;
+        }
         self.scenario_projection(scenario_id)
     }
 
@@ -1630,6 +1654,7 @@ impl TreeWorkspaceSession {
             })?
             .overrides
             .remove(node);
+        self.bump_scenario_value_epoch(scenario_id);
         self.scenario_projection(scenario_id)
     }
 
@@ -4649,10 +4674,12 @@ impl TreeWorkspaceSession {
                 .get(&tree_node_id)
                 .cloned()
                 .unwrap_or_default();
+            let node_key = node_key_for_tree_node(tree_node_id);
+            let scenario_override = self.active_scenario_override_for(&node_key);
             nodes.insert(
                 node_id.clone(),
                 NodeView {
-                    key: node_key_for_tree_node(tree_node_id),
+                    key: node_key,
                     id: node_id.clone(),
                     display_name: tree_view.symbol.clone(),
                     parent,
@@ -4661,6 +4688,7 @@ impl TreeWorkspaceSession {
                     content_kind,
                     content_text: tree_view.formula_text.clone(),
                     computed_value,
+                    scenario_override,
                     literalized_value_input,
                     value_epoch: tree_view.published_value_epoch,
                     calc_state: tree_view.calc_state.map(calc_state_projection_for),
@@ -4907,6 +4935,41 @@ impl TreeWorkspaceSession {
         })
     }
 
+    fn active_scenario_override_for(&self, node: &NodeKey) -> Option<NodeValueProjection> {
+        let active_scenario_id = self.active_scenario_id.as_deref()?;
+        self.scenarios
+            .get(active_scenario_id)?
+            .overrides
+            .get(node)
+            .map(|override_state| override_state.value.clone())
+    }
+
+    fn next_scenario_value_epoch(&mut self) -> u64 {
+        let epoch = self.next_scenario_value_epoch;
+        self.next_scenario_value_epoch = self.next_scenario_value_epoch.saturating_add(1);
+        epoch
+    }
+
+    fn bump_scenario_value_epoch(&mut self, scenario_id: &str) {
+        let epoch = self.next_scenario_value_epoch();
+        if let Some(scenario) = self.scenarios.get_mut(scenario_id) {
+            scenario.value_epoch = epoch;
+        }
+    }
+
+    fn bump_scenarios_for_candidate(&mut self, handle: &str) {
+        let scenario_ids = self
+            .scenarios
+            .iter()
+            .filter_map(|(scenario_id, scenario)| {
+                (scenario.candidate_handle == handle).then(|| scenario_id.clone())
+            })
+            .collect::<Vec<_>>();
+        for scenario_id in scenario_ids {
+            self.bump_scenario_value_epoch(&scenario_id);
+        }
+    }
+
     fn scenario_projection(
         &self,
         scenario_id: &str,
@@ -4925,7 +4988,7 @@ impl TreeWorkspaceSession {
             },
             override_count: scenario.overrides.len(),
             overridden_nodes: scenario.overrides.keys().cloned().collect(),
-            value_epoch: None,
+            value_epoch: Some(scenario.value_epoch),
             is_active: self.active_scenario_id.as_deref() == Some(scenario_id),
         })
     }

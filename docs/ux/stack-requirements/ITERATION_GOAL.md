@@ -79,10 +79,13 @@ The first W4c scenario-substrate override slice is also landed: Skin IR exposes 
 `SetScenarioOverride` / `ClearScenarioOverride` intents by stable `NodeKey`, the host literalizes
 supported typed scalar and array `NodeValueProjection` payloads through OxFml into authored input
 text, applies them through OxCalc candidate-private edit transactions, and clears overrides by
-restoring the candidate-private input captured on first override. This slice deliberately does not
-implement scenario-local value epochs, per-node `NodeView.scenario_override` flags, comparative
-multi-overlay projection, chart/feed series projection, or formula/rich-value scenario override
-authoring. Remaining W3
+restoring the candidate-private input captured on first override. The next W4c scenario projection
+freshness slice is also landed: scenario entries carry a host-owned scenario value epoch that
+advances on scenario creation, override set/clear, candidate-private edits, and candidate
+evaluation; active scenarios project per-node `NodeView.scenario_override` without changing
+published `computed_value`. This slice deliberately does not implement comparative multi-overlay
+projection, chart/feed series projection, formula/rich-value scenario override authoring, or
+engine-published scenario revision history. Remaining W3
 formula-rewrite/rebind verbs stay parked until their owning
 OxFml/OxCalc substrates are available. W2 safe structural authoring is
 closed for the current Skin IR surface: receipts carry typed errors and real OxCalc transaction ids,
@@ -597,13 +600,19 @@ The roadmap alignment rule is:
       restoring the original candidate-private input captured on first override. Programmable Skin
       IR tests prove scalar dependency recalculation, repeated override preserving the original
       clear target, typed array override projection, unsupported value rejection, and override
-      cleanup when an overridden candidate-private node is deleted. Scenario-local value epochs,
-      per-node `NodeView.scenario_override`, comparative overlays, formula/rich-value override
-      authoring, and series projection remain open.
+      cleanup when an overridden candidate-private node is deleted. Comparative overlays,
+      formula/rich-value override authoring, and series projection remain open.
+- [x] W4c `scenario-projection` freshness and active-node override slice:
+      Scenario entries now carry a host-owned `value_epoch` that advances on scenario creation,
+      scenario override set/clear, candidate-private edits, and candidate evaluation for the backing
+      candidate. Active scenarios project per-node `NodeView.scenario_override` from the stored typed
+      override payload without rewriting published `computed_value`. Programmable Skin IR tests
+      prove epoch progression, active/inactive override visibility, and array override visibility.
+      Comparative overlays, chart/feed series projection, formula/rich-value override authoring, and
+      engine-published scenario revision history remain open.
 - [ ] `candidate-overlay-handle`: continue toward fully addressable, layerable, non-publishing
       candidate contexts with optimized layering/rebase, candidate add-node template initial content,
-      scenario-local value epochs, per-node scenario flags, comparative projection, and broader
-      what-if UX.
+      comparative projection, series projection, and broader what-if UX.
 - [x] `value-epoch-keying`: per-node published-value epoch distinct from input epoch.
 
 ## Status Template
