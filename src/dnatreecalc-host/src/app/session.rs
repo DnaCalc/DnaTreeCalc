@@ -784,7 +784,7 @@ impl TreeWorkspaceSession {
             Some(MutationImpactBlockedReasonProjection::NameCollision)
         } else if let Some(bind) = &bind {
             mutation_impact_blocked_reason_for_bind_payload(bind)
-        } else if initial.supported_content().is_some() {
+        } else if self.supports_add_node_initial_content(&initial) {
             None
         } else {
             Some(MutationImpactBlockedReasonProjection::UnsupportedInitialContent)
@@ -823,10 +823,13 @@ impl TreeWorkspaceSession {
             InitialNodeContentProjection::InheritColumnFormula { table, column_id } => {
                 self.inherited_column_formula_content(table, column_id)?
             }
-            InitialNodeContentProjection::Empty
-            | InitialNodeContentProjection::TemplateBound { .. } => {
-                return Ok(None);
+            InitialNodeContentProjection::TemplateBound { template_id } => {
+                let Some(content) = template_bound_initial_content(template_id) else {
+                    return Ok(None);
+                };
+                content.to_string()
             }
+            InitialNodeContentProjection::Empty => return Ok(None),
         };
         if !content.trim_start().starts_with('=') {
             return Ok(None);
@@ -838,6 +841,18 @@ impl TreeWorkspaceSession {
                 .with_meta(is_meta),
         )?;
         Ok(Some(formula_bind_preview_from_oxcalc_verdict(verdict)))
+    }
+
+    fn supports_add_node_initial_content(&self, initial: &InitialNodeContentProjection) -> bool {
+        match initial {
+            InitialNodeContentProjection::Empty | InitialNodeContentProjection::Literal { .. } => {
+                true
+            }
+            InitialNodeContentProjection::InheritColumnFormula { .. } => true,
+            InitialNodeContentProjection::TemplateBound { template_id } => {
+                template_bound_initial_content(template_id).is_some()
+            }
+        }
     }
 
     fn inherited_column_formula_content(
@@ -1506,9 +1521,28 @@ impl TreeWorkspaceSession {
                 }
                 Ok(content)
             }
-            _ => Err(TreeWorkspaceSessionError::UnsupportedInitialContent {
-                policy: initial.stable_id().to_string(),
-            }),
+            InitialNodeContentProjection::TemplateBound { template_id } => {
+                let content = template_bound_initial_content(template_id).ok_or_else(|| {
+                    TreeWorkspaceSessionError::UnsupportedInitialContent {
+                        policy: initial.stable_id().to_string(),
+                    }
+                })?;
+                if content.trim_start().starts_with('=') {
+                    let verdict = self.context.dry_bind_candidate_new_node_formula_text(
+                        handle,
+                        OxCalcTreeNodeCreate::new(symbol, content.to_string())
+                            .under(parent_tree_node_id)
+                            .with_meta(is_meta),
+                    )?;
+                    let bind = formula_bind_preview_from_oxcalc_verdict(verdict);
+                    if !bind.legal {
+                        return Err(TreeWorkspaceSessionError::InitialContentBindRejected {
+                            policy: initial.stable_id().to_string(),
+                        });
+                    }
+                }
+                Ok(content.to_string())
+            }
         }
     }
 
@@ -2401,10 +2435,26 @@ impl TreeWorkspaceSession {
                 }
                 Ok(content)
             }
-            InitialNodeContentProjection::TemplateBound { .. } => {
-                Err(TreeWorkspaceSessionError::UnsupportedInitialContent {
-                    policy: initial.stable_id().to_string(),
-                })
+            InitialNodeContentProjection::TemplateBound { template_id } => {
+                let content = template_bound_initial_content(template_id).ok_or_else(|| {
+                    TreeWorkspaceSessionError::UnsupportedInitialContent {
+                        policy: initial.stable_id().to_string(),
+                    }
+                })?;
+                if content.trim_start().starts_with('=') {
+                    let bind = self.preview_add_node_initial_bind(
+                        parent_tree_node_id,
+                        symbol,
+                        initial,
+                        is_meta,
+                    )?;
+                    if bind.as_ref().is_some_and(|bind| !bind.legal) {
+                        return Err(TreeWorkspaceSessionError::InitialContentBindRejected {
+                            policy: initial.stable_id().to_string(),
+                        });
+                    }
+                }
+                Ok(content.to_string())
             }
         }
     }
@@ -7768,6 +7818,14 @@ fn inherited_candidate_column_formula_content(
         });
     };
     Ok(formula.formula_text.clone())
+}
+
+fn template_bound_initial_content(template_id: &str) -> Option<&'static str> {
+    match template_id {
+        "starter" => Some("=1+1"),
+        "input-zero" => Some("0"),
+        _ => None,
+    }
 }
 
 fn invalidation_reason_kind_for_projection(

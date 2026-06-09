@@ -166,8 +166,10 @@ dry-binds the prospective node without mutating, DnaTreeCalc previews syntax/bin
 and commit rejects invalid literal formulas before model mutation. The next `add-node-content-policy`
 slice is now implemented for `InheritColumnFormula { table, column_id }`: the host reads formula
 text from table column metadata, OxCalc dry-binds it in the prospective new-node context, and
-row-context/table-only formulas are rejected rather than faking table context. `TemplateBound` still
-waits for the template subsystem. The first `clipboard-transfer-model` tranche is now landed:
+row-context/table-only formulas are rejected rather than faking table context. `TemplateBound` now
+has a minimal built-in initial-content policy (`starter`, `input-zero`) that resolves to ordinary
+content before OxCalc dry-bind/recalc; the full template subsystem remains future work. The first
+`clipboard-transfer-model` tranche is now landed:
 `CopyToClipboard` populates a host-owned typed clipboard carrier for values, formula source,
 formats, and subtrees from `AuthoringScope`, projects it through `WorkspaceState.clipboard`, and
 emits a typed clipboard delta without involving the OS clipboard or fabricating paste semantics. The
@@ -340,8 +342,8 @@ The roadmap alignment rule is:
       engine-published reference-resolution maps and OxCalc delete invalidation planning without
       mutating state. Add-node preview now carries typed initial-content policy and `is_meta`,
       reports name collisions before mutation, accepts empty/literal policies, and returns typed
-      unsupported-policy blockers for inherited column formulas and template-bound content until
-      those later substrates exist. Table row/column structural previews now cover add, delete,
+      unsupported-policy blockers for invalid inherited column formulas and unknown template-bound
+      content. Table row/column structural previews now cover add, delete,
       rename, and reorder operations with typed table-collision and duplicate-input blockers and
       OxCalc table-snapshot invalidation planning without mutating table state. Table snapshot
       authoring receipts now use OxCalc transaction outcomes for table row delete/rename/reorder,
@@ -412,8 +414,18 @@ The roadmap alignment rule is:
       `InheritColumnFormula { table, column_id }` is now supported for table-column formula metadata
       that dry-binds as an ordinary node formula in the prospective target context; row-context or
       table-only formulas are rejected with bind diagnostics before mutation, and constant columns are
-      rejected with typed table-column errors. `TemplateBound` remains blocked on the template
-      subsystem.
+      rejected with typed table-column errors. `TemplateBound` now supports a minimal built-in
+      initial-content registry (`starter`, `input-zero`) that resolves to ordinary content before
+      OxCalc dry-bind/recalc; unknown template ids remain typed unsupported-policy blockers. The full
+      template subsystem remains future work.
+- [x] Implement minimal `TemplateBound` add-node initial content:
+      DnaTreeCalc resolves built-in template ids (`starter`, `input-zero`) to ordinary initial
+      content before calling OxCalc for preview, published add-node, and candidate add-node paths.
+      Formula templates are dry-bound in the prospective target context and evaluated by OxCalc
+      after add/evaluate; unknown template ids remain typed unsupported initial content. Programmable
+      Skin IR tests cover preview, published add, candidate add, computed formula result, and unknown
+      template rejection. Full template definition/edit/instantiate/sync remains future template
+      subsystem work.
 - [x] Implement the first `clipboard-transfer-model` tranche:
       `WorkspaceIntent::CopyToClipboard { scope, payload }` expands host-owned `AuthoringScope` and
       projects a typed `WorkspaceState.clipboard` carrier for `Values`, `Formula`, `Format`, and
@@ -831,8 +843,8 @@ The roadmap alignment rule is:
 - [ ] `candidate-overlay-handle`: continue toward fully addressable, layerable, non-publishing
       candidate contexts with broader structural name-collision merge algebra beyond same-node
       rename/move, same-parent rename/add, same-parent rename/reorder, sibling add/delete, sibling
-      add/reorder, and sibling delete/reorder facet merging, candidate add-node template initial
-      content, direct sweep/goal-seek comparison columns/series, and broader what-if UX.
+      add/reorder, and sibling delete/reorder facet merging, direct sweep/goal-seek comparison
+      columns/series, and broader what-if UX.
 - [x] `value-epoch-keying`: per-node published-value epoch distinct from input epoch.
 
 ## Status Template

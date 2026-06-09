@@ -283,8 +283,13 @@ Use this as the per-tranche goal statement before implementation:
       formula from host-owned table column metadata, asks OxCalc to dry-bind that formula in the
       prospective new-node context, and commits only formulas that bind as ordinary node formulas.
       Row-context/table-only formulas reject with bind diagnostics before mutation; constant columns
-      reject with typed table-column errors. `TemplateBound` remains blocked on the template
-      subsystem.
+      reject with typed table-column errors.
+- [x] Land third `add-node-content-policy` widening:
+      `InitialNodeContentProjection::TemplateBound { template_id }` resolves built-in host template
+      ids (`starter`, `input-zero`) to ordinary initial content before OxCalc dry-bind/recalc for
+      preview, published add-node, and candidate add-node paths. Unknown template ids remain typed
+      unsupported initial content. Full template definition/edit/instantiate/sync remains future
+      template subsystem work.
 - [x] Land first `clipboard-transfer-model` tranche:
       `WorkspaceIntent::CopyToClipboard { scope, payload }` builds a typed host-owned carrier for
       `Values`, `Formula`, `Format`, and `Subtree` payloads from projected state and emits
@@ -659,8 +664,8 @@ Use this as the per-tranche goal statement before implementation:
 - [ ] `candidate-overlay-handle`: continue W4b with broader structural order/delete/name-collision
       merge algebra beyond same-node rename/move, same-parent rename/add, and same-parent
       rename/reorder facet merging plus sibling add/delete, sibling add/reorder, and sibling
-      delete/reorder merging, candidate add-node template initial content, direct sweep/goal-seek
-      comparison columns/series, and broader what-if UX before goal seek or sweeps.
+      delete/reorder merging, direct sweep/goal-seek comparison columns/series, and broader what-if
+      UX before goal seek or sweeps.
 - [x] `value-epoch-keying`: per-node published-value epoch is available for projection consumers.
 
 ## Next-Wave Parking Lot

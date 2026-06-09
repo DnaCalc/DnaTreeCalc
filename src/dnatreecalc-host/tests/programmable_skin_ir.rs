@@ -847,6 +847,68 @@ fn programmable_skin_adds_candidate_formula_node_against_private_structure() {
 }
 
 #[test]
+fn programmable_skin_adds_candidate_node_from_template_initial_content() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    let open = skin.try_open_candidate();
+    assert!(open.accepted, "{:?}", open.error);
+    let state = skin.state();
+    let candidate = state.candidates.first().expect("candidate should project");
+    let handle = candidate.handle.clone();
+    let root_key = candidate
+        .nodes
+        .iter()
+        .find(|node| node.id == NodeId::new("Root"))
+        .expect("candidate parent should project")
+        .key
+        .clone();
+
+    let added = skin.try_add_candidate_node(
+        &handle,
+        Some(root_key),
+        "Templated",
+        InitialNodeContentProjection::TemplateBound {
+            template_id: "starter".to_string(),
+        },
+        false,
+    );
+    assert!(added.accepted, "{:?}", added.error);
+    assert!(skin.state().node(&NodeId::new("Root.Templated")).is_none());
+    let candidate_state = skin.state();
+    let candidate = candidate_state
+        .candidates
+        .iter()
+        .find(|candidate| candidate.handle == handle)
+        .expect("candidate should remain projected");
+    let templated = candidate
+        .nodes
+        .iter()
+        .find(|node| node.id == NodeId::new("Root.Templated"))
+        .expect("candidate template node should project");
+    assert_eq!(templated.content_text, "=1+1");
+    let templated_key = templated.key.clone();
+
+    let evaluate = skin.try_evaluate_candidate(&handle);
+    assert!(evaluate.accepted, "{:?}", evaluate.error);
+    let candidate_state = skin.state();
+    let candidate = candidate_state
+        .candidates
+        .iter()
+        .find(|candidate| candidate.handle == handle)
+        .expect("candidate should remain projected");
+    assert_eq!(
+        candidate
+            .values_by_key
+            .get(&templated_key)
+            .map(NodeValueProjection::display_text)
+            .as_deref(),
+        Some("2")
+    );
+}
+
+#[test]
 fn programmable_skin_adds_candidate_node_from_inherited_table_column_formula() {
     let harness = Harness::from_repo_fixture("tables");
     let skin = harness.driver.clone();
@@ -4100,8 +4162,6 @@ fn programmable_skin_previews_add_node_initial_content_policy() {
 
     skin.add_node(None, "Root", "");
     skin.add_node(Some("Root"), "Existing", "1");
-    let before_revision = revision_fingerprint(&skin.state().revision);
-
     let literal = harness.preview_add_node_impact(
         Some("Root"),
         "Child",
@@ -4215,11 +4275,10 @@ fn programmable_skin_previews_add_node_initial_content_policy() {
         },
         false,
     );
-    assert!(!template.legal);
-    assert_eq!(
-        template.blocked_reason,
-        Some(MutationImpactBlockedReasonProjection::UnsupportedInitialContent)
-    );
+    assert!(template.legal, "{template:?}");
+    assert!(template.blocked_reason.is_none());
+    assert!(template.bind_diagnostics.is_empty());
+    assert!(template.profile_violations.is_empty());
 
     let template_receipt = skin.try_add_node_initial(
         Some("Root"),
@@ -4229,22 +4288,55 @@ fn programmable_skin_previews_add_node_initial_content_policy() {
         },
         false,
     );
-    assert!(!template_receipt.accepted);
+    assert!(template_receipt.accepted, "{:?}", template_receipt.error);
+    assert_any_transaction(&template_receipt);
+    let template_state = skin.state();
+    let templated = template_state
+        .node(&NodeId::new("Root.Templated"))
+        .expect("template-bound node should project");
+    assert_eq!(templated.content_text, "=1+1");
+    skin.assert_scalar("Root.Templated", "2");
+
+    let unknown_template = harness.preview_add_node_impact(
+        Some("Root"),
+        "UnknownTemplate",
+        InitialNodeContentProjection::TemplateBound {
+            template_id: "missing".to_string(),
+        },
+        false,
+    );
+    assert!(!unknown_template.legal);
     assert_eq!(
-        template_receipt.error,
+        unknown_template.blocked_reason,
+        Some(MutationImpactBlockedReasonProjection::UnsupportedInitialContent)
+    );
+
+    let unknown_template_receipt = skin.try_add_node_initial(
+        Some("Root"),
+        "UnknownTemplate",
+        InitialNodeContentProjection::TemplateBound {
+            template_id: "missing".to_string(),
+        },
+        false,
+    );
+    assert!(!unknown_template_receipt.accepted);
+    assert_eq!(
+        unknown_template_receipt.error,
         Some(IntentError::UnsupportedInitialContent {
             policy: "template_bound".to_string()
         })
     );
-    assert_eq!(
-        revision_fingerprint(&skin.state().revision),
-        before_revision
-    );
     assert!(skin.state().node(&NodeId::new("Root.Child")).is_none());
     assert!(skin.state().node(&NodeId::new("Root.Broken")).is_none());
     assert!(skin.state().node(&NodeId::new("MetaRoot")).is_none());
+    assert!(
+        skin.state()
+            .node(&NodeId::new("Root.UnknownTemplate"))
+            .is_none()
+    );
     skin.assert_scalar("Root.Existing", "1");
 
+    let before_rejected_formula = revision_fingerprint(&skin.state().revision);
     let rejected_formula = skin.try_add_node_initial(
         Some("Root"),
         "Broken",
@@ -4262,7 +4354,7 @@ fn programmable_skin_previews_add_node_initial_content_policy() {
     );
     assert_eq!(
         revision_fingerprint(&skin.state().revision),
-        before_revision
+        before_rejected_formula
     );
 
     let meta_receipt =
