@@ -34,14 +34,15 @@ use dnatreecalc_skin_framework::{
     SkinMountSlot, ThemeTokens, WorkspaceDelta, WorkspaceIntent,
 };
 use dnatreecalc_skins::{
-    DEPENDENCY_INSPECTOR_ID, FORMULA_TREE_ID, OUTLINE_TABLE_ID, TRIPLE_EDITOR_ID, VALUE_BOARD_ID,
+    DEPENDENCY_INSPECTOR_ID, FLOW_ID, FORMULA_TREE_ID, OUTLINE_TABLE_ID, TRIPLE_EDITOR_ID,
+    VALUE_BOARD_ID,
 };
 use leptos::prelude::*;
 
 #[test]
 fn default_registry_ships_triple_editor_and_outline_table() {
     let registry = build_default_registry();
-    assert_eq!(registry.len(), 5);
+    assert_eq!(registry.len(), 6);
 
     let ids = registry.ids();
     assert!(ids.contains(&TRIPLE_EDITOR_ID));
@@ -49,6 +50,12 @@ fn default_registry_ships_triple_editor_and_outline_table() {
     assert!(ids.contains(&OUTLINE_TABLE_ID));
     assert!(ids.contains(&VALUE_BOARD_ID));
     assert!(ids.contains(&DEPENDENCY_INSPECTOR_ID));
+    assert!(ids.contains(&FLOW_ID));
+
+    let flow = registry
+        .get(FLOW_ID)
+        .expect("flow lens must be registered");
+    assert_eq!(flow.manifest().display_name, "Flow");
 
     let triple = registry
         .get(TRIPLE_EDITOR_ID)

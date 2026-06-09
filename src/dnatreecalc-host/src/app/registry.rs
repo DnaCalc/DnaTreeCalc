@@ -1,5 +1,7 @@
 use dnatreecalc_skin_framework::SkinRegistry;
-use dnatreecalc_skins::{DependencyInspector, FormulaTree, OutlineTable, TripleEditor, ValueBoard};
+use dnatreecalc_skins::{
+    DependencyInspector, FlowLens, FormulaTree, OutlineTable, TripleEditor, ValueBoard,
+};
 
 /// Build the default skin registry shipped by the walking skeleton.
 ///
@@ -15,5 +17,6 @@ pub fn build_default_registry() -> SkinRegistry {
     registry.register(OutlineTable::new());
     registry.register(ValueBoard::new());
     registry.register(DependencyInspector::new());
+    registry.register(FlowLens::new());
     registry
 }
