@@ -92,8 +92,12 @@ when replay validation succeeds, while competing same-node rename-vs-rename stil
 typed rebase conflict. The first same-parent namespace merge slice is now landed too: candidate
 rename can rebase over a live sibling add when the final namespace is legal, while a duplicate-name
 collision discovered during replay validation is surfaced as a typed candidate rebase conflict.
-Candidate add-node template policy, competing structural order/delete/name merge algebra beyond
-these rename/move and rename/add facets, and full scenario/what-if UX remain open. The
+The first same-parent order/name merge slice is now landed as well: candidate rename can rebase over
+live sibling reorder and candidate reorder can rebase over live sibling rename. Skin IR now exposes
+a closed `ReorderCandidateNode` intent so candidate-private order edits are testable without skin
+semantics. Candidate add-node template policy, competing structural order/delete/name merge algebra
+beyond these rename/move, rename/add, and rename/reorder facets, and full scenario/what-if UX
+remain open. The
 first richer host-pin retention slice
 is also landed: OxCalc exposes explicit candidate retention pins that protect active candidates from
 budget reaping, DnaTreeCalc projects pin counts and pressure reason counts, and Skin IR exposes
@@ -691,6 +695,14 @@ The roadmap alignment rule is:
       `CandidateRebaseConflict` instead of leaking as a generic structural failure. Focused OxCalc
       and programmable Skin IR tests prove the accepted and rejected paths. Structural order/delete
       merge algebra, template initial content, and broader what-if UX remain open.
+- [x] `candidate-overlay-handle` same-parent rename/reorder structural facet merge slice:
+      OxCalc now tracks candidate-private reordered nodes as a typed facet and treats rename versus
+      reorder as compatible structural-lane touches when replay validation succeeds. Candidate rename
+      over live sibling reorder and candidate reorder over live sibling rename both rebase and commit.
+      Skin IR now exposes the closed `ReorderCandidateNode` intent by stable `NodeKey`, with
+      programmable Skin IR tests proving both directions from outside the engine. Reorder/add index
+      semantics, order/delete merge algebra, template initial content, and broader what-if UX remain
+      open.
 - [x] W4c `scenario-projection` first candidate-backed scenario rail slice:
       DnaTreeCalc projects `WorkspaceState.scenarios` as a host-owned manifest over existing OxCalc
       candidate handles, with closed `CreateScenarioFromCandidate`, `ActivateScenario`, and
@@ -794,8 +806,9 @@ The roadmap alignment rule is:
       multi-slot composition, and broader screen-reader/browser audits remain later W5 work.
 - [ ] `candidate-overlay-handle`: continue toward fully addressable, layerable, non-publishing
       candidate contexts with broader structural order/delete/name-collision merge algebra beyond
-      same-node rename/move and same-parent rename/add facet merging, candidate add-node template
-      initial content, direct sweep/goal-seek comparison columns/series, and broader what-if UX.
+      same-node rename/move, same-parent rename/add, and same-parent rename/reorder facet merging,
+      candidate add-node template initial content, direct sweep/goal-seek comparison columns/series,
+      and broader what-if UX.
 - [x] `value-epoch-keying`: per-node published-value epoch distinct from input epoch.
 
 ## Status Template

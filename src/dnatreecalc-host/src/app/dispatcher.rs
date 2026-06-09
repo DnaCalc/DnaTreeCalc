@@ -344,6 +344,18 @@ impl Dispatcher for HostDispatcher {
                     |error| self.reject_current(error),
                     receipt_for_candidate_change,
                 ),
+            WorkspaceIntent::ReorderCandidateNode {
+                handle,
+                node,
+                new_index,
+            } => self
+                .apply_candidate_projection_edit(|session| {
+                    session.reorder_candidate_node(&handle, &node, new_index)
+                })
+                .map_or_else(
+                    |error| self.reject_current(error),
+                    receipt_for_candidate_change,
+                ),
             WorkspaceIntent::DeleteCandidateNode { handle, node } => self
                 .apply_candidate_projection_edit(|session| {
                     session.delete_candidate_node(&handle, &node)

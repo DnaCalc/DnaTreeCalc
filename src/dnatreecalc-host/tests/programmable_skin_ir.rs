@@ -2614,6 +2614,135 @@ fn programmable_skin_rejects_candidate_rename_over_live_sibling_add_name_collisi
 }
 
 #[test]
+fn programmable_skin_rebases_candidate_rename_over_live_sibling_reorder() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    skin.add_node(Some("Root"), "Parent", "");
+    skin.add_node(Some("Root.Parent"), "Original", "1");
+    skin.add_node(Some("Root.Parent"), "Reordered", "2");
+    let node_key = skin
+        .state()
+        .node(&NodeId::new("Root.Parent.Original"))
+        .expect("Original should project")
+        .key
+        .clone();
+
+    let open = skin.try_open_candidate();
+    assert!(open.accepted, "{:?}", open.error);
+    let handle = skin.state().candidates[0].handle.clone();
+    let candidate_rename = skin.try_rename_candidate_node(&handle, node_key.clone(), "Renamed");
+    assert!(candidate_rename.accepted, "{:?}", candidate_rename.error);
+
+    let live_reorder = skin.try_reorder("Root.Parent.Reordered", 0);
+    assert!(live_reorder.accepted, "{:?}", live_reorder.error);
+    skin.assert_scalar("Root.Parent.Original", "1");
+    skin.assert_scalar("Root.Parent.Reordered", "2");
+    let current_revision = skin
+        .state()
+        .revision
+        .workspace_revision_id
+        .clone()
+        .expect("published workspace revision should project");
+
+    let rebase = skin.try_rebase_candidate(&handle);
+    assert!(rebase.accepted, "{:?}", rebase.error);
+    let rebased = skin
+        .state()
+        .candidates
+        .iter()
+        .find(|candidate| candidate.handle == handle)
+        .expect("rebased candidate should remain retained")
+        .clone();
+    assert_eq!(rebased.basis_revision_id, current_revision);
+    assert!(
+        rebased
+            .nodes
+            .iter()
+            .any(|node| { node.key == node_key && node.id == NodeId::new("Root.Parent.Renamed") })
+    );
+    assert!(
+        skin.state()
+            .node(&NodeId::new("Root.Parent.Renamed"))
+            .is_none()
+    );
+    skin.assert_scalar("Root.Parent.Original", "1");
+
+    let commit = skin.try_commit_candidate(&handle);
+    assert!(commit.accepted, "{:?}", commit.error);
+    assert!(
+        skin.state()
+            .node(&NodeId::new("Root.Parent.Original"))
+            .is_none()
+    );
+    skin.assert_scalar("Root.Parent.Renamed", "1");
+    skin.assert_scalar("Root.Parent.Reordered", "2");
+}
+
+#[test]
+fn programmable_skin_rebases_candidate_reorder_over_live_sibling_rename() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    skin.add_node(Some("Root"), "Parent", "");
+    skin.add_node(Some("Root.Parent"), "Original", "1");
+    skin.add_node(Some("Root.Parent"), "RenameMe", "2");
+    let node_key = skin
+        .state()
+        .node(&NodeId::new("Root.Parent.Original"))
+        .expect("Original should project")
+        .key
+        .clone();
+
+    let open = skin.try_open_candidate();
+    assert!(open.accepted, "{:?}", open.error);
+    let handle = skin.state().candidates[0].handle.clone();
+    let candidate_reorder = skin.try_reorder_candidate_node(&handle, node_key.clone(), 1);
+    assert!(candidate_reorder.accepted, "{:?}", candidate_reorder.error);
+
+    let live_rename = skin.try_rename("Root.Parent.RenameMe", "Renamed");
+    assert!(live_rename.accepted, "{:?}", live_rename.error);
+    skin.assert_scalar("Root.Parent.Original", "1");
+    skin.assert_scalar("Root.Parent.Renamed", "2");
+    let current_revision = skin
+        .state()
+        .revision
+        .workspace_revision_id
+        .clone()
+        .expect("published workspace revision should project");
+
+    let rebase = skin.try_rebase_candidate(&handle);
+    assert!(rebase.accepted, "{:?}", rebase.error);
+    let rebased = skin
+        .state()
+        .candidates
+        .iter()
+        .find(|candidate| candidate.handle == handle)
+        .expect("rebased candidate should remain retained")
+        .clone();
+    assert_eq!(rebased.basis_revision_id, current_revision);
+    assert!(
+        rebased
+            .nodes
+            .iter()
+            .any(|node| { node.key == node_key && node.id == NodeId::new("Root.Parent.Original") })
+    );
+    assert!(
+        rebased.nodes.iter().any(|node| {
+            node.id == NodeId::new("Root.Parent.Renamed") && node.content_text == "2"
+        })
+    );
+    skin.assert_scalar("Root.Parent.Renamed", "2");
+
+    let commit = skin.try_commit_candidate(&handle);
+    assert!(commit.accepted, "{:?}", commit.error);
+    skin.assert_scalar("Root.Parent.Original", "1");
+    skin.assert_scalar("Root.Parent.Renamed", "2");
+}
+
+#[test]
 fn programmable_skin_projects_layered_child_candidate_values() {
     let harness = Harness::empty();
     let skin = harness.driver.clone();

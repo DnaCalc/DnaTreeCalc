@@ -1376,6 +1376,28 @@ impl TreeWorkspaceSession {
         self.candidate_projection_for_view(&view)
     }
 
+    pub fn reorder_candidate_node(
+        &mut self,
+        handle: &str,
+        node: &NodeKey,
+        new_index: usize,
+    ) -> Result<CandidateProjection, TreeWorkspaceSessionError> {
+        let handle = self.candidate_handle(handle)?;
+        let handle_text = handle.to_string();
+        let tree_node_id = tree_node_id_from_node_key(node)?;
+        let view = self.context.apply_candidate_edit_transaction(
+            &handle,
+            OxCalcTreeEditTransaction::new(self.workspace_id.clone()).with_edit(
+                OxCalcTreeEdit::ReorderNode {
+                    node_id: tree_node_id,
+                    new_index,
+                },
+            ),
+        )?;
+        self.bump_scenarios_for_candidate(&handle_text);
+        self.candidate_projection_for_view(&view)
+    }
+
     pub fn delete_candidate_node(
         &mut self,
         handle: &str,

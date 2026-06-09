@@ -228,6 +228,13 @@ pub enum WorkspaceIntent {
         new_parent: Option<NodeKey>,
         new_index: Option<usize>,
     },
+    /// Reorder a node inside its candidate-private parent without publishing
+    /// workspace state.
+    ReorderCandidateNode {
+        handle: String,
+        node: NodeKey,
+        new_index: usize,
+    },
     /// Delete a node inside a candidate without publishing workspace state.
     DeleteCandidateNode {
         handle: String,
@@ -753,6 +760,7 @@ impl Dispatcher for InMemoryDispatcher {
             | WorkspaceIntent::EditCandidateContent { .. }
             | WorkspaceIntent::RenameCandidateNode { .. }
             | WorkspaceIntent::MoveCandidateNode { .. }
+            | WorkspaceIntent::ReorderCandidateNode { .. }
             | WorkspaceIntent::DeleteCandidateNode { .. }
             | WorkspaceIntent::AddCandidateNode { .. }
             | WorkspaceIntent::EvaluateCandidate { .. }

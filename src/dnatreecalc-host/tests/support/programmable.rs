@@ -267,6 +267,20 @@ impl ProgrammableDriver {
         })
     }
 
+    pub fn try_reorder_candidate_node(
+        &self,
+        handle: &str,
+        node: NodeKey,
+        new_index: usize,
+    ) -> IntentReceipt {
+        self.dispatch
+            .dispatch(WorkspaceIntent::ReorderCandidateNode {
+                handle: handle.to_string(),
+                node,
+                new_index,
+            })
+    }
+
     pub fn try_delete_candidate_node(&self, handle: &str, node: NodeKey) -> IntentReceipt {
         self.dispatch
             .dispatch(WorkspaceIntent::DeleteCandidateNode {
