@@ -39,9 +39,11 @@ sends a better typed command, while the semantic boundary remains obvious in cod
 
 Current cursor: **W4b - Candidate substrate**, with scoped W4a revision graph work complete and the
 W4b OxCalc spike answered: `candidate-overlay-handle` is new OxCalc substrate, not an exposure of
-the current candidate/publication lane or the published-basis `RuntimeOverlaySet`. The first build
-slice is an opaque non-publishing candidate handle over a retained revision, with discard before
-commit/layering. Remaining W3 formula-rewrite/rebind verbs stay parked until their owning
+the current candidate/publication lane or the published-basis `RuntimeOverlaySet`. The first OxCalc
+build slice is now landed: an opaque non-publishing candidate handle over a retained revision can
+take a private node edit, evaluate private values, and discard without publishing live workspace
+state. Commit/layering and host/Skin IR projection remain open. Remaining W3 formula-rewrite/rebind
+verbs stay parked until their owning
 OxFml/OxCalc substrates are available. W2 safe structural authoring is
 closed for the current Skin IR surface: receipts carry typed errors and real OxCalc transaction ids,
 previews use OxFml dry-bind plus OxCalc invalidation planning, and the closure review found no
@@ -450,6 +452,13 @@ The roadmap alignment rule is:
       publish-or-reject lane, not addressable non-publishing speculation. OxCalc recorded the go
       decision and first build slice in
       `docs/spec/core-engine/CORE_ENGINE_CANDIDATE_OVERLAY_HANDLE_SPIKE.md` under bead `calc-etez`.
+- [x] `candidate-overlay-handle` first OxCalc substrate slice: OxCalc now exposes
+      `CandidateOverlayHandle`, opens candidates on retained revisions, applies private candidate
+      edit transactions, evaluates private candidate values, and discards handles. The focused test
+      `treecalc_context_candidate_evaluation_does_not_publish_workspace_state` asserts the live
+      workspace revision, publication snapshot, runtime overlay set, visible value, and published
+      value epoch remain unchanged. Follow-up commit/layering/projection work is tracked in OxCalc
+      bead `calc-4ipg`.
 - [ ] `candidate-overlay-handle`: addressable, layerable, non-publishing candidate contexts.
 - [x] `value-epoch-keying`: per-node published-value epoch distinct from input epoch.
 

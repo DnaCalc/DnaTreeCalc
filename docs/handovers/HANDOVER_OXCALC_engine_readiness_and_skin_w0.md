@@ -83,3 +83,23 @@ OxCalc has now answered the `candidate-overlay-handle` spike from live code:
 The naming risk is explicit: prior W047/W048 docs use "candidate overlay" for one-run CTRO
 consequences before a publish/reject decision. W4b should use `CandidateOverlayHandle` or
 `candidate context` when discussing retained host-addressable speculation.
+
+## W4b first substrate slice update
+
+Status: Responded
+OxCalc evidence: `cargo test -p oxcalc-core`
+
+OxCalc has landed the first non-publishing candidate substrate slice:
+
+| Capability | Current scope |
+|---|---|
+| Open candidate | `CandidateOverlayHandle` opens on a retained `WorkspaceRevisionId`. |
+| Private edit | `apply_candidate_edit_transaction` applies candidate-private node edits through OxCalc edit machinery with `ApplyOnly` policy. |
+| Private evaluate | `evaluate_candidate` evaluates the candidate in a private copy-based context and returns candidate calculation values. |
+| Discard | `discard_candidate` removes the handle; later reads return typed `UnknownCandidate`. |
+| Non-publication proof | Focused OxCalc test asserts live workspace revision, publication snapshot, runtime overlay set, visible value, and published value epoch remain unchanged after candidate evaluation. |
+
+Still open for DnaTreeCalc consumption, tracked in OxCalc bead `calc-4ipg`: candidate projection
+through `WorkspaceState`, closed preview/discard/commit intents, commit bridge into ordinary
+transaction/publication semantics, parent/layered candidate semantics, and candidate retention/GC
+policy.

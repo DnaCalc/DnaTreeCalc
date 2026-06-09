@@ -30,12 +30,12 @@ Use this decision rule when picking the next item:
 
 Active wave: **W4b - Candidate substrate**.
 
-Current objective: build the addressable, layerable, non-publishing candidate overlay substrate
-without letting skins or the host fabricate what-if semantics. The OxCalc spike is complete:
-current candidate/publication and `RuntimeOverlaySet` state is not sufficient, so W4b proceeds as
-new OxCalc substrate under bead `calc-etez`. OxCalc owns candidate state, publication/discard,
-overlay provenance, and value epochs; the DnaTreeCalc host will expose only typed handles,
-projections, and closed intents.
+Current objective: continue the addressable, layerable, non-publishing candidate overlay substrate
+without letting skins or the host fabricate what-if semantics. The OxCalc spike is complete and the
+first non-publishing handle slice is implemented under bead `calc-etez`: candidates open on retained
+revisions, accept private node edits, evaluate private values, and discard without advancing live
+publication. OxCalc owns candidate state, publication/discard, overlay provenance, and value epochs;
+the DnaTreeCalc host will expose only typed handles, projections, and closed intents.
 
 Context: first W3 assessment is complete. The formula rewrite verbs
 (`replicate-by-id`, `f4-toggle-binding`, and broader `reference-insertion`) require OxFml-owned
@@ -400,6 +400,11 @@ Use this as the per-tranche goal statement before implementation:
       `CORE_ENGINE_CANDIDATE_OVERLAY_HANDLE_SPIKE.md`, confirming W4b is schedulable only as a new
       addressable candidate-context substrate. Current runtime overlays are published-basis state
       and current candidate results are one-run publish/reject packets, not scenario handles.
+- [x] `candidate-overlay-handle` first OxCalc substrate slice: opaque candidate handles can be
+      opened on retained revisions, privately edited, evaluated, and discarded while the live
+      workspace revision, publication snapshot, runtime overlay set, visible value, and published
+      value epoch remain unchanged. Follow-up commit/layering/projection work is tracked in OxCalc
+      bead `calc-4ipg`.
 - [ ] `candidate-overlay-handle`: implement N addressable, layerable, non-publishing candidate
       contexts before scenarios, what-if previews, goal seek, sweeps, or comparative overlays.
 - [x] `value-epoch-keying`: per-node published-value epoch is available for projection consumers.
