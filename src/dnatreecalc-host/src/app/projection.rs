@@ -46,6 +46,7 @@ pub fn workspace_state_from_model(model: &WorkspaceModel) -> WorkspaceState {
             value_epoch: None,
             calc_state: None,
             effective_format: None,
+            note: None,
             binding_diagnostics: Vec::new(),
             is_meta: node.is_meta,
             table: None,

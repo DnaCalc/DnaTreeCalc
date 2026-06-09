@@ -14,13 +14,13 @@ use dnatreecalc_skin_framework::{
     MutationImpactBlockedReasonProjection, MutationImpactIntentProjection,
     MutationImpactProjection, NameCollisionProjection, NodeCalcStateProjection,
     NodeContentKind as FrameworkContentKind, NodeId, NodeInvalidationProjection, NodeKey,
-    NodeValueProjection, NodeView, PhaseKeyProjection, RecalcPlanInvalidationProjection,
-    RecalcPlanMutation, RecalcPlanProjection, ReferenceResolutionProjection,
-    ReferenceTargetProjection, RuntimeEffectFamilyProjection, RuntimeEffectProjection,
-    RuntimeOverlayKindProjection, RuntimeOverlayProjection, SourceSpanProjection,
-    TableAnchorProjection, TableCellInput, TableCellProjection, TableCellRegionProjection,
-    TableCellsProjection, TableColumnBodyProjection, TableColumnProjection,
-    TableDependencyFactBlockerProjection, TableDependencyFactKindProjection,
+    NodeNoteProjection, NodeValueProjection, NodeView, NoteSourceProjection, PhaseKeyProjection,
+    RecalcPlanInvalidationProjection, RecalcPlanMutation, RecalcPlanProjection,
+    ReferenceResolutionProjection, ReferenceTargetProjection, RuntimeEffectFamilyProjection,
+    RuntimeEffectProjection, RuntimeOverlayKindProjection, RuntimeOverlayProjection,
+    SourceSpanProjection, TableAnchorProjection, TableCellInput, TableCellProjection,
+    TableCellRegionProjection, TableCellsProjection, TableColumnBodyProjection,
+    TableColumnProjection, TableDependencyFactBlockerProjection, TableDependencyFactKindProjection,
     TableDependencyFactProjection, TableDependencyFactStatusProjection,
     TableFormulaBindPreviewProjection, TableFormulaMetadataProjection, TableProjection,
     TableRowInput, TableRowProjection, TreeReferenceCollectionFamilyProjection,
@@ -1175,6 +1175,7 @@ impl TreeWorkspaceSession {
         })?;
         let mut transaction = OxCalcTreeEditTransaction::new(self.workspace_id.clone())
             .with_recalc_policy(TransactionRecalcPolicy::ApplyOnly);
+        let views_by_tree_id = self.current_views_by_tree_id()?;
 
         for key in target_keys {
             let target = state.node_by_key(&key).ok_or_else(|| {
@@ -1183,36 +1184,41 @@ impl TreeWorkspaceSession {
                 }
             })?;
             let format_path = NodeId::new(format!("{}.Format", target.id.as_str()));
-            let number_format_path =
-                NodeId::new(format!("{}.NumberFormat", format_path.as_str()));
+            let number_format_path = NodeId::new(format!("{}.NumberFormat", format_path.as_str()));
 
-            let format_tree_id = if let Some(format_view) = state.node(&format_path) {
-                if !format_view.is_meta {
-                    return Err(TreeWorkspaceSessionError::FormatPathReserved {
-                        node: format_path.to_string(),
+            let format_tree_id =
+                if let Some(format_tree_id) = self.node_ids.get(&format_path).copied() {
+                    if !views_by_tree_id
+                        .get(&format_tree_id)
+                        .is_some_and(|view| view.is_meta)
+                    {
+                        return Err(TreeWorkspaceSessionError::FormatPathReserved {
+                            node: format_path.to_string(),
+                        });
+                    }
+                    format_tree_id
+                } else if number_format_code.is_some() {
+                    let reserved_format_id = self.context.reserve_node_id();
+                    transaction = transaction.with_edit(OxCalcTreeEdit::AddNode {
+                        request: OxCalcTreeNodeCreate::new("Format", "")
+                            .under(self.tree_node_id(target.id.as_str())?)
+                            .with_meta(true)
+                            .with_reserved_node_id(reserved_format_id),
                     });
-                }
-                self.tree_node_id(format_path.as_str())?
-            } else if number_format_code.is_some() {
-                let reserved_format_id = self.context.reserve_node_id();
-                transaction = transaction.with_edit(OxCalcTreeEdit::AddNode {
-                    request: OxCalcTreeNodeCreate::new("Format", "")
-                        .under(self.tree_node_id(target.id.as_str())?)
-                        .with_meta(true)
-                        .with_reserved_node_id(reserved_format_id),
-                });
-                reserved_format_id
-            } else {
-                continue;
-            };
+                    reserved_format_id
+                } else {
+                    continue;
+                };
 
-            if let Some(number_format_view) = state.node(&number_format_path) {
-                if !number_format_view.is_meta {
+            if let Some(number_format_tree_id) = self.node_ids.get(&number_format_path).copied() {
+                if !views_by_tree_id
+                    .get(&number_format_tree_id)
+                    .is_some_and(|view| view.is_meta)
+                {
                     return Err(TreeWorkspaceSessionError::FormatPathReserved {
                         node: number_format_path.to_string(),
                     });
                 }
-                let number_format_tree_id = self.tree_node_id(number_format_path.as_str())?;
                 match &number_format_code {
                     Some(code) => {
                         transaction = transaction.with_edit(OxCalcTreeEdit::SetNodeFormulaText {
@@ -1233,6 +1239,62 @@ impl TreeWorkspaceSession {
                         .with_meta(true),
                 });
             }
+        }
+
+        let outcome = self.context.apply_edit_transaction(transaction)?;
+        self.last_outcome = None;
+        self.refresh_projection_from_context()?;
+        self.recalculate()?;
+        Ok(TreeWorkspaceTransactionEdit {
+            result: (),
+            transaction_id: outcome.transaction_id.to_string(),
+        })
+    }
+
+    pub fn set_note_transaction(
+        &mut self,
+        node: NodeKey,
+        note: Option<String>,
+    ) -> Result<TreeWorkspaceTransactionEdit<()>, TreeWorkspaceSessionError> {
+        let state = self.workspace_state()?;
+        let target = state.node_by_key(&node).ok_or_else(|| {
+            TreeWorkspaceSessionError::ProjectionOutOfSync {
+                node: format!("node key {node}"),
+            }
+        })?;
+        let note_path = NodeId::new(format!("{}.Note", target.id.as_str()));
+        let mut transaction = OxCalcTreeEditTransaction::new(self.workspace_id.clone())
+            .with_recalc_policy(TransactionRecalcPolicy::ApplyOnly);
+        let views_by_tree_id = self.current_views_by_tree_id()?;
+
+        if let Some(note_tree_id) = self.node_ids.get(&note_path).copied() {
+            if !views_by_tree_id
+                .get(&note_tree_id)
+                .is_some_and(|view| view.is_meta)
+            {
+                return Err(TreeWorkspaceSessionError::NotePathReserved {
+                    node: note_path.to_string(),
+                });
+            }
+            match note {
+                Some(text) => {
+                    transaction = transaction.with_edit(OxCalcTreeEdit::SetNodeFormulaText {
+                        node_id: note_tree_id,
+                        formula_text: text,
+                    });
+                }
+                None => {
+                    transaction = transaction.with_edit(OxCalcTreeEdit::DeleteNode {
+                        node_id: note_tree_id,
+                    });
+                }
+            }
+        } else if let Some(text) = note {
+            transaction = transaction.with_edit(OxCalcTreeEdit::AddNode {
+                request: OxCalcTreeNodeCreate::new("Note", text)
+                    .under(self.tree_node_id(target.id.as_str())?)
+                    .with_meta(true),
+            });
         }
 
         let outcome = self.context.apply_edit_transaction(transaction)?;
@@ -3002,6 +3064,7 @@ impl TreeWorkspaceSession {
                 .and_then(|outcome| outcome.published_calc_values.get(&tree_node_id));
             let calc_value = tree_view.calc_value.as_ref().or(outcome_calc_value);
             let effective_format = self.effective_format_for_node(node_id, &views_by_tree_id)?;
+            let note = self.note_for_node(node_id, &views_by_tree_id)?;
             let computed_value = value_projection_for(
                 tree_view.value_text.clone(),
                 tree_view.calc_state,
@@ -3028,6 +3091,7 @@ impl TreeWorkspaceSession {
                     value_epoch: tree_view.published_value_epoch,
                     calc_state: tree_view.calc_state.map(calc_state_projection_for),
                     effective_format,
+                    note,
                     binding_diagnostics,
                     is_meta: tree_view.is_meta,
                     table,
@@ -3171,6 +3235,18 @@ impl TreeWorkspaceSession {
             .ok_or_else(|| TreeWorkspaceSessionError::UnknownNodePath {
                 node: node.to_string(),
             })
+    }
+
+    fn current_views_by_tree_id(
+        &self,
+    ) -> Result<BTreeMap<TreeNodeId, OxCalcTreeNodeView>, TreeWorkspaceSessionError> {
+        Ok(self
+            .context
+            .workspace_view(&self.workspace_id)?
+            .nodes
+            .into_iter()
+            .map(|view| (view.node_id, view))
+            .collect())
     }
 
     fn name_collisions_for_attempt(
@@ -4032,6 +4108,41 @@ impl TreeWorkspaceSession {
         Ok(None)
     }
 
+    fn note_for_node(
+        &self,
+        node_id: &NodeId,
+        views_by_tree_id: &BTreeMap<TreeNodeId, OxCalcTreeNodeView>,
+    ) -> Result<Option<NodeNoteProjection>, TreeWorkspaceSessionError> {
+        let tree_node_id = self.tree_node_id(node_id.as_str())?;
+        if views_by_tree_id
+            .get(&tree_node_id)
+            .is_some_and(|view| view.is_meta)
+        {
+            return Ok(None);
+        }
+
+        let note_node_id = NodeId::new(format!("{}.Note", node_id.as_str()));
+        let Some(note_tree_id) = self.node_ids.get(&note_node_id) else {
+            return Ok(None);
+        };
+        let Some(note_text) = views_by_tree_id
+            .get(note_tree_id)
+            .filter(|view| view.is_meta)
+            .map(|view| view.formula_text.clone())
+            .filter(|text| !text.is_empty())
+        else {
+            return Ok(None);
+        };
+
+        Ok(Some(NodeNoteProjection {
+            text: note_text,
+            source: NoteSourceProjection {
+                node: self.node_id_for_tree_node(*note_tree_id)?,
+                node_key: node_key_for_tree_node(*note_tree_id),
+            },
+        }))
+    }
+
     fn reference_resolution_projection(
         &self,
         outcome: &OxCalcTreeCalculationOutcome,
@@ -4478,6 +4589,8 @@ pub enum TreeWorkspaceSessionError {
     ConstantTableColumnFormulaEdit { table: String, column_id: String },
     #[error("format meta path {node} is occupied by a non-meta node")]
     FormatPathReserved { node: String },
+    #[error("note meta path {node} is occupied by a non-meta node")]
+    NotePathReserved { node: String },
     #[error("OxCalc context projection is out of sync for {node}")]
     ProjectionOutOfSync { node: String },
 }

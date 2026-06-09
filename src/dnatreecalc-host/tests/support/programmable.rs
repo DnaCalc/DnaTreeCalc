@@ -8,11 +8,11 @@ use dnatreecalc_skin_framework::{
     ActiveNodeDetailProjection, ActiveSelectionDetailProjection, ActiveTableCellDetailProjection,
     AuthoringScope, Dispatcher, ErasedSkinContext, FormulaBindPreviewProjection,
     InitialNodeContentProjection, IntentError, IntentReceipt, MutationImpactProjection, NodeId,
-    RecalcPlanMutation, RecalcPlanProjection, RegisteredSkin, SelectionState, SharedSkinState,
-    SharedSkinStateHandle, SkinCapabilities, SkinCategory, SkinContext, SkinHandle, SkinId,
-    SkinManifest, SkinState, TableCellInput, TableFormulaBindPreviewProjection, TableRowInput,
-    WorkspaceIntent, WorkspaceRecalcMode, WorkspaceRevisionProjection, WorkspaceSkin,
-    WorkspaceState,
+    NodeKey, RecalcPlanMutation, RecalcPlanProjection, RegisteredSkin, SelectionState,
+    SharedSkinState, SharedSkinStateHandle, SkinCapabilities, SkinCategory, SkinContext,
+    SkinHandle, SkinId, SkinManifest, SkinState, TableCellInput, TableFormulaBindPreviewProjection,
+    TableRowInput, WorkspaceIntent, WorkspaceRecalcMode, WorkspaceRevisionProjection,
+    WorkspaceSkin, WorkspaceState,
 };
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -92,6 +92,13 @@ impl ProgrammableDriver {
         self.dispatch.dispatch(WorkspaceIntent::SetNumberFormat {
             scope,
             number_format_code: number_format_code.map(str::to_string),
+        })
+    }
+
+    pub fn try_set_note(&self, node: NodeKey, note: Option<&str>) -> IntentReceipt {
+        self.dispatch.dispatch(WorkspaceIntent::SetNote {
+            node,
+            note: note.map(str::to_string),
         })
     }
 

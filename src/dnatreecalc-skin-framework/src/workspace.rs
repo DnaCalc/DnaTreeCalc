@@ -76,6 +76,7 @@ impl WorkspaceState {
             value_epoch: node.value_epoch,
             calc_state: node.calc_state,
             effective_format: node.effective_format.clone(),
+            note: node.note.clone(),
             binding_diagnostics: node.binding_diagnostics.clone(),
             outgoing_references: self
                 .dependencies
@@ -304,6 +305,7 @@ pub struct ActiveNodeDetailProjection {
     pub value_epoch: Option<u64>,
     pub calc_state: Option<NodeCalcStateProjection>,
     pub effective_format: Option<EffectiveFormatProjection>,
+    pub note: Option<NodeNoteProjection>,
     pub binding_diagnostics: Vec<BindingDiagnosticProjection>,
     pub outgoing_references: Vec<ReferenceResolutionProjection>,
     pub incoming_reference_handles: Vec<String>,
@@ -438,9 +440,22 @@ pub struct NodeView {
     pub value_epoch: Option<u64>,
     pub calc_state: Option<NodeCalcStateProjection>,
     pub effective_format: Option<EffectiveFormatProjection>,
+    pub note: Option<NodeNoteProjection>,
     pub binding_diagnostics: Vec<BindingDiagnosticProjection>,
     pub is_meta: bool,
     pub table: Option<TableProjection>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NodeNoteProjection {
+    pub text: String,
+    pub source: NoteSourceProjection,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NoteSourceProjection {
+    pub node: NodeId,
+    pub node_key: NodeKey,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

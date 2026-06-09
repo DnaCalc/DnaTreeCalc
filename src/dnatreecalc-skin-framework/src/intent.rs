@@ -77,6 +77,12 @@ pub enum WorkspaceIntent {
         scope: AuthoringScope,
         number_format_code: Option<String>,
     },
+    /// Author or clear a per-node note/comment. Notes are model metadata
+    /// projected to skins; they are not formula-visible semantic values.
+    SetNote {
+        node: NodeKey,
+        note: Option<String>,
+    },
     AddNode {
         parent: Option<NodeId>,
         symbol: String,
@@ -296,6 +302,8 @@ pub enum IntentError {
     ProjectionOutOfSync { node: String },
     #[error("format meta path {node} is occupied by a non-meta node")]
     FormatPathReserved { node: String },
+    #[error("note meta path {node} is occupied by a non-meta node")]
+    NotePathReserved { node: String },
     #[error("engine rejected the intent: {0}")]
     EngineRejected(String),
     #[error("host failed to dispatch the intent: {0}")]
@@ -426,6 +434,7 @@ impl Dispatcher for InMemoryDispatcher {
             | WorkspaceIntent::EditContentDeferred { .. }
             | WorkspaceIntent::EditScopedContent { .. }
             | WorkspaceIntent::SetNumberFormat { .. }
+            | WorkspaceIntent::SetNote { .. }
             | WorkspaceIntent::AddNode { .. }
             | WorkspaceIntent::RenameNode { .. }
             | WorkspaceIntent::MoveNode { .. }

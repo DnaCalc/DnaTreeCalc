@@ -28,7 +28,8 @@ Current status: first W3 assessment is complete. The formula rewrite verbs
 (`replicate-by-id`, `f4-toggle-binding`, and `reference-insertion`) are blocked on an OxFml-owned
 authoring API and are recorded in `../../handovers/HANDOVER_OXFML_formula_authoring_verbs.md`.
 The first landed W3 slice is `format-write` for authored number formats via canonical meta nodes and
-real OxCalc transactions.
+real OxCalc transactions. The second landed W3 slice is `note-write` via canonical `Note` meta nodes
+and `NodeView.note` projection.
 
 Do not advance to W4 speculation/history or W5 platform polish as the default next step while W3
 authoring verbs remain incomplete.
@@ -130,8 +131,12 @@ Use this as the per-tranche goal statement before implementation:
       `WorkspaceIntent::SetNumberFormat { scope, number_format_code }` creates, updates, or clears
       `Format.NumberFormat` meta nodes through OxCalc transactions; receipts carry transaction ids;
       Skin IR tests assert set, clear, multi-node scope, and reserved-path rejection.
-- [ ] Continue W3 with the next feasible tranche: likely `note-write` or
-      `meta-and-attribute-write`, unless OxFml lands the formula-authoring API first.
+- [x] Land `note-write`:
+      `WorkspaceIntent::SetNote { node, note }` creates, updates, or clears a `Note` meta node
+      through OxCalc transactions; `NodeView.note` and active-node detail project it; tests assert
+      set, clear, document round-trip, and reserved-path rejection.
+- [ ] Continue W3 with the next feasible tranche: likely `meta-and-attribute-write`, unless OxFml
+      lands the formula-authoring API first.
 
 ## Gated Workstreams
 

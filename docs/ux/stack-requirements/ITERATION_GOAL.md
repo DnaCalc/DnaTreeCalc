@@ -31,7 +31,8 @@ skin-side formula parsing, semantic value computation, or transaction-id fabrica
 assessment found that formula rewrite verbs (`replicate-by-id`, `f4-toggle-binding`, and
 `reference-insertion`) require an OxFml-owned authoring API; DnaTreeCalc has filed a handoff and
 landed the first ownership-correct W3 slice: number-format write through host-owned meta nodes and
-real OxCalc transactions.
+real OxCalc transactions. The next W3 slice, `note-write`, is also landed through canonical
+host-owned `Note` meta nodes and Skin IR note projection.
 
 ## Roadmap Position
 
@@ -169,9 +170,13 @@ The roadmap alignment rule is:
       `AuthoringScope`, storing authored number-format codes in canonical `Format.NumberFormat`
       meta nodes, rejecting non-meta reserved-path collisions with typed errors, and carrying real
       OxCalc transaction ids through Skin IR receipts.
+- [x] Implement `note-write`: `WorkspaceIntent::SetNote { node, note }` creates, updates, or
+      clears a canonical `Note` meta node, projects `NodeView.note` and active-node note detail,
+      round-trips through the OxCalc-backed workspace document, and rejects non-meta reserved-path
+      collisions with typed errors.
 - [ ] Continue W3 with the next ownership-correct slice. Candidate order after the OxFml-blocked
-      formula rewrite verbs: `note-write`, `meta-and-attribute-write`, then
-      `add-node-content-policy` widening or OxFml-unblocked formula authoring.
+      formula rewrite verbs: `meta-and-attribute-write`, then `add-node-content-policy` widening or
+      OxFml-unblocked formula authoring.
 
 ### Gating Engine Workstreams
 

@@ -1,5 +1,6 @@
 mod support;
 
+use dnatreecalc_host::app::TreeWorkspaceSession;
 use dnatreecalc_skin_framework::{
     ActiveSelectionDetailProjection, AuthoringScope, CalcRunStateProjection,
     FormulaBindPreviewDiagnosticStage, FormulaBindPreviewInputKind, InitialNodeContentProjection,
@@ -2304,8 +2305,10 @@ fn programmable_skin_authors_number_format_over_ordered_scope() {
     let state = skin.state();
     let sales_key = state.node(&NodeId::new("Book.Sales")).unwrap().key.clone();
     let margin_key = state.node(&NodeId::new("Book.Margin")).unwrap().key.clone();
-    let receipt =
-        skin.try_set_number_format(AuthoringScope::Nodes(vec![sales_key, margin_key]), Some("0%"));
+    let receipt = skin.try_set_number_format(
+        AuthoringScope::Nodes(vec![sales_key, margin_key]),
+        Some("0%"),
+    );
     assert!(receipt.accepted, "{:?}", receipt.error);
     assert_any_transaction(&receipt);
 
@@ -2339,11 +2342,7 @@ fn programmable_skin_rejects_number_format_when_meta_path_is_user_node() {
     let add_parent = skin.try_add_node(Some("Book"), "Visible", "1");
     assert!(add_parent.accepted, "{:?}", add_parent.error);
     let add_reserved_path = skin.try_add_node(Some("Book.Visible"), "Format", "");
-    assert!(
-        add_reserved_path.accepted,
-        "{:?}",
-        add_reserved_path.error
-    );
+    assert!(add_reserved_path.accepted, "{:?}", add_reserved_path.error);
 
     let visible_key = skin
         .state()
@@ -2356,6 +2355,126 @@ fn programmable_skin_rejects_number_format_when_meta_path_is_user_node() {
     assert!(matches!(
         receipt.error,
         Some(IntentError::FormatPathReserved { ref node }) if node == "Book.Visible.Format"
+    ));
+}
+
+#[test]
+fn programmable_skin_authors_note_via_skin_ir_intent() {
+    let harness = Harness::from_repo_fixture("formatting");
+    let skin = harness.driver.clone();
+    skin.recalc();
+
+    let margin_key = skin
+        .state()
+        .node(&NodeId::new("Book.Margin"))
+        .expect("Margin projects")
+        .key
+        .clone();
+    let receipt = skin.try_set_note(margin_key, Some("Review margin assumption"));
+    assert!(receipt.accepted, "{:?}", receipt.error);
+    assert_any_transaction(&receipt);
+
+    let state = skin.state();
+    let margin = state.node(&NodeId::new("Book.Margin")).unwrap();
+    let note = margin.note.as_ref().expect("note projects");
+    assert_eq!(note.text, "Review margin assumption");
+    assert_eq!(note.source.node, NodeId::new("Book.Margin.Note"));
+
+    let detail = state
+        .active_node_detail(&dnatreecalc_skin_framework::SelectionState::with_primary(
+            Some(NodeId::new("Book.Margin")),
+        ))
+        .expect("active detail projects selected node");
+    assert_eq!(detail.note, margin.note);
+}
+
+#[test]
+fn programmable_skin_note_round_trips_through_workspace_document() {
+    let harness = Harness::from_repo_fixture("formatting");
+    let skin = harness.driver.clone();
+    skin.recalc();
+
+    let margin_key = skin
+        .state()
+        .node(&NodeId::new("Book.Margin"))
+        .unwrap()
+        .key
+        .clone();
+    let receipt = skin.try_set_note(margin_key, Some("Persist this note"));
+    assert!(receipt.accepted, "{:?}", receipt.error);
+
+    let document = harness
+        .session
+        .lock()
+        .unwrap()
+        .export_dnatree_document(None)
+        .expect("document export succeeds");
+    let (imported, _) =
+        TreeWorkspaceSession::from_dnatree_document(document).expect("document import succeeds");
+    let state = imported.workspace_state().expect("imported state projects");
+    assert_eq!(
+        state
+            .node(&NodeId::new("Book.Margin"))
+            .and_then(|node| node.note.as_ref())
+            .map(|note| note.text.as_str()),
+        Some("Persist this note")
+    );
+}
+
+#[test]
+fn programmable_skin_clears_note_via_skin_ir_intent() {
+    let harness = Harness::from_repo_fixture("formatting");
+    let skin = harness.driver.clone();
+    skin.recalc();
+
+    let margin_key = skin
+        .state()
+        .node(&NodeId::new("Book.Margin"))
+        .unwrap()
+        .key
+        .clone();
+    assert!(
+        skin.try_set_note(margin_key.clone(), Some("Temporary note"))
+            .accepted
+    );
+    let clear = skin.try_set_note(margin_key, None);
+    assert!(clear.accepted, "{:?}", clear.error);
+    assert_any_transaction(&clear);
+    assert!(
+        skin.state()
+            .node(&NodeId::new("Book.Margin"))
+            .unwrap()
+            .note
+            .is_none()
+    );
+}
+
+#[test]
+fn programmable_skin_rejects_note_when_meta_path_is_user_node() {
+    let harness = Harness::from_repo_fixture("formatting");
+    let skin = harness.driver.clone();
+    skin.recalc();
+
+    assert!(
+        skin.try_add_node(Some("Book"), "VisibleNoteOwner", "1")
+            .accepted
+    );
+    assert!(
+        skin.try_add_node(Some("Book.VisibleNoteOwner"), "Note", "")
+            .accepted
+    );
+
+    let owner_key = skin
+        .state()
+        .node(&NodeId::new("Book.VisibleNoteOwner"))
+        .expect("created note owner projects")
+        .key
+        .clone();
+    let receipt = skin.try_set_note(owner_key, Some("Should reject"));
+    assert!(!receipt.accepted);
+    assert!(matches!(
+        receipt.error,
+        Some(IntentError::NotePathReserved { ref node }) if node == "Book.VisibleNoteOwner.Note"
     ));
 }
 
