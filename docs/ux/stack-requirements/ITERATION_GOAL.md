@@ -46,8 +46,11 @@ edits with the same host-reference profile it binds with. DnaTreeCalc exposes a 
 `InsertFormulaReference` Skin IR intent that carries the edited node key, current edit-buffer text,
 replacement span, and typed target; the host maps keys to projected node facts, calls OxFml, dry-binds
 the recomposed formula through OxCalc, and commits it through a real content transaction.
-`replicate-by-id`, `f4-toggle-binding`, formula paste/rebind, formula-and-format paste, subtree
-internal-reference rebind, and broader selector/collection insertion UX remain open. DnaTreeCalc has
+The second reference-insertion tranche is also landed: programmable Skin IR tests now exercise
+host-reference collection targets such as `Base.@CHILDREN` and structural selector targets such as
+`A.@NEXT` from outside the engine, proving recomposed formula text, OxCalc dependency resolution, and
+computed values. `replicate-by-id`, `f4-toggle-binding`, formula paste/rebind, formula-and-format
+paste, subtree internal-reference rebind, and richer editor UX around selector choice remain open. DnaTreeCalc has
 also landed the first ownership-correct W3 slice: number-format write through host-owned meta nodes and
 real OxCalc transactions. The next W3 slice, `note-write`, is also landed through canonical
 host-owned `Note` meta nodes and Skin IR note projection. `meta-and-attribute-write` is now landed
@@ -250,6 +253,12 @@ The roadmap alignment rule is:
       point-mode insertion into a formula and proves the resulting dependency/value after recalc.
       Full replicate/fill by id, F4 binding toggle, formula paste/rebind, formula-and-format paste,
       subtree internal-reference rebind, and richer multi-selector insertion UX remain open.
+- [x] Widen `reference-insertion` Skin IR evidence to collection and structural selector targets:
+      programmable Skin IR tests insert a typed `HostReferenceCollection` target and verify
+      `=SUM(Base.@CHILDREN)` resolves to child value dependencies/results, and insert a typed
+      `HostStructuralSelector` target and verify `=SUM(A.@NEXT)` resolves through OxCalc sibling
+      navigation. This widens proof for the already OxFml-owned insertion API without adding
+      host-side formula spelling.
 - [x] Implement first `format-write` slice: `WorkspaceIntent::SetNumberFormat` over
       `AuthoringScope`, storing authored number-format codes in canonical `Format.NumberFormat`
       meta nodes, rejecting non-meta reserved-path collisions with typed errors, and carrying real
@@ -362,8 +371,8 @@ The roadmap alignment rule is:
       and a single pasted text item still broadcasts through the existing scoped-content path.
       Item/target count mismatches reject before mutation. Rich OS clipboard formats, formula
       rewrite/rebind paste, and subtree paste remain open.
-- [ ] Continue W3 with the next ownership-correct slice. Candidate order: widen
-      `reference-insertion` beyond the first node-target point-mode tranche, or implement the next
+- [ ] Continue W3 with the next ownership-correct slice. Candidate order: either add a typed
+      authored-formula output/projection receipt for `reference-insertion`, or implement the next
       OxFml-backed formula authoring verb (`f4-toggle-binding`, `replicate-by-id`, formula
       paste/rebind) when its rewrite semantics are available. Complete remaining
       `add-node-content-policy` only when template substrate exists.

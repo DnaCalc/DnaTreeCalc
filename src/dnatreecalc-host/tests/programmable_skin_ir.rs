@@ -289,6 +289,117 @@ fn programmable_skin_inserts_formula_reference_through_oxfml_authoring() {
 }
 
 #[test]
+fn programmable_skin_inserts_reference_collection_through_oxfml_authoring() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Base", "");
+    skin.add_node(Some("Base"), "A", "2");
+    skin.add_node(Some("Base"), "B", "3");
+    skin.add_node(None, "Total", "=SUM(0)");
+
+    let before = skin.state();
+    let total_key = before
+        .node(&NodeId::new("Total"))
+        .expect("formula target projects")
+        .key
+        .clone();
+    let base_key = before
+        .node(&NodeId::new("Base"))
+        .expect("collection base projects")
+        .key
+        .clone();
+
+    let receipt = skin.try_insert_formula_reference(
+        total_key,
+        "=SUM(0)",
+        "=SUM(".chars().count(),
+        1,
+        FormulaReferenceInsertionTarget::HostReferenceCollection {
+            base: Some(base_key),
+            collection_family: "children".to_string(),
+        },
+    );
+    assert!(receipt.accepted, "{:?}", receipt.error);
+    assert_any_transaction(&receipt);
+
+    let after = skin.state();
+    let total = after
+        .node(&NodeId::new("Total"))
+        .expect("formula target still projects");
+    assert_eq!(total.content_text, "=SUM(Base.@CHILDREN)");
+    assert_eq!(total.computed_value.display_text(), "5");
+    let outgoing = after
+        .dependencies
+        .edges_by_owner_key
+        .get(&total.key)
+        .expect("collection insertion should publish dependency edges");
+    assert!(
+        outgoing
+            .iter()
+            .any(|edge| edge.target == NodeId::new("Base.A"))
+    );
+    assert!(
+        outgoing
+            .iter()
+            .any(|edge| edge.target == NodeId::new("Base.B"))
+    );
+}
+
+#[test]
+fn programmable_skin_inserts_structural_selector_through_oxfml_authoring() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    skin.add_node(Some("Root"), "A", "2");
+    skin.add_node(Some("Root"), "B", "3");
+    skin.add_node(Some("Root"), "Total", "=SUM(0)");
+
+    let before = skin.state();
+    let total_key = before
+        .node(&NodeId::new("Root.Total"))
+        .expect("formula target projects")
+        .key
+        .clone();
+    let a_key = before
+        .node(&NodeId::new("Root.A"))
+        .expect("selector base projects")
+        .key
+        .clone();
+
+    let receipt = skin.try_insert_formula_reference(
+        total_key,
+        "=SUM(0)",
+        "=SUM(".chars().count(),
+        1,
+        FormulaReferenceInsertionTarget::HostStructuralSelector {
+            base: a_key,
+            selector_family: "next".to_string(),
+        },
+    );
+    assert!(receipt.accepted, "{:?}", receipt.error);
+    assert_any_transaction(&receipt);
+
+    let after = skin.state();
+    let total = after
+        .node(&NodeId::new("Root.Total"))
+        .expect("formula target still projects");
+    assert_eq!(total.content_text, "=SUM(A.@NEXT)");
+    assert_eq!(total.computed_value.display_text(), "3");
+    assert!(
+        after
+            .dependencies
+            .edges_by_owner_key
+            .get(&total.key)
+            .is_some_and(|edges| edges
+                .iter()
+                .any(|edge| edge.target == NodeId::new("Root.B"))),
+        "structural selector insertion should resolve through OxCalc"
+    );
+}
+
+#[test]
 fn programmable_skin_previews_table_formula_bind_from_table_subjects() {
     let harness = Harness::from_repo_fixture("tables");
     let skin = harness.driver.clone();
