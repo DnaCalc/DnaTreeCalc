@@ -15,6 +15,7 @@ pub mod formula_tree;
 mod node_management;
 pub mod outline_table;
 mod spine_widgets;
+pub mod tree;
 pub mod triple_editor;
 pub mod value_board;
 mod value_render;
@@ -25,5 +26,6 @@ pub use dependency_inspector::{
 pub use flow::{FLOW_ID, FlowLens, FlowState};
 pub use formula_tree::{FORMULA_TREE_ID, FormulaTree, FormulaTreeState};
 pub use outline_table::{OUTLINE_TABLE_ID, OutlineTable, OutlineTableState};
+pub use tree::{TREE_ID, TreeLens, TreeState};
 pub use triple_editor::{TRIPLE_EDITOR_ID, TripleEditor, TripleEditorState};
 pub use value_board::{VALUE_BOARD_ID, ValueBoard, ValueBoardState};
