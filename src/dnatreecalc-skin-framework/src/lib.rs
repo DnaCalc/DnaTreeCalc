@@ -12,11 +12,13 @@ pub mod accessibility;
 pub mod command;
 pub mod identity;
 pub mod intent;
+pub mod keybinding;
 pub mod manifest;
 pub mod registry;
 pub mod selection;
 pub mod skin;
 pub mod state;
+pub mod style;
 pub mod theme;
 pub mod workspace;
 
@@ -33,6 +35,7 @@ pub use intent::{
     StructuralDeltaProjection, SweepPointInput, TableCellInput, TableRowInput, WorkspaceDelta,
     WorkspaceDeltaChange, WorkspaceIntent,
 };
+pub use keybinding::{KeyChord, KeybindingRegistry, SkinVerb};
 pub use manifest::{SkinCapabilities, SkinCategory, SkinManifest};
 pub use registry::SkinRegistry;
 pub use selection::{SelectionState, TableCellSelection};
@@ -44,6 +47,9 @@ pub use state::{
     SharedSkinStateHandle, SkinState, SkinStateHandle, SkinStatePersistenceError,
     SkinStatePersistenceKey, SkinStatePersistenceStore, WorkspaceRecalcMode,
 };
+pub use style::{
+    ATLAS_SPINE_CSS, ProvenanceTint, calc_state_class, provenance_tint, selection_mode_class,
+};
 pub use theme::{ThemeMode, ThemeTokens};
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -51,8 +57,9 @@ pub use state::LocalFileSkinStatePersistenceStore;
 pub use workspace::{
     ActiveNodeDetailProjection, ActiveSelectionDetailProjection, ActiveTableCellDetailProjection,
     AuthoringScopeExpansionError, BindingDiagnosticProjection, CalcRunProjection,
-    CalcRunStateProjection, CandidateNodeProjection, CandidateProjection,
-    ClipboardNodeFormatProjection, ClipboardNodeValueProjection, ClipboardOperationProjection,
+    CalcRunStateProjection, CandidateNodeProjection, CandidateProjection, CleaveFilter,
+    CleavePredicate, CleaveSort, ClipboardNodeFormatProjection, ClipboardNodeValueProjection,
+    ClipboardOperationProjection,
     ClipboardPayloadProjection, ClipboardProjection, ComparativeColumnProjection,
     ComparativeProjection, ComparativeSourceProjection, DependencyDescriptorProjection,
     DependencyEdgeProjection, DependencyGraphProjection, DependencyKindProjection,

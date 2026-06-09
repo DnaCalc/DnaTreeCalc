@@ -1,0 +1,231 @@
+//! The one grammar — a single typed keybinding registry shared by the shell
+//! and every lens.
+//!
+//! ATLAS's promise is "one verb, one meaning, everywhere": a key a user thinks
+//! is universal always behaves universally. This module is the single source of
+//! truth for that universal verb table. It is pure metadata over the closed
+//! [`WorkspaceIntent`](crate::WorkspaceIntent) surface — it resolves a key chord
+//! to a [`SkinVerb`] but never executes anything. The shell and lenses map the
+//! resolved verb to an intent or a lens-local action.
+//!
+//! [`KeyChord`] is deliberately DOM-free (plain key string + modifier flags) so
+//! the registry is unit-testable without a browser. The shell builds a chord
+//! from a `web_sys::KeyboardEvent` and calls [`KeybindingRegistry::resolve`].
+
+use crate::command::CommandIntentKindProjection;
+
+/// Lowercase a single alphabetic key so `Shift` is carried only by the flag.
+/// Multi-character keys (`"Enter"`, `"ArrowUp"`, `"F9"`) pass through unchanged.
+fn normalize_key(key: String) -> String {
+    let mut chars = key.chars();
+    match (chars.next(), chars.next()) {
+        (Some(ch), None) if ch.is_alphabetic() => ch.to_ascii_lowercase().to_string(),
+        _ => key,
+    }
+}
+
+/// A normalized key chord: a key name plus modifier flags.
+///
+/// `key` mirrors the DOM `KeyboardEvent.key` value (`"Enter"`, `"F9"`,
+/// `"ArrowUp"`, `"Escape"`, `"1"`, `" "`, `"/"`, `"]"`), except single
+/// alphabetic keys are lowercased so `Shift` state is carried only by the
+/// `shift` flag rather than by the key's case.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct KeyChord {
+    pub key: String,
+    pub ctrl: bool,
+    pub alt: bool,
+    pub shift: bool,
+}
+
+impl KeyChord {
+    /// Build a chord from raw parts, normalizing single alphabetic keys to
+    /// lowercase. `ctrl` should already fold the platform `meta` key in.
+    #[must_use]
+    pub fn from_parts(key: impl Into<String>, ctrl: bool, alt: bool, shift: bool) -> Self {
+        Self {
+            key: normalize_key(key.into()),
+            ctrl,
+            alt,
+            shift,
+        }
+    }
+
+    /// A bare (unmodified) key chord.
+    #[must_use]
+    pub fn bare(key: impl Into<String>) -> Self {
+        Self::from_parts(key, false, false, false)
+    }
+
+    /// A `Ctrl`-modified key chord.
+    #[must_use]
+    pub fn ctrl(key: impl Into<String>) -> Self {
+        Self::from_parts(key, true, false, false)
+    }
+}
+
+/// The universal verb vocabulary every lens shares.
+///
+/// Only verbs in this enum are part of the universal grammar. Lens-local
+/// secondary chords (`Tab`, `Ctrl+Enter`-as-something-else, drag) are
+/// intentionally absent — they stay lens-local and badged as such, so a key a
+/// user thinks is universal never silently means something different.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SkinVerb {
+    /// Commit the active edit / drop to the next sibling (Enter).
+    Commit,
+    /// Recalculate the workspace (F9; Ctrl+Enter compat).
+    Recalculate,
+    /// Fill the selection from the anchor (Ctrl+D).
+    Fill,
+    /// Collapse toward parent (h).
+    Fold,
+    /// Expand toward child (l).
+    Unfold,
+    /// Extend the trace one step toward dependents (]).
+    TraceForward,
+    /// Extend the trace one step toward precedents ([).
+    TraceBack,
+    /// Open the Name-Box quick jump (/).
+    NameBox,
+    /// Open the leader / health palette (Space).
+    Leader,
+    /// Explain the selection's derivation (E).
+    Explain,
+    /// Navigate the retained revision graph backward (Ctrl+Z).
+    Undo,
+    /// Navigate the retained revision graph forward (Ctrl+Y).
+    Redo,
+    /// Move selection to the previous sibling (ArrowUp).
+    NavPrev,
+    /// Move selection to the next sibling (ArrowDown).
+    NavNext,
+    /// Move selection toward the parent (ArrowLeft).
+    ToParent,
+    /// Move selection toward the first child (ArrowRight).
+    ToChild,
+    /// Switch to the lens at the given 1-based slot (Ctrl+1..9).
+    SwitchLens(u8),
+    /// Create a new workspace (Ctrl+N).
+    NewWorkspace,
+    /// The canonical escape ladder step (Escape).
+    Escape,
+}
+
+impl SkinVerb {
+    /// Stable id for telemetry, tests, and hint rendering.
+    #[must_use]
+    pub fn stable_id(self) -> &'static str {
+        match self {
+            Self::Commit => "commit",
+            Self::Recalculate => "recalculate",
+            Self::Fill => "fill",
+            Self::Fold => "fold",
+            Self::Unfold => "unfold",
+            Self::TraceForward => "trace_forward",
+            Self::TraceBack => "trace_back",
+            Self::NameBox => "name_box",
+            Self::Leader => "leader",
+            Self::Explain => "explain",
+            Self::Undo => "undo",
+            Self::Redo => "redo",
+            Self::NavPrev => "nav_prev",
+            Self::NavNext => "nav_next",
+            Self::ToParent => "to_parent",
+            Self::ToChild => "to_child",
+            Self::SwitchLens(_) => "switch_lens",
+            Self::NewWorkspace => "new_workspace",
+            Self::Escape => "escape",
+        }
+    }
+
+    /// The command-catalog kind this verb maps to, when one exists, so a lens
+    /// can read enablement + disabled-reason from
+    /// [`CommandCatalogProjection`](crate::CommandCatalogProjection) for the
+    /// same verb the registry resolves.
+    #[must_use]
+    pub fn command_kind(self) -> Option<CommandIntentKindProjection> {
+        match self {
+            Self::Commit => Some(CommandIntentKindProjection::EditContent),
+            Self::Recalculate => Some(CommandIntentKindProjection::Recalculate),
+            Self::Undo => Some(CommandIntentKindProjection::Undo),
+            Self::Redo => Some(CommandIntentKindProjection::Redo),
+            Self::NewWorkspace => Some(CommandIntentKindProjection::NewWorkspace),
+            _ => None,
+        }
+    }
+}
+
+/// The shared keybinding table.
+///
+/// Built once via [`KeybindingRegistry::universal`]; the shell and lenses
+/// resolve chords through it. A chord resolves to at most one verb — the
+/// `universal_grammar_is_collision_free` test guarantees uniqueness.
+#[derive(Debug, Clone)]
+pub struct KeybindingRegistry {
+    bindings: Vec<(KeyChord, SkinVerb)>,
+}
+
+impl Default for KeybindingRegistry {
+    fn default() -> Self {
+        Self::universal()
+    }
+}
+
+impl KeybindingRegistry {
+    /// The one canonical ATLAS grammar.
+    #[must_use]
+    pub fn universal() -> Self {
+        let mut bindings = vec![
+            (KeyChord::bare("Enter"), SkinVerb::Commit),
+            (KeyChord::bare("F9"), SkinVerb::Recalculate),
+            // Ctrl+Enter is kept as a compatibility chord for Recalculate so
+            // the existing shell muscle memory still works.
+            (KeyChord::ctrl("Enter"), SkinVerb::Recalculate),
+            (KeyChord::ctrl("d"), SkinVerb::Fill),
+            (KeyChord::bare("h"), SkinVerb::Fold),
+            (KeyChord::bare("l"), SkinVerb::Unfold),
+            (KeyChord::bare("]"), SkinVerb::TraceForward),
+            (KeyChord::bare("["), SkinVerb::TraceBack),
+            (KeyChord::bare("/"), SkinVerb::NameBox),
+            (KeyChord::bare(" "), SkinVerb::Leader),
+            (KeyChord::bare("e"), SkinVerb::Explain),
+            (KeyChord::ctrl("z"), SkinVerb::Undo),
+            (KeyChord::ctrl("y"), SkinVerb::Redo),
+            (KeyChord::bare("ArrowUp"), SkinVerb::NavPrev),
+            (KeyChord::bare("ArrowDown"), SkinVerb::NavNext),
+            (KeyChord::bare("ArrowLeft"), SkinVerb::ToParent),
+            (KeyChord::bare("ArrowRight"), SkinVerb::ToChild),
+            (KeyChord::ctrl("n"), SkinVerb::NewWorkspace),
+            (KeyChord::bare("Escape"), SkinVerb::Escape),
+        ];
+        for slot in 1u8..=9 {
+            bindings.push((KeyChord::ctrl(slot.to_string()), SkinVerb::SwitchLens(slot)));
+        }
+        Self { bindings }
+    }
+
+    /// Resolve a chord to its universal verb, if any.
+    #[must_use]
+    pub fn resolve(&self, chord: &KeyChord) -> Option<SkinVerb> {
+        self.bindings
+            .iter()
+            .find(|(bound, _)| bound == chord)
+            .map(|(_, verb)| *verb)
+    }
+
+    /// All (chord, verb) pairs, for hint rendering and tests.
+    #[must_use]
+    pub fn bindings(&self) -> &[(KeyChord, SkinVerb)] {
+        &self.bindings
+    }
+
+    /// The first chord bound to a verb, for shortcut hints.
+    #[must_use]
+    pub fn primary_chord(&self, verb: SkinVerb) -> Option<&KeyChord> {
+        self.bindings
+            .iter()
+            .find(|(_, bound)| *bound == verb)
+            .map(|(chord, _)| chord)
+    }
+}

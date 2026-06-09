@@ -739,3 +739,196 @@ fn _silence_unused_warnings() {
     // unused-helper lint stays quiet.
     let _ = IntentReceipt::rejected(crate::intent::IntentError::Unsupported);
 }
+
+// --- ATLAS shared spine: keybinding registry, continuity, styling ---------
+
+use crate::keybinding::{KeyChord, KeybindingRegistry, SkinVerb};
+use crate::style::{ProvenanceTint, calc_state_class, provenance_tint, selection_mode_class};
+use crate::workspace::{CleaveFilter, CleavePredicate, CleaveSort, NodeCalcStateProjection};
+
+fn numeric_node(key: &str, path: &str, value: &str) -> NodeView {
+    let mut view = node(key, path, NodeContentKind::Constant);
+    view.computed_value = NodeValueProjection::Number {
+        raw: value.to_string(),
+        display: value.to_string(),
+    };
+    view
+}
+
+#[test]
+fn universal_grammar_is_collision_free() {
+    let registry = KeybindingRegistry::universal();
+    let mut seen = std::collections::HashSet::new();
+    for (chord, _) in registry.bindings() {
+        assert!(
+            seen.insert(chord.clone()),
+            "chord {chord:?} is bound twice — the universal grammar must be collision-free"
+        );
+    }
+}
+
+#[test]
+fn universal_grammar_resolves_the_canonical_verbs() {
+    let registry = KeybindingRegistry::universal();
+    assert_eq!(
+        registry.resolve(&KeyChord::bare("Enter")),
+        Some(SkinVerb::Commit)
+    );
+    assert_eq!(
+        registry.resolve(&KeyChord::bare("F9")),
+        Some(SkinVerb::Recalculate)
+    );
+    // Ctrl+Enter is a compatibility chord for the same verb.
+    assert_eq!(
+        registry.resolve(&KeyChord::ctrl("Enter")),
+        Some(SkinVerb::Recalculate)
+    );
+    assert_eq!(registry.resolve(&KeyChord::ctrl("d")), Some(SkinVerb::Fill));
+    assert_eq!(registry.resolve(&KeyChord::bare("h")), Some(SkinVerb::Fold));
+    assert_eq!(
+        registry.resolve(&KeyChord::bare("]")),
+        Some(SkinVerb::TraceForward)
+    );
+    assert_eq!(
+        registry.resolve(&KeyChord::bare("/")),
+        Some(SkinVerb::NameBox)
+    );
+    assert_eq!(registry.resolve(&KeyChord::bare(" ")), Some(SkinVerb::Leader));
+    assert_eq!(
+        registry.resolve(&KeyChord::bare("e")),
+        Some(SkinVerb::Explain)
+    );
+    assert_eq!(registry.resolve(&KeyChord::ctrl("z")), Some(SkinVerb::Undo));
+    assert_eq!(
+        registry.resolve(&KeyChord::ctrl("3")),
+        Some(SkinVerb::SwitchLens(3))
+    );
+    // An unbound chord resolves to nothing.
+    assert_eq!(registry.resolve(&KeyChord::bare("q")), None);
+}
+
+#[test]
+fn keychord_normalizes_alphabetic_case() {
+    let upper = KeyChord::from_parts("D", true, false, true);
+    assert_eq!(upper.key, "d");
+    assert!(upper.ctrl && upper.shift && !upper.alt);
+    // Shift is carried by the flag, not the key case, so Ctrl+Shift+D does NOT
+    // collide with the Ctrl+D fill chord.
+    let registry = KeybindingRegistry::universal();
+    assert_eq!(registry.resolve(&upper), None);
+}
+
+#[test]
+fn verb_command_kind_joins_the_catalog() {
+    assert_eq!(
+        SkinVerb::Recalculate.command_kind(),
+        Some(CommandIntentKindProjection::Recalculate)
+    );
+    assert_eq!(
+        SkinVerb::Undo.command_kind(),
+        Some(CommandIntentKindProjection::Undo)
+    );
+    assert_eq!(SkinVerb::Explain.command_kind(), None);
+}
+
+#[test]
+fn shared_continuity_round_trips_and_gcs() {
+    let mut state = SharedSkinState {
+        selection_set: vec![NodeKey::new("k:a"), NodeKey::new("k:b")],
+        selection_anchor: Some(NodeKey::new("k:a")),
+        collapsed_keys: HashSet::from([NodeKey::new("k:a"), NodeKey::new("k:b")]),
+        pinned_keys: vec![NodeKey::new("k:b")],
+        focus_key: Some(NodeKey::new("k:a")),
+        cleave: Some(CleavePredicate {
+            filter: Some(CleaveFilter::DependsOn(NodeKey::new("k:b"))),
+            sort: Some(CleaveSort::ValueDesc),
+        }),
+        active_lens: Some("flow".to_string()),
+        ..SharedSkinState::default()
+    };
+
+    let json = serde_json::to_string(&state).expect("serialize shared state");
+    let restored: SharedSkinState = serde_json::from_str(&json).expect("deserialize shared state");
+    assert_eq!(state, restored);
+
+    // GC to a world where only k:a is live.
+    let live = HashSet::from([NodeKey::new("k:a")]);
+    state.gc(&live);
+    assert_eq!(state.selection_set, vec![NodeKey::new("k:a")]);
+    assert!(state.pinned_keys.is_empty());
+    assert_eq!(state.collapsed_keys, HashSet::from([NodeKey::new("k:a")]));
+    assert_eq!(state.focus_key, Some(NodeKey::new("k:a")));
+    // The cleave predicate referenced the now-dead k:b, so it is cleared.
+    assert!(state.cleave.is_none());
+}
+
+#[test]
+fn cleave_predicate_filters_and_sorts_per_lens() {
+    let workspace = workspace_with_nodes(vec![
+        numeric_node("k:a", "Alpha", "3"),
+        numeric_node("k:b", "Beta", "1"),
+        numeric_node("k:c", "Gamma", "2"),
+    ]);
+
+    let ascending = CleavePredicate {
+        filter: None,
+        sort: Some(CleaveSort::ValueAsc),
+    };
+    assert_eq!(
+        workspace.cleave_filtered_keys(&ascending),
+        vec![
+            NodeKey::new("k:b"),
+            NodeKey::new("k:c"),
+            NodeKey::new("k:a"),
+        ]
+    );
+
+    let text = CleavePredicate {
+        filter: Some(CleaveFilter::TextMatch("eta".to_string())),
+        sort: None,
+    };
+    assert_eq!(
+        workspace.cleave_filtered_keys(&text),
+        vec![NodeKey::new("k:b")]
+    );
+}
+
+#[test]
+fn style_maps_calc_state_provenance_and_selection() {
+    assert_eq!(
+        calc_state_class(Some(NodeCalcStateProjection::Clean)),
+        "dtc-calc--clean"
+    );
+    assert_eq!(
+        calc_state_class(Some(NodeCalcStateProjection::RejectedPendingRepair)),
+        "dtc-calc--rejected"
+    );
+    assert_eq!(calc_state_class(None), "dtc-calc--unknown");
+
+    assert_eq!(selection_mode_class(true, true), "dtc-sel--editing");
+    assert_eq!(selection_mode_class(true, false), "dtc-sel--selected");
+    assert_eq!(selection_mode_class(false, false), "");
+
+    let mut workspace = workspace_with_nodes(vec![numeric_node("k:a", "Alpha", "3")]);
+    let published = workspace.node_by_key(&NodeKey::new("k:a")).unwrap().clone();
+    assert_eq!(
+        provenance_tint(&published, &workspace),
+        ProvenanceTint::Published
+    );
+
+    // Active scenario + an override on the node ⇒ Scenario provenance.
+    workspace.scenarios.active = Some("s1".to_string());
+    let mut overridden = published.clone();
+    overridden.scenario_override = Some(NodeValueProjection::Number {
+        raw: "9".to_string(),
+        display: "9".to_string(),
+    });
+    assert_eq!(
+        provenance_tint(&overridden, &workspace),
+        ProvenanceTint::Scenario
+    );
+
+    let mut pending = published;
+    pending.computed_value = NodeValueProjection::Pending;
+    assert_eq!(provenance_tint(&pending, &workspace), ProvenanceTint::Pending);
+}

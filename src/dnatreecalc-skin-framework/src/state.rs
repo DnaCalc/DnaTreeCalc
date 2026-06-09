@@ -10,6 +10,7 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 use crate::identity::{NodeId, NodeKey, SkinId, SkinMountSlot};
+use crate::workspace::{CleaveFilter, CleavePredicate};
 
 /// The typed, persistable per-skin state a [`crate::WorkspaceSkin`] declares.
 ///
@@ -401,6 +402,64 @@ pub struct SharedSkinState {
     pub manual_recalc_pending: bool,
     pub workspace_ids: Vec<String>,
     pub active_workspace_id: Option<String>,
+
+    // --- ATLAS suite continuity (NodeKey-keyed; survives lens switch) ---
+    /// Multi-select set; the dispatcher-routed `SelectionState.primary` remains
+    /// the auditable single anchor and is unchanged.
+    #[serde(default)]
+    pub selection_set: Vec<NodeKey>,
+    /// Anchor for range/extend selection.
+    #[serde(default)]
+    pub selection_anchor: Option<NodeKey>,
+    /// Collapse set shared across every lens (NodeKey-keyed).
+    #[serde(default)]
+    pub collapsed_keys: HashSet<NodeKey>,
+    /// Pin set shared across every lens (NodeKey-keyed).
+    #[serde(default)]
+    pub pinned_keys: Vec<NodeKey>,
+    /// Degree-of-interest center used by Flow's trace layout.
+    #[serde(default)]
+    pub focus_key: Option<NodeKey>,
+    /// The shared filter/sort predicate (`cleave-predicate-shared`).
+    #[serde(default)]
+    pub cleave: Option<CleavePredicate>,
+    /// The active lens's `SkinId` string, so chrome/console reflects it.
+    #[serde(default)]
+    pub active_lens: Option<String>,
+}
+
+impl SharedSkinState {
+    /// Garbage-collect continuity references to nodes that no longer exist.
+    /// Mirrors [`SkinState::gc`] but for the host-owned shared state.
+    pub fn gc(&mut self, live_nodes: &HashSet<NodeKey>) {
+        self.selection_set.retain(|key| live_nodes.contains(key));
+        self.collapsed_keys.retain(|key| live_nodes.contains(key));
+        self.pinned_keys.retain(|key| live_nodes.contains(key));
+        if self
+            .selection_anchor
+            .as_ref()
+            .is_some_and(|anchor| !live_nodes.contains(anchor))
+        {
+            self.selection_anchor = None;
+        }
+        if self
+            .focus_key
+            .as_ref()
+            .is_some_and(|focus| !live_nodes.contains(focus))
+        {
+            self.focus_key = None;
+        }
+        let cleave_references_dead_node = matches!(
+            &self.cleave,
+            Some(CleavePredicate {
+                filter: Some(CleaveFilter::DependsOn(target)),
+                ..
+            }) if !live_nodes.contains(target)
+        );
+        if cleave_references_dead_node {
+            self.cleave = None;
+        }
+    }
 }
 
 /// Reactive handle to the shared meta-namespace state, mirrored from

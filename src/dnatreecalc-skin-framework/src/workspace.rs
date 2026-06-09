@@ -1517,7 +1517,7 @@ pub struct DerivationOxfmlTraceEventProjection {
     pub event_order_key: u64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum NodeCalcStateProjection {
     Clean,
     DirtyPending,
@@ -1727,7 +1727,7 @@ pub struct TreeReferenceCollectionProjection {
     pub member_keys: Vec<NodeKey>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum DependencyKindProjection {
     StaticDirect,
     RelativeBound,
@@ -1995,4 +1995,149 @@ pub struct TableFormulaMetadataProjection {
     pub bind_artifact_id: Option<String>,
     pub formula_text_version: String,
     pub formula_text: String,
+}
+
+/// The shared cleave predicate — ATLAS's "filter/sort as continuity".
+///
+/// It is stored once in shared view-state (`SharedSkinState::cleave`) and each
+/// lens re-applies it to its own projection via
+/// [`WorkspaceState::cleave_filtered_keys`]. The *predicate* is shared
+/// continuity; the materialized result is not (it is recomputed per lens, per
+/// the continuity caveat in `docs/ux/skin-suite/README.md`).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CleavePredicate {
+    pub filter: Option<CleaveFilter>,
+    pub sort: Option<CleaveSort>,
+}
+
+impl CleavePredicate {
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.filter.is_none() && self.sort.is_none()
+    }
+}
+
+/// A typed, lens-agnostic node filter. No prose to grep — every variant reads
+/// typed projected truth.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CleaveFilter {
+    /// Keep nodes whose calc-state matches.
+    CalcState(NodeCalcStateProjection),
+    /// Keep nodes whose computed value is an error.
+    HasError,
+    /// Keep nodes whose name, content, or rendered value contains the text
+    /// (case-insensitive).
+    TextMatch(String),
+    /// Keep nodes with an outgoing dependency edge to the given target.
+    DependsOn(NodeKey),
+    /// Keep nodes with an outgoing dependency edge of the given kind.
+    Kind(DependencyKindProjection),
+}
+
+/// A typed, lens-agnostic sort key over projected truth.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CleaveSort {
+    NameAsc,
+    NameDesc,
+    ValueAsc,
+    ValueDesc,
+    DepthAsc,
+    DepthDesc,
+}
+
+impl WorkspaceState {
+    /// Apply the shared cleave predicate to this projection, returning the
+    /// surviving node keys in the requested order. Numeric values sort before
+    /// non-numeric ones; unknown nodes are dropped.
+    #[must_use]
+    pub fn cleave_filtered_keys(&self, predicate: &CleavePredicate) -> Vec<NodeKey> {
+        let mut keys: Vec<NodeKey> = self
+            .key_order
+            .iter()
+            .filter(|key| match (&predicate.filter, self.node_by_key(key)) {
+                (_, None) => false,
+                (None, Some(_)) => true,
+                (Some(filter), Some(node)) => self.cleave_filter_matches(filter, node, key),
+            })
+            .cloned()
+            .collect();
+        if let Some(sort) = predicate.sort {
+            self.cleave_sort_keys(&mut keys, sort);
+        }
+        keys
+    }
+
+    fn cleave_filter_matches(
+        &self,
+        filter: &CleaveFilter,
+        node: &NodeView,
+        key: &NodeKey,
+    ) -> bool {
+        match filter {
+            CleaveFilter::CalcState(state) => node.calc_state == Some(*state),
+            CleaveFilter::HasError => matches!(node.computed_value, NodeValueProjection::Error(_)),
+            CleaveFilter::TextMatch(needle) => {
+                let needle = needle.to_lowercase();
+                node.display_name.to_lowercase().contains(&needle)
+                    || node.content_text.to_lowercase().contains(&needle)
+                    || node
+                        .computed_value
+                        .display_text()
+                        .to_lowercase()
+                        .contains(&needle)
+            }
+            CleaveFilter::DependsOn(target) => self
+                .dependencies
+                .edges_by_owner_key
+                .get(key)
+                .is_some_and(|edges| edges.iter().any(|edge| &edge.target_key == target)),
+            CleaveFilter::Kind(kind) => self
+                .dependencies
+                .edges_by_owner_key
+                .get(key)
+                .is_some_and(|edges| edges.iter().any(|edge| edge.kind == *kind)),
+        }
+    }
+
+    fn cleave_sort_keys(&self, keys: &mut [NodeKey], sort: CleaveSort) {
+        keys.sort_by(|a, b| {
+            let na = self.node_by_key(a);
+            let nb = self.node_by_key(b);
+            let ordering = match sort {
+                CleaveSort::NameAsc | CleaveSort::NameDesc => na
+                    .map(|n| n.display_name.as_str())
+                    .unwrap_or_default()
+                    .cmp(nb.map(|n| n.display_name.as_str()).unwrap_or_default()),
+                CleaveSort::DepthAsc | CleaveSort::DepthDesc => na
+                    .map(|n| n.depth)
+                    .unwrap_or(0)
+                    .cmp(&nb.map(|n| n.depth).unwrap_or(0)),
+                CleaveSort::ValueAsc | CleaveSort::ValueDesc => {
+                    match (cleave_number(na), cleave_number(nb)) {
+                        (Some(x), Some(y)) => {
+                            x.partial_cmp(&y).unwrap_or(std::cmp::Ordering::Equal)
+                        }
+                        (Some(_), None) => std::cmp::Ordering::Less,
+                        (None, Some(_)) => std::cmp::Ordering::Greater,
+                        (None, None) => std::cmp::Ordering::Equal,
+                    }
+                }
+            };
+            if matches!(
+                sort,
+                CleaveSort::NameDesc | CleaveSort::DepthDesc | CleaveSort::ValueDesc
+            ) {
+                ordering.reverse()
+            } else {
+                ordering
+            }
+        });
+    }
+}
+
+fn cleave_number(node: Option<&NodeView>) -> Option<f64> {
+    match node.map(|n| &n.computed_value) {
+        Some(NodeValueProjection::Number { raw, .. }) => raw.parse::<f64>().ok(),
+        _ => None,
+    }
 }
