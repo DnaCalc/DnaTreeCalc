@@ -265,8 +265,10 @@ impl Dispatcher for HostDispatcher {
                 Ok(publication) => receipt_for_formula_reference_insertion(publication),
                 Err(error) => IntentReceipt::rejected(error),
             },
-            WorkspaceIntent::OpenCandidate => self
-                .apply_candidate_projection_edit(|session| session.open_candidate())
+            WorkspaceIntent::OpenCandidate { parent } => self
+                .apply_candidate_projection_edit(|session| {
+                    session.open_candidate(parent.as_deref())
+                })
                 .map_or_else(IntentReceipt::rejected, receipt_for_candidate_change),
             WorkspaceIntent::EditCandidateContent {
                 handle,
@@ -1523,6 +1525,15 @@ fn intent_error_from_session(error: TreeWorkspaceSessionError) -> IntentError {
             handle: handle.to_string(),
             basis_revision_id: basis_revision_id.to_string(),
             current_revision_id: current_revision_id.to_string(),
+        },
+        TreeWorkspaceSessionError::OxCalc(
+            oxcalc_core::consumer::OxCalcTreeContextError::CandidateHasRetainedChild {
+                handle,
+                child_handle,
+            },
+        ) => IntentError::CandidateHasRetainedChild {
+            handle: handle.to_string(),
+            child_handle: child_handle.to_string(),
         },
         TreeWorkspaceSessionError::OxCalc(error) => IntentError::EngineRejected(error.to_string()),
         TreeWorkspaceSessionError::UnsupportedDocumentSchema { schema_version } => {

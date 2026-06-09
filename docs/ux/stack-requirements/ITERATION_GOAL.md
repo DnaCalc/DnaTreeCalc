@@ -47,9 +47,11 @@ when the live workspace revision still equals the candidate basis revision; stal
 typed engine rejection. The first host/Skin IR projection slice is also landed: skins can open a
 candidate, apply a candidate-local content edit, evaluate private candidate values, discard the
 candidate, or commit it when the basis is current. Candidate projections live beside published
-workspace values, so candidate evaluation does not rewrite published node state. Layering,
-structural candidate edits, scenario/what-if UX, and richer candidate transaction summaries remain
-open. Remaining W3
+workspace values, so candidate evaluation does not rewrite published node state. The first parented
+copy-layer slice is now landed: a child candidate can open over a parent candidate's private state,
+project its parent handle, and commit the stacked private state while parent lifecycle is guarded.
+Optimized layering/rebase, structural candidate edits, scenario/what-if UX, and richer candidate
+transaction summaries remain open. Remaining W3
 formula-rewrite/rebind verbs stay parked until their owning
 OxFml/OxCalc substrates are available. W2 safe structural authoring is
 closed for the current Skin IR surface: receipts carry typed errors and real OxCalc transaction ids,
@@ -477,6 +479,11 @@ The roadmap alignment rule is:
       values, and programmable Skin IR tests prove candidate evaluation does not publish until
       commit. Commit produces a new workspace revision; this slice does not fabricate a transaction
       id when the promoted candidate revision has no retained transaction summary.
+- [x] `candidate-overlay-handle` first parented copy-layer slice: OxCalc child candidates open from
+      a retained parent candidate's private state at child-open time, parent handles are projected
+      through `CandidateProjection.parent_handle`, parent discard/commit is rejected while a retained
+      child depends on it, and programmable Skin IR tests prove layered child values stay separate
+      from published node values until commit.
 - [ ] `candidate-overlay-handle`: addressable, layerable, non-publishing candidate contexts.
 - [x] `value-epoch-keying`: per-node published-value epoch distinct from input epoch.
 

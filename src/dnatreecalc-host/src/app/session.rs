@@ -1250,17 +1250,20 @@ impl TreeWorkspaceSession {
         })
     }
 
-    pub fn open_candidate(&mut self) -> Result<CandidateProjection, TreeWorkspaceSessionError> {
+    pub fn open_candidate(
+        &mut self,
+        parent: Option<&str>,
+    ) -> Result<CandidateProjection, TreeWorkspaceSessionError> {
         let basis_revision_id = self
             .context
             .workspace_view(&self.workspace_id)?
             .workspace_revision_id;
-        let view = self
-            .context
-            .open_candidate(OxCalcTreeOpenCandidateRequest::new(
-                self.workspace_id.clone(),
-                basis_revision_id,
-            ))?;
+        let mut request =
+            OxCalcTreeOpenCandidateRequest::new(self.workspace_id.clone(), basis_revision_id);
+        if let Some(parent) = parent {
+            request = request.with_parent_candidate(self.candidate_handle(parent)?);
+        }
+        let view = self.context.open_candidate(request)?;
         self.candidate_handles
             .insert(view.handle.to_string(), view.handle.clone());
         self.candidate_projection_for_view(&view)
@@ -4528,6 +4531,7 @@ impl TreeWorkspaceSession {
         Ok(CandidateProjection {
             handle: view.handle.to_string(),
             basis_revision_id: view.basis_revision_id.to_string(),
+            parent_handle: view.parent_candidate.as_ref().map(ToString::to_string),
             workspace_revision_id: view.workspace_revision_id.to_string(),
             values_by_key,
             run,

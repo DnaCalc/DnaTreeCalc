@@ -202,7 +202,9 @@ pub enum WorkspaceIntent {
     /// Open a non-publishing candidate overlay on the current workspace
     /// revision. Candidate semantics are engine-owned; skins receive only the
     /// opaque handle and projected candidate values.
-    OpenCandidate,
+    OpenCandidate {
+        parent: Option<String>,
+    },
     /// Apply a content edit inside a candidate without publishing workspace
     /// state.
     EditCandidateContent {
@@ -499,6 +501,11 @@ pub enum IntentError {
         basis_revision_id: String,
         current_revision_id: String,
     },
+    #[error("candidate {handle} has retained child candidate {child_handle}")]
+    CandidateHasRetainedChild {
+        handle: String,
+        child_handle: String,
+    },
     #[error("engine rejected the intent: {0}")]
     EngineRejected(String),
     #[error("host failed to dispatch the intent: {0}")]
@@ -643,7 +650,7 @@ impl Dispatcher for InMemoryDispatcher {
             | WorkspaceIntent::PasteExternalClipboardText { .. }
             | WorkspaceIntent::DuplicateSubtree { .. }
             | WorkspaceIntent::InsertFormulaReference { .. }
-            | WorkspaceIntent::OpenCandidate
+            | WorkspaceIntent::OpenCandidate { .. }
             | WorkspaceIntent::EditCandidateContent { .. }
             | WorkspaceIntent::EvaluateCandidate { .. }
             | WorkspaceIntent::DiscardCandidate { .. }

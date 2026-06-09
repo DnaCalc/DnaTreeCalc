@@ -203,7 +203,14 @@ impl ProgrammableDriver {
     }
 
     pub fn try_open_candidate(&self) -> IntentReceipt {
-        self.dispatch.dispatch(WorkspaceIntent::OpenCandidate)
+        self.dispatch
+            .dispatch(WorkspaceIntent::OpenCandidate { parent: None })
+    }
+
+    pub fn try_open_child_candidate(&self, parent: &str) -> IntentReceipt {
+        self.dispatch.dispatch(WorkspaceIntent::OpenCandidate {
+            parent: Some(parent.to_string()),
+        })
     }
 
     pub fn try_edit_candidate_content(

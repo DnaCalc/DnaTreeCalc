@@ -37,7 +37,9 @@ revisions, accept private node edits, evaluate private values, and discard witho
 publication. The first commit bridge is also implemented: candidate state can promote only when the
 live revision still equals the candidate basis. The first host/Skin IR projection slice is now
 implemented for content-only candidate preview/evaluate, discard, and commit; candidate values
-project separately from published workspace values. OxCalc owns candidate state,
+project separately from published workspace values. The first parented copy-layer slice is also
+implemented: child candidates open from a parent candidate's private state, project the parent
+handle, and keep parent lifecycle guarded while children are retained. OxCalc owns candidate state,
 publication/discard, overlay provenance, and value epochs; the DnaTreeCalc host exposes only typed
 handles, projections, and closed intents.
 
@@ -416,6 +418,10 @@ Use this as the per-tranche goal statement before implementation:
       lifecycle intents project candidate values separately from published node state and commit
       through OxCalc. Programmable Skin IR tests cover private candidate evaluation, commit, discard,
       and stale-basis rejection.
+- [x] `candidate-overlay-handle` first parented copy-layer slice: OxCalc child candidates open from a
+      parent candidate's private state at child-open time; DnaTreeCalc projects `parent_handle` and
+      programmable Skin IR tests cover layered child values, parent retained-child rejection, and
+      child commit.
 - [ ] `candidate-overlay-handle`: implement N addressable, layerable, non-publishing candidate
       contexts before scenarios, what-if previews, goal seek, sweeps, or comparative overlays.
 - [x] `value-epoch-keying`: per-node published-value epoch is available for projection consumers.

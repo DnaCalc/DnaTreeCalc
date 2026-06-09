@@ -99,9 +99,9 @@ OxCalc has landed the first non-publishing candidate substrate slice:
 | Discard | `discard_candidate` removes the handle; later reads return typed `UnknownCandidate`. |
 | Non-publication proof | Focused OxCalc test asserts live workspace revision, publication snapshot, runtime overlay set, visible value, and published value epoch remain unchanged after candidate evaluation. |
 
-Still open for DnaTreeCalc consumption, tracked in OxCalc bead `calc-4ipg`: parent/layered
-candidate semantics, structural candidate edits, scenario/what-if UX, richer candidate transaction
-summary projection, and candidate retention/GC policy.
+Still open for DnaTreeCalc consumption, tracked in OxCalc bead `calc-4ipg`: optimized parent/layered
+candidate semantics beyond copy-at-open, structural candidate edits, scenario/what-if UX, richer
+candidate transaction summary projection, and candidate retention/GC policy.
 
 ## W4b first commit bridge update
 
@@ -134,6 +134,27 @@ show what-if results without owning calculation semantics or mutating published 
 produces a new workspace revision and removes the candidate projection. This slice does not
 fabricate a transaction id when the promoted candidate revision has no retained transaction summary.
 
-Still open for DnaTreeCalc consumption, tracked in OxCalc bead `calc-4ipg`: parent/layered
-candidate semantics, structural candidate edits, scenario/what-if UX, richer candidate transaction
-summary projection, and candidate retention/GC policy.
+## W4b first parented copy-layer update
+
+Status: Responded
+OxCalc evidence: focused child-candidate tests in `cargo test -p oxcalc-core child_candidate -- --nocapture`
+DnaTreeCalc evidence: focused programmable Skin IR candidate tests in
+`cargo test -p dnatreecalc-host --test programmable_skin_ir candidate -- --nocapture`
+
+OxCalc now implements the first parented candidate semantics:
+
+| Capability | Current scope |
+|---|---|
+| Child open | Opens a child candidate from a retained parent candidate's private workspace state. |
+| Parent identity | Parent handle is retained and projected as `CandidateProjection.parent_handle`. |
+| Basis guard | Child basis must match the parent basis and workspace. |
+| Parent lifecycle | Parent discard/commit is rejected while retained children depend on it. |
+| Commit | A child candidate can commit its stacked private state when the live basis is still current. |
+
+This is copy-at-open layering. It does not claim live parent rebase/subscription semantics, optimized
+overlay-delta layers, structural candidate edits, scenario persistence, or richer candidate
+transaction summaries.
+
+Still open for DnaTreeCalc consumption, tracked in OxCalc bead `calc-4ipg`: optimized parent/layered
+candidate semantics beyond copy-at-open, structural candidate edits, scenario/what-if UX, richer
+candidate transaction summary projection, and candidate retention/GC policy.

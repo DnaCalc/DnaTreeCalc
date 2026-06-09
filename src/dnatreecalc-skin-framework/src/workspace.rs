@@ -702,6 +702,7 @@ pub struct RevisionInvalidationSummaryEntryProjection {
 pub struct CandidateProjection {
     pub handle: String,
     pub basis_revision_id: String,
+    pub parent_handle: Option<String>,
     pub workspace_revision_id: String,
     pub values_by_key: BTreeMap<NodeKey, NodeValueProjection>,
     pub run: Option<CalcRunProjection>,
