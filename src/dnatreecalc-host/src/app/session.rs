@@ -3480,7 +3480,7 @@ impl TreeWorkspaceSession {
                 .last_outcome
                 .as_ref()
                 .and_then(|outcome| outcome.published_calc_values.get(&tree_node_id));
-            let calc_value = tree_view.calc_value.as_ref().or(outcome_calc_value);
+            let calc_value = outcome_calc_value.or(tree_view.calc_value.as_ref());
             let effective_format = self.effective_format_for_node(node_id, &views_by_tree_id)?;
             let note = self.note_for_node(node_id, &views_by_tree_id)?;
             let attributes = self.attributes_for_node(node_id, &views_by_tree_id)?;

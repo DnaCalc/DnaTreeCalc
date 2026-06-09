@@ -246,8 +246,12 @@ Use this as the per-tranche goal statement before implementation:
       and `PasteClipboardValues` consumes it without using rendered display text. Authored constants
       remain preferred over computed literalization. Array literalization, formula rebind/paste,
       formula-and-format paste, subtree rebind, and formula/subtree cut source deletion remain open.
-      Testing also exposed a separate typed-value retention gap where a manual recalc path can leave
-      only an array summary string instead of the typed array `CalcValue`.
+- [x] Fix typed array value retention after recalculation:
+      OxCalc edge-cache hits now reuse the retained typed published `CalcValue` when the cached
+      display payload matches the same node's published display text, avoiding display-string
+      reparsing for array values. DnaTreeCalc projection now prefers `last_outcome.published_calc_values`
+      over literal-input node-view values, so explicit recalc retains array values as typed Skin IR
+      arrays and still reports no scalar `literalized_value_input` for arrays.
 - [x] File OxFml handoff for the remaining W3 paste-special APIs:
       computed value literalization, formula rebind, formula-and-format paste, and subtree
       internal-reference rebind support. The scalar computed-value literalization portion is now

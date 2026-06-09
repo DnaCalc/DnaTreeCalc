@@ -295,9 +295,14 @@ The roadmap alignment rule is:
       and `PasteClipboardValues` consumes it through the existing scoped content transaction path.
       Authored constants still win over computed literalization. Array literalization, formula
       paste/rebind, formula-and-format paste, subtree rebind, and formula/subtree cut source deletion
-      remain open. During testing, a manual recalc path was observed to retain only an array summary
-      string (`Text("Array(...)")`) rather than the typed array `CalcValue`; that is a separate
-      typed-value retention gap, not a Skin IR paste workaround.
+      remain open.
+- [x] Fix typed array value retention after recalculation:
+      OxCalc edge-cache hits now recover the retained typed published `CalcValue` when the cached
+      display payload matches the same node's published display text, rather than reparsing display
+      strings such as `Array(2x2)` as scalar text. DnaTreeCalc projection now prefers
+      `last_outcome.published_calc_values` over literal-input node-view values, so explicit recalc
+      keeps dynamic array values as `NodeValueProjection::Array` and leaves scalar literalization
+      unsupported for arrays.
 - [x] File the OxFml W3 paste-special handoff for computed value literalization, formula rebind,
       formula-and-format paste, and subtree internal-reference rebind support. The scalar
       literalization portion is now partially satisfied; the handoff remains open for arrays and

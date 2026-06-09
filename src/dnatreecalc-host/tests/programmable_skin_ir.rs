@@ -1684,6 +1684,18 @@ fn programmable_skin_projects_array_values_from_oxcalc_calc_values() {
     assert_eq!(cells[0][0].display_text(), "1");
     assert_eq!(cells[1][0].display_text(), "2");
     assert_eq!(cells[2][0].display_text(), "3");
+
+    skin.recalc();
+    let state = skin.state();
+    let array_node = state
+        .node(&NodeId::new("Root.ArrayNode"))
+        .expect("array node still projects after explicit recalc");
+    assert!(
+        matches!(array_node.computed_value, NodeValueProjection::Array { .. }),
+        "explicit recalc should retain the typed array CalcValue, got {:?}",
+        array_node.computed_value
+    );
+    assert_eq!(array_node.literalized_value_input, None);
 }
 
 #[test]
