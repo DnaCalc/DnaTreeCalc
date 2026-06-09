@@ -575,10 +575,12 @@ Use this as the per-tranche goal statement before implementation:
       surfaces publish `aria-selected`, stable active descendants, and one focusable visible item
       when no visible selection exists. Framework tests prove helper output; walking-skeleton and
       programmable Skin IR tests prove the real skins still mount and route host selection/dispatch.
-- [ ] `candidate-overlay-handle`: continue toward fully addressable, layerable, non-publishing
-      candidate contexts with optimized live layering/merge rebase, candidate add-node template
-      initial content, direct sweep/goal-seek comparison columns, scoped/unit series projection, and
-      broader what-if UX before goal seek or sweeps.
+- [ ] `candidate-overlay-handle`: W4b live-layering tranche is in progress. OxCalc now refreshes
+      parented candidates from parent-private edits made after child open, preserving non-publishing
+      semantics while exposing the updated candidate values through the existing host/Skin IR
+      projection. Remaining scope: optimized merge/rebase conflict policy, candidate add-node
+      template initial content, direct sweep/goal-seek comparison columns, scoped/unit series
+      projection, and broader what-if UX before goal seek or sweeps.
 - [x] `value-epoch-keying`: per-node published-value epoch is available for projection consumers.
 
 ## Next-Wave Parking Lot

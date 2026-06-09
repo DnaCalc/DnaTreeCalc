@@ -400,6 +400,76 @@ fn programmable_skin_projects_candidate_values_without_publishing_until_commit()
 }
 
 #[test]
+fn programmable_skin_child_candidate_tracks_parent_private_edits_after_open() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    skin.add_node(Some("Root"), "A", "1");
+    skin.add_node(Some("Root"), "B", "=A+1");
+    let published_revision = skin
+        .state()
+        .revision
+        .workspace_revision_id
+        .clone()
+        .expect("published revision should project");
+    let b_key = skin
+        .state()
+        .node(&NodeId::new("Root.B"))
+        .expect("Root.B should project")
+        .key
+        .clone();
+    skin.assert_scalar("Root.B", "2");
+
+    let parent_open = skin.try_open_candidate();
+    assert!(parent_open.accepted, "{:?}", parent_open.error);
+    let parent_handle = skin
+        .state()
+        .candidates
+        .first()
+        .expect("parent candidate should project")
+        .handle
+        .clone();
+    let child_open = skin.try_open_child_candidate(&parent_handle);
+    assert!(child_open.accepted, "{:?}", child_open.error);
+    let child_handle = skin
+        .state()
+        .candidates
+        .iter()
+        .find(|candidate| candidate.parent_handle.as_deref() == Some(parent_handle.as_str()))
+        .expect("child candidate should project")
+        .handle
+        .clone();
+
+    let parent_edit = skin.try_edit_candidate_content(&parent_handle, "Root.A", "5");
+    assert!(parent_edit.accepted, "{:?}", parent_edit.error);
+    let evaluate_child = skin.try_evaluate_candidate(&child_handle);
+    assert!(evaluate_child.accepted, "{:?}", evaluate_child.error);
+
+    assert_eq!(
+        skin.state().revision.workspace_revision_id.as_deref(),
+        Some(published_revision.as_str())
+    );
+    skin.assert_scalar("Root.B", "2");
+    let state = skin.state();
+    let child = state
+        .candidates
+        .iter()
+        .find(|candidate| candidate.handle == child_handle)
+        .expect("child candidate should remain projected");
+    assert_eq!(child.parent_handle.as_deref(), Some(parent_handle.as_str()));
+    assert_eq!(
+        child
+            .values_by_key
+            .get(&b_key)
+            .map(NodeValueProjection::display_text)
+            .as_deref(),
+        Some("6"),
+        "child candidate should show parent candidate edits made after child open"
+    );
+}
+
+#[test]
 fn programmable_skin_renames_candidate_node_without_publishing_until_commit() {
     let harness = Harness::empty();
     let skin = harness.driver.clone();
