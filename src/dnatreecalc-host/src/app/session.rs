@@ -1031,6 +1031,53 @@ impl TreeWorkspaceSession {
         Ok(outcome.transaction_id.to_string())
     }
 
+    fn apply_table_snapshot_transaction(
+        &mut self,
+        table_node_id: TreeNodeId,
+        snapshot: TreeCalcTableNodeSnapshot,
+    ) -> Result<TreeWorkspaceTransactionEdit<()>, TreeWorkspaceSessionError> {
+        let transaction_id = self.apply_single_edit_transaction(
+            OxCalcTreeEdit::SetNodeTable {
+                node_id: table_node_id,
+                snapshot,
+            },
+            TransactionRecalcPolicy::ApplyOnly,
+        )?;
+        self.refresh_projection_from_context()?;
+        self.recalculate()?;
+        Ok(TreeWorkspaceTransactionEdit {
+            result: (),
+            transaction_id,
+        })
+    }
+
+    fn apply_table_snapshot_delete_nodes_transaction(
+        &mut self,
+        table_node_id: TreeNodeId,
+        snapshot: TreeCalcTableNodeSnapshot,
+        delete_node_ids: Vec<TreeNodeId>,
+    ) -> Result<TreeWorkspaceTransactionEdit<()>, TreeWorkspaceSessionError> {
+        let mut transaction = OxCalcTreeEditTransaction::new(self.workspace_id.clone()).with_edit(
+            OxCalcTreeEdit::SetNodeTable {
+                node_id: table_node_id,
+                snapshot,
+            },
+        );
+        for node_id in delete_node_ids {
+            transaction = transaction.with_edit(OxCalcTreeEdit::DeleteNode { node_id });
+        }
+        let outcome = self.context.apply_edit_transaction(
+            transaction.with_recalc_policy(TransactionRecalcPolicy::ApplyOnly),
+        )?;
+        self.last_outcome = None;
+        self.refresh_projection_from_context()?;
+        self.recalculate()?;
+        Ok(TreeWorkspaceTransactionEdit {
+            result: (),
+            transaction_id: outcome.transaction_id.to_string(),
+        })
+    }
+
     #[must_use]
     pub fn recalc_count(&self) -> usize {
         self.recalc_count
@@ -1599,6 +1646,33 @@ impl TreeWorkspaceSession {
         Ok(())
     }
 
+    pub fn delete_table_row_transaction(
+        &mut self,
+        table: &NodeId,
+        row_id: &str,
+    ) -> Result<TreeWorkspaceTransactionEdit<()>, TreeWorkspaceSessionError> {
+        let table_node_id = self.tree_node_id(table.as_str())?;
+        let table_view = self
+            .context
+            .table_view(&self.workspace_id, table_node_id)?
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTable {
+                table: table.to_string(),
+            })?;
+        let removed_body_node_ids = table_view
+            .snapshot
+            .body_cell_nodes
+            .iter()
+            .filter(|binding| binding.row_id.0 == row_id)
+            .map(|binding| binding.node_id)
+            .collect::<Vec<_>>();
+        let snapshot = self.preview_delete_table_row_snapshot(table, row_id)?;
+        self.apply_table_snapshot_delete_nodes_transaction(
+            table_node_id,
+            snapshot,
+            removed_body_node_ids,
+        )
+    }
+
     pub fn rename_table_row(
         &mut self,
         table: &NodeId,
@@ -1653,6 +1727,25 @@ impl TreeWorkspaceSession {
         Ok(())
     }
 
+    pub fn rename_table_row_transaction(
+        &mut self,
+        table: &NodeId,
+        row_id: &str,
+        new_row_id: impl Into<String>,
+    ) -> Result<TreeWorkspaceTransactionEdit<()>, TreeWorkspaceSessionError> {
+        let new_row_id = new_row_id.into();
+        let table_node_id = self.tree_node_id(table.as_str())?;
+        self.table_row_index(table, row_id)?;
+        if row_id != new_row_id && self.table_has_row(table, &new_row_id)? {
+            return Err(TreeWorkspaceSessionError::DuplicateTableRow {
+                table: table.to_string(),
+                row_id: new_row_id,
+            });
+        }
+        let snapshot = self.preview_rename_table_row_snapshot(table, row_id, new_row_id)?;
+        self.apply_table_snapshot_transaction(table_node_id, snapshot)
+    }
+
     pub fn reorder_table_row(
         &mut self,
         table: &NodeId,
@@ -1688,6 +1781,17 @@ impl TreeWorkspaceSession {
         self.refresh_projection_from_context()?;
         self.last_outcome = None;
         Ok(())
+    }
+
+    pub fn reorder_table_row_transaction(
+        &mut self,
+        table: &NodeId,
+        row_id: &str,
+        new_index: usize,
+    ) -> Result<TreeWorkspaceTransactionEdit<()>, TreeWorkspaceSessionError> {
+        let table_node_id = self.tree_node_id(table.as_str())?;
+        let snapshot = self.preview_reorder_table_row_snapshot(table, row_id, new_index)?;
+        self.apply_table_snapshot_transaction(table_node_id, snapshot)
     }
 
     pub fn rename_table(
@@ -1912,6 +2016,24 @@ impl TreeWorkspaceSession {
         Ok(())
     }
 
+    pub fn add_table_formula_column_transaction(
+        &mut self,
+        table: &NodeId,
+        column_id: impl Into<String>,
+        name: impl Into<String>,
+        formula_text: impl Into<String>,
+    ) -> Result<TreeWorkspaceTransactionEdit<()>, TreeWorkspaceSessionError> {
+        let table_node_id = self.tree_node_id(table.as_str())?;
+        let snapshot = self.preview_formula_column_table_snapshot(
+            table,
+            table_node_id,
+            column_id.into(),
+            name.into(),
+            formula_text.into(),
+        )?;
+        self.apply_table_snapshot_transaction(table_node_id, snapshot)
+    }
+
     fn preview_formula_column_table_snapshot(
         &self,
         table: &NodeId,
@@ -2010,6 +2132,44 @@ impl TreeWorkspaceSession {
         Ok(())
     }
 
+    pub fn edit_table_column_formula_transaction(
+        &mut self,
+        table: &NodeId,
+        column_id: &str,
+        formula_text: impl Into<String>,
+    ) -> Result<TreeWorkspaceTransactionEdit<()>, TreeWorkspaceSessionError> {
+        let table_node_id = self.tree_node_id(table.as_str())?;
+        let mut table_view = self
+            .context
+            .table_view(&self.workspace_id, table_node_id)?
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTable {
+                table: table.to_string(),
+            })?;
+        let column = table_view
+            .snapshot
+            .columns
+            .iter_mut()
+            .find(|column| column.column_id == column_id)
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTableColumn {
+                table: table.to_string(),
+                column_id: column_id.to_string(),
+            })?;
+        let TreeCalcTableColumnBodyMetadata::Formula(formula) = &mut column.body_metadata else {
+            return Err(TreeWorkspaceSessionError::ConstantTableColumnFormulaEdit {
+                table: table.to_string(),
+                column_id: column_id.to_string(),
+            });
+        };
+        formula.formula_text = formula_text.into();
+        formula.formula_text_version = bumped_formula_text_version(&formula.formula_text_version);
+        table_view.snapshot.column_identity_version = bumped_table_version(
+            &table_view.snapshot.column_identity_version,
+            "formula-edited",
+            column_id,
+        );
+        self.apply_table_snapshot_transaction(table_node_id, table_view.snapshot)
+    }
+
     pub fn set_table_totals_formula(
         &mut self,
         table: &NodeId,
@@ -2055,6 +2215,46 @@ impl TreeWorkspaceSession {
         Ok(())
     }
 
+    pub fn set_table_totals_formula_transaction(
+        &mut self,
+        table: &NodeId,
+        column_id: &str,
+        formula_text: impl Into<String>,
+    ) -> Result<TreeWorkspaceTransactionEdit<()>, TreeWorkspaceSessionError> {
+        let formula_text = formula_text.into();
+        let table_node_id = self.tree_node_id(table.as_str())?;
+        let mut table_view = self
+            .context
+            .table_view(&self.workspace_id, table_node_id)?
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTable {
+                table: table.to_string(),
+            })?;
+        let column = table_view
+            .snapshot
+            .columns
+            .iter_mut()
+            .find(|column| column.column_id == column_id)
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTableColumn {
+                table: table.to_string(),
+                column_id: column_id.to_string(),
+            })?;
+        match &mut column.totals_metadata {
+            Some(formula) => {
+                formula.formula_text = formula_text;
+                formula.formula_text_version =
+                    bumped_formula_text_version(&formula.formula_text_version);
+            }
+            None => {
+                column.totals_metadata = Some(table_formula_metadata_for_totals(
+                    table.as_str(),
+                    column_id,
+                    formula_text,
+                ));
+            }
+        }
+        self.apply_table_snapshot_transaction(table_node_id, table_view.snapshot)
+    }
+
     pub fn clear_table_totals_formula(
         &mut self,
         table: &NodeId,
@@ -2085,6 +2285,31 @@ impl TreeWorkspaceSession {
         Ok(())
     }
 
+    pub fn clear_table_totals_formula_transaction(
+        &mut self,
+        table: &NodeId,
+        column_id: &str,
+    ) -> Result<TreeWorkspaceTransactionEdit<()>, TreeWorkspaceSessionError> {
+        let table_node_id = self.tree_node_id(table.as_str())?;
+        let mut table_view = self
+            .context
+            .table_view(&self.workspace_id, table_node_id)?
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTable {
+                table: table.to_string(),
+            })?;
+        let column = table_view
+            .snapshot
+            .columns
+            .iter_mut()
+            .find(|column| column.column_id == column_id)
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTableColumn {
+                table: table.to_string(),
+                column_id: column_id.to_string(),
+            })?;
+        column.totals_metadata = None;
+        self.apply_table_snapshot_transaction(table_node_id, table_view.snapshot)
+    }
+
     pub fn set_table_header_row_visible(
         &mut self,
         table: &NodeId,
@@ -2106,6 +2331,22 @@ impl TreeWorkspaceSession {
         Ok(())
     }
 
+    pub fn set_table_header_row_visible_transaction(
+        &mut self,
+        table: &NodeId,
+        visible: bool,
+    ) -> Result<TreeWorkspaceTransactionEdit<()>, TreeWorkspaceSessionError> {
+        let table_node_id = self.tree_node_id(table.as_str())?;
+        let mut table_view = self
+            .context
+            .table_view(&self.workspace_id, table_node_id)?
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTable {
+                table: table.to_string(),
+            })?;
+        table_view.snapshot.header_row_present = visible;
+        self.apply_table_snapshot_transaction(table_node_id, table_view.snapshot)
+    }
+
     pub fn set_table_totals_row_visible(
         &mut self,
         table: &NodeId,
@@ -2125,6 +2366,22 @@ impl TreeWorkspaceSession {
         self.refresh_projection_from_context()?;
         self.last_outcome = None;
         Ok(())
+    }
+
+    pub fn set_table_totals_row_visible_transaction(
+        &mut self,
+        table: &NodeId,
+        visible: bool,
+    ) -> Result<TreeWorkspaceTransactionEdit<()>, TreeWorkspaceSessionError> {
+        let table_node_id = self.tree_node_id(table.as_str())?;
+        let mut table_view = self
+            .context
+            .table_view(&self.workspace_id, table_node_id)?
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTable {
+                table: table.to_string(),
+            })?;
+        table_view.snapshot.totals_row_present = visible;
+        self.apply_table_snapshot_transaction(table_node_id, table_view.snapshot)
     }
 
     pub fn rename_table_column(
@@ -2161,6 +2418,17 @@ impl TreeWorkspaceSession {
         self.refresh_projection_from_context()?;
         self.last_outcome = None;
         Ok(())
+    }
+
+    pub fn rename_table_column_transaction(
+        &mut self,
+        table: &NodeId,
+        column_id: &str,
+        name: impl Into<String>,
+    ) -> Result<TreeWorkspaceTransactionEdit<()>, TreeWorkspaceSessionError> {
+        let table_node_id = self.tree_node_id(table.as_str())?;
+        let snapshot = self.preview_rename_table_column_snapshot(table, column_id, name.into())?;
+        self.apply_table_snapshot_transaction(table_node_id, snapshot)
     }
 
     pub fn reorder_table_column(
@@ -2202,6 +2470,17 @@ impl TreeWorkspaceSession {
         self.refresh_projection_from_context()?;
         self.last_outcome = None;
         Ok(())
+    }
+
+    pub fn reorder_table_column_transaction(
+        &mut self,
+        table: &NodeId,
+        column_id: &str,
+        new_index: usize,
+    ) -> Result<TreeWorkspaceTransactionEdit<()>, TreeWorkspaceSessionError> {
+        let table_node_id = self.tree_node_id(table.as_str())?;
+        let snapshot = self.preview_reorder_table_column_snapshot(table, column_id, new_index)?;
+        self.apply_table_snapshot_transaction(table_node_id, snapshot)
     }
 
     pub fn delete_table_column(
@@ -2251,6 +2530,33 @@ impl TreeWorkspaceSession {
         self.refresh_projection_from_context()?;
         self.last_outcome = None;
         Ok(())
+    }
+
+    pub fn delete_table_column_transaction(
+        &mut self,
+        table: &NodeId,
+        column_id: &str,
+    ) -> Result<TreeWorkspaceTransactionEdit<()>, TreeWorkspaceSessionError> {
+        let table_node_id = self.tree_node_id(table.as_str())?;
+        let table_view = self
+            .context
+            .table_view(&self.workspace_id, table_node_id)?
+            .ok_or_else(|| TreeWorkspaceSessionError::UnknownTable {
+                table: table.to_string(),
+            })?;
+        let removed_body_node_ids = table_view
+            .snapshot
+            .body_cell_nodes
+            .iter()
+            .filter(|binding| binding.column_id == column_id)
+            .map(|binding| binding.node_id)
+            .collect::<Vec<_>>();
+        let snapshot = self.preview_delete_table_column_snapshot(table, column_id)?;
+        self.apply_table_snapshot_delete_nodes_transaction(
+            table_node_id,
+            snapshot,
+            removed_body_node_ids,
+        )
     }
 
     pub fn workspace_state(&self) -> Result<WorkspaceState, TreeWorkspaceSessionError> {

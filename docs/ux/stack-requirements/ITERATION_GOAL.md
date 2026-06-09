@@ -1,5 +1,28 @@
 # Stack Improvement Iteration Goal
 
+## Operational Goal
+
+Drive the stack-requirements roadmap as an engine-first execution program for DNA TreeCalc: each
+iteration must move the earliest unclosed roadmap capability from verified engine/language truth,
+through the DnaTreeCalc host projection or closed intent seam, into Skin IR evidence that a skin can
+consume without owning semantics.
+
+The iteration cursor is therefore not "make the skins nicer." It is:
+
+1. pick the earliest unmet item in `ROADMAP.md`,
+2. confirm whether it is an exposure, an extension, or genuinely new substrate in the live code,
+3. implement the smallest useful tranche in the owning repo,
+4. thread it through the host/Skin IR seam,
+5. prove it from outside the engine with programmable Skin IR or real-skin tests,
+6. update this goal/checklist with exact supported scope and remaining gaps,
+7. commit the affected repos before taking the next tranche.
+
+Current cursor: finish **W2 - Subjects, transactions, typed errors, and safe structural authoring**.
+The next useful work is not W3 authoring verbs or W5 platform polish until W2 transaction coverage
+and the W2 closure review are honest. The main known W2 gap is that several table and scoped
+multi-target operations still need real OxCalc transaction coverage, especially where generated
+node ids make a single snapshot transaction insufficient.
+
 ## Goal Statement
 
 Execute the DNA TreeCalc stack-requirements roadmap in dependency order, with each iteration tied to
@@ -122,16 +145,22 @@ The roadmap alignment rule is:
       unsupported-policy blockers for inherited column formulas and template-bound content until
       those later substrates exist. Table row/column structural previews now cover add, delete,
       rename, and reorder operations with typed table-collision and duplicate-input blockers and
-      OxCalc table-snapshot invalidation planning without mutating table state. Remaining W2 closure
-      is the final ownership review plus transaction-scope expansion for multi-target/table operation
-      families.
+      OxCalc table-snapshot invalidation planning without mutating table state. Table snapshot
+      authoring receipts now use OxCalc transaction outcomes for table row delete/rename/reorder,
+      formula-column add/edit/delete, totals/header visibility and formula edits, and table column
+      delete/rename/reorder. Remaining W2 closure is the final ownership review plus transaction
+      substrate expansion for scoped multi-target verbs and generated-node table operations such as
+      adding constant rows/columns.
 
 ### Gating Engine Workstreams
 
 - [ ] `transaction-scope`: first OxCalc node-edit transaction slice implemented and routed through
-      DnaTreeCalc receipts for add/edit/rename/move/reorder/delete plus first table cell-edit and
-      table-rename slice; remaining table row/column/scoped verbs and broader operation families
-      still required.
+      DnaTreeCalc receipts for add/edit/rename/move/reorder/delete; table snapshot operations now
+      route through OxCalc `SetNodeTable` transactions for row delete/rename/reorder,
+      formula-column add/edit/delete, totals/header visibility/formula edits, and column
+      delete/rename/reorder. Generated-node table operations (`AddTableRow`, constant
+      `AddTableColumn`) and scoped multi-target verbs still require broader OxCalc transaction
+      substrate.
 - [ ] `revision-graph-retention`: retained parent-linked revision store and cursor; no inverse replay.
 - [ ] `candidate-overlay-handle`: addressable, layerable, non-publishing candidate contexts.
 - [x] `value-epoch-keying`: per-node published-value epoch distinct from input epoch.

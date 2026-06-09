@@ -20,12 +20,31 @@ Every tranche should answer these before it is committed:
 
 Active wave: **W2 - Subjects, transactions, typed errors, and safe structural authoring**.
 
-Current objective: finish legality-impact preview breadth by joining OxFml dry-bind verdicts,
-OxCalc committed-graph invalidation planning, and host-owned structural legality facts through the
-Skin IR without mutation, evaluation, candidate creation, or skin-side semantics.
+Current objective: finish the remaining W2 transaction and closure work by routing structural
+authoring receipts through real OxCalc transaction outcomes wherever the engine can own the batch,
+and by naming the cases that still need new OxCalc substrate rather than host-fabricated transaction
+semantics.
 
 Do not advance to W3 authoring verbs, W4 speculation/history, or W5 platform polish as the default
 next step while these W2 items remain open.
+
+## Iteration-To-Roadmap Checklist
+
+Use this as the per-tranche goal statement before implementation:
+
+- [ ] `Roadmap item`: name the exact `ROADMAP.md` requirement and wave.
+- [ ] `Readiness`: verify live code confirms `expose`, `extend`, or `new`; correct the roadmap note
+      if reality differs.
+- [ ] `Owning repo`: implement in OxFml, OxCalc, DnaTreeCalc host, or skin layer according to the
+      ownership boundary.
+- [ ] `Seam`: thread the result through projection, intent receipt, or Skin IR without skin-side
+      semantic reconstruction.
+- [ ] `Evidence`: add or update programmable Skin IR tests or real-skin checks that exercise the
+      capability from outside the engine.
+- [ ] `Scope`: record exactly what now works, what remains open, and which gated workstream blocks
+      the next dependent feature.
+- [ ] `Commit`: commit affected repos at the end of the tranche so the next iteration starts from a
+      clean boundary.
 
 ## W0 / W1 Baseline Already Available
 
@@ -64,13 +83,21 @@ next step while these W2 items remain open.
       table-snapshot invalidation planning.
 - [ ] Remaining multi-target/table transaction ids are backed by OxCalc transaction operation
       coverage rather than host batching.
+  - [x] Table snapshot operations with existing node ids route through OxCalc transaction outcomes:
+        row delete/rename/reorder, formula-column add/edit/delete, totals/header
+        visibility/formula edits, and column delete/rename/reorder.
+  - [ ] Generated-node table operations (`AddTableRow`, constant `AddTableColumn`) need an OxCalc
+        transaction placeholder or result-dependent edit substrate before their receipts can carry
+        real transaction ids.
+  - [ ] Scoped multi-target authoring verbs still need broader OxCalc operation coverage.
 - [ ] W2 closure review confirms no skin parses formulas, computes semantic values, or fabricates
       engine facts.
 
 ## Gated Workstreams
 
-- [ ] `transaction-scope`: broaden from first node-edit and current receipt coverage to table
-      row/column/scoped multi-target operation families with accumulate-publish-once semantics.
+- [ ] `transaction-scope`: broaden from first node-edit and table snapshot receipt coverage to
+      generated-node table operations and scoped multi-target operation families with
+      accumulate-publish-once semantics.
 - [ ] `revision-graph-retention`: implement retained parent-linked revision DAG and cursor before
       undo, redo, time travel, or history UI claims.
 - [ ] `candidate-overlay-handle`: implement N addressable, layerable, non-publishing candidate

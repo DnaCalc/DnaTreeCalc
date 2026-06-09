@@ -2211,12 +2211,7 @@ fn programmable_skin_edits_table_cells_and_adds_rows_from_outside_ir() {
 
     let edit = skin.try_edit_table_cell("SalesTable", "row:east", "col:amount", "25");
     assert!(edit.accepted, "{:?}", edit.error);
-    assert!(
-        edit.transaction_id
-            .as_deref()
-            .is_some_and(|id| id.starts_with("transaction:tables:")),
-        "{edit:?}"
-    );
+    assert_table_transaction(&edit);
     assert_ne!(
         revision_fingerprint(&skin.state().revision),
         before_revision
@@ -2320,6 +2315,7 @@ fn programmable_skin_edits_table_cells_and_adds_rows_from_outside_ir() {
 
     let delete = skin.try_delete_table_row("SalesTable", "row:east");
     assert!(delete.accepted, "{:?}", delete.error);
+    assert_table_transaction(&delete);
     let deleted_state = skin.state();
     let deleted_table = deleted_state
         .tables
@@ -2370,6 +2366,7 @@ fn programmable_skin_renames_and_reorders_table_rows_from_outside_ir() {
 
     let rename = skin.try_rename_table_row("SalesTable", "row:east", "row:central");
     assert!(rename.accepted, "{:?}", rename.error);
+    assert_table_transaction(&rename);
     let renamed_state = skin.state();
     let renamed_table = renamed_state
         .tables
@@ -2409,6 +2406,7 @@ fn programmable_skin_renames_and_reorders_table_rows_from_outside_ir() {
 
     let reorder = skin.try_reorder_table_row("SalesTable", "row:north", 0);
     assert!(reorder.accepted, "{:?}", reorder.error);
+    assert_table_transaction(&reorder);
     let reordered_state = skin.state();
     let reordered_table = reordered_state
         .tables
@@ -2434,6 +2432,7 @@ fn programmable_skin_renames_and_reorders_table_rows_from_outside_ir() {
 
     let bounded_reorder = skin.try_reorder_table_row("SalesTable", "row:north", usize::MAX);
     assert!(bounded_reorder.accepted, "{:?}", bounded_reorder.error);
+    assert_table_transaction(&bounded_reorder);
     let bounded_state = skin.state();
     let bounded_table = bounded_state
         .tables
@@ -2544,6 +2543,7 @@ fn programmable_skin_adds_edits_and_deletes_constant_table_columns_from_outside_
 
     let delete = skin.try_delete_table_column("SalesTable", "col:discount");
     assert!(delete.accepted, "{:?}", delete.error);
+    assert_table_transaction(&delete);
     let deleted_state = skin.state();
     let deleted_table = deleted_state
         .tables
@@ -2576,6 +2576,7 @@ fn programmable_skin_authors_formula_table_columns_from_outside_ir() {
     let add =
         skin.try_add_table_formula_column("SalesTable", "col:double", "Double", "=[@Amount] * 2");
     assert!(add.accepted, "{:?}", add.error);
+    assert_table_transaction(&add);
     let added_state = skin.state();
     let added_table = added_state
         .tables
@@ -2619,6 +2620,7 @@ fn programmable_skin_authors_formula_table_columns_from_outside_ir() {
 
     let edit = skin.try_edit_table_column_formula("SalesTable", "col:double", "=[@Amount] + 5");
     assert!(edit.accepted, "{:?}", edit.error);
+    assert_table_transaction(&edit);
     let edited_state = skin.state();
     let edited_table = edited_state
         .tables
@@ -2651,6 +2653,7 @@ fn programmable_skin_authors_formula_table_columns_from_outside_ir() {
 
     let delete_formula = skin.try_delete_table_column("SalesTable", "col:double");
     assert!(delete_formula.accepted, "{:?}", delete_formula.error);
+    assert_table_transaction(&delete_formula);
     let deleted_state = skin.state();
     let deleted_table = deleted_state
         .tables
@@ -2673,6 +2676,7 @@ fn programmable_skin_authors_formula_table_columns_from_outside_ir() {
         "{:?}",
         delete_existing_formula.error
     );
+    assert_table_transaction(&delete_existing_formula);
     let tax_deleted_state = skin.state();
     let tax_deleted_table = tax_deleted_state
         .tables
@@ -2708,6 +2712,7 @@ fn programmable_skin_authors_table_totals_formulas_from_outside_ir() {
     let tax_totals =
         skin.try_set_table_totals_formula("SalesTable", "col:tax", "=SUM(SalesTable[Tax])");
     assert!(tax_totals.accepted, "{:?}", tax_totals.error);
+    assert_table_transaction(&tax_totals);
     let tax_state = skin.state();
     let tax_table = tax_state
         .tables
@@ -2732,6 +2737,7 @@ fn programmable_skin_authors_table_totals_formulas_from_outside_ir() {
     let amount_edit =
         skin.try_set_table_totals_formula("SalesTable", "col:amount", "=SUM([Amount])");
     assert!(amount_edit.accepted, "{:?}", amount_edit.error);
+    assert_table_transaction(&amount_edit);
     let edited_state = skin.state();
     let edited_table = edited_state
         .tables
@@ -2759,6 +2765,7 @@ fn programmable_skin_authors_table_totals_formulas_from_outside_ir() {
 
     let clear_amount = skin.try_clear_table_totals_formula("SalesTable", "col:amount");
     assert!(clear_amount.accepted, "{:?}", clear_amount.error);
+    assert_table_transaction(&clear_amount);
     let cleared_state = skin.state();
     let cleared_table = cleared_state
         .tables
@@ -2791,6 +2798,7 @@ fn programmable_skin_toggles_table_totals_row_from_outside_ir() {
 
     let hide = skin.try_set_table_totals_row_visible("SalesTable", false);
     assert!(hide.accepted, "{:?}", hide.error);
+    assert_table_transaction(&hide);
     let hidden_state = skin.state();
     let hidden_table = hidden_state
         .tables
@@ -2807,6 +2815,7 @@ fn programmable_skin_toggles_table_totals_row_from_outside_ir() {
 
     let show = skin.try_set_table_totals_row_visible("SalesTable", true);
     assert!(show.accepted, "{:?}", show.error);
+    assert_table_transaction(&show);
     let shown_state = skin.state();
     let shown_table = shown_state
         .tables
@@ -2837,6 +2846,7 @@ fn programmable_skin_toggles_table_header_row_from_outside_ir() {
 
     let hide = skin.try_set_table_header_row_visible("SalesTable", false);
     assert!(hide.accepted, "{:?}", hide.error);
+    assert_table_transaction(&hide);
     let hidden_state = skin.state();
     let hidden_table = hidden_state
         .tables
@@ -2953,6 +2963,7 @@ fn programmable_skin_renames_and_reorders_table_columns_from_outside_ir() {
 
     let rename = skin.try_rename_table_column("SalesTable", "col:tax", "VAT");
     assert!(rename.accepted, "{:?}", rename.error);
+    assert_table_transaction(&rename);
     let renamed_state = skin.state();
     let renamed_table = renamed_state
         .tables
@@ -2982,6 +2993,7 @@ fn programmable_skin_renames_and_reorders_table_columns_from_outside_ir() {
 
     let reorder = skin.try_reorder_table_column("SalesTable", "col:tax", 0);
     assert!(reorder.accepted, "{:?}", reorder.error);
+    assert_table_transaction(&reorder);
     let reordered_state = skin.state();
     let reordered_table = reordered_state
         .tables
@@ -3017,6 +3029,7 @@ fn programmable_skin_renames_and_reorders_table_columns_from_outside_ir() {
 
     let bounded_reorder = skin.try_reorder_table_column("SalesTable", "col:tax", usize::MAX);
     assert!(bounded_reorder.accepted, "{:?}", bounded_reorder.error);
+    assert_table_transaction(&bounded_reorder);
     let bounded_state = skin.state();
     let bounded_table = bounded_state
         .tables
@@ -3094,6 +3107,16 @@ fn table_body_row(
                 .unwrap_or_default()
         })
         .collect()
+}
+
+fn assert_table_transaction(receipt: &dnatreecalc_skin_framework::IntentReceipt) {
+    assert!(
+        receipt
+            .transaction_id
+            .as_deref()
+            .is_some_and(|id| id.starts_with("transaction:tables:")),
+        "{receipt:?}"
+    );
 }
 
 fn table_totals_row(table: &dnatreecalc_skin_framework::TableProjection) -> Vec<String> {

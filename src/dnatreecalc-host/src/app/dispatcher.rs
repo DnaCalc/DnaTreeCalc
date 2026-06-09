@@ -269,30 +269,27 @@ impl Dispatcher for HostDispatcher {
                 )
                 .map_or_else(IntentReceipt::rejected, receipt_for_publication),
             WorkspaceIntent::DeleteTableRow { table, row_id } => self
-                .apply_workspace_edit(
-                    |session| session.delete_table_row(&table, &row_id),
-                    WorkspaceEditPublication::Recalculate,
-                )
+                .apply_workspace_transaction_edit(|session| {
+                    session.delete_table_row_transaction(&table, &row_id)
+                })
                 .map_or_else(IntentReceipt::rejected, receipt_for_publication),
             WorkspaceIntent::RenameTableRow {
                 table,
                 row_id,
                 new_row_id,
             } => self
-                .apply_workspace_edit(
-                    |session| session.rename_table_row(&table, &row_id, new_row_id),
-                    WorkspaceEditPublication::Recalculate,
-                )
+                .apply_workspace_transaction_edit(|session| {
+                    session.rename_table_row_transaction(&table, &row_id, new_row_id)
+                })
                 .map_or_else(IntentReceipt::rejected, receipt_for_publication),
             WorkspaceIntent::ReorderTableRow {
                 table,
                 row_id,
                 new_index,
             } => self
-                .apply_workspace_edit(
-                    |session| session.reorder_table_row(&table, &row_id, new_index),
-                    WorkspaceEditPublication::Recalculate,
-                )
+                .apply_workspace_transaction_edit(|session| {
+                    session.reorder_table_row_transaction(&table, &row_id, new_index)
+                })
                 .map_or_else(IntentReceipt::rejected, receipt_for_publication),
             WorkspaceIntent::RenameTable { table, name } => self
                 .apply_workspace_transaction_edit(|session| {
@@ -316,76 +313,70 @@ impl Dispatcher for HostDispatcher {
                 name,
                 formula_text,
             } => self
-                .apply_workspace_edit(
-                    |session| {
-                        session.add_table_formula_column(&table, column_id, name, formula_text)
-                    },
-                    WorkspaceEditPublication::Recalculate,
-                )
+                .apply_workspace_transaction_edit(|session| {
+                    session.add_table_formula_column_transaction(
+                        &table,
+                        column_id,
+                        name,
+                        formula_text,
+                    )
+                })
                 .map_or_else(IntentReceipt::rejected, receipt_for_publication),
             WorkspaceIntent::EditTableColumnFormula {
                 table,
                 column_id,
                 formula_text,
             } => self
-                .apply_workspace_edit(
-                    |session| session.edit_table_column_formula(&table, &column_id, formula_text),
-                    WorkspaceEditPublication::Recalculate,
-                )
+                .apply_workspace_transaction_edit(|session| {
+                    session.edit_table_column_formula_transaction(&table, &column_id, formula_text)
+                })
                 .map_or_else(IntentReceipt::rejected, receipt_for_publication),
             WorkspaceIntent::SetTableTotalsFormula {
                 table,
                 column_id,
                 formula_text,
             } => self
-                .apply_workspace_edit(
-                    |session| session.set_table_totals_formula(&table, &column_id, formula_text),
-                    WorkspaceEditPublication::Recalculate,
-                )
+                .apply_workspace_transaction_edit(|session| {
+                    session.set_table_totals_formula_transaction(&table, &column_id, formula_text)
+                })
                 .map_or_else(IntentReceipt::rejected, receipt_for_publication),
             WorkspaceIntent::ClearTableTotalsFormula { table, column_id } => self
-                .apply_workspace_edit(
-                    |session| session.clear_table_totals_formula(&table, &column_id),
-                    WorkspaceEditPublication::Recalculate,
-                )
+                .apply_workspace_transaction_edit(|session| {
+                    session.clear_table_totals_formula_transaction(&table, &column_id)
+                })
                 .map_or_else(IntentReceipt::rejected, receipt_for_publication),
             WorkspaceIntent::SetTableHeaderRowVisible { table, visible } => self
-                .apply_workspace_edit(
-                    |session| session.set_table_header_row_visible(&table, visible),
-                    WorkspaceEditPublication::Recalculate,
-                )
+                .apply_workspace_transaction_edit(|session| {
+                    session.set_table_header_row_visible_transaction(&table, visible)
+                })
                 .map_or_else(IntentReceipt::rejected, receipt_for_publication),
             WorkspaceIntent::SetTableTotalsRowVisible { table, visible } => self
-                .apply_workspace_edit(
-                    |session| session.set_table_totals_row_visible(&table, visible),
-                    WorkspaceEditPublication::Recalculate,
-                )
+                .apply_workspace_transaction_edit(|session| {
+                    session.set_table_totals_row_visible_transaction(&table, visible)
+                })
                 .map_or_else(IntentReceipt::rejected, receipt_for_publication),
             WorkspaceIntent::RenameTableColumn {
                 table,
                 column_id,
                 name,
             } => self
-                .apply_workspace_edit(
-                    |session| session.rename_table_column(&table, &column_id, name),
-                    WorkspaceEditPublication::Recalculate,
-                )
+                .apply_workspace_transaction_edit(|session| {
+                    session.rename_table_column_transaction(&table, &column_id, name)
+                })
                 .map_or_else(IntentReceipt::rejected, receipt_for_publication),
             WorkspaceIntent::ReorderTableColumn {
                 table,
                 column_id,
                 new_index,
             } => self
-                .apply_workspace_edit(
-                    |session| session.reorder_table_column(&table, &column_id, new_index),
-                    WorkspaceEditPublication::Recalculate,
-                )
+                .apply_workspace_transaction_edit(|session| {
+                    session.reorder_table_column_transaction(&table, &column_id, new_index)
+                })
                 .map_or_else(IntentReceipt::rejected, receipt_for_publication),
             WorkspaceIntent::DeleteTableColumn { table, column_id } => self
-                .apply_workspace_edit(
-                    |session| session.delete_table_column(&table, &column_id),
-                    WorkspaceEditPublication::Recalculate,
-                )
+                .apply_workspace_transaction_edit(|session| {
+                    session.delete_table_column_transaction(&table, &column_id)
+                })
                 .map_or_else(IntentReceipt::rejected, receipt_for_publication),
             WorkspaceIntent::NewWorkspace => self
                 .create_workspace()
