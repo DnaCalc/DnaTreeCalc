@@ -176,6 +176,11 @@ impl Dispatcher for HostDispatcher {
                     )
                 })
                 .map_or_else(IntentReceipt::rejected, receipt_for_publication),
+            WorkspaceIntent::EditScopedContent { scope, content } => self
+                .apply_workspace_transaction_edit(|session| {
+                    session.edit_scoped_content_transaction(scope, content)
+                })
+                .map_or_else(IntentReceipt::rejected, receipt_for_publication),
             WorkspaceIntent::Recalculate => self
                 .apply_workspace_edit(|_| Ok(()), WorkspaceEditPublication::Recalculate)
                 .map_or_else(IntentReceipt::rejected, receipt_for_publication),

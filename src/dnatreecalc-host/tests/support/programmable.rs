@@ -77,6 +77,13 @@ impl ProgrammableDriver {
         })
     }
 
+    pub fn try_edit_scoped_content(&self, scope: AuthoringScope, content: &str) -> IntentReceipt {
+        self.dispatch.dispatch(WorkspaceIntent::EditScopedContent {
+            scope,
+            content: content.to_string(),
+        })
+    }
+
     pub fn edit_deferred(&self, node: &str, content: &str) {
         self.accept(WorkspaceIntent::EditContentDeferred {
             node: NodeId::new(node),

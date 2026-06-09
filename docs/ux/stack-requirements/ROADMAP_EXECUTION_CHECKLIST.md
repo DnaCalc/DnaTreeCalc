@@ -89,15 +89,17 @@ Use this as the per-tranche goal statement before implementation:
   - [ ] Generated-node table operations (`AddTableRow`, constant `AddTableColumn`) need an OxCalc
         transaction placeholder or result-dependent edit substrate before their receipts can carry
         real transaction ids.
-  - [ ] Scoped multi-target authoring verbs still need broader OxCalc operation coverage.
+  - [x] Scoped existing-node content edits carry `AuthoringScope` through Skin IR and route through
+        one OxCalc batch edit transaction after host-owned projection expansion.
+  - [ ] Other scoped multi-target authoring verbs still need broader OxCalc operation coverage.
 - [ ] W2 closure review confirms no skin parses formulas, computes semantic values, or fabricates
       engine facts.
 
 ## Gated Workstreams
 
 - [ ] `transaction-scope`: broaden from first node-edit and table snapshot receipt coverage to
-      generated-node table operations and scoped multi-target operation families with
-      accumulate-publish-once semantics.
+      generated-node table operations and remaining scoped multi-target operation families with
+      accumulate-publish-once semantics. Existing-node scoped content edit is covered.
 - [ ] `revision-graph-retention`: implement retained parent-linked revision DAG and cursor before
       undo, redo, time travel, or history UI claims.
 - [ ] `candidate-overlay-handle`: implement N addressable, layerable, non-publishing candidate

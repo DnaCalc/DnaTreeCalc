@@ -149,8 +149,9 @@ The roadmap alignment rule is:
       authoring receipts now use OxCalc transaction outcomes for table row delete/rename/reorder,
       formula-column add/edit/delete, totals/header visibility and formula edits, and table column
       delete/rename/reorder. Remaining W2 closure is the final ownership review plus transaction
-      substrate expansion for scoped multi-target verbs and generated-node table operations such as
-      adding constant rows/columns.
+      substrate expansion for generated-node table operations such as adding constant rows/columns.
+      Scoped existing-node content edits now carry `AuthoringScope` through Skin IR and are expanded
+      by the host into one OxCalc batch edit transaction with one receipt transaction id.
 
 ### Gating Engine Workstreams
 
@@ -158,9 +159,9 @@ The roadmap alignment rule is:
       DnaTreeCalc receipts for add/edit/rename/move/reorder/delete; table snapshot operations now
       route through OxCalc `SetNodeTable` transactions for row delete/rename/reorder,
       formula-column add/edit/delete, totals/header visibility/formula edits, and column
-      delete/rename/reorder. Generated-node table operations (`AddTableRow`, constant
-      `AddTableColumn`) and scoped multi-target verbs still require broader OxCalc transaction
-      substrate.
+      delete/rename/reorder. Scoped existing-node content edits route through one OxCalc batch edit
+      transaction. Generated-node table operations (`AddTableRow`, constant `AddTableColumn`) still
+      require broader OxCalc transaction substrate.
 - [ ] `revision-graph-retention`: retained parent-linked revision store and cursor; no inverse replay.
 - [ ] `candidate-overlay-handle`: addressable, layerable, non-publishing candidate contexts.
 - [x] `value-epoch-keying`: per-node published-value epoch distinct from input epoch.

@@ -636,7 +636,7 @@ fn programmable_skin_previews_scoped_content_edit_legality_impact_from_projectio
         .clone();
 
     let scope = AuthoringScope::Nodes(vec![b_key.clone(), c_key.clone()]);
-    let impact = harness.preview_scoped_content_edit_impact(scope, "=A+2");
+    let impact = harness.preview_scoped_content_edit_impact(scope.clone(), "=A+10");
 
     assert!(impact.legal, "{impact:?}");
     assert!(impact.blocked_reason.is_none());
@@ -646,13 +646,16 @@ fn programmable_skin_previews_scoped_content_edit_legality_impact_from_projectio
     assert!(impact.requires_rebind.contains(&NodeId::new("Root.C")));
     assert_eq!(impact.affected_refs, vec![NodeId::new("Root.D")]);
     assert_eq!(impact.invalidation_plan.estimated_node_count, 3);
-    let MutationImpactIntentProjection::EditScopedContent { scope, content } = &impact.intent
+    let MutationImpactIntentProjection::EditScopedContent {
+        scope: projected_scope,
+        content,
+    } = &impact.intent
     else {
         panic!("expected scoped content impact intent");
     };
-    assert_eq!(content, "=A+2");
+    assert_eq!(content, "=A+10");
     assert_eq!(
-        scope,
+        projected_scope,
         &AuthoringScope::Nodes(vec![b_key.clone(), c_key.clone()])
     );
     assert_eq!(
@@ -660,6 +663,33 @@ fn programmable_skin_previews_scoped_content_edit_legality_impact_from_projectio
         before_revision
     );
     skin.assert_scalar("Root.D", "4");
+
+    let edit = skin.try_edit_scoped_content(scope.clone(), "=A+10");
+    assert!(edit.accepted, "{:?}", edit.error);
+    assert!(
+        edit.transaction_id
+            .as_deref()
+            .is_some_and(|id| id.starts_with("transaction:programmable-skin-ir:")),
+        "{edit:?}"
+    );
+    let edited_state = skin.state();
+    assert_eq!(
+        edited_state
+            .node(&NodeId::new("Root.B"))
+            .expect("B projects after scoped edit")
+            .content_text,
+        "=A+10"
+    );
+    assert_eq!(
+        edited_state
+            .node(&NodeId::new("Root.C"))
+            .expect("C projects after scoped edit")
+            .content_text,
+        "=A+10"
+    );
+    skin.assert_scalar("Root.B", "11");
+    skin.assert_scalar("Root.C", "11");
+    skin.assert_scalar("Root.D", "12");
 }
 
 #[test]

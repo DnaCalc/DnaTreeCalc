@@ -65,6 +65,12 @@ pub enum WorkspaceIntent {
         node: NodeId,
         content: String,
     },
+    /// Replace content on every node in a typed authoring scope as one host
+    /// transaction. Scope expansion is host/projection-owned.
+    EditScopedContent {
+        scope: AuthoringScope,
+        content: String,
+    },
     AddNode {
         parent: Option<NodeId>,
         symbol: String,
@@ -410,6 +416,7 @@ impl Dispatcher for InMemoryDispatcher {
             WorkspaceIntent::Recalculate
             | WorkspaceIntent::EditContent { .. }
             | WorkspaceIntent::EditContentDeferred { .. }
+            | WorkspaceIntent::EditScopedContent { .. }
             | WorkspaceIntent::AddNode { .. }
             | WorkspaceIntent::RenameNode { .. }
             | WorkspaceIntent::MoveNode { .. }

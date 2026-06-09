@@ -1124,6 +1124,44 @@ impl TreeWorkspaceSession {
         })
     }
 
+    pub fn edit_scoped_content_transaction(
+        &mut self,
+        scope: AuthoringScope,
+        content: impl Into<String>,
+    ) -> Result<TreeWorkspaceTransactionEdit<()>, TreeWorkspaceSessionError> {
+        let content = content.into();
+        let state = self.workspace_state()?;
+        let target_keys = state.expand_authoring_scope(&scope).map_err(|error| {
+            TreeWorkspaceSessionError::ProjectionOutOfSync {
+                node: error.to_string(),
+            }
+        })?;
+        let mut transaction = OxCalcTreeEditTransaction::new(self.workspace_id.clone())
+            .with_recalc_policy(TransactionRecalcPolicy::RecalculateAndPublishOnce);
+        for key in target_keys {
+            let node = state.node_by_key(&key).ok_or_else(|| {
+                TreeWorkspaceSessionError::ProjectionOutOfSync {
+                    node: format!("node key {key}"),
+                }
+            })?;
+            transaction = transaction.with_edit(OxCalcTreeEdit::SetNodeFormulaText {
+                node_id: self.tree_node_id(node.id.as_str())?,
+                formula_text: content.clone(),
+            });
+        }
+        let outcome = self.context.apply_edit_transaction(transaction)?;
+        if let Some(calculation) = outcome.calculation {
+            self.recalc_count += 1;
+            self.last_outcome = Some(calculation);
+        } else {
+            self.last_outcome = None;
+        }
+        Ok(TreeWorkspaceTransactionEdit {
+            result: (),
+            transaction_id: outcome.transaction_id.to_string(),
+        })
+    }
+
     pub fn add_node(
         &mut self,
         parent: Option<&NodeId>,
