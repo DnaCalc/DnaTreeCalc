@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
 use dnatreecalc_skin_framework::{
-    Dispatcher, ErasedSkinContext, NodeId, SelectionState, SharedSkinStateHandle, SkinId,
-    SkinMountSlot, SkinRegistry, SkinStatePersistenceStore, ThemeTokens, WorkspaceDelta,
-    WorkspaceIntent, WorkspaceRecalcMode, WorkspaceState,
+    Dispatcher, ErasedSkinContext, KeyChord, KeybindingRegistry, NodeId, SelectionState,
+    SharedSkinStateHandle, SkinId, SkinMountSlot, SkinRegistry, SkinStatePersistenceStore, SkinVerb,
+    ThemeTokens, WorkspaceDelta, WorkspaceIntent, WorkspaceRecalcMode, WorkspaceState,
 };
 use leptos::prelude::*;
 use wasm_bindgen::JsCast;
@@ -42,6 +42,9 @@ pub fn WorkspaceShell(
     let dispatch_for_view = dispatch.clone();
     let skin_state_store_for_view = skin_state_store.clone();
     let shortcut_skin_ids = registry.ids();
+    // The one grammar. It is a constant today; per-user remapping would later
+    // thread a customized instance through context instead of reconstructing it.
+    let keybindings = KeybindingRegistry::universal();
 
     let title = Memo::new(move |_| {
         workspace.with(|ws| {
@@ -81,6 +84,7 @@ pub fn WorkspaceShell(
                     &shortcut_skin_ids,
                     shortcut_dispatch.clone(),
                     shared,
+                    &keybindings,
                 );
             }
         >
@@ -141,9 +145,10 @@ pub fn WorkspaceShell(
 fn ShortcutBar() -> impl IntoView {
     view! {
         <div class="dtc-shortcut-bar" aria-label="Keyboard shortcuts">
-            <ShortcutHint keys="Ctrl 1-5" label="skins" />
-            <ShortcutHint keys="Up Down" label="select" />
-            <ShortcutHint keys="Ctrl Enter" label="calculate" />
+            <ShortcutHint keys="Ctrl 1-9" label="lens" />
+            <ShortcutHint keys="↑ ↓ ← →" label="navigate" />
+            <ShortcutHint keys="F9" label="calculate" />
+            <ShortcutHint keys="Ctrl Z / Y" label="undo · redo" />
             <ShortcutHint keys="Ctrl N" label="new workspace" />
         </div>
     }
@@ -159,6 +164,9 @@ fn ShortcutHint(keys: &'static str, label: &'static str) -> impl IntoView {
     }
 }
 
+// The shell keydown dispatcher threads the host-owned signals plus the grammar
+// registry; grouping them into a struct would not improve clarity here.
+#[allow(clippy::too_many_arguments)]
 fn handle_shell_keydown(
     ev: web_sys::KeyboardEvent,
     workspace: ReadSignal<WorkspaceState>,
@@ -167,55 +175,107 @@ fn handle_shell_keydown(
     skin_ids: &[SkinId],
     dispatch: Arc<dyn Dispatcher>,
     shared: SharedSkinStateHandle,
+    keybindings: &KeybindingRegistry,
 ) {
-    let key = ev.key();
     let command = ev.ctrl_key() || ev.meta_key();
+    let chord = KeyChord::from_parts(ev.key(), command, ev.alt_key(), ev.shift_key());
+    let Some(verb) = keybindings.resolve(&chord) else {
+        return;
+    };
 
-    if command {
-        match key.as_str() {
-            "Enter" => {
+    // While the user is typing, honor only modified global verbs — bare-key
+    // grammar (Commit, Fold, NameBox, Explain, arrows, …) belongs to the edit
+    // buffer, not the shell.
+    if keyboard_target_is_text_entry(&ev) && !command {
+        return;
+    }
+
+    match verb {
+        // --- Global verbs the shell owns ---
+        SkinVerb::Recalculate => {
+            ev.prevent_default();
+            dispatch.dispatch(WorkspaceIntent::Recalculate);
+            shared.update(|state| {
+                state.manual_recalc_pending = false;
+            });
+        }
+        SkinVerb::NewWorkspace => {
+            ev.prevent_default();
+            dispatch.dispatch(WorkspaceIntent::NewWorkspace);
+        }
+        SkinVerb::Undo => {
+            ev.prevent_default();
+            dispatch.dispatch(WorkspaceIntent::Undo);
+        }
+        SkinVerb::Redo => {
+            ev.prevent_default();
+            dispatch.dispatch(WorkspaceIntent::Redo);
+        }
+        SkinVerb::SwitchLens(slot) => {
+            if let Some(id) = skin_id_for_slot(skin_ids, slot) {
                 ev.prevent_default();
-                dispatch.dispatch(WorkspaceIntent::Recalculate);
-                shared.update(|state| {
-                    state.manual_recalc_pending = false;
-                });
-            }
-            "n" | "N" => {
-                ev.prevent_default();
-                dispatch.dispatch(WorkspaceIntent::NewWorkspace);
-            }
-            digit => {
-                if let Some(id) = skin_id_for_shortcut(skin_ids, digit) {
-                    ev.prevent_default();
-                    current_skin.set(id);
-                }
+                current_skin.set(id);
             }
         }
-        return;
-    }
-
-    if keyboard_target_is_text_entry(&ev) {
-        return;
-    }
-
-    let direction = match key.as_str() {
-        "ArrowUp" => -1,
-        "ArrowDown" => 1,
-        _ => return,
-    };
-    ev.prevent_default();
-    if let Some(next) = adjacent_node_selection(
-        &workspace.get_untracked(),
-        &selection.get_untracked(),
-        direction,
-    ) {
-        dispatch.dispatch(WorkspaceIntent::SelectNode(Some(next)));
+        SkinVerb::NavPrev | SkinVerb::NavNext => {
+            ev.prevent_default();
+            let direction = if matches!(verb, SkinVerb::NavPrev) { -1 } else { 1 };
+            if let Some(next) = adjacent_node_selection(
+                &workspace.get_untracked(),
+                &selection.get_untracked(),
+                direction,
+            ) {
+                dispatch.dispatch(WorkspaceIntent::SelectNode(Some(next)));
+            }
+        }
+        SkinVerb::ToParent => {
+            if let Some(parent) = parent_of_selection(
+                &workspace.get_untracked(),
+                &selection.get_untracked(),
+            ) {
+                ev.prevent_default();
+                dispatch.dispatch(WorkspaceIntent::SelectNode(Some(parent)));
+            }
+        }
+        SkinVerb::ToChild => {
+            if let Some(child) = first_child_of_selection(
+                &workspace.get_untracked(),
+                &selection.get_untracked(),
+            ) {
+                ev.prevent_default();
+                dispatch.dispatch(WorkspaceIntent::SelectNode(Some(child)));
+            }
+        }
+        // --- Lens-local verbs: leave them for the focused lens to handle ---
+        SkinVerb::Commit
+        | SkinVerb::Fill
+        | SkinVerb::Fold
+        | SkinVerb::Unfold
+        | SkinVerb::TraceForward
+        | SkinVerb::TraceBack
+        | SkinVerb::NameBox
+        | SkinVerb::Leader
+        | SkinVerb::Explain
+        | SkinVerb::Escape => {}
     }
 }
 
-fn skin_id_for_shortcut(skin_ids: &[SkinId], key: &str) -> Option<SkinId> {
-    let index = key.parse::<usize>().ok()?.checked_sub(1)?;
+fn skin_id_for_slot(skin_ids: &[SkinId], slot: u8) -> Option<SkinId> {
+    let index = (slot as usize).checked_sub(1)?;
     skin_ids.get(index).copied()
+}
+
+fn parent_of_selection(workspace: &WorkspaceState, selection: &SelectionState) -> Option<NodeId> {
+    let id = selection.primary.as_ref()?;
+    workspace.node(id)?.parent.clone()
+}
+
+fn first_child_of_selection(
+    workspace: &WorkspaceState,
+    selection: &SelectionState,
+) -> Option<NodeId> {
+    let id = selection.primary.as_ref()?;
+    workspace.node(id)?.children.first().cloned()
 }
 
 fn adjacent_node_selection(
@@ -417,12 +477,12 @@ mod tests {
     use dnatreecalc_skin_framework::WorkspaceState;
 
     #[test]
-    fn skin_shortcut_maps_number_keys_to_ordered_ids() {
+    fn skin_slot_maps_lens_numbers_to_ordered_ids() {
         let ids = [SkinId::new("one"), SkinId::new("two"), SkinId::new("three")];
-        assert_eq!(skin_id_for_shortcut(&ids, "1"), Some(SkinId::new("one")));
-        assert_eq!(skin_id_for_shortcut(&ids, "3"), Some(SkinId::new("three")));
-        assert_eq!(skin_id_for_shortcut(&ids, "0"), None);
-        assert_eq!(skin_id_for_shortcut(&ids, "4"), None);
+        assert_eq!(skin_id_for_slot(&ids, 1), Some(SkinId::new("one")));
+        assert_eq!(skin_id_for_slot(&ids, 3), Some(SkinId::new("three")));
+        assert_eq!(skin_id_for_slot(&ids, 0), None);
+        assert_eq!(skin_id_for_slot(&ids, 4), None);
     }
 
     #[test]
