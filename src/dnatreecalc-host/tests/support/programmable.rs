@@ -241,6 +241,29 @@ impl ProgrammableDriver {
             })
     }
 
+    pub fn try_move_candidate_node(
+        &self,
+        handle: &str,
+        node: NodeKey,
+        new_parent: Option<NodeKey>,
+        new_index: Option<usize>,
+    ) -> IntentReceipt {
+        self.dispatch.dispatch(WorkspaceIntent::MoveCandidateNode {
+            handle: handle.to_string(),
+            node,
+            new_parent,
+            new_index,
+        })
+    }
+
+    pub fn try_delete_candidate_node(&self, handle: &str, node: NodeKey) -> IntentReceipt {
+        self.dispatch
+            .dispatch(WorkspaceIntent::DeleteCandidateNode {
+                handle: handle.to_string(),
+                node,
+            })
+    }
+
     pub fn try_evaluate_candidate(&self, handle: &str) -> IntentReceipt {
         self.dispatch.dispatch(WorkspaceIntent::EvaluateCandidate {
             handle: handle.to_string(),

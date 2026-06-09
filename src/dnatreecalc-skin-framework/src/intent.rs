@@ -220,6 +220,19 @@ pub enum WorkspaceIntent {
         node: NodeKey,
         new_symbol: String,
     },
+    /// Move a node inside a candidate without publishing workspace state.
+    /// Parent is also key-addressed for candidate-private structural views.
+    MoveCandidateNode {
+        handle: String,
+        node: NodeKey,
+        new_parent: Option<NodeKey>,
+        new_index: Option<usize>,
+    },
+    /// Delete a node inside a candidate without publishing workspace state.
+    DeleteCandidateNode {
+        handle: String,
+        node: NodeKey,
+    },
     /// Evaluate a candidate and publish the private result into the candidate
     /// projection only.
     EvaluateCandidate {
@@ -661,6 +674,8 @@ impl Dispatcher for InMemoryDispatcher {
             | WorkspaceIntent::OpenCandidate { .. }
             | WorkspaceIntent::EditCandidateContent { .. }
             | WorkspaceIntent::RenameCandidateNode { .. }
+            | WorkspaceIntent::MoveCandidateNode { .. }
+            | WorkspaceIntent::DeleteCandidateNode { .. }
             | WorkspaceIntent::EvaluateCandidate { .. }
             | WorkspaceIntent::DiscardCandidate { .. }
             | WorkspaceIntent::CommitCandidate { .. }

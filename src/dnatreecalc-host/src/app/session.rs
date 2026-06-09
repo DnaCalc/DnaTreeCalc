@@ -1317,6 +1317,50 @@ impl TreeWorkspaceSession {
         self.candidate_projection_for_view(&view)
     }
 
+    pub fn move_candidate_node(
+        &mut self,
+        handle: &str,
+        node: &NodeKey,
+        new_parent: Option<&NodeKey>,
+        new_index: Option<usize>,
+    ) -> Result<CandidateProjection, TreeWorkspaceSessionError> {
+        let handle = self.candidate_handle(handle)?;
+        let tree_node_id = tree_node_id_from_node_key(node)?;
+        let new_parent_id = match new_parent {
+            Some(parent) => tree_node_id_from_node_key(parent)?,
+            None => self.engine_root_id,
+        };
+        let view = self.context.apply_candidate_edit_transaction(
+            &handle,
+            OxCalcTreeEditTransaction::new(self.workspace_id.clone()).with_edit(
+                OxCalcTreeEdit::MoveNode {
+                    node_id: tree_node_id,
+                    new_parent_id,
+                    new_index,
+                },
+            ),
+        )?;
+        self.candidate_projection_for_view(&view)
+    }
+
+    pub fn delete_candidate_node(
+        &mut self,
+        handle: &str,
+        node: &NodeKey,
+    ) -> Result<CandidateProjection, TreeWorkspaceSessionError> {
+        let handle = self.candidate_handle(handle)?;
+        let tree_node_id = tree_node_id_from_node_key(node)?;
+        let view = self.context.apply_candidate_edit_transaction(
+            &handle,
+            OxCalcTreeEditTransaction::new(self.workspace_id.clone()).with_edit(
+                OxCalcTreeEdit::DeleteNode {
+                    node_id: tree_node_id,
+                },
+            ),
+        )?;
+        self.candidate_projection_for_view(&view)
+    }
+
     pub fn evaluate_candidate(
         &mut self,
         handle: &str,
