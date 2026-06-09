@@ -125,6 +125,7 @@ pub struct TreeWorkspaceTransactionEdit<T> {
 #[derive(Debug, Clone)]
 struct DuplicateSubtreeNode {
     source_key: NodeKey,
+    source_path: NodeId,
     parent_source_key: Option<NodeKey>,
     symbol: String,
     content_text: String,
@@ -133,6 +134,14 @@ struct DuplicateSubtreeNode {
     note: Option<String>,
     number_format_code: Option<String>,
     attributes: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone)]
+struct DuplicateSubtreeMetaNode {
+    source_path: NodeId,
+    parent_source_path: Option<NodeId>,
+    symbol: String,
+    content_text: String,
 }
 
 impl TreeWorkspaceSession {
@@ -1980,8 +1989,14 @@ impl TreeWorkspaceSession {
             .map_err(|error| TreeWorkspaceSessionError::ProjectionOutOfSync {
                 node: error.to_string(),
             })?;
+        let views_by_tree_id = self.current_views_by_tree_id()?;
         let source_key_set: BTreeSet<NodeKey> = source_keys.iter().cloned().collect();
+        let source_path_set = source_keys
+            .iter()
+            .filter_map(|key| state.node_by_key(key).map(|node| node.id.clone()))
+            .collect::<BTreeSet<_>>();
         let mut clone_nodes = Vec::with_capacity(source_keys.len());
+        let mut clone_meta_nodes = Vec::new();
         for key in &source_keys {
             let node = state.node_by_key(key).ok_or_else(|| {
                 TreeWorkspaceSessionError::ProjectionOutOfSync {
@@ -2032,6 +2047,7 @@ impl TreeWorkspaceSession {
             }
             clone_nodes.push(DuplicateSubtreeNode {
                 source_key: key.clone(),
+                source_path: node.id.clone(),
                 parent_source_key,
                 symbol: if key == &source {
                     new_symbol.clone()
@@ -2040,16 +2056,27 @@ impl TreeWorkspaceSession {
                 },
                 content_text: node.content_text.clone(),
                 is_meta: node.is_meta,
-                clone_path,
+                clone_path: clone_path.clone(),
                 note: local_note_text(node),
                 number_format_code: local_number_format_code(node),
                 attributes: node.attributes.clone(),
             });
+            clone_meta_nodes.extend(self.noncanonical_meta_descendants_for_duplicate(
+                node,
+                &clone_path,
+                &source_path_set,
+                &views_by_tree_id,
+            )?);
         }
 
         let mut reserved_by_source = BTreeMap::new();
         for clone in &clone_nodes {
             reserved_by_source.insert(clone.source_key.clone(), self.context.reserve_node_id());
+        }
+        let mut reserved_meta_by_source = BTreeMap::new();
+        for meta in &clone_meta_nodes {
+            reserved_meta_by_source
+                .insert(meta.source_path.clone(), self.context.reserve_node_id());
         }
         let mut transaction = OxCalcTreeEditTransaction::new(self.workspace_id.clone())
             .with_recalc_policy(TransactionRecalcPolicy::RecalculateAndPublishOnce);
@@ -2114,6 +2141,43 @@ impl TreeWorkspaceSession {
                 }
             }
         }
+        let ordinary_reserved_by_path = clone_nodes
+            .iter()
+            .filter_map(|clone| {
+                reserved_by_source
+                    .get(&clone.source_key)
+                    .copied()
+                    .map(|node_id| (clone.source_path.clone(), node_id))
+            })
+            .collect::<BTreeMap<_, _>>();
+        for meta in &clone_meta_nodes {
+            let parent_id = match &meta.parent_source_path {
+                Some(parent_path) => reserved_meta_by_source
+                    .get(parent_path)
+                    .copied()
+                    .or_else(|| ordinary_reserved_by_path.get(parent_path).copied())
+                    .ok_or_else(|| TreeWorkspaceSessionError::ProjectionOutOfSync {
+                        node: format!("missing cloned parent for meta node {}", meta.source_path),
+                    })?,
+                None => {
+                    return Err(TreeWorkspaceSessionError::ProjectionOutOfSync {
+                        node: format!("missing source parent for meta node {}", meta.source_path),
+                    });
+                }
+            };
+            let reserved_node_id = reserved_meta_by_source
+                .get(&meta.source_path)
+                .copied()
+                .ok_or_else(|| TreeWorkspaceSessionError::ProjectionOutOfSync {
+                    node: format!("missing reserved id for meta node {}", meta.source_path),
+                })?;
+            transaction = transaction.with_edit(OxCalcTreeEdit::AddNode {
+                request: OxCalcTreeNodeCreate::new(meta.symbol.clone(), meta.content_text.clone())
+                    .under(parent_id)
+                    .with_meta(true)
+                    .with_reserved_node_id(reserved_node_id),
+            });
+        }
         let outcome = self.context.apply_edit_transaction(transaction)?;
         if let Some(calculation) = outcome.calculation {
             self.recalc_count += 1;
@@ -2136,6 +2200,71 @@ impl TreeWorkspaceSession {
             result: cloned_keys,
             transaction_id: outcome.transaction_id.to_string(),
         })
+    }
+
+    fn noncanonical_meta_descendants_for_duplicate(
+        &self,
+        source_node: &NodeView,
+        clone_root_path: &NodeId,
+        source_path_set: &BTreeSet<NodeId>,
+        views_by_tree_id: &BTreeMap<TreeNodeId, OxCalcTreeNodeView>,
+    ) -> Result<Vec<DuplicateSubtreeMetaNode>, TreeWorkspaceSessionError> {
+        let source_prefix = format!("{}.", source_node.id.as_str());
+        let mut meta_nodes = Vec::new();
+        for (candidate_path, candidate_tree_id) in &self.node_ids {
+            let candidate_path_text = candidate_path.as_str();
+            let Some(relative_path) = candidate_path_text.strip_prefix(&source_prefix) else {
+                continue;
+            };
+            if relative_path.is_empty()
+                || canonical_duplicate_metadata_path(source_node.id.as_str(), candidate_path_text)
+                || nearest_source_ancestor(candidate_path_text, source_path_set)
+                    != Some(source_node.id.clone())
+            {
+                continue;
+            }
+            let Some(candidate_view) = views_by_tree_id
+                .get(candidate_tree_id)
+                .filter(|view| view.is_meta)
+            else {
+                continue;
+            };
+            if candidate_view.table.is_some() {
+                return Err(TreeWorkspaceSessionError::DuplicateSubtreeUnsupported {
+                    node: candidate_path.to_string(),
+                    detail: "meta table subtree duplication requires table snapshot clone support"
+                        .to_string(),
+                });
+            }
+            if content_kind_for_text(&candidate_view.formula_text) == FrameworkContentKind::Formula
+            {
+                return Err(TreeWorkspaceSessionError::DuplicateSubtreeUnsupported {
+                    node: candidate_path.to_string(),
+                    detail:
+                        "formula-bearing meta subtree duplication requires OxFml-owned reference rebind"
+                            .to_string(),
+                });
+            }
+            let clone_path = NodeId::new(format!("{}.{}", clone_root_path.as_str(), relative_path));
+            if self.node_ids.contains_key(&clone_path) {
+                return Err(TreeWorkspaceSessionError::DuplicateNodePath {
+                    node: clone_path.to_string(),
+                });
+            }
+            meta_nodes.push(DuplicateSubtreeMetaNode {
+                source_path: candidate_path.clone(),
+                parent_source_path: parent_path(candidate_path_text).map(NodeId::new),
+                symbol: candidate_view.symbol.clone(),
+                content_text: candidate_view.formula_text.clone(),
+            });
+        }
+        meta_nodes.sort_by_key(|meta| {
+            (
+                depth_of(meta.source_path.as_str()),
+                meta.source_path.clone(),
+            )
+        });
+        Ok(meta_nodes)
     }
 
     pub fn rename_node(
@@ -5689,6 +5818,35 @@ fn local_number_format_code(node: &NodeView) -> Option<String> {
                 .is_some_and(|source| source.node == format_path)
         })
         .and_then(|format| format.number_format_code.clone())
+}
+
+fn canonical_duplicate_metadata_path(owner_path: &str, candidate_path: &str) -> bool {
+    let Some(relative_path) = candidate_path
+        .strip_prefix(owner_path)
+        .and_then(|suffix| suffix.strip_prefix('.'))
+    else {
+        return false;
+    };
+    relative_path == "Note"
+        || relative_path == "Format"
+        || relative_path.starts_with("Format.")
+        || relative_path == "Attributes"
+        || relative_path.starts_with("Attributes.")
+}
+
+fn nearest_source_ancestor(
+    candidate_path: &str,
+    source_path_set: &BTreeSet<NodeId>,
+) -> Option<NodeId> {
+    let mut cursor = parent_path(candidate_path);
+    while let Some(path) = cursor {
+        let node_id = NodeId::new(path.clone());
+        if source_path_set.contains(&node_id) {
+            return Some(node_id);
+        }
+        cursor = parent_path(&path);
+    }
+    None
 }
 
 struct FormulaBindPreviewPayload {

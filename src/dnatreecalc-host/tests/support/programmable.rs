@@ -920,11 +920,13 @@ impl Harness {
     }
 
     pub fn from_fixture(fixture: WorkspaceFixture) -> Self {
-        let owner = Owner::new();
         let model = WorkspaceModel::try_from(fixture).unwrap();
-        let session = Arc::new(Mutex::new(
-            TreeWorkspaceSession::from_model(&model).unwrap(),
-        ));
+        Self::from_session(TreeWorkspaceSession::from_model(&model).unwrap())
+    }
+
+    pub fn from_session(session: TreeWorkspaceSession) -> Self {
+        let owner = Owner::new();
+        let session = Arc::new(Mutex::new(session));
         let workspace = RwSignal::new(session.lock().unwrap().workspace_state().unwrap());
         let selection = RwSignal::new(SelectionState::default());
         let shared = SharedSkinStateHandle::new(SharedSkinState::default());

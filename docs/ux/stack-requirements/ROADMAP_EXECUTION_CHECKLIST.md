@@ -109,7 +109,10 @@ OxCalc edit transaction with reserved engine node ids, projects the normal struc
 rejects formula-bearing subtrees before mutation because internal-reference rebind remains
 OxFml-owned and unavailable. The second slice preserves host-authored local notes, number formats,
 and attributes by creating the same canonical meta nodes under cloned nodes in that transaction.
-Table subtree cloning, arbitrary meta-subtree breadth, and formula rebind remain open.
+The third slice is now landed for hidden non-canonical formula-free meta descendants: duplicate
+subtree preserves those custom hidden branches through the same OxCalc transaction while keeping
+them out of ordinary projected node lists. Table subtree cloning, table-backed meta
+descendants, formula-bearing meta descendants, and formula rebind remain open.
 
 Do not advance to W4 speculation/history or W5 platform polish as the default next step while W3
 authoring verbs remain incomplete.
@@ -345,6 +348,11 @@ Use this as the per-tranche goal statement before implementation:
       the same OxCalc transaction. Inherited/effective format is not converted into local authored
       metadata; arbitrary meta-subtree breadth, table subtree cloning, and formula rebind remain
       open.
+- [x] Land third `duplicate-subtree` tranche:
+      formula-free subtree duplication also preserves hidden non-canonical formula-free meta
+      descendants without projecting those hidden nodes into ordinary `WorkspaceState` lists.
+      Formula-bearing meta descendants, table-backed meta descendants, table subtree cloning, and
+      formula rebind remain open.
 - [ ] Continue W3 with the next feasible tranche: move to the next OxFml-backed formula authoring
       verb (`f4-toggle-binding`, `replicate-by-id`, formula paste/rebind) when its rewrite semantics
       are available, or record a focused blocker if the current editor surface cannot support it.

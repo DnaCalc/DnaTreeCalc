@@ -123,8 +123,11 @@ applies the clone as one OxCalc transaction with reserved engine node ids. Formu
 formula/subtree source deletion, table subtree cloning, and meta-subtree breadth remain open.
 The second `duplicate-subtree` slice preserves host-authored local notes, number formats, and
 attributes by cloning the canonical metadata nodes in the same OxCalc transaction. Inherited
-effective formats are not converted into local authored metadata; arbitrary meta subtrees remain
-open.
+effective formats are not converted into local authored metadata. The third `duplicate-subtree`
+slice is now landed: hidden non-canonical formula-free meta descendants are cloned
+through the same OxCalc transaction without projecting those hidden nodes into ordinary
+`WorkspaceState` views. Formula-bearing meta descendants, table-backed meta descendants, table
+subtree cloning, formula rebind, and formula/subtree source deletion remain open.
 
 ## Roadmap Position
 

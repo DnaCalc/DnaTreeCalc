@@ -3852,6 +3852,73 @@ fn programmable_skin_duplicates_formula_free_subtree_through_skin_ir() {
 }
 
 #[test]
+fn programmable_skin_duplicates_hidden_custom_meta_subtree_without_projecting_it() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+    assert!(skin.try_add_node(None, "Book", "").accepted);
+    assert!(skin.try_add_node(Some("Book"), "Template", "").accepted);
+    assert!(
+        skin.try_add_node(Some("Book.Template"), "Inputs", "7")
+            .accepted
+    );
+    {
+        let mut session = harness.session.lock().unwrap();
+        session
+            .add_node_transaction_with_meta(
+                Some(&NodeId::new("Book.Template.Inputs")),
+                "Scratch",
+                "scratch",
+                true,
+            )
+            .expect("custom meta parent is added");
+        session
+            .add_node_transaction_with_meta(
+                Some(&NodeId::new("Book.Template.Inputs.Scratch")),
+                "Review",
+                "keep",
+                true,
+            )
+            .expect("custom meta child is added");
+        let document = session
+            .export_dnatree_document(None)
+            .expect("document export succeeds");
+        let (reopened, _) =
+            TreeWorkspaceSession::from_dnatree_document(document).expect("reopen succeeds");
+        drop(session);
+        let reopened = Harness::from_session(reopened);
+        let reopened_skin = reopened.driver.clone();
+        assert!(
+            reopened_skin
+                .state()
+                .node(&NodeId::new("Book.Template.Inputs.Scratch"))
+                .is_none()
+        );
+        let template_key = reopened_skin
+            .state()
+            .node(&NodeId::new("Book.Template"))
+            .unwrap()
+            .key
+            .clone();
+        let duplicate = reopened_skin.try_duplicate_subtree(template_key, Some("Book"), "Scenario");
+        assert!(duplicate.accepted, "{:?}", duplicate.error);
+        assert!(
+            reopened_skin
+                .state()
+                .node(&NodeId::new("Book.Scenario.Inputs.Scratch"))
+                .is_none()
+        );
+        let occupied = reopened_skin.try_add_node(Some("Book.Scenario.Inputs"), "Scratch", "");
+        assert!(!occupied.accepted);
+        assert_eq!(
+            occupied.error,
+            Some(IntentError::DuplicateNode {
+                node: "Book.Scenario.Inputs.Scratch".to_string()
+            })
+        );
+    }
+}
+
+#[test]
 fn programmable_skin_rejects_duplicate_subtree_that_needs_formula_rebind() {
     let harness = Harness::empty();
     let skin = harness.driver.clone();
