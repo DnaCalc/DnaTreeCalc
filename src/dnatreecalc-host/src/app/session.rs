@@ -23,15 +23,14 @@ use dnatreecalc_skin_framework::{
     RevisionHistoryProjection, RevisionInvalidationSummaryEntryProjection,
     RevisionTransactionSummaryProjection, RuntimeEffectFamilyProjection, RuntimeEffectProjection,
     RuntimeOverlayKindProjection, RuntimeOverlayProjection, ScenarioManifestProjection,
-    ScenarioProjection, ScenarioSourceProjection, SeriesManifestProjection, SeriesPointProjection,
-    SeriesProjection, SourceSpanProjection, SpeculationPressureProjection, TableAnchorProjection,
-    TableCellInput, TableCellProjection, TableCellRegionProjection, TableCellsProjection,
-    TableColumnBodyProjection, TableColumnProjection, TableDependencyFactBlockerProjection,
-    TableDependencyFactKindProjection, TableDependencyFactProjection,
-    TableDependencyFactStatusProjection, TableFormulaBindPreviewProjection,
-    TableFormulaMetadataProjection, TableProjection, TableRowInput, TableRowProjection,
-    TreeReferenceCollectionFamilyProjection, TreeReferenceCollectionProjection,
-    WorkspaceRevisionProjection, WorkspaceState,
+    ScenarioProjection, ScenarioSourceProjection, SeriesManifestProjection, SourceSpanProjection,
+    SpeculationPressureProjection, TableAnchorProjection, TableCellInput, TableCellProjection,
+    TableCellRegionProjection, TableCellsProjection, TableColumnBodyProjection,
+    TableColumnProjection, TableDependencyFactBlockerProjection, TableDependencyFactKindProjection,
+    TableDependencyFactProjection, TableDependencyFactStatusProjection,
+    TableFormulaBindPreviewProjection, TableFormulaMetadataProjection, TableProjection,
+    TableRowInput, TableRowProjection, TreeReferenceCollectionFamilyProjection,
+    TreeReferenceCollectionProjection, WorkspaceRevisionProjection, WorkspaceState,
 };
 use oxcalc_core::consumer::OxCalcTreeRunState;
 use oxcalc_core::consumer::{
@@ -4765,9 +4764,8 @@ impl TreeWorkspaceSession {
         let candidates = self.candidate_projections()?;
         let scenarios = self.scenario_manifest_projection()?;
         let comparison = comparative_projection_for(&nodes_by_key, &candidates, &scenarios);
-        let series = series_projection_for(&comparison, &key_order, &paths_by_key);
 
-        Ok(WorkspaceState {
+        let mut state = WorkspaceState {
             workspace_id: self.workspace_id.as_str().to_string(),
             profile: self.profile,
             projection_seq: 0,
@@ -4777,7 +4775,7 @@ impl TreeWorkspaceSession {
             speculation_pressure,
             scenarios,
             comparison,
-            series,
+            series: SeriesManifestProjection::default(),
             last_run,
             node_order: self.display_order.clone(),
             key_order,
@@ -4790,7 +4788,9 @@ impl TreeWorkspaceSession {
             tables,
             clipboard: None,
             diagnostics,
-        })
+        };
+        state.series = state.series_for_keys(&state.key_order);
+        Ok(state)
     }
 
     pub fn dependency_members_for(
@@ -5008,6 +5008,11 @@ impl TreeWorkspaceSession {
             },
             override_count: scenario.overrides.len(),
             overridden_nodes: scenario.overrides.keys().cloned().collect(),
+            override_values: scenario
+                .overrides
+                .iter()
+                .map(|(key, override_state)| (key.clone(), override_state.value.clone()))
+                .collect(),
             value_epoch: Some(scenario.value_epoch),
             is_active: self.active_scenario_id.as_deref() == Some(scenario_id),
         })
@@ -6786,82 +6791,52 @@ fn comparative_projection_for(
         .iter()
         .map(|candidate| (candidate.handle.as_str(), candidate))
         .collect::<BTreeMap<_, _>>();
+    let published_key_by_path = nodes_by_key
+        .values()
+        .map(|node| (node.id.clone(), node.key.clone()))
+        .collect::<BTreeMap<_, _>>();
     let columns = scenarios
         .entries
         .iter()
         .filter_map(|scenario| {
             let ScenarioSourceProjection::Candidate { handle } = &scenario.source;
             let candidate = candidates_by_handle.get(handle.as_str())?;
+            let mut values = comparative_values_for_candidate(candidate, &published_key_by_path);
+            values.extend(scenario.override_values.clone());
             Some(ComparativeColumnProjection {
                 label: scenario.name.clone(),
                 source: ComparativeSourceProjection::Scenario {
                     id: scenario.id.clone(),
                 },
                 value_epoch: scenario.value_epoch,
-                values: candidate.values_by_key.clone(),
+                values,
             })
         })
         .collect();
     ComparativeProjection { basis, columns }
 }
 
-fn series_projection_for(
-    comparison: &ComparativeProjection,
-    key_order: &[NodeKey],
-    paths_by_key: &BTreeMap<NodeKey, NodeId>,
-) -> SeriesManifestProjection {
-    let mut entries = Vec::with_capacity(1 + comparison.columns.len());
-    entries.push(series_projection_from_column(
-        "series:published".to_string(),
-        &comparison.basis,
-        key_order,
-        paths_by_key,
-    ));
-    entries.extend(comparison.columns.iter().map(|column| {
-        series_projection_from_column(
-            series_id_for_comparative_source(&column.source),
-            column,
-            key_order,
-            paths_by_key,
-        )
-    }));
-    SeriesManifestProjection { entries }
-}
-
-fn series_projection_from_column(
-    id: String,
-    column: &ComparativeColumnProjection,
-    key_order: &[NodeKey],
-    paths_by_key: &BTreeMap<NodeKey, NodeId>,
-) -> SeriesProjection {
-    let points = key_order
+fn comparative_values_for_candidate(
+    candidate: &CandidateProjection,
+    published_key_by_path: &BTreeMap<NodeId, NodeKey>,
+) -> BTreeMap<NodeKey, NodeValueProjection> {
+    let candidate_path_by_key = candidate
+        .nodes
         .iter()
-        .filter_map(|key| {
-            let value = column.values.get(key)?;
-            Some(SeriesPointProjection {
-                key: key.clone(),
-                label: paths_by_key
-                    .get(key)
-                    .map_or_else(|| key.to_string(), |path| path.as_str().to_string()),
-                value: value.clone(),
-            })
+        .map(|node| (node.key.clone(), node.id.clone()))
+        .collect::<BTreeMap<_, _>>();
+    candidate
+        .values_by_key
+        .iter()
+        .map(|(key, value)| {
+            let projected_key = candidate_path_by_key
+                .get(key)
+                .and_then(|path| published_key_by_path.get(path))
+                .unwrap_or(key)
+                .clone();
+            (projected_key, value.clone())
         })
-        .collect();
-    SeriesProjection {
-        id,
-        label: column.label.clone(),
-        source: column.source.clone(),
-        unit: None,
-        points,
-    }
-}
-
-fn series_id_for_comparative_source(source: &ComparativeSourceProjection) -> String {
-    match source {
-        ComparativeSourceProjection::Published => "series:published".to_string(),
-        ComparativeSourceProjection::Candidate { handle } => format!("series:candidate:{handle}"),
-        ComparativeSourceProjection::Scenario { id } => format!("series:scenario:{id}"),
-    }
+        .collect()
 }
 
 fn value_projection_for(

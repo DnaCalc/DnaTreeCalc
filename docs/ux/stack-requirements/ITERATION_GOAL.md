@@ -98,14 +98,17 @@ advances on scenario creation, override set/clear, candidate-private edits, and 
 evaluation; active scenarios project per-node `NodeView.scenario_override` without changing
 published `computed_value`. The first W4c comparative multi-overlay projection slice is also
 landed: `WorkspaceState.comparison` projects a published basis column plus scenario-backed columns
-whose values come from the scenario backing candidate's typed `values_by_key`, leaving unevaluated
-scenario columns empty rather than fabricating values. The first W4c `series-projection` slice is
+whose values merge typed scenario overrides with the scenario backing candidate's typed
+`values_by_key`, leaving unevaluated non-overridden values empty rather than fabricating values. The
+first W4c `series-projection` slice is
 also landed: `WorkspaceState.series` derives chart/feed series from the published basis and
 scenario-backed comparison columns, keeps point values as typed `NodeValueProjection`, orders points
 by workspace `key_order`, and leaves unevaluated scenario series empty rather than fabricating
-values. These slices deliberately do not implement direct sweep/goal-seek comparison columns,
-explicit `series(scope)` selection, unit metadata, formula/rich-value scenario override authoring,
-or engine-published scenario revision history. Remaining W3
+values. The scoped/unit W4c series slice is also landed: `WorkspaceState::series_for_scope`
+expands the existing `AuthoringScope` model into explicit chart/feed series and publishes unit
+metadata from host-owned `series_unit` / `unit` attributes when every selected point agrees. These
+slices deliberately do not implement direct sweep/goal-seek comparison columns, formula/rich-value
+scenario override authoring, or engine-published scenario revision history. Remaining W3
 formula-rewrite/rebind verbs stay parked until their owning
 OxFml/OxCalc substrates are available. W2 safe structural authoring is
 closed for the current Skin IR surface: receipts carry typed errors and real OxCalc transaction ids,
@@ -672,20 +675,26 @@ The roadmap alignment rule is:
 - [x] W4c `comparative-multi-overlay-projection` first scenario-backed slice:
       `WorkspaceState.comparison` now projects a published basis column and scenario-backed
       comparison columns. Basis values come from published `NodeView.computed_value`; scenario column
-      values come from the matching candidate projection's typed `values_by_key`; unevaluated
-      scenario columns remain empty. Programmable Skin IR tests prove basis/scenario separation,
-      scenario labels/sources, evaluated scenario values, and column removal when a scenario is
-      deleted. Direct sweep/goal-seek comparison columns, richer value provenance, and
-      engine-published scenario revision history remain open.
+      values merge typed scenario override values with the matching candidate projection's typed
+      `values_by_key`; unevaluated non-overridden scenario values remain empty. Programmable Skin IR
+      tests prove basis/scenario separation, scenario labels/sources, evaluated scenario values, and
+      column removal when a scenario is deleted. Direct sweep/goal-seek comparison columns, richer
+      value provenance, and engine-published scenario revision history remain open.
 - [x] W4c `series-projection` first comparison-backed slice:
       `WorkspaceState.series` now projects chart/feed series for the published basis and
       scenario-backed comparison columns. Points are ordered by workspace `key_order`, labels come
       from current display paths, and values remain typed `NodeValueProjection` payloads. Unevaluated
       scenario series remain empty instead of fabricating values. Programmable Skin IR tests prove
       published basis series, unevaluated scenario series, evaluated scenario series, basis/scenario
-      separation, and scenario deletion cleanup. Explicit `series(scope)` selection, unit metadata,
-      direct sweep/goal-seek series, richer value provenance, and engine-published scenario revision
-      history remain open.
+      separation, and scenario deletion cleanup. Direct sweep/goal-seek series, richer value
+      provenance, and engine-published scenario revision history remain open.
+- [x] W4c `series-projection` scoped/unit slice:
+      `WorkspaceState::series_for_scope` now expands the existing Skin IR `AuthoringScope` model
+      and returns chart/feed series for just that explicit selection. Unit metadata is projected from
+      host-owned `series_unit` / `unit` node attributes only when every selected point has the same
+      non-empty unit; mixed or missing units remain untyped instead of fabricating a label.
+      Programmable Skin IR tests prove selected published series, mixed-unit suppression, selected
+      scenario-backed series, and preservation of typed `NodeValueProjection` values.
 - [x] W5 early `projection-delta-channel` / `projection-version-stamp` synchronous projection slice:
       `SkinContext` and `ErasedSkinContext` now expose a required `latest_delta:
       ReadSignal<WorkspaceDelta>` beside the full `WorkspaceState` read signal. The host dispatcher
@@ -731,8 +740,7 @@ The roadmap alignment rule is:
       multi-slot composition, and broader screen-reader/browser audits remain later W5 work.
 - [ ] `candidate-overlay-handle`: continue toward fully addressable, layerable, non-publishing
       candidate contexts with richer structural merge algebra, candidate add-node template initial
-      content, direct sweep/goal-seek comparison columns, scoped/unit series projection, and broader
-      what-if UX.
+      content, direct sweep/goal-seek comparison columns/series, and broader what-if UX.
 - [x] `value-epoch-keying`: per-node published-value epoch distinct from input epoch.
 
 ## Status Template

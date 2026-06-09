@@ -1546,6 +1546,118 @@ fn programmable_skin_sets_and_clears_candidate_backed_scenario_overrides() {
 }
 
 #[test]
+fn programmable_skin_projects_scoped_series_with_unit_metadata() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    skin.add_node(Some("Root"), "A", "1");
+    skin.add_node(Some("Root"), "B", "=A+1");
+    skin.add_node(Some("Root"), "C", "3");
+
+    let state = skin.state();
+    let a_key = state
+        .node(&NodeId::new("Root.A"))
+        .expect("Root.A should project")
+        .key
+        .clone();
+    let b_key = state
+        .node(&NodeId::new("Root.B"))
+        .expect("Root.B should project")
+        .key
+        .clone();
+    let c_key = state
+        .node(&NodeId::new("Root.C"))
+        .expect("Root.C should project")
+        .key
+        .clone();
+
+    let set_a_unit =
+        skin.try_set_node_attributes(a_key.clone(), NodeAttributePatch::set("unit", "USD"));
+    assert!(set_a_unit.accepted, "{:?}", set_a_unit.error);
+    let set_b_unit =
+        skin.try_set_node_attributes(b_key.clone(), NodeAttributePatch::set("series_unit", "USD"));
+    assert!(set_b_unit.accepted, "{:?}", set_b_unit.error);
+    let set_c_unit =
+        skin.try_set_node_attributes(c_key.clone(), NodeAttributePatch::set("unit", "EUR"));
+    assert!(set_c_unit.accepted, "{:?}", set_c_unit.error);
+
+    let scoped = skin
+        .state()
+        .series_for_scope(&AuthoringScope::Nodes(vec![a_key.clone(), b_key.clone()]))
+        .expect("scoped series should expand");
+    assert_eq!(scoped.entries.len(), 1);
+    assert_eq!(
+        scoped.entries[0].source,
+        ComparativeSourceProjection::Published
+    );
+    assert_eq!(scoped.entries[0].unit.as_deref(), Some("USD"));
+    assert_eq!(
+        scoped.entries[0]
+            .points
+            .iter()
+            .map(|point| point.label.as_str())
+            .collect::<Vec<_>>(),
+        vec!["Root.A", "Root.B"]
+    );
+    assert_eq!(
+        scoped.entries[0]
+            .points
+            .iter()
+            .map(|point| point.value.display_text())
+            .collect::<Vec<_>>(),
+        vec!["1", "2"]
+    );
+
+    let mixed = skin
+        .state()
+        .series_for_scope(&AuthoringScope::Nodes(vec![a_key.clone(), c_key.clone()]))
+        .expect("mixed unit scope should still project");
+    assert_eq!(mixed.entries[0].unit, None);
+
+    assert!(skin.try_open_candidate().accepted);
+    let handle = skin.state().candidates[0].handle.clone();
+    let create = skin.try_create_scenario_from_candidate("scenario:bull", "Bull", &handle);
+    assert!(create.accepted, "{:?}", create.error);
+    let set_a_override = skin.try_set_scenario_override(
+        "scenario:bull",
+        a_key.clone(),
+        NodeValueProjection::Number {
+            raw: "10".to_string(),
+            display: "10".to_string(),
+        },
+    );
+    assert!(set_a_override.accepted, "{:?}", set_a_override.error);
+    let evaluate = skin.try_evaluate_candidate(&handle);
+    assert!(evaluate.accepted, "{:?}", evaluate.error);
+
+    let scenario_scoped = skin
+        .state()
+        .series_for_scope(&AuthoringScope::Nodes(vec![a_key.clone(), b_key.clone()]))
+        .expect("scoped scenario series should expand");
+    assert_eq!(scenario_scoped.entries.len(), 2);
+    let scenario_entry = scenario_scoped
+        .entries
+        .iter()
+        .find(|entry| {
+            matches!(
+                &entry.source,
+                ComparativeSourceProjection::Scenario { id } if id == "scenario:bull"
+            )
+        })
+        .expect("scenario series should project");
+    assert_eq!(scenario_entry.unit.as_deref(), Some("USD"));
+    assert_eq!(
+        scenario_entry
+            .points
+            .iter()
+            .map(|point| point.value.display_text())
+            .collect::<Vec<_>>(),
+        vec!["10", "11"]
+    );
+}
+
+#[test]
 fn programmable_skin_rejects_stale_candidate_commit_without_losing_candidate() {
     let harness = Harness::empty();
     let skin = harness.driver.clone();

@@ -554,20 +554,26 @@ Use this as the per-tranche goal statement before implementation:
 - [x] W4c `comparative-multi-overlay-projection` first scenario-backed slice:
       `WorkspaceState.comparison` now projects a published basis column and scenario-backed
       comparison columns. Basis values come from published `NodeView.computed_value`; scenario column
-      values come from the matching candidate projection's typed `values_by_key`; unevaluated
-      scenario columns remain empty. Programmable Skin IR tests prove basis/scenario separation,
-      scenario labels/sources, evaluated scenario values, and column removal when a scenario is
-      deleted. Direct sweep/goal-seek comparison columns, richer value provenance, and
-      engine-published scenario revision history remain open.
+      values merge typed scenario override values with the matching candidate projection's typed
+      `values_by_key`; unevaluated non-overridden scenario values remain empty. Programmable Skin IR
+      tests prove basis/scenario separation, scenario labels/sources, evaluated scenario values, and
+      column removal when a scenario is deleted. Direct sweep/goal-seek comparison columns, richer
+      value provenance, and engine-published scenario revision history remain open.
 - [x] W4c `series-projection` first comparison-backed slice:
       `WorkspaceState.series` now projects chart/feed series for the published basis and
       scenario-backed comparison columns. Points are ordered by workspace `key_order`, labels come
       from current display paths, and values remain typed `NodeValueProjection` payloads. Unevaluated
       scenario series remain empty instead of fabricating values. Programmable Skin IR tests prove
       published basis series, unevaluated scenario series, evaluated scenario series, basis/scenario
-      separation, and scenario deletion cleanup. Explicit `series(scope)` selection, unit metadata,
-      direct sweep/goal-seek series, richer value provenance, and engine-published scenario revision
-      history remain open.
+      separation, and scenario deletion cleanup. Direct sweep/goal-seek series, richer value
+      provenance, and engine-published scenario revision history remain open.
+- [x] W4c `series-projection` scoped/unit slice:
+      `WorkspaceState::series_for_scope` now expands the existing Skin IR `AuthoringScope` model
+      and returns chart/feed series for just that selection. Unit metadata is projected from
+      host-owned `series_unit` / `unit` node attributes only when every selected point has the same
+      non-empty unit; mixed or missing units remain untyped. Programmable Skin IR tests prove
+      selected published series, mixed-unit suppression, selected scenario-backed series, and typed
+      `NodeValueProjection` value preservation.
 - [x] W5 early `projection-delta-channel` / `projection-version-stamp` synchronous projection slice:
       Skin IR now carries a required `latest_delta: ReadSignal<WorkspaceDelta>` beside the full
       `WorkspaceState` signal, and the host dispatcher owns a single publication path that stamps
@@ -600,8 +606,8 @@ Use this as the per-tranche goal statement before implementation:
       when no visible selection exists. Framework tests prove helper output; walking-skeleton and
       programmable Skin IR tests prove the real skins still mount and route host selection/dispatch.
 - [ ] `candidate-overlay-handle`: continue W4b with richer structural merge algebra, candidate
-      add-node template initial content, direct sweep/goal-seek comparison columns, scoped/unit
-      series projection, and broader what-if UX before goal seek or sweeps.
+      add-node template initial content, direct sweep/goal-seek comparison columns/series, and
+      broader what-if UX before goal seek or sweeps.
 - [x] `value-epoch-keying`: per-node published-value epoch is available for projection consumers.
 
 ## Next-Wave Parking Lot

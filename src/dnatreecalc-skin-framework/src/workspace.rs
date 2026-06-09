@@ -63,6 +63,7 @@ pub struct ScenarioProjection {
     pub source: ScenarioSourceProjection,
     pub override_count: usize,
     pub overridden_nodes: Vec<NodeKey>,
+    pub override_values: BTreeMap<NodeKey, NodeValueProjection>,
     pub value_epoch: Option<u64>,
     pub is_active: bool,
 }
@@ -284,6 +285,24 @@ impl WorkspaceState {
         }
     }
 
+    #[must_use]
+    pub fn series_for_keys(&self, keys: &[NodeKey]) -> SeriesManifestProjection {
+        series_manifest_for_keys(
+            &self.comparison,
+            keys,
+            &self.paths_by_key,
+            &self.nodes_by_key,
+        )
+    }
+
+    pub fn series_for_scope(
+        &self,
+        scope: &AuthoringScope,
+    ) -> Result<SeriesManifestProjection, AuthoringScopeExpansionError> {
+        let keys = self.expand_authoring_scope(scope)?;
+        Ok(self.series_for_keys(&keys))
+    }
+
     fn require_node_key(&self, node: &NodeKey) -> Result<&NodeView, AuthoringScopeExpansionError> {
         self.node_by_key(node)
             .ok_or_else(|| AuthoringScopeExpansionError::UnknownNode { node: node.clone() })
@@ -353,6 +372,98 @@ impl WorkspaceState {
             .collect::<Result<Vec<_>, _>>()
             .map(dedupe_preserving_order)
     }
+}
+
+fn series_manifest_for_keys(
+    comparison: &ComparativeProjection,
+    keys: &[NodeKey],
+    paths_by_key: &BTreeMap<NodeKey, NodeId>,
+    nodes_by_key: &BTreeMap<NodeKey, NodeView>,
+) -> SeriesManifestProjection {
+    let mut entries = Vec::with_capacity(1 + comparison.columns.len());
+    entries.push(series_projection_from_column(
+        "series:published".to_string(),
+        &comparison.basis,
+        keys,
+        paths_by_key,
+        nodes_by_key,
+    ));
+    entries.extend(comparison.columns.iter().map(|column| {
+        series_projection_from_column(
+            series_id_for_comparative_source(&column.source),
+            column,
+            keys,
+            paths_by_key,
+            nodes_by_key,
+        )
+    }));
+    SeriesManifestProjection { entries }
+}
+
+fn series_projection_from_column(
+    id: String,
+    column: &ComparativeColumnProjection,
+    keys: &[NodeKey],
+    paths_by_key: &BTreeMap<NodeKey, NodeId>,
+    nodes_by_key: &BTreeMap<NodeKey, NodeView>,
+) -> SeriesProjection {
+    let points: Vec<SeriesPointProjection> = keys
+        .iter()
+        .filter_map(|key| {
+            let value = column.values.get(key)?;
+            Some(SeriesPointProjection {
+                key: key.clone(),
+                label: paths_by_key
+                    .get(key)
+                    .map_or_else(|| key.to_string(), |path| path.as_str().to_string()),
+                value: value.clone(),
+            })
+        })
+        .collect();
+    SeriesProjection {
+        id,
+        label: column.label.clone(),
+        source: column.source.clone(),
+        unit: if points.is_empty() {
+            None
+        } else {
+            common_series_unit(keys, nodes_by_key)
+        },
+        points,
+    }
+}
+
+fn series_id_for_comparative_source(source: &ComparativeSourceProjection) -> String {
+    match source {
+        ComparativeSourceProjection::Published => "series:published".to_string(),
+        ComparativeSourceProjection::Candidate { handle } => format!("series:candidate:{handle}"),
+        ComparativeSourceProjection::Scenario { id } => format!("series:scenario:{id}"),
+    }
+}
+
+fn common_series_unit(
+    keys: &[NodeKey],
+    nodes_by_key: &BTreeMap<NodeKey, NodeView>,
+) -> Option<String> {
+    if keys.is_empty() {
+        return None;
+    }
+    let mut common = None::<String>;
+    for key in keys {
+        let node = nodes_by_key.get(key)?;
+        let unit = node
+            .attributes
+            .get("series_unit")
+            .or_else(|| node.attributes.get("unit"))
+            .map(|unit| unit.trim())
+            .filter(|unit| !unit.is_empty())?;
+        match &common {
+            Some(existing) if existing != unit => return None,
+            Some(_) => {}
+            None => common = Some(unit.to_string()),
+        }
+    }
+    common
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
