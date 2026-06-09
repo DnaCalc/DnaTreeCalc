@@ -37,8 +37,9 @@ The standard iteration loop is:
 The running success test is: a future skin can become richer because it reads more typed truth or
 sends a better typed command, while the semantic boundary remains obvious in code and tests.
 
-Current cursor: **W4a - Revision graph**, with the remaining W3 formula-rewrite/rebind verbs parked
-until their owning OxFml/OxCalc substrates are available. W2 safe structural authoring is
+Current cursor: **W4b - Candidate substrate**, with scoped W4a revision graph work complete and the
+remaining W3 formula-rewrite/rebind verbs parked until their owning OxFml/OxCalc substrates are
+available. W2 safe structural authoring is
 closed for the current Skin IR surface: receipts carry typed errors and real OxCalc transaction ids,
 previews use OxFml dry-bind plus OxCalc invalidation planning, and the closure review found no
 skin-side formula parsing, semantic value computation, or transaction-id fabrication. The first W3
@@ -418,7 +419,7 @@ The roadmap alignment rule is:
       transaction. Generated-node table operations (`AddTableRow`, constant `AddTableColumn`) now use
       OxCalc reserved node ids and carry real transaction ids for the current Skin IR table-add
       surface.
-- [ ] `revision-graph-retention`: first OxCalc substrate slice landed in
+- [x] `revision-graph-retention`: first OxCalc substrate slice landed in
       `0735d9c Retain workspace revision lineage`: `OxCalcTreeContext` retains an in-memory
       parent-linked revision graph, `workspace_view` exposes the current parent plus retained
       entries, and `OxCalcTreeEditTransaction` returns predecessor/successor revision ids with one
@@ -435,8 +436,12 @@ The roadmap alignment rule is:
       slice is also landed: OxCalc retains transaction id, invalidated node ids, rebind flags, typed
       invalidation reasons, and estimated invalidated-node count on successor revision entries, and
       DnaTreeCalc projects those facts through `RevisionHistoryEntryProjection.transaction_summary`
-      keyed by `NodeKey`. Still open before full time-travel/history claims: bounded
-      eviction/persistence policy.
+      keyed by `NodeKey`. Bounded retention is now OxCalc-owned and deterministic: retained
+      in-memory revisions use oldest-first eviction through `OxCalcTreeRevisionRetentionPolicy`
+      while preserving the current revision. Persistence policy is explicit: workspace snapshots
+      persist the active revision/layer state, not the navigable retained history DAG. This closes
+      scoped W4a for in-memory undo/history/time-scrub substrate; durable cross-session history is a
+      future product/storage layer rather than hidden engine state.
 - [ ] `candidate-overlay-handle`: addressable, layerable, non-publishing candidate contexts.
 - [x] `value-epoch-keying`: per-node published-value epoch distinct from input epoch.
 

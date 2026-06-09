@@ -28,11 +28,12 @@ Use this decision rule when picking the next item:
 
 ## Active Cursor
 
-Active wave: **W4a - Revision graph**.
+Active wave: **W4b - Candidate substrate**.
 
-Current objective: finish the first product-usable revision-navigation tranche without inventing
-undo semantics in the host or skins. OxCalc owns retained revision restoration; the DnaTreeCalc host
-owns closed intents, command cursor stacks, projection refresh, and selection restoration.
+Current objective: spike and then build the addressable, layerable, non-publishing candidate
+overlay substrate without letting skins or the host fabricate what-if semantics. OxCalc owns
+candidate state, publication/discard, overlay provenance, and value epochs; the DnaTreeCalc host
+will expose only typed handles, projections, and closed intents.
 
 Context: first W3 assessment is complete. The formula rewrite verbs
 (`replicate-by-id`, `f4-toggle-binding`, and broader `reference-insertion`) require OxFml-owned
@@ -374,7 +375,7 @@ Use this as the per-tranche goal statement before implementation:
 - [x] `transaction-scope`: current W2 node, table snapshot, generated-node table add, and
       existing-node scoped content receipts carry real OxCalc transaction ids. Remaining scoped
       multi-target authoring verbs belong to W3 command expansion rather than W2 closure.
-- [ ] `revision-graph-retention`: first OxCalc substrate slice landed in
+- [x] `revision-graph-retention`: first OxCalc substrate slice landed in
       `0735d9c Retain workspace revision lineage`: in-memory parent-linked revision graph,
       workspace-view retained entries/current parent, and transaction predecessor/successor ids.
       Follow-on OxCalc slice `8bc6283 Navigate retained workspace revisions` adds in-memory
@@ -388,8 +389,11 @@ Use this as the per-tranche goal statement before implementation:
       selection. Current OxCalc/DnaTreeCalc transaction-summary slice retains transaction id,
       invalidated node ids, rebind flags, typed invalidation reasons, and estimated invalidated-node
       count on successor revision entries, then projects those facts through Skin IR revision
-      history keyed by `NodeKey`. Still required before full time-travel or history UI claims:
-      bounded eviction/persistence policy.
+      history keyed by `NodeKey`. Bounded retention is now OxCalc-owned and deterministic:
+      `OxCalcTreeRevisionRetentionPolicy` caps retained in-memory revisions with oldest-first
+      eviction while preserving the current revision. Persistence policy is explicit: workspace
+      snapshots preserve the active revision/layer state, not the navigable retained history DAG.
+      Scoped W4a is closed for the in-memory undo/history/time-scrub substrate.
 - [ ] `candidate-overlay-handle`: implement N addressable, layerable, non-publishing candidate
       contexts before scenarios, what-if previews, goal seek, sweeps, or comparative overlays.
 - [x] `value-epoch-keying`: per-node published-value epoch is available for projection consumers.
