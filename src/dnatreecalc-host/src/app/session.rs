@@ -17,11 +17,12 @@ use dnatreecalc_skin_framework::{
     NodeContentKind as FrameworkContentKind, NodeId, NodeInvalidationProjection, NodeKey,
     NodeNoteProjection, NodeValueProjection, NodeView, NoteSourceProjection, PhaseKeyProjection,
     RecalcPlanInvalidationProjection, RecalcPlanMutation, RecalcPlanProjection,
-    ReferenceResolutionProjection, ReferenceTargetProjection, RuntimeEffectFamilyProjection,
-    RuntimeEffectProjection, RuntimeOverlayKindProjection, RuntimeOverlayProjection,
-    SourceSpanProjection, TableAnchorProjection, TableCellInput, TableCellProjection,
-    TableCellRegionProjection, TableCellsProjection, TableColumnBodyProjection,
-    TableColumnProjection, TableDependencyFactBlockerProjection, TableDependencyFactKindProjection,
+    ReferenceResolutionProjection, ReferenceTargetProjection, RevisionHistoryEntryProjection,
+    RevisionHistoryProjection, RuntimeEffectFamilyProjection, RuntimeEffectProjection,
+    RuntimeOverlayKindProjection, RuntimeOverlayProjection, SourceSpanProjection,
+    TableAnchorProjection, TableCellInput, TableCellProjection, TableCellRegionProjection,
+    TableCellsProjection, TableColumnBodyProjection, TableColumnProjection,
+    TableDependencyFactBlockerProjection, TableDependencyFactKindProjection,
     TableDependencyFactProjection, TableDependencyFactStatusProjection,
     TableFormulaBindPreviewProjection, TableFormulaMetadataProjection, TableProjection,
     TableRowInput, TableRowProjection, TreeReferenceCollectionFamilyProjection,
@@ -61,6 +62,7 @@ use oxcalc_core::treecalc::{
     DerivationInvocationTraceNode, DerivationPreparedArgumentTrace, DerivationTraceRecord,
     LocalTreeCalcPhaseKey,
 };
+use oxcalc_core::workspace_revision::WorkspaceRevisionId;
 use oxfml_core::binding::NameKind;
 use oxfml_core::consumer::editor::{
     EditorAnalysisStage, EditorEditService, EditorEnvironment, EditorHostReferenceInsertionError,
@@ -4099,6 +4101,19 @@ impl TreeWorkspaceSession {
         )
     }
 
+    pub fn navigate_workspace_revision(
+        &mut self,
+        revision_id: &str,
+    ) -> Result<(), TreeWorkspaceSessionError> {
+        self.context.navigate_workspace_revision(
+            &self.workspace_id,
+            &WorkspaceRevisionId(revision_id.to_string()),
+        )?;
+        self.refresh_projection_from_context()?;
+        self.last_outcome = None;
+        Ok(())
+    }
+
     pub fn workspace_state(&self) -> Result<WorkspaceState, TreeWorkspaceSessionError> {
         let workspace_view = self.context.workspace_view(&self.workspace_id)?;
         let revision = WorkspaceRevisionProjection {
@@ -4115,6 +4130,21 @@ impl TreeWorkspaceSession {
             publication_snapshot_id: Some(workspace_view.publication_snapshot_id.to_string()),
             runtime_overlay_set_id: Some(workspace_view.runtime_overlay_set_id.to_string()),
             value_epoch: workspace_view.value_epoch,
+        };
+        let revision_history = RevisionHistoryProjection {
+            current_revision_id: Some(workspace_view.workspace_revision_id.to_string()),
+            entries: workspace_view
+                .workspace_revision_graph_entries
+                .iter()
+                .map(|entry| RevisionHistoryEntryProjection {
+                    revision_id: entry.revision_id.to_string(),
+                    parent_revision_id: entry.parent_revision_id.as_ref().map(ToString::to_string),
+                    structural_snapshot_id: entry.structure_snapshot_id.to_string(),
+                    node_input_snapshot_id: entry.node_input_snapshot_id.to_string(),
+                    namespace_snapshot_id: entry.namespace_snapshot_id.to_string(),
+                    is_current: entry.revision_id == workspace_view.workspace_revision_id,
+                })
+                .collect(),
         };
         let views_by_tree_id = workspace_view
             .nodes
@@ -4254,6 +4284,7 @@ impl TreeWorkspaceSession {
             profile: self.profile,
             projection_seq: 0,
             revision,
+            revision_history,
             last_run,
             node_order: self.display_order.clone(),
             key_order: self

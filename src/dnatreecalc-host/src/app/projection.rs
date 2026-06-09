@@ -80,6 +80,7 @@ pub fn workspace_state_from_model(model: &WorkspaceModel) -> WorkspaceState {
         profile: model.profile.as_str(),
         projection_seq: 0,
         revision: WorkspaceRevisionProjection::default(),
+        revision_history: Default::default(),
         last_run: None,
         node_order: model
             .node_order

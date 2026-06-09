@@ -20,6 +20,7 @@ pub struct WorkspaceState {
     pub profile: &'static str,
     pub projection_seq: u64,
     pub revision: WorkspaceRevisionProjection,
+    pub revision_history: RevisionHistoryProjection,
     pub last_run: Option<CalcRunProjection>,
     pub node_order: Vec<NodeId>,
     pub key_order: Vec<NodeKey>,
@@ -662,6 +663,22 @@ pub struct WorkspaceRevisionProjection {
     pub publication_snapshot_id: Option<String>,
     pub runtime_overlay_set_id: Option<String>,
     pub value_epoch: u64,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RevisionHistoryProjection {
+    pub current_revision_id: Option<String>,
+    pub entries: Vec<RevisionHistoryEntryProjection>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RevisionHistoryEntryProjection {
+    pub revision_id: String,
+    pub parent_revision_id: Option<String>,
+    pub structural_snapshot_id: String,
+    pub node_input_snapshot_id: String,
+    pub namespace_snapshot_id: String,
+    pub is_current: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

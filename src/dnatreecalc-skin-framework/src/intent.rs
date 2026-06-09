@@ -302,6 +302,11 @@ pub enum WorkspaceIntent {
     SwitchWorkspace {
         workspace_id: String,
     },
+    /// Navigate the active workspace to an OxCalc-retained revision. This is
+    /// not inverse replay; OxCalc owns the actual restoration semantics.
+    NavigateRevision {
+        revision_id: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -618,7 +623,8 @@ impl Dispatcher for InMemoryDispatcher {
             | WorkspaceIntent::ReorderTableColumn { .. }
             | WorkspaceIntent::DeleteTableColumn { .. }
             | WorkspaceIntent::NewWorkspace
-            | WorkspaceIntent::SwitchWorkspace { .. } => IntentReceipt::accepted(),
+            | WorkspaceIntent::SwitchWorkspace { .. }
+            | WorkspaceIntent::NavigateRevision { .. } => IntentReceipt::accepted(),
         }
     }
 }

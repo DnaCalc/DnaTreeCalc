@@ -379,10 +379,11 @@ Use this as the per-tranche goal statement before implementation:
       workspace-view retained entries/current parent, and transaction predecessor/successor ids.
       Follow-on OxCalc slice `8bc6283 Navigate retained workspace revisions` adds in-memory
       navigation to retained revisions and restores OxCalc-owned structural/input/namespace,
-      table, publication, runtime-overlay, value-epoch, and diagnostic state. Still required before
-      undo, redo, time travel, or history UI claims: host/Skin IR history projection, product
-      undo/redo command routing, bounded eviction/persistence policy, and transaction invalidation
-      summaries.
+      table, publication, runtime-overlay, value-epoch, and diagnostic state. Current DnaTreeCalc
+      slice projects retained revision history into `WorkspaceState` and routes `NavigateRevision`
+      through the host dispatcher to OxCalc without inverse replay. Still required before undo,
+      redo, time travel, or history UI claims: product undo/redo command routing, bounded
+      eviction/persistence policy, and transaction invalidation summaries.
 - [ ] `candidate-overlay-handle`: implement N addressable, layerable, non-publishing candidate
       contexts before scenarios, what-if previews, goal seek, sweeps, or comparative overlays.
 - [x] `value-epoch-keying`: per-node published-value epoch is available for projection consumers.

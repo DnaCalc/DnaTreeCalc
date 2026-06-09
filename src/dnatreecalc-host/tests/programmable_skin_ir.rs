@@ -86,6 +86,88 @@ fn programmable_skin_projection_refreshes_after_each_calc_affecting_intent() {
 }
 
 #[test]
+fn programmable_skin_projects_and_navigates_retained_revision_history() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    skin.add_node(Some("Root"), "A", "1");
+    skin.add_node(Some("Root"), "B", "=A+1");
+    let original = skin.state();
+    let original_revision = original
+        .revision
+        .workspace_revision_id
+        .clone()
+        .expect("original revision should project");
+    assert_eq!(
+        original.revision_history.current_revision_id.as_deref(),
+        Some(original_revision.as_str())
+    );
+    assert!(
+        original
+            .revision_history
+            .entries
+            .iter()
+            .any(|entry| entry.revision_id == original_revision && entry.is_current)
+    );
+    skin.assert_scalar("Root.B", "2");
+
+    skin.edit("Root.A", "5");
+    let edited = skin.state();
+    let edited_revision = edited
+        .revision
+        .workspace_revision_id
+        .clone()
+        .expect("edited revision should project");
+    assert_ne!(edited_revision, original_revision);
+    skin.assert_scalar("Root.B", "6");
+
+    let receipt = skin.navigate_revision(&original_revision);
+    assert!(receipt.accepted);
+    assert_eq!(
+        receipt.produced_revision.as_deref(),
+        Some(original_revision.as_str())
+    );
+    let restored = skin.state();
+    assert_eq!(
+        restored.revision.workspace_revision_id.as_deref(),
+        Some(original_revision.as_str())
+    );
+    assert_eq!(
+        restored.revision_history.current_revision_id.as_deref(),
+        Some(original_revision.as_str())
+    );
+    assert!(
+        restored
+            .revision_history
+            .entries
+            .iter()
+            .any(|entry| entry.revision_id == edited_revision && !entry.is_current)
+    );
+    skin.assert_scalar("Root.B", "2");
+
+    skin.edit("Root.A", "7");
+    let branch = skin.state();
+    let branch_revision = branch
+        .revision
+        .workspace_revision_id
+        .clone()
+        .expect("branch revision should project");
+    assert_ne!(branch_revision, edited_revision);
+    assert_ne!(branch_revision, original_revision);
+    let children_of_original = branch
+        .revision_history
+        .entries
+        .iter()
+        .filter(|entry| entry.parent_revision_id.as_deref() == Some(original_revision.as_str()))
+        .map(|entry| entry.revision_id.clone())
+        .collect::<Vec<_>>();
+    assert!(children_of_original.contains(&edited_revision));
+    assert!(children_of_original.contains(&branch_revision));
+    skin.assert_scalar("Root.B", "8");
+}
+
+#[test]
 fn programmable_skin_projects_per_node_published_value_epochs() {
     let harness = Harness::empty();
     let skin = harness.driver.clone();

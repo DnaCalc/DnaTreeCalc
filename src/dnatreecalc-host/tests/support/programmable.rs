@@ -78,6 +78,12 @@ impl ProgrammableDriver {
         })
     }
 
+    pub fn navigate_revision(&self, revision_id: &str) -> IntentReceipt {
+        self.dispatch.dispatch(WorkspaceIntent::NavigateRevision {
+            revision_id: revision_id.to_string(),
+        })
+    }
+
     pub fn try_edit_scoped_content(&self, scope: AuthoringScope, content: &str) -> IntentReceipt {
         self.dispatch.dispatch(WorkspaceIntent::EditScopedContent {
             scope,

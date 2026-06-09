@@ -445,6 +445,12 @@ impl Dispatcher for HostDispatcher {
                     session.delete_table_column_transaction(&table, &column_id)
                 })
                 .map_or_else(IntentReceipt::rejected, receipt_for_publication),
+            WorkspaceIntent::NavigateRevision { revision_id } => self
+                .apply_workspace_edit(
+                    |session| session.navigate_workspace_revision(&revision_id),
+                    WorkspaceEditPublication::ProjectOnly,
+                )
+                .map_or_else(IntentReceipt::rejected, receipt_for_publication),
             WorkspaceIntent::NewWorkspace => self
                 .create_workspace()
                 .map_or_else(IntentReceipt::rejected, receipt_for_publication),
@@ -488,6 +494,7 @@ fn table_cell_exists(workspace: &WorkspaceState, selection: &TableCellSelection)
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum WorkspaceEditPublication {
+    ProjectOnly,
     Recalculate,
 }
 
