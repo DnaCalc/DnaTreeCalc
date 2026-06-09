@@ -547,6 +547,11 @@ Use this as the per-tranche goal statement before implementation:
       Competing same-node rename-vs-rename remains rejected as a typed conflict. Focused OxCalc and
       programmable Skin IR tests prove both accepted rebase/commit paths and the rejected competing
       rename case.
+- [x] `candidate-overlay-handle` same-parent rename/add namespace merge slice:
+      Candidate rename over live sibling add now rebases through OxCalc typed structural lane touches
+      when the final namespace is legal. Duplicate-name replay validation is reported as typed
+      `CandidateRebaseConflict`, not generic structural failure. Focused OxCalc and programmable
+      Skin IR tests prove the accepted non-collision and rejected collision paths.
 - [x] W4c `scenario-projection` first candidate-backed scenario rail slice:
       DnaTreeCalc projects `WorkspaceState.scenarios` as a host-owned manifest over existing OxCalc
       candidate handles and exposes closed create/activate/delete scenario intents. Creating a
@@ -634,9 +639,9 @@ Use this as the per-tranche goal statement before implementation:
       when no visible selection exists. Framework tests prove helper output; walking-skeleton and
       programmable Skin IR tests prove the real skins still mount and route host selection/dispatch.
 - [ ] `candidate-overlay-handle`: continue W4b with broader structural order/delete/name-collision
-      merge algebra beyond same-node rename/move facet merging, candidate add-node template initial
-      content, direct sweep/goal-seek comparison columns/series, and broader what-if UX before goal
-      seek or sweeps.
+      merge algebra beyond same-node rename/move and same-parent rename/add facet merging,
+      candidate add-node template initial content, direct sweep/goal-seek comparison columns/series,
+      and broader what-if UX before goal seek or sweeps.
 - [x] `value-epoch-keying`: per-node published-value epoch is available for projection consumers.
 
 ## Next-Wave Parking Lot

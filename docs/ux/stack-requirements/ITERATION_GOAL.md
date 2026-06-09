@@ -89,8 +89,11 @@ content edits on the affected nodes/parent, then commit the merged structure and
 normal candidate bridge. The first same-node structural facet merge slice is also landed: OxCalc
 allows candidate rename over live move and candidate move over live rename for the same stable node
 when replay validation succeeds, while competing same-node rename-vs-rename still rejects with a
-typed rebase conflict. Candidate add-node template policy, competing structural order/delete/name
-merge algebra beyond this rename/move facet, and full scenario/what-if UX remain open. The
+typed rebase conflict. The first same-parent namespace merge slice is now landed too: candidate
+rename can rebase over a live sibling add when the final namespace is legal, while a duplicate-name
+collision discovered during replay validation is surfaced as a typed candidate rebase conflict.
+Candidate add-node template policy, competing structural order/delete/name merge algebra beyond
+these rename/move and rename/add facets, and full scenario/what-if UX remain open. The
 first richer host-pin retention slice
 is also landed: OxCalc exposes explicit candidate retention pins that protect active candidates from
 budget reaping, DnaTreeCalc projects pin counts and pressure reason counts, and Skin IR exposes
@@ -681,6 +684,13 @@ The roadmap alignment rule is:
       rebase/commit paths plus the rejection from outside the skin layer. Structural order/delete
       and broader name-collision merge algebra, template initial content, and broader what-if UX
       remain open.
+- [x] `candidate-overlay-handle` same-parent rename/add namespace merge slice:
+      OxCalc now treats candidate rename versus live sibling add as a compatible structural-lane
+      pair and lets normal replay validation own final namespace legality. Non-colliding rename/add
+      rebases and commits; duplicate-name replay rejection is converted to typed
+      `CandidateRebaseConflict` instead of leaking as a generic structural failure. Focused OxCalc
+      and programmable Skin IR tests prove the accepted and rejected paths. Structural order/delete
+      merge algebra, template initial content, and broader what-if UX remain open.
 - [x] W4c `scenario-projection` first candidate-backed scenario rail slice:
       DnaTreeCalc projects `WorkspaceState.scenarios` as a host-owned manifest over existing OxCalc
       candidate handles, with closed `CreateScenarioFromCandidate`, `ActivateScenario`, and
@@ -784,8 +794,8 @@ The roadmap alignment rule is:
       multi-slot composition, and broader screen-reader/browser audits remain later W5 work.
 - [ ] `candidate-overlay-handle`: continue toward fully addressable, layerable, non-publishing
       candidate contexts with broader structural order/delete/name-collision merge algebra beyond
-      same-node rename/move facet merging, candidate add-node template initial content, direct
-      sweep/goal-seek comparison columns/series, and broader what-if UX.
+      same-node rename/move and same-parent rename/add facet merging, candidate add-node template
+      initial content, direct sweep/goal-seek comparison columns/series, and broader what-if UX.
 - [x] `value-epoch-keying`: per-node published-value epoch distinct from input epoch.
 
 ## Status Template
