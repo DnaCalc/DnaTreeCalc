@@ -4649,13 +4649,13 @@ impl TreeWorkspaceSession {
                     .collect::<Result<BTreeMap<_, _>, TreeWorkspaceSessionError>>()
             },
         )?;
+        let candidate_node_ids = candidate_node_id_lookup_for_view(view)?;
         let run = view
             .calculation
             .as_ref()
-            .map(|calculation| self.candidate_calc_run_projection(calculation))
-            .transpose()?
-            .flatten();
-        let nodes = candidate_nodes_projection_for_view(view)?;
+            .map(|calculation| self.candidate_calc_run_projection(calculation, &candidate_node_ids))
+            .transpose()?;
+        let nodes = candidate_nodes_projection_for_view(view, &candidate_node_ids)?;
         Ok(CandidateProjection {
             handle: view.handle.to_string(),
             basis_revision_id: view.basis_revision_id.to_string(),
@@ -5481,6 +5481,17 @@ impl TreeWorkspaceSession {
         outcome: &OxCalcTreeCalculationOutcome,
     ) -> Result<BTreeMap<TreeNodeId, Vec<BindingDiagnosticProjection>>, TreeWorkspaceSessionError>
     {
+        self.binding_diagnostics_by_tree_id_with(outcome, &|node_id| {
+            self.node_id_for_tree_node(node_id)
+        })
+    }
+
+    fn binding_diagnostics_by_tree_id_with(
+        &self,
+        outcome: &OxCalcTreeCalculationOutcome,
+        node_id_for_tree_node: &dyn Fn(TreeNodeId) -> Result<NodeId, TreeWorkspaceSessionError>,
+    ) -> Result<BTreeMap<TreeNodeId, Vec<BindingDiagnosticProjection>>, TreeWorkspaceSessionError>
+    {
         let mut diagnostics = BTreeMap::<TreeNodeId, Vec<BindingDiagnosticProjection>>::new();
         for diagnostic in &outcome.binding_diagnostics {
             if diagnostic.owner_node_id == self.engine_root_id {
@@ -5490,7 +5501,7 @@ impl TreeWorkspaceSession {
                 .entry(diagnostic.owner_node_id)
                 .or_default()
                 .push(BindingDiagnosticProjection {
-                    node: self.node_id_for_tree_node(diagnostic.owner_node_id)?,
+                    node: node_id_for_tree_node(diagnostic.owner_node_id)?,
                     node_key: node_key_for_tree_node(diagnostic.owner_node_id),
                     message: diagnostic.message.clone(),
                     span: SourceSpanProjection {
@@ -5781,6 +5792,14 @@ impl TreeWorkspaceSession {
         &self,
         outcome: &OxCalcTreeCalculationOutcome,
     ) -> Result<CalcRunProjection, TreeWorkspaceSessionError> {
+        self.calc_run_projection_with(outcome, &|node_id| self.node_id_for_tree_node(node_id))
+    }
+
+    fn calc_run_projection_with(
+        &self,
+        outcome: &OxCalcTreeCalculationOutcome,
+        node_id_for_tree_node: &dyn Fn(TreeNodeId) -> Result<NodeId, TreeWorkspaceSessionError>,
+    ) -> Result<CalcRunProjection, TreeWorkspaceSessionError> {
         let invalidated_nodes = outcome
             .invalidation_closure
             .impacted_order
@@ -5789,7 +5808,7 @@ impl TreeWorkspaceSession {
             .filter(|record| record.node_id != self.engine_root_id)
             .map(|record| {
                 Ok(NodeInvalidationProjection {
-                    node: self.node_id_for_tree_node(record.node_id)?,
+                    node: node_id_for_tree_node(record.node_id)?,
                     node_key: node_key_for_tree_node(record.node_id),
                     calc_state: calc_state_projection_for(record.calc_state),
                     requires_rebind: record.requires_rebind,
@@ -5812,7 +5831,7 @@ impl TreeWorkspaceSession {
                 .evaluation_order
                 .iter()
                 .filter(|node| **node != self.engine_root_id)
-                .map(|node| self.node_id_for_tree_node(*node))
+                .map(|node| node_id_for_tree_node(*node))
                 .collect::<Result<Vec<_>, _>>()?,
             runtime_effect_count: outcome.runtime_effects.len(),
             runtime_effects: outcome
@@ -5824,17 +5843,17 @@ impl TreeWorkspaceSession {
             runtime_overlays: outcome
                 .runtime_effect_overlays
                 .iter()
-                .map(|overlay| self.runtime_overlay_projection(overlay))
+                .map(|overlay| self.runtime_overlay_projection_with(overlay, node_id_for_tree_node))
                 .collect::<Result<Vec<_>, _>>()?,
             derivation_trace_count: outcome.derivation_traces.len(),
             derivation_traces: outcome
                 .derivation_traces
                 .iter()
-                .map(|trace| self.derivation_trace_projection(trace))
+                .map(|trace| self.derivation_trace_projection_with(trace, node_id_for_tree_node))
                 .collect::<Result<Vec<_>, _>>()?,
             invalidated_nodes,
             binding_diagnostics: self
-                .binding_diagnostics_by_tree_id(outcome)?
+                .binding_diagnostics_by_tree_id_with(outcome, node_id_for_tree_node)?
                 .into_values()
                 .flatten()
                 .collect(),
@@ -5850,21 +5869,26 @@ impl TreeWorkspaceSession {
     fn candidate_calc_run_projection(
         &self,
         outcome: &OxCalcTreeCalculationOutcome,
-    ) -> Result<Option<CalcRunProjection>, TreeWorkspaceSessionError> {
-        match self.calc_run_projection(outcome) {
-            Ok(run) => Ok(Some(run)),
-            Err(TreeWorkspaceSessionError::ProjectionOutOfSync { .. }) => Ok(None),
-            Err(error) => Err(error),
-        }
+        candidate_node_ids: &BTreeMap<TreeNodeId, NodeId>,
+    ) -> Result<CalcRunProjection, TreeWorkspaceSessionError> {
+        self.calc_run_projection_with(outcome, &|tree_node_id| {
+            candidate_node_ids
+                .get(&tree_node_id)
+                .cloned()
+                .ok_or_else(|| TreeWorkspaceSessionError::ProjectionOutOfSync {
+                    node: format!("candidate tree node {tree_node_id}"),
+                })
+        })
     }
 
-    fn derivation_trace_projection(
+    fn derivation_trace_projection_with(
         &self,
         trace: &DerivationTraceRecord,
+        node_id_for_tree_node: &dyn Fn(TreeNodeId) -> Result<NodeId, TreeWorkspaceSessionError>,
     ) -> Result<DerivationTraceProjection, TreeWorkspaceSessionError> {
         Ok(DerivationTraceProjection {
             trace_schema_id: trace.trace_schema_id.clone(),
-            owner: self.node_id_for_tree_node(trace.owner_node_id)?,
+            owner: node_id_for_tree_node(trace.owner_node_id)?,
             owner_key: node_key_for_tree_node(trace.owner_node_id),
             formula_artifact_id: trace.formula_artifact_id.clone(),
             bind_artifact_id: trace.bind_artifact_id.clone(),
@@ -5921,12 +5945,13 @@ impl TreeWorkspaceSession {
         })
     }
 
-    fn runtime_overlay_projection(
+    fn runtime_overlay_projection_with(
         &self,
         overlay: &OverlayEntry,
+        node_id_for_tree_node: &dyn Fn(TreeNodeId) -> Result<NodeId, TreeWorkspaceSessionError>,
     ) -> Result<RuntimeOverlayProjection, TreeWorkspaceSessionError> {
         Ok(RuntimeOverlayProjection {
-            owner: self.node_id_for_tree_node(overlay.key.owner_node_id)?,
+            owner: node_id_for_tree_node(overlay.key.owner_node_id)?,
             owner_key: node_key_for_tree_node(overlay.key.owner_node_id),
             kind: runtime_overlay_kind_projection_for(overlay.key.overlay_kind),
             structural_snapshot_id: overlay.key.structural_snapshot_id.to_string(),
@@ -7059,17 +7084,8 @@ fn revision_history_entry_projection_for(
 
 fn candidate_nodes_projection_for_view(
     view: &OxCalcTreeCandidateView,
+    candidate_node_ids: &BTreeMap<TreeNodeId, NodeId>,
 ) -> Result<Vec<CandidateNodeProjection>, TreeWorkspaceSessionError> {
-    let mut candidate_node_ids = BTreeMap::new();
-    for node in &view.nodes {
-        if node.canonical_path == ENGINE_ROOT_SYMBOL {
-            continue;
-        }
-        candidate_node_ids.insert(
-            node.node_id,
-            node_id_from_canonical_path(&node.canonical_path)?,
-        );
-    }
     let candidate_ids = view
         .nodes
         .iter()
@@ -7113,6 +7129,22 @@ fn candidate_nodes_projection_for_view(
             })
         })
         .collect()
+}
+
+fn candidate_node_id_lookup_for_view(
+    view: &OxCalcTreeCandidateView,
+) -> Result<BTreeMap<TreeNodeId, NodeId>, TreeWorkspaceSessionError> {
+    let mut candidate_node_ids = BTreeMap::new();
+    for node in &view.nodes {
+        if node.canonical_path == ENGINE_ROOT_SYMBOL {
+            continue;
+        }
+        candidate_node_ids.insert(
+            node.node_id,
+            node_id_from_canonical_path(&node.canonical_path)?,
+        );
+    }
+    Ok(candidate_node_ids)
 }
 
 fn invalidation_reason_kind_for_projection(

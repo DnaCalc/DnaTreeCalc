@@ -459,11 +459,15 @@ Use this as the per-tranche goal statement before implementation:
       candidate-context dry-bind for prospective new nodes, DnaTreeCalc uses it for formula literal
       initial content, and programmable Skin IR tests prove a candidate-added formula can bind
       against candidate-private structure.
+- [x] `candidate-overlay-handle` candidate run projection for candidate-only nodes:
+      DnaTreeCalc resolves candidate-private tree ids from `OxCalcTreeCandidateView.nodes` while
+      projecting candidate calculation runs, and programmable Skin IR tests prove a candidate-added
+      formula node appears in candidate `run.evaluation_order` without publishing to
+      `WorkspaceState.nodes`.
 - [ ] `candidate-overlay-handle`: continue toward fully addressable, layerable, non-publishing
       candidate contexts with optimized layering/rebase, candidate add-node inherited-table/template
-      initial content, candidate run/invalidation projection for candidate-only nodes, richer
-      candidate invalidation summaries, and overlay GC before scenarios, what-if previews, goal seek,
-      sweeps, or comparative overlays.
+      initial content, richer candidate invalidation summaries, and overlay GC before scenarios,
+      what-if previews, goal seek, sweeps, or comparative overlays.
 - [x] `value-epoch-keying`: per-node published-value epoch is available for projection consumers.
 
 ## Next-Wave Parking Lot

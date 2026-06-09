@@ -748,6 +748,11 @@ fn programmable_skin_adds_candidate_formula_node_against_private_structure() {
             .as_deref(),
         Some("2")
     );
+    let run = candidate
+        .run
+        .as_ref()
+        .expect("candidate run should project");
+    assert!(run.evaluation_order.contains(&NodeId::new("Root.Formula")));
 }
 
 #[test]
