@@ -455,10 +455,15 @@ Use this as the per-tranche goal statement before implementation:
       add by stable parent `NodeKey`, the host reserves the node id and dispatches the add through
       OxCalc's private candidate edit transaction, and programmable Skin IR tests prove
       candidate-private structure changes without publishing until commit.
+- [x] `candidate-overlay-handle` formula-literal candidate add-node dry-bind: OxCalc exposes
+      candidate-context dry-bind for prospective new nodes, DnaTreeCalc uses it for formula literal
+      initial content, and programmable Skin IR tests prove a candidate-added formula can bind
+      against candidate-private structure.
 - [ ] `candidate-overlay-handle`: continue toward fully addressable, layerable, non-publishing
-      candidate contexts with optimized layering/rebase, candidate add-node formula/table/template
-      initial content, richer candidate invalidation summaries, and overlay GC before scenarios,
-      what-if previews, goal seek, sweeps, or comparative overlays.
+      candidate contexts with optimized layering/rebase, candidate add-node inherited-table/template
+      initial content, candidate run/invalidation projection for candidate-only nodes, richer
+      candidate invalidation summaries, and overlay GC before scenarios, what-if previews, goal seek,
+      sweeps, or comparative overlays.
 - [x] `value-epoch-keying`: per-node published-value epoch is available for projection consumers.
 
 ## Next-Wave Parking Lot

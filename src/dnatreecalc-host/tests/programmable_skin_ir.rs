@@ -672,7 +672,86 @@ fn programmable_skin_adds_candidate_node_without_publishing_until_commit() {
 }
 
 #[test]
-fn programmable_skin_rejects_candidate_add_formula_initial_without_live_dry_bind() {
+fn programmable_skin_adds_candidate_formula_node_against_private_structure() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    skin.add_node(Some("Root"), "A", "1");
+    let open = skin.try_open_candidate();
+    assert!(open.accepted, "{:?}", open.error);
+    let state = skin.state();
+    let candidate = state.candidates.first().expect("candidate should project");
+    let handle = candidate.handle.clone();
+    let a_key = candidate
+        .nodes
+        .iter()
+        .find(|node| node.id == NodeId::new("Root.A"))
+        .expect("candidate source should project")
+        .key
+        .clone();
+
+    let rename = skin.try_rename_candidate_node(&handle, a_key, "PrivateA");
+    assert!(rename.accepted, "{:?}", rename.error);
+    let renamed_state = skin.state();
+    let renamed_candidate = renamed_state
+        .candidates
+        .iter()
+        .find(|candidate| candidate.handle == handle)
+        .expect("renamed candidate should project");
+    let root_key = renamed_candidate
+        .nodes
+        .iter()
+        .find(|node| node.id == NodeId::new("Root"))
+        .expect("candidate parent should project")
+        .key
+        .clone();
+
+    let added = skin.try_add_candidate_node(
+        &handle,
+        Some(root_key),
+        "Formula",
+        InitialNodeContentProjection::Literal {
+            content: "=PrivateA+1".to_string(),
+        },
+        false,
+    );
+    assert!(added.accepted, "{:?}", added.error);
+    assert!(skin.state().node(&NodeId::new("Root.Formula")).is_none());
+    let candidate_state = skin.state();
+    let candidate = candidate_state
+        .candidates
+        .iter()
+        .find(|candidate| candidate.handle == handle)
+        .expect("candidate should remain projected");
+    let formula_key = candidate
+        .nodes
+        .iter()
+        .find(|node| node.id == NodeId::new("Root.Formula"))
+        .expect("candidate formula node should project")
+        .key
+        .clone();
+
+    let evaluate = skin.try_evaluate_candidate(&handle);
+    assert!(evaluate.accepted, "{:?}", evaluate.error);
+    let candidate_state = skin.state();
+    let candidate = candidate_state
+        .candidates
+        .iter()
+        .find(|candidate| candidate.handle == handle)
+        .expect("candidate should remain projected");
+    assert_eq!(
+        candidate
+            .values_by_key
+            .get(&formula_key)
+            .map(NodeValueProjection::display_text)
+            .as_deref(),
+        Some("2")
+    );
+}
+
+#[test]
+fn programmable_skin_rejects_candidate_add_invalid_formula_initial() {
     let harness = Harness::empty();
     let skin = harness.driver.clone();
 
@@ -695,14 +774,14 @@ fn programmable_skin_rejects_candidate_add_formula_initial_without_live_dry_bind
         Some(root_key),
         "Formula",
         InitialNodeContentProjection::Literal {
-            content: "=1+1".to_string(),
+            content: "=MissingNode+1".to_string(),
         },
         false,
     );
     assert!(!rejected.accepted);
     assert!(matches!(
         rejected.error,
-        Some(IntentError::UnsupportedInitialContent { .. })
+        Some(IntentError::InitialContentBindRejected { .. })
     ));
     assert!(
         skin.state()

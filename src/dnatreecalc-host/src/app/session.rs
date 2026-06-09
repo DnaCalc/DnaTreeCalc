@@ -1370,11 +1370,18 @@ impl TreeWorkspaceSession {
         is_meta: bool,
     ) -> Result<CandidateProjection, TreeWorkspaceSessionError> {
         let handle = self.candidate_handle(handle)?;
+        let symbol = symbol.into();
         let parent_tree_node_id = match parent {
             Some(parent) => tree_node_id_from_node_key(parent)?,
             None => self.engine_root_id,
         };
-        let content = self.resolve_candidate_add_node_initial_content(&initial)?;
+        let content = self.resolve_candidate_add_node_initial_content(
+            &handle,
+            parent_tree_node_id,
+            symbol.as_str(),
+            &initial,
+            is_meta,
+        )?;
         let reserved_node_id = self.context.reserve_node_id();
         let view = self.context.apply_candidate_edit_transaction(
             &handle,
@@ -1392,13 +1399,29 @@ impl TreeWorkspaceSession {
 
     fn resolve_candidate_add_node_initial_content(
         &self,
+        handle: &CandidateOverlayHandle,
+        parent_tree_node_id: TreeNodeId,
+        symbol: &str,
         initial: &InitialNodeContentProjection,
+        is_meta: bool,
     ) -> Result<String, TreeWorkspaceSessionError> {
         match initial {
             InitialNodeContentProjection::Empty => Ok(String::new()),
-            InitialNodeContentProjection::Literal { content }
-                if !content.trim_start().starts_with('=') =>
-            {
+            InitialNodeContentProjection::Literal { content } => {
+                if content.trim_start().starts_with('=') {
+                    let verdict = self.context.dry_bind_candidate_new_node_formula_text(
+                        handle,
+                        OxCalcTreeNodeCreate::new(symbol, content.clone())
+                            .under(parent_tree_node_id)
+                            .with_meta(is_meta),
+                    )?;
+                    let bind = formula_bind_preview_from_oxcalc_verdict(verdict);
+                    if !bind.legal {
+                        return Err(TreeWorkspaceSessionError::InitialContentBindRejected {
+                            policy: initial.stable_id().to_string(),
+                        });
+                    }
+                }
                 Ok(content.clone())
             }
             _ => Err(TreeWorkspaceSessionError::UnsupportedInitialContent {
@@ -4629,8 +4652,9 @@ impl TreeWorkspaceSession {
         let run = view
             .calculation
             .as_ref()
-            .map(|calculation| self.calc_run_projection(calculation))
-            .transpose()?;
+            .map(|calculation| self.candidate_calc_run_projection(calculation))
+            .transpose()?
+            .flatten();
         let nodes = candidate_nodes_projection_for_view(view)?;
         Ok(CandidateProjection {
             handle: view.handle.to_string(),
@@ -5821,6 +5845,17 @@ impl TreeWorkspaceSession {
                 .collect(),
             diagnostics: outcome.diagnostics.clone(),
         })
+    }
+
+    fn candidate_calc_run_projection(
+        &self,
+        outcome: &OxCalcTreeCalculationOutcome,
+    ) -> Result<Option<CalcRunProjection>, TreeWorkspaceSessionError> {
+        match self.calc_run_projection(outcome) {
+            Ok(run) => Ok(Some(run)),
+            Err(TreeWorkspaceSessionError::ProjectionOutOfSync { .. }) => Ok(None),
+            Err(error) => Err(error),
+        }
     }
 
     fn derivation_trace_projection(
