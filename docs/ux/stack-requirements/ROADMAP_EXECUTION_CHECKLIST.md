@@ -377,9 +377,12 @@ Use this as the per-tranche goal statement before implementation:
 - [ ] `revision-graph-retention`: first OxCalc substrate slice landed in
       `0735d9c Retain workspace revision lineage`: in-memory parent-linked revision graph,
       workspace-view retained entries/current parent, and transaction predecessor/successor ids.
-      Still required before undo, redo, time travel, or history UI claims: cursor/navigation API,
-      retained publication/runtime compatibility, eviction-aware typed failure, persistence policy,
-      and transaction invalidation summaries.
+      Follow-on OxCalc slice `8bc6283 Navigate retained workspace revisions` adds in-memory
+      navigation to retained revisions and restores OxCalc-owned structural/input/namespace,
+      table, publication, runtime-overlay, value-epoch, and diagnostic state. Still required before
+      undo, redo, time travel, or history UI claims: host/Skin IR history projection, product
+      undo/redo command routing, bounded eviction/persistence policy, and transaction invalidation
+      summaries.
 - [ ] `candidate-overlay-handle`: implement N addressable, layerable, non-publishing candidate
       contexts before scenarios, what-if previews, goal seek, sweeps, or comparative overlays.
 - [x] `value-epoch-keying`: per-node published-value epoch is available for projection consumers.

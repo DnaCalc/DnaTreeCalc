@@ -421,9 +421,12 @@ The roadmap alignment rule is:
       `0735d9c Retain workspace revision lineage`: `OxCalcTreeContext` retains an in-memory
       parent-linked revision graph, `workspace_view` exposes the current parent plus retained
       entries, and `OxCalcTreeEditTransaction` returns predecessor/successor revision ids with one
-      public lineage edge per successful transaction. Still open: cursor/navigation API,
-      retained publication/runtime compatibility, eviction-aware typed failure, persistence policy,
-      and transaction invalidation summaries.
+      public lineage edge per successful transaction. Follow-on OxCalc slice
+      `8bc6283 Navigate retained workspace revisions` adds in-memory navigation to retained
+      revisions and restores OxCalc-owned structural/input/namespace, table, publication,
+      runtime-overlay, value-epoch, and diagnostic state. Still open: host/Skin IR history
+      projection, product undo/redo command routing, bounded eviction/persistence policy, and
+      transaction invalidation summaries.
 - [ ] `candidate-overlay-handle`: addressable, layerable, non-publishing candidate contexts.
 - [x] `value-epoch-keying`: per-node published-value epoch distinct from input epoch.
 
