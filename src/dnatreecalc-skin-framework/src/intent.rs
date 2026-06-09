@@ -251,6 +251,11 @@ pub enum WorkspaceIntent {
     DiscardCandidate {
         handle: String,
     },
+    /// Ask the engine to reclaim unprotected candidates until the retained
+    /// candidate count is at or below the requested budget.
+    ReapCandidates {
+        max_retained: usize,
+    },
     /// Commit a candidate into the live workspace if its basis revision is
     /// still current. Stale basis is a typed engine rejection.
     CommitCandidate {
@@ -688,6 +693,7 @@ impl Dispatcher for InMemoryDispatcher {
             | WorkspaceIntent::AddCandidateNode { .. }
             | WorkspaceIntent::EvaluateCandidate { .. }
             | WorkspaceIntent::DiscardCandidate { .. }
+            | WorkspaceIntent::ReapCandidates { .. }
             | WorkspaceIntent::CommitCandidate { .. }
             | WorkspaceIntent::AddNode { .. }
             | WorkspaceIntent::RenameNode { .. }

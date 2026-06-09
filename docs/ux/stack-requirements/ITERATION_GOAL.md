@@ -64,8 +64,12 @@ the candidate view when projecting candidate calculation runs, so evaluation ord
 records can name candidate-added nodes without publishing them. The candidate inherited table-column
 formula initial-content slice is now landed: candidate adds read formula text from candidate-private
 table metadata, dry-bind it in the candidate prospective-node context, and reject row-context table
-formulas before private mutation. Optimized layering/rebase, candidate add-node template policy,
-scenario/what-if UX, and broader candidate overlay GC remain open. Remaining W3
+formulas before private mutation. The first candidate speculation-budget/GC slice is now landed:
+OxCalc computes typed candidate pressure from live candidate handles, reaps unprotected candidates
+to a requested budget, and DnaTreeCalc projects the pressure plus a closed `ReapCandidates` Skin IR
+intent without host-side lifecycle fabrication. Optimized layering/rebase, candidate add-node
+template policy, scenario/what-if UX, and richer lease/host-pin candidate retention policy remain
+open. Remaining W3
 formula-rewrite/rebind verbs stay parked until their owning
 OxFml/OxCalc substrates are available. W2 safe structural authoring is
 closed for the current Skin IR surface: receipts carry typed errors and real OxCalc transaction ids,
@@ -550,9 +554,16 @@ The roadmap alignment rule is:
       private candidate content edit carries invalidated-node counts and rebind facts without
       publishing live state. Unsupported candidate edit families remain summary-less rather than
       fabricated.
+- [x] `candidate-overlay-handle` first speculation-budget/GC slice:
+      OxCalc computes typed candidate pressure, including retained, protected, reclaimable, and
+      over-budget candidate counts for a retention policy, and reaps unprotected candidates to a
+      requested budget with deterministic handle order. DnaTreeCalc projects those pressure facts
+      through `WorkspaceState.speculation_pressure` and exposes a closed `ReapCandidates` Skin IR
+      intent. Programmable Skin IR tests prove candidate removal deltas and pressure updates are
+      observed from outside the engine without publishing workspace node state.
 - [ ] `candidate-overlay-handle`: continue toward fully addressable, layerable, non-publishing
       candidate contexts with optimized layering/rebase, candidate add-node template initial content,
-      and overlay GC.
+      and richer lease/host-pin candidate retention policy.
 - [x] `value-epoch-keying`: per-node published-value epoch distinct from input epoch.
 
 ## Status Template

@@ -22,6 +22,7 @@ pub struct WorkspaceState {
     pub revision: WorkspaceRevisionProjection,
     pub revision_history: RevisionHistoryProjection,
     pub candidates: Vec<CandidateProjection>,
+    pub speculation_pressure: SpeculationPressureProjection,
     pub last_run: Option<CalcRunProjection>,
     pub node_order: Vec<NodeId>,
     pub key_order: Vec<NodeKey>,
@@ -34,6 +35,14 @@ pub struct WorkspaceState {
     pub tables: BTreeMap<NodeId, TableProjection>,
     pub clipboard: Option<ClipboardProjection>,
     pub diagnostics: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SpeculationPressureProjection {
+    pub retained_candidate_count: usize,
+    pub protected_candidate_count: usize,
+    pub reclaimable_candidate_count: usize,
+    pub over_budget_candidate_count: usize,
 }
 
 impl WorkspaceState {

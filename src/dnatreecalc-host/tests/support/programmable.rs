@@ -293,6 +293,11 @@ impl ProgrammableDriver {
         })
     }
 
+    pub fn try_reap_candidates(&self, max_retained: usize) -> IntentReceipt {
+        self.dispatch
+            .dispatch(WorkspaceIntent::ReapCandidates { max_retained })
+    }
+
     pub fn try_commit_candidate(&self, handle: &str) -> IntentReceipt {
         self.dispatch.dispatch(WorkspaceIntent::CommitCandidate {
             handle: handle.to_string(),

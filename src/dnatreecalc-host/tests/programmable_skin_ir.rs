@@ -897,6 +897,38 @@ fn programmable_skin_rejects_candidate_add_invalid_formula_initial() {
 }
 
 #[test]
+fn programmable_skin_reaps_candidates_to_budget_and_projects_pressure() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    for _ in 0..3 {
+        let open = skin.try_open_candidate();
+        assert!(open.accepted, "{:?}", open.error);
+    }
+    let before = skin.state();
+    assert_eq!(before.candidates.len(), 3);
+    assert_eq!(before.speculation_pressure.retained_candidate_count, 3);
+    assert_eq!(before.speculation_pressure.reclaimable_candidate_count, 3);
+    assert_eq!(before.speculation_pressure.over_budget_candidate_count, 1);
+    let first = before.candidates[0].handle.clone();
+    let second = before.candidates[1].handle.clone();
+
+    let receipt = skin.try_reap_candidates(1);
+    assert!(receipt.accepted, "{:?}", receipt.error);
+    let state = skin.state();
+    assert_eq!(state.candidates.len(), 1);
+    assert_eq!(state.speculation_pressure.retained_candidate_count, 1);
+    assert_eq!(state.speculation_pressure.over_budget_candidate_count, 0);
+    assert!(receipt.delta.changes.iter().any(|change| {
+        matches!(change, WorkspaceDeltaChange::CandidateRemoved(handle) if handle == &first)
+    }));
+    assert!(receipt.delta.changes.iter().any(|change| {
+        matches!(change, WorkspaceDeltaChange::CandidateRemoved(handle) if handle == &second)
+    }));
+}
+
+#[test]
 fn programmable_skin_rejects_stale_candidate_commit_without_losing_candidate() {
     let harness = Harness::empty();
     let skin = harness.driver.clone();

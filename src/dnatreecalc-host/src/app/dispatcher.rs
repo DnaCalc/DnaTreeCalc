@@ -320,6 +320,9 @@ impl Dispatcher for HostDispatcher {
             WorkspaceIntent::DiscardCandidate { handle } => self
                 .discard_candidate(&handle)
                 .unwrap_or_else(IntentReceipt::rejected),
+            WorkspaceIntent::ReapCandidates { max_retained } => self
+                .reap_candidates(max_retained)
+                .unwrap_or_else(IntentReceipt::rejected),
             WorkspaceIntent::CommitCandidate { handle } => self
                 .commit_candidate(&handle)
                 .map_or_else(IntentReceipt::rejected, receipt_for_publication),
@@ -931,6 +934,34 @@ impl HostDispatcher {
             let before = self.workspace.map(|workspace| workspace.get_untracked());
             session
                 .discard_candidate(handle)
+                .map_err(intent_error_from_session)?;
+            let mut after = session
+                .workspace_state()
+                .map_err(intent_error_from_session)?;
+            after.clipboard = before.as_ref().and_then(|state| state.clipboard.clone());
+            after.projection_seq = self.next_projection_seq.fetch_add(1, Ordering::Relaxed);
+            let delta = workspace_delta(before.as_ref(), &after, false);
+            if let Some(workspace) = self.workspace {
+                workspace.set(after);
+            }
+            Ok(IntentReceipt::accepted().with_delta(delta))
+        })
+    }
+
+    fn reap_candidates(&self, max_retained: usize) -> Result<IntentReceipt, IntentError> {
+        let session_id = self.active_session_id()?;
+        HOST_SESSIONS.with(|sessions| {
+            let session = sessions
+                .borrow()
+                .get(&session_id)
+                .cloned()
+                .ok_or_else(|| host_failure("workspace session handle is not available"))?;
+            let mut session = session
+                .lock()
+                .map_err(|_| host_failure("workspace session mutex poisoned"))?;
+            let before = self.workspace.map(|workspace| workspace.get_untracked());
+            session
+                .reap_candidates(max_retained)
                 .map_err(intent_error_from_session)?;
             let mut after = session
                 .workspace_state()

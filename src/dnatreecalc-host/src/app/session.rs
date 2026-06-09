@@ -22,9 +22,9 @@ use dnatreecalc_skin_framework::{
     RevisionHistoryProjection, RevisionInvalidationSummaryEntryProjection,
     RevisionTransactionSummaryProjection, RuntimeEffectFamilyProjection, RuntimeEffectProjection,
     RuntimeOverlayKindProjection, RuntimeOverlayProjection, SourceSpanProjection,
-    TableAnchorProjection, TableCellInput, TableCellProjection, TableCellRegionProjection,
-    TableCellsProjection, TableColumnBodyProjection, TableColumnProjection,
-    TableDependencyFactBlockerProjection, TableDependencyFactKindProjection,
+    SpeculationPressureProjection, TableAnchorProjection, TableCellInput, TableCellProjection,
+    TableCellRegionProjection, TableCellsProjection, TableColumnBodyProjection,
+    TableColumnProjection, TableDependencyFactBlockerProjection, TableDependencyFactKindProjection,
     TableDependencyFactProjection, TableDependencyFactStatusProjection,
     TableFormulaBindPreviewProjection, TableFormulaMetadataProjection, TableProjection,
     TableRowInput, TableRowProjection, TreeReferenceCollectionFamilyProjection,
@@ -32,8 +32,8 @@ use dnatreecalc_skin_framework::{
 };
 use oxcalc_core::consumer::OxCalcTreeRunState;
 use oxcalc_core::consumer::{
-    CandidateOverlayHandle, OxCalcTreeCalculationOutcome, OxCalcTreeCandidateView,
-    OxCalcTreeContext, OxCalcTreeContextError, OxCalcTreeContextOptions,
+    CandidateOverlayHandle, OxCalcTreeCalculationOutcome, OxCalcTreeCandidateReapPolicy,
+    OxCalcTreeCandidateView, OxCalcTreeContext, OxCalcTreeContextError, OxCalcTreeContextOptions,
     OxCalcTreeDryBindDiagnosticStage, OxCalcTreeDryBindInputKind,
     OxCalcTreeDryBindProfileViolationKind, OxCalcTreeDryBindVerdict, OxCalcTreeEdit,
     OxCalcTreeEditResult, OxCalcTreeEditTransaction, OxCalcTreeHostCapabilitySnapshot,
@@ -89,6 +89,7 @@ use crate::model::{
 };
 
 const ENGINE_ROOT_SYMBOL: &str = "__dnatreecalc_workspace__";
+const DEFAULT_SPECULATION_REAP_BUDGET: usize = 2;
 const DNATREE_DOCUMENT_SCHEMA_VERSION: &str = "dnatreecalc-workspace-document-v1";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1466,6 +1467,24 @@ impl TreeWorkspaceSession {
         self.context.discard_candidate(&handle_value)?;
         self.candidate_handles.remove(handle);
         Ok(handle.to_string())
+    }
+
+    pub fn reap_candidates(
+        &mut self,
+        max_retained: usize,
+    ) -> Result<Vec<String>, TreeWorkspaceSessionError> {
+        let report = self
+            .context
+            .reap_candidates(OxCalcTreeCandidateReapPolicy::max_retained(max_retained))?;
+        let reaped = report
+            .reaped_handles
+            .into_iter()
+            .map(|handle| handle.to_string())
+            .collect::<Vec<_>>();
+        for handle in &reaped {
+            self.candidate_handles.remove(handle);
+        }
+        Ok(reaped)
     }
 
     pub fn commit_candidate(
@@ -4524,6 +4543,10 @@ impl TreeWorkspaceSession {
             .iter()
             .filter_map(|root| nodes.get(root).map(|node| node.key.clone()))
             .collect::<Vec<_>>();
+        let speculation_pressure =
+            speculation_pressure_projection_for(self.context.candidate_pressure(
+                &OxCalcTreeCandidateReapPolicy::max_retained(DEFAULT_SPECULATION_REAP_BUDGET),
+            ));
 
         Ok(WorkspaceState {
             workspace_id: self.workspace_id.as_str().to_string(),
@@ -4532,6 +4555,7 @@ impl TreeWorkspaceSession {
             revision,
             revision_history,
             candidates: self.candidate_projections()?,
+            speculation_pressure,
             last_run,
             node_order: self.display_order.clone(),
             key_order: self
@@ -7167,6 +7191,17 @@ fn candidate_node_id_lookup_for_view(
         );
     }
     Ok(candidate_node_ids)
+}
+
+fn speculation_pressure_projection_for(
+    pressure: oxcalc_core::consumer::OxCalcTreeCandidatePressure,
+) -> SpeculationPressureProjection {
+    SpeculationPressureProjection {
+        retained_candidate_count: pressure.retained_candidate_count,
+        protected_candidate_count: pressure.protected_candidate_count,
+        reclaimable_candidate_count: pressure.reclaimable_candidate_count,
+        over_budget_candidate_count: pressure.over_budget_candidate_count,
+    }
 }
 
 fn inherited_candidate_column_formula_content(

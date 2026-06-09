@@ -475,9 +475,16 @@ Use this as the per-tranche goal statement before implementation:
       projects those summaries through candidate revision history. Programmable Skin IR tests prove a
       private candidate content edit carries invalidated-node counts and rebind facts without
       publishing live state.
+- [x] `candidate-overlay-handle` first speculation-budget/GC slice:
+      OxCalc computes typed candidate pressure for a retention policy, including retained,
+      protected, reclaimable, and over-budget candidate counts, and reaps unprotected candidates to
+      a requested budget. DnaTreeCalc projects the pressure through `WorkspaceState` and exposes a
+      closed `ReapCandidates` Skin IR intent; programmable Skin IR tests prove pressure changes and
+      candidate removal deltas from outside the engine.
 - [ ] `candidate-overlay-handle`: continue toward fully addressable, layerable, non-publishing
       candidate contexts with optimized layering/rebase, candidate add-node template initial content,
-      and overlay GC before scenarios, what-if previews, goal seek, sweeps, or comparative overlays.
+      and richer lease/host-pin candidate retention policy before scenarios, what-if previews, goal
+      seek, sweeps, or comparative overlays.
 - [x] `value-epoch-keying`: per-node published-value epoch is available for projection consumers.
 
 ## Next-Wave Parking Lot
