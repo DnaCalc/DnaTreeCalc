@@ -42,8 +42,15 @@ W4b OxCalc spike answered: `candidate-overlay-handle` is new OxCalc substrate, n
 the current candidate/publication lane or the published-basis `RuntimeOverlaySet`. The first OxCalc
 build slice is now landed: an opaque non-publishing candidate handle over a retained revision can
 take a private node edit, evaluate private values, and discard without publishing live workspace
-state. Commit/layering and host/Skin IR projection remain open. Remaining W3 formula-rewrite/rebind
-verbs stay parked until their owning
+state. The first commit bridge is also landed: a candidate can commit into the live workspace only
+when the live workspace revision still equals the candidate basis revision; stale-basis commit is a
+typed engine rejection. The first host/Skin IR projection slice is also landed: skins can open a
+candidate, apply a candidate-local content edit, evaluate private candidate values, discard the
+candidate, or commit it when the basis is current. Candidate projections live beside published
+workspace values, so candidate evaluation does not rewrite published node state. Layering,
+structural candidate edits, scenario/what-if UX, and richer candidate transaction summaries remain
+open. Remaining W3
+formula-rewrite/rebind verbs stay parked until their owning
 OxFml/OxCalc substrates are available. W2 safe structural authoring is
 closed for the current Skin IR surface: receipts carry typed errors and real OxCalc transaction ids,
 previews use OxFml dry-bind plus OxCalc invalidation planning, and the closure review found no
@@ -459,6 +466,17 @@ The roadmap alignment rule is:
       workspace revision, publication snapshot, runtime overlay set, visible value, and published
       value epoch remain unchanged. Follow-up commit/layering/projection work is tracked in OxCalc
       bead `calc-4ipg`.
+- [x] `candidate-overlay-handle` first commit bridge slice: OxCalc
+      `commit_candidate` promotes a candidate's private evaluated state into the live workspace only
+      when the live revision still matches the candidate basis. Focused tests cover successful
+      commit and typed stale-basis rejection while retaining the candidate for later discard or
+      future rebase semantics.
+- [x] `candidate-overlay-handle` first DnaTreeCalc host/Skin IR projection slice: Skin IR exposes
+      closed candidate lifecycle intents for open, candidate content edit, evaluate, discard, and
+      commit. `WorkspaceState.candidates` projects candidate values separately from published node
+      values, and programmable Skin IR tests prove candidate evaluation does not publish until
+      commit. Commit produces a new workspace revision; this slice does not fabricate a transaction
+      id when the promoted candidate revision has no retained transaction summary.
 - [ ] `candidate-overlay-handle`: addressable, layerable, non-publishing candidate contexts.
 - [x] `value-epoch-keying`: per-node published-value epoch distinct from input epoch.
 

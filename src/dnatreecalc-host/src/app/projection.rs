@@ -81,6 +81,7 @@ pub fn workspace_state_from_model(model: &WorkspaceModel) -> WorkspaceState {
         projection_seq: 0,
         revision: WorkspaceRevisionProjection::default(),
         revision_history: Default::default(),
+        candidates: Vec::new(),
         last_run: None,
         node_order: model
             .node_order

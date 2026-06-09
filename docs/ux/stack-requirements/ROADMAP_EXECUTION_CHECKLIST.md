@@ -34,8 +34,12 @@ Current objective: continue the addressable, layerable, non-publishing candidate
 without letting skins or the host fabricate what-if semantics. The OxCalc spike is complete and the
 first non-publishing handle slice is implemented under bead `calc-etez`: candidates open on retained
 revisions, accept private node edits, evaluate private values, and discard without advancing live
-publication. OxCalc owns candidate state, publication/discard, overlay provenance, and value epochs;
-the DnaTreeCalc host will expose only typed handles, projections, and closed intents.
+publication. The first commit bridge is also implemented: candidate state can promote only when the
+live revision still equals the candidate basis. The first host/Skin IR projection slice is now
+implemented for content-only candidate preview/evaluate, discard, and commit; candidate values
+project separately from published workspace values. OxCalc owns candidate state,
+publication/discard, overlay provenance, and value epochs; the DnaTreeCalc host exposes only typed
+handles, projections, and closed intents.
 
 Context: first W3 assessment is complete. The formula rewrite verbs
 (`replicate-by-id`, `f4-toggle-binding`, and broader `reference-insertion`) require OxFml-owned
@@ -405,6 +409,13 @@ Use this as the per-tranche goal statement before implementation:
       workspace revision, publication snapshot, runtime overlay set, visible value, and published
       value epoch remain unchanged. Follow-up commit/layering/projection work is tracked in OxCalc
       bead `calc-4ipg`.
+- [x] `candidate-overlay-handle` first commit bridge slice: OxCalc commits candidate-private
+      evaluated state into the live workspace only when the candidate basis revision is still
+      current, and returns typed stale-basis rejection otherwise.
+- [x] `candidate-overlay-handle` first DnaTreeCalc host/Skin IR projection slice: closed candidate
+      lifecycle intents project candidate values separately from published node state and commit
+      through OxCalc. Programmable Skin IR tests cover private candidate evaluation, commit, discard,
+      and stale-basis rejection.
 - [ ] `candidate-overlay-handle`: implement N addressable, layerable, non-publishing candidate
       contexts before scenarios, what-if previews, goal seek, sweeps, or comparative overlays.
 - [x] `value-epoch-keying`: per-node published-value epoch is available for projection consumers.

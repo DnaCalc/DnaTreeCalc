@@ -202,6 +202,42 @@ impl ProgrammableDriver {
             })
     }
 
+    pub fn try_open_candidate(&self) -> IntentReceipt {
+        self.dispatch.dispatch(WorkspaceIntent::OpenCandidate)
+    }
+
+    pub fn try_edit_candidate_content(
+        &self,
+        handle: &str,
+        node: &str,
+        content: &str,
+    ) -> IntentReceipt {
+        self.dispatch
+            .dispatch(WorkspaceIntent::EditCandidateContent {
+                handle: handle.to_string(),
+                node: NodeId::new(node),
+                content: content.to_string(),
+            })
+    }
+
+    pub fn try_evaluate_candidate(&self, handle: &str) -> IntentReceipt {
+        self.dispatch.dispatch(WorkspaceIntent::EvaluateCandidate {
+            handle: handle.to_string(),
+        })
+    }
+
+    pub fn try_discard_candidate(&self, handle: &str) -> IntentReceipt {
+        self.dispatch.dispatch(WorkspaceIntent::DiscardCandidate {
+            handle: handle.to_string(),
+        })
+    }
+
+    pub fn try_commit_candidate(&self, handle: &str) -> IntentReceipt {
+        self.dispatch.dispatch(WorkspaceIntent::CommitCandidate {
+            handle: handle.to_string(),
+        })
+    }
+
     pub fn edit_deferred(&self, node: &str, content: &str) {
         self.accept(WorkspaceIntent::EditContentDeferred {
             node: NodeId::new(node),

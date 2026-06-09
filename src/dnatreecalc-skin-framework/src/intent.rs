@@ -4,8 +4,8 @@ use std::sync::{Arc, Mutex};
 use crate::identity::{NodeId, NodeKey};
 use crate::selection::{SelectionState, TableCellSelection};
 use crate::workspace::{
-    CalcRunProjection, ClipboardProjection, DependencyKindProjection, InitialNodeContentProjection,
-    NodeValueProjection,
+    CalcRunProjection, CandidateProjection, ClipboardProjection, DependencyKindProjection,
+    InitialNodeContentProjection, NodeValueProjection,
 };
 use leptos::prelude::*;
 
@@ -198,6 +198,31 @@ pub enum WorkspaceIntent {
         replacement_start: usize,
         replacement_len: usize,
         target: FormulaReferenceInsertionTarget,
+    },
+    /// Open a non-publishing candidate overlay on the current workspace
+    /// revision. Candidate semantics are engine-owned; skins receive only the
+    /// opaque handle and projected candidate values.
+    OpenCandidate,
+    /// Apply a content edit inside a candidate without publishing workspace
+    /// state.
+    EditCandidateContent {
+        handle: String,
+        node: NodeId,
+        content: String,
+    },
+    /// Evaluate a candidate and publish the private result into the candidate
+    /// projection only.
+    EvaluateCandidate {
+        handle: String,
+    },
+    /// Drop an addressable candidate overlay without changing workspace state.
+    DiscardCandidate {
+        handle: String,
+    },
+    /// Commit a candidate into the live workspace if its basis revision is
+    /// still current. Stale basis is a typed engine rejection.
+    CommitCandidate {
+        handle: String,
     },
     AddNode {
         parent: Option<NodeId>,
@@ -464,6 +489,16 @@ pub enum IntentError {
     FormulaReferenceInsertionFailed { node: String, detail: String },
     #[error("duplicate subtree failed for {node}: {detail}")]
     DuplicateSubtreeUnsupported { node: String, detail: String },
+    #[error("unknown candidate {handle}")]
+    UnknownCandidate { handle: String },
+    #[error(
+        "candidate {handle} basis {basis_revision_id} is not current workspace revision {current_revision_id}"
+    )]
+    CandidateBasisNotCurrent {
+        handle: String,
+        basis_revision_id: String,
+        current_revision_id: String,
+    },
     #[error("engine rejected the intent: {0}")]
     EngineRejected(String),
     #[error("host failed to dispatch the intent: {0}")]
@@ -498,6 +533,8 @@ pub enum WorkspaceDeltaChange {
     CalcRun(CalcRunProjection),
     ClipboardChanged(Option<ClipboardProjection>),
     FormulaReferenceInserted(FormulaReferenceInsertionProjection),
+    CandidateChanged(CandidateProjection),
+    CandidateRemoved(String),
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -606,6 +643,11 @@ impl Dispatcher for InMemoryDispatcher {
             | WorkspaceIntent::PasteExternalClipboardText { .. }
             | WorkspaceIntent::DuplicateSubtree { .. }
             | WorkspaceIntent::InsertFormulaReference { .. }
+            | WorkspaceIntent::OpenCandidate
+            | WorkspaceIntent::EditCandidateContent { .. }
+            | WorkspaceIntent::EvaluateCandidate { .. }
+            | WorkspaceIntent::DiscardCandidate { .. }
+            | WorkspaceIntent::CommitCandidate { .. }
             | WorkspaceIntent::AddNode { .. }
             | WorkspaceIntent::RenameNode { .. }
             | WorkspaceIntent::MoveNode { .. }

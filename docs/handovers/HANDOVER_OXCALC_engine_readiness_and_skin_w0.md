@@ -99,7 +99,41 @@ OxCalc has landed the first non-publishing candidate substrate slice:
 | Discard | `discard_candidate` removes the handle; later reads return typed `UnknownCandidate`. |
 | Non-publication proof | Focused OxCalc test asserts live workspace revision, publication snapshot, runtime overlay set, visible value, and published value epoch remain unchanged after candidate evaluation. |
 
-Still open for DnaTreeCalc consumption, tracked in OxCalc bead `calc-4ipg`: candidate projection
-through `WorkspaceState`, closed preview/discard/commit intents, commit bridge into ordinary
-transaction/publication semantics, parent/layered candidate semantics, and candidate retention/GC
-policy.
+Still open for DnaTreeCalc consumption, tracked in OxCalc bead `calc-4ipg`: parent/layered
+candidate semantics, structural candidate edits, scenario/what-if UX, richer candidate transaction
+summary projection, and candidate retention/GC policy.
+
+## W4b first commit bridge update
+
+Status: Responded
+OxCalc evidence: focused commit tests in `cargo test -p oxcalc-core treecalc_context_candidate_commit -- --nocapture`
+
+OxCalc has landed the first candidate commit bridge:
+
+| Capability | Current scope |
+|---|---|
+| Commit | `commit_candidate` promotes a candidate's private evaluated workspace state into the live workspace. |
+| Basis guard | Commit is accepted only when the live workspace revision still equals the candidate basis revision. |
+| Stale basis | Stale commit returns typed `CandidateBasisNotCurrent` and keeps the candidate retained for discard or future rebase semantics. |
+| Handle lifecycle | Successful commit removes the candidate handle. |
+
+## W4b first host/Skin IR projection update
+
+DnaTreeCalc now consumes the first candidate substrate through closed Skin IR intents:
+
+| Surface | Current scope |
+|---|---|
+| `WorkspaceIntent::OpenCandidate` | Opens an OxCalc candidate on the current published workspace revision. |
+| `WorkspaceIntent::EditCandidateContent` | Applies a candidate-local content edit over an existing projected node id. |
+| `WorkspaceIntent::EvaluateCandidate` | Evaluates private candidate values and projects them under `WorkspaceState.candidates`. |
+| `WorkspaceIntent::DiscardCandidate` | Removes the candidate without publishing workspace state. |
+| `WorkspaceIntent::CommitCandidate` | Commits only when OxCalc accepts the basis-current guard; stale basis maps to typed `CandidateBasisNotCurrent`. |
+
+Candidate values are projected separately from published `NodeView.computed_value`, so skins can
+show what-if results without owning calculation semantics or mutating published state. Commit
+produces a new workspace revision and removes the candidate projection. This slice does not
+fabricate a transaction id when the promoted candidate revision has no retained transaction summary.
+
+Still open for DnaTreeCalc consumption, tracked in OxCalc bead `calc-4ipg`: parent/layered
+candidate semantics, structural candidate edits, scenario/what-if UX, richer candidate transaction
+summary projection, and candidate retention/GC policy.

@@ -2,16 +2,16 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use dnatreecalc_skin_framework::{
     AuthoringScope, BindingDiagnosticProjection, CalcRunProjection, CalcRunStateProjection,
-    DependencyDescriptorProjection, DependencyEdgeProjection, DependencyGraphProjection,
-    DependencyKindProjection, DerivationHoleBindingProjection, DerivationInvocationProjection,
-    DerivationOxfmlTraceEventProjection, DerivationPreparedArgumentProjection,
-    DerivationTemplateHoleProjection, DerivationTemplateSelectionProjection,
-    DerivationTraceProjection, EffectiveFormatProjection, FormatSourceProjection,
-    FormulaBindPreviewDiagnosticProjection, FormulaBindPreviewDiagnosticStage,
-    FormulaBindPreviewInputKind, FormulaBindPreviewProfileViolationKindProjection,
-    FormulaBindPreviewProfileViolationProjection, FormulaBindPreviewProjection,
-    FormulaReferenceInsertionProjection, FormulaReferenceInsertionTarget,
-    InitialNodeContentProjection, InvalidationReasonProjection,
+    CandidateProjection, DependencyDescriptorProjection, DependencyEdgeProjection,
+    DependencyGraphProjection, DependencyKindProjection, DerivationHoleBindingProjection,
+    DerivationInvocationProjection, DerivationOxfmlTraceEventProjection,
+    DerivationPreparedArgumentProjection, DerivationTemplateHoleProjection,
+    DerivationTemplateSelectionProjection, DerivationTraceProjection, EffectiveFormatProjection,
+    FormatSourceProjection, FormulaBindPreviewDiagnosticProjection,
+    FormulaBindPreviewDiagnosticStage, FormulaBindPreviewInputKind,
+    FormulaBindPreviewProfileViolationKindProjection, FormulaBindPreviewProfileViolationProjection,
+    FormulaBindPreviewProjection, FormulaReferenceInsertionProjection,
+    FormulaReferenceInsertionTarget, InitialNodeContentProjection, InvalidationReasonProjection,
     MutationImpactBlockedReasonProjection, MutationImpactIntentProjection,
     MutationImpactProjection, NameCollisionProjection, NodeAttributePatch, NodeCalcStateProjection,
     NodeContentKind as FrameworkContentKind, NodeId, NodeInvalidationProjection, NodeKey,
@@ -31,13 +31,14 @@ use dnatreecalc_skin_framework::{
 };
 use oxcalc_core::consumer::OxCalcTreeRunState;
 use oxcalc_core::consumer::{
-    OxCalcTreeCalculationOutcome, OxCalcTreeContext, OxCalcTreeContextError,
-    OxCalcTreeContextOptions, OxCalcTreeDryBindDiagnosticStage, OxCalcTreeDryBindInputKind,
+    CandidateOverlayHandle, OxCalcTreeCalculationOutcome, OxCalcTreeCandidateView,
+    OxCalcTreeContext, OxCalcTreeContextError, OxCalcTreeContextOptions,
+    OxCalcTreeDryBindDiagnosticStage, OxCalcTreeDryBindInputKind,
     OxCalcTreeDryBindProfileViolationKind, OxCalcTreeDryBindVerdict, OxCalcTreeEdit,
     OxCalcTreeEditResult, OxCalcTreeEditTransaction, OxCalcTreeHostCapabilitySnapshot,
-    OxCalcTreeNodeCreate, OxCalcTreeNodeView, OxCalcTreePreviewMutation, OxCalcTreeRuntimePolicy,
-    OxCalcTreeWorkspaceCreate, OxCalcTreeWorkspaceId, OxCalcTreeWorkspaceSnapshot,
-    TransactionRecalcPolicy,
+    OxCalcTreeNodeCreate, OxCalcTreeNodeView, OxCalcTreeOpenCandidateRequest,
+    OxCalcTreePreviewMutation, OxCalcTreeRuntimePolicy, OxCalcTreeWorkspaceCreate,
+    OxCalcTreeWorkspaceId, OxCalcTreeWorkspaceSnapshot, TransactionRecalcPolicy,
 };
 use oxcalc_core::coordinator::{RuntimeEffect, RuntimeEffectFamily};
 use oxcalc_core::dependency::{
@@ -117,6 +118,7 @@ pub struct TreeWorkspaceSession {
     display_order: Vec<NodeId>,
     recalc_count: usize,
     last_outcome: Option<OxCalcTreeCalculationOutcome>,
+    candidate_handles: BTreeMap<String, CandidateOverlayHandle>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -180,6 +182,7 @@ impl TreeWorkspaceSession {
             display_order: Vec::new(),
             recalc_count: 0,
             last_outcome: None,
+            candidate_handles: BTreeMap::new(),
         };
 
         for path in &model.node_order {
@@ -241,6 +244,7 @@ impl TreeWorkspaceSession {
             display_order: Vec::new(),
             recalc_count: 0,
             last_outcome: None,
+            candidate_handles: BTreeMap::new(),
         };
         session.refresh_projection_from_context()?;
         Ok(session)
@@ -1244,6 +1248,72 @@ impl TreeWorkspaceSession {
             result: (),
             transaction_id,
         })
+    }
+
+    pub fn open_candidate(&mut self) -> Result<CandidateProjection, TreeWorkspaceSessionError> {
+        let basis_revision_id = self
+            .context
+            .workspace_view(&self.workspace_id)?
+            .workspace_revision_id;
+        let view = self
+            .context
+            .open_candidate(OxCalcTreeOpenCandidateRequest::new(
+                self.workspace_id.clone(),
+                basis_revision_id,
+            ))?;
+        self.candidate_handles
+            .insert(view.handle.to_string(), view.handle.clone());
+        self.candidate_projection_for_view(&view)
+    }
+
+    pub fn edit_candidate_content(
+        &mut self,
+        handle: &str,
+        node: &NodeId,
+        content: impl Into<String>,
+    ) -> Result<CandidateProjection, TreeWorkspaceSessionError> {
+        let handle = self.candidate_handle(handle)?;
+        let tree_node_id = self.tree_node_id(node.as_str())?;
+        let view = self.context.apply_candidate_edit_transaction(
+            &handle,
+            OxCalcTreeEditTransaction::new(self.workspace_id.clone()).with_edit(
+                OxCalcTreeEdit::SetNodeFormulaText {
+                    node_id: tree_node_id,
+                    formula_text: content.into(),
+                },
+            ),
+        )?;
+        self.candidate_projection_for_view(&view)
+    }
+
+    pub fn evaluate_candidate(
+        &mut self,
+        handle: &str,
+    ) -> Result<CandidateProjection, TreeWorkspaceSessionError> {
+        let handle = self.candidate_handle(handle)?;
+        let view = self.context.evaluate_candidate(&handle)?;
+        self.candidate_projection_for_view(&view)
+    }
+
+    pub fn discard_candidate(&mut self, handle: &str) -> Result<String, TreeWorkspaceSessionError> {
+        let handle_value = self.candidate_handle(handle)?;
+        self.context.discard_candidate(&handle_value)?;
+        self.candidate_handles.remove(handle);
+        Ok(handle.to_string())
+    }
+
+    pub fn commit_candidate(&mut self, handle: &str) -> Result<String, TreeWorkspaceSessionError> {
+        let handle_value = self.candidate_handle(handle)?;
+        let outcome = self.context.commit_candidate(&handle_value)?;
+        self.candidate_handles.remove(handle);
+        if let Some(calculation) = outcome.calculation {
+            self.recalc_count += 1;
+            self.last_outcome = Some(calculation);
+        } else {
+            self.last_outcome = None;
+        }
+        self.refresh_projection_from_context()?;
+        Ok(handle.to_string())
     }
 
     pub fn edit_scoped_content_transaction(
@@ -4310,6 +4380,7 @@ impl TreeWorkspaceSession {
             projection_seq: 0,
             revision,
             revision_history,
+            candidates: self.candidate_projections()?,
             last_run,
             node_order: self.display_order.clone(),
             key_order: self
@@ -4406,6 +4477,61 @@ impl TreeWorkspaceSession {
             .ok_or_else(|| TreeWorkspaceSessionError::UnknownNodePath {
                 node: node.to_string(),
             })
+    }
+
+    fn candidate_handle(
+        &self,
+        handle: &str,
+    ) -> Result<CandidateOverlayHandle, TreeWorkspaceSessionError> {
+        self.candidate_handles.get(handle).cloned().ok_or_else(|| {
+            TreeWorkspaceSessionError::UnknownCandidate {
+                handle: handle.to_string(),
+            }
+        })
+    }
+
+    fn candidate_projections(&self) -> Result<Vec<CandidateProjection>, TreeWorkspaceSessionError> {
+        self.candidate_handles
+            .values()
+            .map(|handle| {
+                let view = self.context.candidate_view(handle)?;
+                self.candidate_projection_for_view(&view)
+            })
+            .collect()
+    }
+
+    fn candidate_projection_for_view(
+        &self,
+        view: &OxCalcTreeCandidateView,
+    ) -> Result<CandidateProjection, TreeWorkspaceSessionError> {
+        let values_by_key = view.calculation.as_ref().map_or_else(
+            || Ok(BTreeMap::new()),
+            |calculation| {
+                calculation
+                    .published_calc_values
+                    .iter()
+                    .filter(|(node_id, _)| **node_id != self.engine_root_id)
+                    .map(|(node_id, value)| {
+                        Ok((
+                            node_key_for_tree_node(*node_id),
+                            calc_value_projection(value, None),
+                        ))
+                    })
+                    .collect::<Result<BTreeMap<_, _>, TreeWorkspaceSessionError>>()
+            },
+        )?;
+        let run = view
+            .calculation
+            .as_ref()
+            .map(|calculation| self.calc_run_projection(calculation))
+            .transpose()?;
+        Ok(CandidateProjection {
+            handle: view.handle.to_string(),
+            basis_revision_id: view.basis_revision_id.to_string(),
+            workspace_revision_id: view.workspace_revision_id.to_string(),
+            values_by_key,
+            run,
+        })
     }
 
     fn current_views_by_tree_id(
@@ -5831,6 +5957,8 @@ pub enum TreeWorkspaceSessionError {
     FormulaReferenceInsertionFailed { node: String, detail: String },
     #[error("duplicate subtree failed for {node}: {detail}")]
     DuplicateSubtreeUnsupported { node: String, detail: String },
+    #[error("unknown candidate {handle}")]
+    UnknownCandidate { handle: String },
     #[error("OxCalc context projection is out of sync for {node}")]
     ProjectionOutOfSync { node: String },
 }

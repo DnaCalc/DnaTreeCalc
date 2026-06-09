@@ -269,6 +269,129 @@ fn programmable_skin_undo_redo_routes_through_retained_revisions() {
 }
 
 #[test]
+fn programmable_skin_projects_candidate_values_without_publishing_until_commit() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    skin.add_node(Some("Root"), "A", "1");
+    skin.add_node(Some("Root"), "B", "=A+1");
+    let published_revision = skin
+        .state()
+        .revision
+        .workspace_revision_id
+        .clone()
+        .expect("published revision should project");
+    let b_key = skin
+        .state()
+        .node(&NodeId::new("Root.B"))
+        .expect("Root.B should project")
+        .key
+        .clone();
+    skin.assert_scalar("Root.B", "2");
+
+    let open = skin.try_open_candidate();
+    assert!(open.accepted, "{:?}", open.error);
+    assert!(open.produced_revision.is_none());
+    assert_eq!(
+        skin.state().revision.workspace_revision_id.as_deref(),
+        Some(published_revision.as_str())
+    );
+    let handle = skin
+        .state()
+        .candidates
+        .first()
+        .expect("candidate should project")
+        .handle
+        .clone();
+    assert_eq!(
+        skin.state().candidates[0].basis_revision_id,
+        published_revision
+    );
+
+    let edit = skin.try_edit_candidate_content(&handle, "Root.A", "5");
+    assert!(edit.accepted, "{:?}", edit.error);
+    let evaluate = skin.try_evaluate_candidate(&handle);
+    assert!(evaluate.accepted, "{:?}", evaluate.error);
+    assert!(evaluate.produced_revision.is_none());
+    assert_eq!(
+        skin.state().revision.workspace_revision_id.as_deref(),
+        Some(published_revision.as_str())
+    );
+    skin.assert_scalar("Root.B", "2");
+    let candidate_state = skin.state();
+    let candidate = candidate_state
+        .candidates
+        .iter()
+        .find(|candidate| candidate.handle == handle)
+        .expect("candidate should remain projected");
+    assert_eq!(
+        candidate
+            .values_by_key
+            .get(&b_key)
+            .map(NodeValueProjection::display_text)
+            .as_deref(),
+        Some("6")
+    );
+    assert!(evaluate.delta.changes.iter().any(|change| {
+        matches!(change, WorkspaceDeltaChange::CandidateChanged(candidate) if candidate.handle == handle)
+    }));
+
+    let commit = skin.try_commit_candidate(&handle);
+    assert!(commit.accepted, "{:?}", commit.error);
+    assert!(commit.produced_revision.is_some());
+    assert_ne!(
+        skin.state().revision.workspace_revision_id.as_deref(),
+        Some(published_revision.as_str())
+    );
+    assert!(skin.state().candidates.is_empty());
+    skin.assert_scalar("Root.B", "6");
+    assert!(commit.delta.changes.iter().any(|change| {
+        matches!(change, WorkspaceDeltaChange::CandidateRemoved(removed) if removed == &handle)
+    }));
+}
+
+#[test]
+fn programmable_skin_rejects_stale_candidate_commit_without_losing_candidate() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    skin.add_node(Some("Root"), "A", "1");
+    skin.add_node(Some("Root"), "B", "=A+1");
+    let open = skin.try_open_candidate();
+    assert!(open.accepted, "{:?}", open.error);
+    let handle = skin
+        .state()
+        .candidates
+        .first()
+        .expect("candidate should project")
+        .handle
+        .clone();
+    assert!(
+        skin.try_edit_candidate_content(&handle, "Root.A", "5")
+            .accepted
+    );
+    assert!(skin.try_evaluate_candidate(&handle).accepted);
+
+    skin.edit("Root.A", "9");
+    skin.assert_scalar("Root.B", "10");
+    let commit = skin.try_commit_candidate(&handle);
+    assert!(!commit.accepted);
+    assert!(matches!(
+        commit.error,
+        Some(IntentError::CandidateBasisNotCurrent { .. })
+    ));
+    assert_eq!(skin.state().candidates.len(), 1);
+    assert_eq!(skin.state().candidates[0].handle, handle);
+    skin.assert_scalar("Root.B", "10");
+
+    let discard = skin.try_discard_candidate(&handle);
+    assert!(discard.accepted, "{:?}", discard.error);
+    assert!(skin.state().candidates.is_empty());
+}
+
+#[test]
 fn programmable_skin_projects_per_node_published_value_epochs() {
     let harness = Harness::empty();
     let skin = harness.driver.clone();

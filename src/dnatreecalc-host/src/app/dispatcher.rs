@@ -1,12 +1,13 @@
 use std::sync::{Arc, Mutex};
 
 use dnatreecalc_skin_framework::{
-    AuthoringScope, ClipboardNodeFormatProjection, ClipboardNodeValueProjection,
-    ClipboardOperationProjection, ClipboardPayloadKind, ClipboardPayloadProjection,
-    ClipboardProjection, DependencyDeltaProjection, Dispatcher, IntentError, IntentReceipt,
-    NodeContentKind, NodeId, NodeKey, NodeValueDeltaProjection, NodeValueProjection, NodeView,
-    SelectionState, SharedSkinStateHandle, StructuralDeltaProjection, TableCellSelection,
-    WorkspaceDelta, WorkspaceDeltaChange, WorkspaceIntent, WorkspaceState,
+    AuthoringScope, CandidateProjection, ClipboardNodeFormatProjection,
+    ClipboardNodeValueProjection, ClipboardOperationProjection, ClipboardPayloadKind,
+    ClipboardPayloadProjection, ClipboardProjection, DependencyDeltaProjection, Dispatcher,
+    IntentError, IntentReceipt, NodeContentKind, NodeId, NodeKey, NodeValueDeltaProjection,
+    NodeValueProjection, NodeView, SelectionState, SharedSkinStateHandle,
+    StructuralDeltaProjection, TableCellSelection, WorkspaceDelta, WorkspaceDeltaChange,
+    WorkspaceIntent, WorkspaceState,
 };
 use leptos::prelude::*;
 use oxcalc_core::consumer::TransactionRecalcPolicy;
@@ -264,6 +265,27 @@ impl Dispatcher for HostDispatcher {
                 Ok(publication) => receipt_for_formula_reference_insertion(publication),
                 Err(error) => IntentReceipt::rejected(error),
             },
+            WorkspaceIntent::OpenCandidate => self
+                .apply_candidate_projection_edit(|session| session.open_candidate())
+                .map_or_else(IntentReceipt::rejected, receipt_for_candidate_change),
+            WorkspaceIntent::EditCandidateContent {
+                handle,
+                node,
+                content,
+            } => self
+                .apply_candidate_projection_edit(|session| {
+                    session.edit_candidate_content(&handle, &node, content)
+                })
+                .map_or_else(IntentReceipt::rejected, receipt_for_candidate_change),
+            WorkspaceIntent::EvaluateCandidate { handle } => self
+                .apply_candidate_projection_edit(|session| session.evaluate_candidate(&handle))
+                .map_or_else(IntentReceipt::rejected, receipt_for_candidate_change),
+            WorkspaceIntent::DiscardCandidate { handle } => self
+                .discard_candidate(&handle)
+                .unwrap_or_else(IntentReceipt::rejected),
+            WorkspaceIntent::CommitCandidate { handle } => self
+                .commit_candidate(&handle)
+                .map_or_else(IntentReceipt::rejected, receipt_for_publication),
             WorkspaceIntent::Recalculate => self
                 .apply_workspace_edit(|_| Ok(()), WorkspaceEditPublication::Recalculate)
                 .map_or_else(IntentReceipt::rejected, receipt_for_publication),
@@ -559,6 +581,15 @@ fn receipt_for_formula_reference_insertion(
         .with_transaction_id(publication.transaction_id)
 }
 
+fn receipt_for_candidate_change(
+    publication: PublishedWorkspaceEdit<CandidateProjection>,
+) -> IntentReceipt {
+    IntentReceipt::accepted()
+        .with_delta(publication.delta)
+        .with_produced_revision(publication.produced_revision)
+        .with_transaction_id(publication.transaction_id)
+}
+
 impl HostDispatcher {
     fn populate_clipboard(
         &self,
@@ -749,14 +780,13 @@ impl HostDispatcher {
             after.clipboard = before.as_ref().and_then(|state| state.clipboard.clone());
             after.projection_seq = self.next_projection_seq.fetch_add(1, Ordering::Relaxed);
             let delta = workspace_delta(before.as_ref(), &after, false);
-            let produced_revision = after.revision.workspace_revision_id.clone();
             if let Some(workspace) = self.workspace {
                 workspace.set(after);
             }
             Ok(PublishedWorkspaceEdit {
                 result,
                 delta,
-                produced_revision,
+                produced_revision: None,
                 transaction_id: None,
             })
         })
@@ -799,6 +829,108 @@ impl HostDispatcher {
                 delta,
                 produced_revision,
                 transaction_id: Some(transaction.transaction_id),
+            })
+        })
+    }
+
+    fn apply_candidate_projection_edit(
+        &self,
+        edit: impl FnOnce(
+            &mut TreeWorkspaceSession,
+        ) -> Result<CandidateProjection, TreeWorkspaceSessionError>,
+    ) -> Result<PublishedWorkspaceEdit<CandidateProjection>, IntentError> {
+        let session_id = self.active_session_id()?;
+        HOST_SESSIONS.with(|sessions| {
+            let session = sessions
+                .borrow()
+                .get(&session_id)
+                .cloned()
+                .ok_or_else(|| host_failure("workspace session handle is not available"))?;
+            let mut session = session
+                .lock()
+                .map_err(|_| host_failure("workspace session mutex poisoned"))?;
+            let before = self.workspace.map(|workspace| workspace.get_untracked());
+            let result = edit(&mut session).map_err(intent_error_from_session)?;
+            let mut after = session
+                .workspace_state()
+                .map_err(intent_error_from_session)?;
+            after.clipboard = before.as_ref().and_then(|state| state.clipboard.clone());
+            after.projection_seq = self.next_projection_seq.fetch_add(1, Ordering::Relaxed);
+            let delta = workspace_delta(before.as_ref(), &after, false);
+            if let Some(workspace) = self.workspace {
+                workspace.set(after);
+            }
+            Ok(PublishedWorkspaceEdit {
+                result,
+                delta,
+                produced_revision: None,
+                transaction_id: None,
+            })
+        })
+    }
+
+    fn discard_candidate(&self, handle: &str) -> Result<IntentReceipt, IntentError> {
+        let session_id = self.active_session_id()?;
+        HOST_SESSIONS.with(|sessions| {
+            let session = sessions
+                .borrow()
+                .get(&session_id)
+                .cloned()
+                .ok_or_else(|| host_failure("workspace session handle is not available"))?;
+            let mut session = session
+                .lock()
+                .map_err(|_| host_failure("workspace session mutex poisoned"))?;
+            let before = self.workspace.map(|workspace| workspace.get_untracked());
+            session
+                .discard_candidate(handle)
+                .map_err(intent_error_from_session)?;
+            let mut after = session
+                .workspace_state()
+                .map_err(intent_error_from_session)?;
+            after.clipboard = before.as_ref().and_then(|state| state.clipboard.clone());
+            after.projection_seq = self.next_projection_seq.fetch_add(1, Ordering::Relaxed);
+            let delta = workspace_delta(before.as_ref(), &after, false);
+            if let Some(workspace) = self.workspace {
+                workspace.set(after);
+            }
+            Ok(IntentReceipt::accepted().with_delta(delta))
+        })
+    }
+
+    fn commit_candidate(
+        &self,
+        handle: &str,
+    ) -> Result<PublishedWorkspaceEdit<String>, IntentError> {
+        let session_id = self.active_session_id()?;
+        HOST_SESSIONS.with(|sessions| {
+            let session = sessions
+                .borrow()
+                .get(&session_id)
+                .cloned()
+                .ok_or_else(|| host_failure("workspace session handle is not available"))?;
+            let mut session = session
+                .lock()
+                .map_err(|_| host_failure("workspace session mutex poisoned"))?;
+            let before = self.workspace.map(|workspace| workspace.get_untracked());
+            let removed = session
+                .commit_candidate(handle)
+                .map_err(intent_error_from_session)?;
+            let mut after = session
+                .workspace_state()
+                .map_err(intent_error_from_session)?;
+            after.clipboard = before.as_ref().and_then(|state| state.clipboard.clone());
+            after.projection_seq = self.next_projection_seq.fetch_add(1, Ordering::Relaxed);
+            let delta = workspace_delta(before.as_ref(), &after, false);
+            let produced_revision = after.revision.workspace_revision_id.clone();
+            self.record_revision_undo_boundary(before.as_ref(), &after)?;
+            if let Some(workspace) = self.workspace {
+                workspace.set(after);
+            }
+            Ok(PublishedWorkspaceEdit {
+                result: removed,
+                delta,
+                produced_revision,
+                transaction_id: None,
             })
         })
     }
@@ -1370,9 +1502,28 @@ fn intent_error_from_session(error: TreeWorkspaceSessionError) -> IntentError {
         TreeWorkspaceSessionError::DuplicateSubtreeUnsupported { node, detail } => {
             IntentError::DuplicateSubtreeUnsupported { node, detail }
         }
+        TreeWorkspaceSessionError::UnknownCandidate { handle } => {
+            IntentError::UnknownCandidate { handle }
+        }
         TreeWorkspaceSessionError::ProjectionOutOfSync { node } => {
             IntentError::ProjectionOutOfSync { node }
         }
+        TreeWorkspaceSessionError::OxCalc(
+            oxcalc_core::consumer::OxCalcTreeContextError::UnknownCandidate { handle },
+        ) => IntentError::UnknownCandidate {
+            handle: handle.to_string(),
+        },
+        TreeWorkspaceSessionError::OxCalc(
+            oxcalc_core::consumer::OxCalcTreeContextError::CandidateBasisNotCurrent {
+                handle,
+                basis_revision_id,
+                current_revision_id,
+            },
+        ) => IntentError::CandidateBasisNotCurrent {
+            handle: handle.to_string(),
+            basis_revision_id: basis_revision_id.to_string(),
+            current_revision_id: current_revision_id.to_string(),
+        },
         TreeWorkspaceSessionError::OxCalc(error) => IntentError::EngineRejected(error.to_string()),
         TreeWorkspaceSessionError::UnsupportedDocumentSchema { schema_version } => {
             IntentError::HostFailure(format!(
@@ -1431,6 +1582,27 @@ fn workspace_delta(
         changes.push(WorkspaceDeltaChange::ClipboardChanged(
             after.clipboard.clone(),
         ));
+    }
+
+    for candidate in &after.candidates {
+        let before_candidate = before
+            .candidates
+            .iter()
+            .find(|before| before.handle == candidate.handle);
+        if before_candidate != Some(candidate) {
+            changes.push(WorkspaceDeltaChange::CandidateChanged(candidate.clone()));
+        }
+    }
+    for candidate in &before.candidates {
+        if !after
+            .candidates
+            .iter()
+            .any(|after| after.handle == candidate.handle)
+        {
+            changes.push(WorkspaceDeltaChange::CandidateRemoved(
+                candidate.handle.clone(),
+            ));
+        }
     }
 
     WorkspaceDelta {

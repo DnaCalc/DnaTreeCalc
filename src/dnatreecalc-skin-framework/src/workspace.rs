@@ -21,6 +21,7 @@ pub struct WorkspaceState {
     pub projection_seq: u64,
     pub revision: WorkspaceRevisionProjection,
     pub revision_history: RevisionHistoryProjection,
+    pub candidates: Vec<CandidateProjection>,
     pub last_run: Option<CalcRunProjection>,
     pub node_order: Vec<NodeId>,
     pub key_order: Vec<NodeKey>,
@@ -695,6 +696,15 @@ pub struct RevisionInvalidationSummaryEntryProjection {
     pub node: NodeKey,
     pub requires_rebind: bool,
     pub reasons: Vec<InvalidationReasonProjection>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CandidateProjection {
+    pub handle: String,
+    pub basis_revision_id: String,
+    pub workspace_revision_id: String,
+    pub values_by_key: BTreeMap<NodeKey, NodeValueProjection>,
+    pub run: Option<CalcRunProjection>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
