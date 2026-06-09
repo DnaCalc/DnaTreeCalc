@@ -863,6 +863,50 @@ fn shared_continuity_round_trips_and_gcs() {
 }
 
 #[test]
+fn cleave_value_desc_keeps_numbers_before_non_numbers() {
+    let mut text_node = node("k:t", "Text", NodeContentKind::Constant);
+    text_node.computed_value = NodeValueProjection::Text("hello".to_string());
+    let workspace = workspace_with_nodes(vec![
+        numeric_node("k:a", "Alpha", "1"),
+        text_node,
+        numeric_node("k:b", "Beta", "3"),
+    ]);
+
+    let descending = CleavePredicate {
+        filter: None,
+        sort: Some(CleaveSort::ValueDesc),
+    };
+    // Numbers descend among themselves but the non-numeric value stays LAST —
+    // descending must not invert the numeric-before-non-numeric class order.
+    assert_eq!(
+        workspace.cleave_filtered_keys(&descending),
+        vec![
+            NodeKey::new("k:b"),
+            NodeKey::new("k:a"),
+            NodeKey::new("k:t"),
+        ]
+    );
+}
+
+#[test]
+fn effective_meta_walks_the_ancestor_chain() {
+    let mut parent = node("k:m", "Meta", NodeContentKind::Constant);
+    parent.is_meta = true;
+    let mut child = node("k:mc", "Meta.Child", NodeContentKind::Constant);
+    child.parent = Some(NodeId::new("Meta"));
+    let regular = node("k:v", "Visible", NodeContentKind::Constant);
+    let workspace = workspace_with_nodes(vec![parent, child, regular]);
+
+    assert!(workspace.is_effective_meta(&NodeKey::new("k:m")));
+    assert!(
+        workspace.is_effective_meta(&NodeKey::new("k:mc")),
+        "regular-flagged child under a meta parent is effectively meta"
+    );
+    assert!(!workspace.is_effective_meta(&NodeKey::new("k:v")));
+    assert!(!workspace.is_effective_meta(&NodeKey::new("k:unknown")));
+}
+
+#[test]
 fn cleave_predicate_filters_and_sorts_per_lens() {
     let workspace = workspace_with_nodes(vec![
         numeric_node("k:a", "Alpha", "3"),
