@@ -650,6 +650,17 @@ The roadmap alignment rule is:
       separation, and scenario deletion cleanup. Explicit `series(scope)` selection, unit metadata,
       direct sweep/goal-seek series, richer value provenance, and engine-published scenario revision
       history remain open.
+- [x] W5 early `projection-delta-channel` / `projection-version-stamp` synchronous projection slice:
+      `SkinContext` and `ErasedSkinContext` now expose a required `latest_delta:
+      ReadSignal<WorkspaceDelta>` beside the full `WorkspaceState` read signal. The host dispatcher
+      owns projection publication, stamps each published full snapshot with a monotonic
+      `projection_seq`, emits the matching `WorkspaceDelta { from_seq, to_seq, changes }` through
+      both the intent receipt and latest-delta signal, and routes accepted no-op plus rejected
+      live-host intents through an unchanged delta at the current sequence. Programmable Skin IR and
+      walking-skeleton tests prove structural/value deltas, full resets, selection no-ops, rejected
+      no-ops, workspace switching, and shell/registry context wiring from outside the skin layer.
+      Delta-only resync/replay, worker calculation, virtualization, telemetry, and gap-recovery UI
+      policy remain later W5 work.
 - [ ] `candidate-overlay-handle`: continue toward fully addressable, layerable, non-publishing
       candidate contexts with optimized live layering/merge rebase, candidate add-node template
       initial content, direct sweep/goal-seek comparison columns, scoped/unit series projection, and

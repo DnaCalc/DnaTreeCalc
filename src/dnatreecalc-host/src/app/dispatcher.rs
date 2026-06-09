@@ -35,6 +35,7 @@ static NEXT_HOST_SESSION_ID: AtomicU64 = AtomicU64::new(1);
 pub struct HostDispatcher {
     selection: RwSignal<SelectionState>,
     workspace: Option<RwSignal<WorkspaceState>>,
+    latest_delta: Option<RwSignal<WorkspaceDelta>>,
     shared: Option<SharedSkinStateHandle>,
     session_id: Mutex<Option<u64>>,
     workspace_sessions: Mutex<BTreeMap<String, u64>>,
@@ -57,6 +58,7 @@ impl HostDispatcher {
         Self {
             selection,
             workspace: None,
+            latest_delta: None,
             shared: None,
             session_id: Mutex::new(None),
             workspace_sessions: Mutex::new(BTreeMap::new()),
@@ -72,15 +74,17 @@ impl HostDispatcher {
     pub fn with_session(
         selection: RwSignal<SelectionState>,
         workspace: RwSignal<WorkspaceState>,
+        latest_delta: RwSignal<WorkspaceDelta>,
         session: Arc<Mutex<TreeWorkspaceSession>>,
     ) -> Self {
-        Self::with_session_and_shared(selection, workspace, session, None)
+        Self::with_session_and_shared(selection, workspace, latest_delta, session, None)
     }
 
     #[must_use]
     pub fn with_session_and_shared(
         selection: RwSignal<SelectionState>,
         workspace: RwSignal<WorkspaceState>,
+        latest_delta: RwSignal<WorkspaceDelta>,
         session: Arc<Mutex<TreeWorkspaceSession>>,
         shared: Option<SharedSkinStateHandle>,
     ) -> Self {
@@ -105,6 +109,7 @@ impl HostDispatcher {
         Self {
             selection,
             workspace: Some(workspace),
+            latest_delta: Some(latest_delta),
             shared,
             session_id: Mutex::new(Some(session_id)),
             workspace_sessions: Mutex::new(workspace_sessions),
@@ -137,8 +142,7 @@ impl Dispatcher for HostDispatcher {
         match intent {
             WorkspaceIntent::SelectNode(target) => {
                 self.selection.set(SelectionState::with_primary(target));
-                IntentReceipt::accepted()
-                    .with_delta(WorkspaceDelta::unchanged(self.current_projection_seq()))
+                IntentReceipt::accepted().with_delta(self.publish_unchanged_delta())
             }
             WorkspaceIntent::SelectTableCell {
                 table,
@@ -152,7 +156,7 @@ impl Dispatcher for HostDispatcher {
                 };
                 if let Some(workspace) = self.workspace {
                     if !table_cell_exists(&workspace.get_untracked(), &table_cell) {
-                        return IntentReceipt::rejected(IntentError::UnknownTableCell {
+                        return self.reject_current(IntentError::UnknownTableCell {
                             table: table_cell.table.to_string(),
                             row_id: table_cell.row_id.clone().unwrap_or_default(),
                             column_id: table_cell.column_id.clone(),
@@ -161,8 +165,7 @@ impl Dispatcher for HostDispatcher {
                 }
                 self.selection
                     .set(SelectionState::with_table_cell(table_cell));
-                IntentReceipt::accepted()
-                    .with_delta(WorkspaceDelta::unchanged(self.current_projection_seq()))
+                IntentReceipt::accepted().with_delta(self.publish_unchanged_delta())
             }
             WorkspaceIntent::EditFormula { node, content } => self
                 .apply_workspace_transaction_edit(|session| {
@@ -172,7 +175,7 @@ impl Dispatcher for HostDispatcher {
                         TransactionRecalcPolicy::RecalculateAndPublishOnce,
                     )
                 })
-                .map_or_else(IntentReceipt::rejected, receipt_for_publication),
+                .map_or_else(|error| self.reject_current(error), receipt_for_publication),
             WorkspaceIntent::EditContent { node, content } => self
                 .apply_workspace_transaction_edit(|session| {
                     session.edit_formula_transaction(
@@ -181,7 +184,7 @@ impl Dispatcher for HostDispatcher {
                         TransactionRecalcPolicy::RecalculateAndPublishOnce,
                     )
                 })
-                .map_or_else(IntentReceipt::rejected, receipt_for_publication),
+                .map_or_else(|error| self.reject_current(error), receipt_for_publication),
             WorkspaceIntent::EditContentDeferred { node, content } => self
                 .apply_workspace_transaction_edit(|session| {
                     session.edit_formula_transaction(
@@ -190,12 +193,12 @@ impl Dispatcher for HostDispatcher {
                         TransactionRecalcPolicy::ApplyOnly,
                     )
                 })
-                .map_or_else(IntentReceipt::rejected, receipt_for_publication),
+                .map_or_else(|error| self.reject_current(error), receipt_for_publication),
             WorkspaceIntent::EditScopedContent { scope, content } => self
                 .apply_workspace_transaction_edit(|session| {
                     session.edit_scoped_content_transaction(scope, content)
                 })
-                .map_or_else(IntentReceipt::rejected, receipt_for_publication),
+                .map_or_else(|error| self.reject_current(error), receipt_for_publication),
             WorkspaceIntent::SetNumberFormat {
                 scope,
                 number_format_code,
@@ -203,37 +206,37 @@ impl Dispatcher for HostDispatcher {
                 .apply_workspace_transaction_edit(|session| {
                     session.set_number_format_transaction(scope, number_format_code)
                 })
-                .map_or_else(IntentReceipt::rejected, receipt_for_publication),
+                .map_or_else(|error| self.reject_current(error), receipt_for_publication),
             WorkspaceIntent::SetNote { node, note } => self
                 .apply_workspace_transaction_edit(|session| {
                     session.set_note_transaction(node, note)
                 })
-                .map_or_else(IntentReceipt::rejected, receipt_for_publication),
+                .map_or_else(|error| self.reject_current(error), receipt_for_publication),
             WorkspaceIntent::SetMeta { node, is_meta } => self
                 .apply_workspace_transaction_edit(|session| {
                     session.set_meta_transaction(node, is_meta)
                 })
-                .map_or_else(IntentReceipt::rejected, receipt_for_publication),
+                .map_or_else(|error| self.reject_current(error), receipt_for_publication),
             WorkspaceIntent::SetNodeAttributes { node, attrs } => self
                 .apply_workspace_transaction_edit(|session| {
                     session.set_node_attributes_transaction(node, attrs)
                 })
-                .map_or_else(IntentReceipt::rejected, receipt_for_publication),
+                .map_or_else(|error| self.reject_current(error), receipt_for_publication),
             WorkspaceIntent::CopyToClipboard { scope, payload } => self
                 .populate_clipboard(scope, payload, ClipboardOperationProjection::Copy)
-                .unwrap_or_else(IntentReceipt::rejected),
+                .unwrap_or_else(|error| self.reject_current(error)),
             WorkspaceIntent::CutToClipboard { scope, payload } => self
                 .populate_clipboard(scope, payload, ClipboardOperationProjection::Cut)
-                .unwrap_or_else(IntentReceipt::rejected),
+                .unwrap_or_else(|error| self.reject_current(error)),
             WorkspaceIntent::PasteClipboardFormat { target } => self
                 .paste_clipboard_format(target)
-                .unwrap_or_else(IntentReceipt::rejected),
+                .unwrap_or_else(|error| self.reject_current(error)),
             WorkspaceIntent::PasteClipboardValues { target } => self
                 .paste_clipboard_values(target)
-                .unwrap_or_else(IntentReceipt::rejected),
+                .unwrap_or_else(|error| self.reject_current(error)),
             WorkspaceIntent::PasteExternalClipboardText { target, text } => self
                 .paste_external_clipboard_text(target, text)
-                .unwrap_or_else(IntentReceipt::rejected),
+                .unwrap_or_else(|error| self.reject_current(error)),
             WorkspaceIntent::DuplicateSubtree {
                 source,
                 destination_parent,
@@ -246,7 +249,7 @@ impl Dispatcher for HostDispatcher {
                         new_symbol,
                     )
                 })
-                .map_or_else(IntentReceipt::rejected, receipt_for_publication),
+                .map_or_else(|error| self.reject_current(error), receipt_for_publication),
             WorkspaceIntent::InsertFormulaReference {
                 node,
                 current_formula_text,
@@ -263,13 +266,16 @@ impl Dispatcher for HostDispatcher {
                 )
             }) {
                 Ok(publication) => receipt_for_formula_reference_insertion(publication),
-                Err(error) => IntentReceipt::rejected(error),
+                Err(error) => self.reject_current(error),
             },
             WorkspaceIntent::OpenCandidate { parent } => self
                 .apply_candidate_projection_edit(|session| {
                     session.open_candidate(parent.as_deref())
                 })
-                .map_or_else(IntentReceipt::rejected, receipt_for_candidate_change),
+                .map_or_else(
+                    |error| self.reject_current(error),
+                    receipt_for_candidate_change,
+                ),
             WorkspaceIntent::EditCandidateContent {
                 handle,
                 node,
@@ -278,7 +284,10 @@ impl Dispatcher for HostDispatcher {
                 .apply_candidate_projection_edit(|session| {
                     session.edit_candidate_content(&handle, &node, content)
                 })
-                .map_or_else(IntentReceipt::rejected, receipt_for_candidate_change),
+                .map_or_else(
+                    |error| self.reject_current(error),
+                    receipt_for_candidate_change,
+                ),
             WorkspaceIntent::RenameCandidateNode {
                 handle,
                 node,
@@ -287,7 +296,10 @@ impl Dispatcher for HostDispatcher {
                 .apply_candidate_projection_edit(|session| {
                     session.rename_candidate_node(&handle, &node, new_symbol)
                 })
-                .map_or_else(IntentReceipt::rejected, receipt_for_candidate_change),
+                .map_or_else(
+                    |error| self.reject_current(error),
+                    receipt_for_candidate_change,
+                ),
             WorkspaceIntent::MoveCandidateNode {
                 handle,
                 node,
@@ -297,12 +309,18 @@ impl Dispatcher for HostDispatcher {
                 .apply_candidate_projection_edit(|session| {
                     session.move_candidate_node(&handle, &node, new_parent.as_ref(), new_index)
                 })
-                .map_or_else(IntentReceipt::rejected, receipt_for_candidate_change),
+                .map_or_else(
+                    |error| self.reject_current(error),
+                    receipt_for_candidate_change,
+                ),
             WorkspaceIntent::DeleteCandidateNode { handle, node } => self
                 .apply_candidate_projection_edit(|session| {
                     session.delete_candidate_node(&handle, &node)
                 })
-                .map_or_else(IntentReceipt::rejected, receipt_for_candidate_change),
+                .map_or_else(
+                    |error| self.reject_current(error),
+                    receipt_for_candidate_change,
+                ),
             WorkspaceIntent::AddCandidateNode {
                 handle,
                 parent,
@@ -313,30 +331,45 @@ impl Dispatcher for HostDispatcher {
                 .apply_candidate_projection_edit(|session| {
                     session.add_candidate_node(&handle, parent.as_ref(), symbol, initial, is_meta)
                 })
-                .map_or_else(IntentReceipt::rejected, receipt_for_candidate_change),
+                .map_or_else(
+                    |error| self.reject_current(error),
+                    receipt_for_candidate_change,
+                ),
             WorkspaceIntent::EvaluateCandidate { handle } => self
                 .apply_candidate_projection_edit(|session| session.evaluate_candidate(&handle))
-                .map_or_else(IntentReceipt::rejected, receipt_for_candidate_change),
+                .map_or_else(
+                    |error| self.reject_current(error),
+                    receipt_for_candidate_change,
+                ),
             WorkspaceIntent::RebaseCandidate { handle } => self
                 .apply_candidate_projection_edit(|session| session.rebase_candidate(&handle))
-                .map_or_else(IntentReceipt::rejected, receipt_for_candidate_change),
+                .map_or_else(
+                    |error| self.reject_current(error),
+                    receipt_for_candidate_change,
+                ),
             WorkspaceIntent::DiscardCandidate { handle } => self
                 .discard_candidate(&handle)
-                .unwrap_or_else(IntentReceipt::rejected),
+                .unwrap_or_else(|error| self.reject_current(error)),
             WorkspaceIntent::PinCandidateRetention { handle } => self
                 .apply_candidate_projection_edit(|session| session.pin_candidate_retention(&handle))
-                .map_or_else(IntentReceipt::rejected, receipt_for_candidate_change),
+                .map_or_else(
+                    |error| self.reject_current(error),
+                    receipt_for_candidate_change,
+                ),
             WorkspaceIntent::UnpinCandidateRetention { handle } => self
                 .apply_candidate_projection_edit(|session| {
                     session.unpin_candidate_retention(&handle)
                 })
-                .map_or_else(IntentReceipt::rejected, receipt_for_candidate_change),
+                .map_or_else(
+                    |error| self.reject_current(error),
+                    receipt_for_candidate_change,
+                ),
             WorkspaceIntent::ReapCandidates { max_retained } => self
                 .reap_candidates(max_retained)
-                .unwrap_or_else(IntentReceipt::rejected),
+                .unwrap_or_else(|error| self.reject_current(error)),
             WorkspaceIntent::CommitCandidate { handle } => self
                 .commit_candidate(&handle)
-                .map_or_else(IntentReceipt::rejected, receipt_for_publication),
+                .map_or_else(|error| self.reject_current(error), receipt_for_publication),
             WorkspaceIntent::CreateScenarioFromCandidate {
                 scenario_id,
                 name,
@@ -345,13 +378,22 @@ impl Dispatcher for HostDispatcher {
                 .apply_projection_edit(|session| {
                     session.create_scenario_from_candidate(scenario_id, name, &candidate_handle)
                 })
-                .map_or_else(IntentReceipt::rejected, receipt_for_projection_change),
+                .map_or_else(
+                    |error| self.reject_current(error),
+                    receipt_for_projection_change,
+                ),
             WorkspaceIntent::ActivateScenario { scenario_id } => self
                 .apply_projection_edit(|session| session.activate_scenario(scenario_id.as_deref()))
-                .map_or_else(IntentReceipt::rejected, receipt_for_projection_change),
+                .map_or_else(
+                    |error| self.reject_current(error),
+                    receipt_for_projection_change,
+                ),
             WorkspaceIntent::DeleteScenario { scenario_id } => self
                 .apply_projection_edit(|session| session.delete_scenario(&scenario_id))
-                .map_or_else(IntentReceipt::rejected, receipt_for_projection_change),
+                .map_or_else(
+                    |error| self.reject_current(error),
+                    receipt_for_projection_change,
+                ),
             WorkspaceIntent::SetScenarioOverride {
                 scenario_id,
                 node,
@@ -360,15 +402,21 @@ impl Dispatcher for HostDispatcher {
                 .apply_projection_edit(|session| {
                     session.set_scenario_override(&scenario_id, &node, &value)
                 })
-                .map_or_else(IntentReceipt::rejected, receipt_for_projection_change),
+                .map_or_else(
+                    |error| self.reject_current(error),
+                    receipt_for_projection_change,
+                ),
             WorkspaceIntent::ClearScenarioOverride { scenario_id, node } => self
                 .apply_projection_edit(|session| {
                     session.clear_scenario_override(&scenario_id, &node)
                 })
-                .map_or_else(IntentReceipt::rejected, receipt_for_projection_change),
+                .map_or_else(
+                    |error| self.reject_current(error),
+                    receipt_for_projection_change,
+                ),
             WorkspaceIntent::Recalculate => self
                 .apply_workspace_edit(|_| Ok(()), WorkspaceEditPublication::Recalculate)
-                .map_or_else(IntentReceipt::rejected, receipt_for_publication),
+                .map_or_else(|error| self.reject_current(error), receipt_for_publication),
             WorkspaceIntent::AddNode {
                 parent,
                 symbol,
@@ -383,7 +431,7 @@ impl Dispatcher for HostDispatcher {
                         .set(SelectionState::with_primary(Some(created)));
                     receipt_for_publication(publication.with_result(()))
                 }
-                Err(error) => IntentReceipt::rejected(error),
+                Err(error) => self.reject_current(error),
             },
             WorkspaceIntent::RenameNode { node, new_symbol } => match self
                 .apply_workspace_transaction_edit(|session| {
@@ -395,7 +443,7 @@ impl Dispatcher for HostDispatcher {
                         .set(SelectionState::with_primary(Some(renamed)));
                     receipt_for_publication(publication.with_result(()))
                 }
-                Err(error) => IntentReceipt::rejected(error),
+                Err(error) => self.reject_current(error),
             },
             WorkspaceIntent::MoveNode {
                 node,
@@ -410,26 +458,32 @@ impl Dispatcher for HostDispatcher {
                         .set(SelectionState::with_primary(Some(moved)));
                     receipt_for_publication(publication.with_result(()))
                 }
-                Err(error) => IntentReceipt::rejected(error),
+                Err(error) => self.reject_current(error),
             },
             WorkspaceIntent::ReorderNode { node, new_index } => self
                 .apply_workspace_transaction_edit(|session| {
                     session.reorder_node_transaction(&node, new_index)
                 })
-                .map_or_else(IntentReceipt::rejected, |publication| {
-                    self.selection.set(SelectionState::with_primary(Some(node)));
-                    receipt_for_publication(publication)
-                }),
+                .map_or_else(
+                    |error| self.reject_current(error),
+                    |publication| {
+                        self.selection.set(SelectionState::with_primary(Some(node)));
+                        receipt_for_publication(publication)
+                    },
+                ),
             WorkspaceIntent::DeleteNode { node } => {
                 let next_selection = parent_node_id(node.as_str());
                 self.apply_workspace_transaction_edit(|session| {
                     session.delete_node_transaction(&node)
                 })
-                .map_or_else(IntentReceipt::rejected, |publication| {
-                    self.selection
-                        .set(SelectionState::with_primary(next_selection));
-                    receipt_for_publication(publication)
-                })
+                .map_or_else(
+                    |error| self.reject_current(error),
+                    |publication| {
+                        self.selection
+                            .set(SelectionState::with_primary(next_selection));
+                        receipt_for_publication(publication)
+                    },
+                )
             }
             WorkspaceIntent::EditTableCell {
                 table,
@@ -440,7 +494,7 @@ impl Dispatcher for HostDispatcher {
                 .apply_workspace_transaction_edit(|session| {
                     session.edit_table_cell_transaction(&table, &row_id, &column_id, content)
                 })
-                .map_or_else(IntentReceipt::rejected, receipt_for_publication),
+                .map_or_else(|error| self.reject_current(error), receipt_for_publication),
             WorkspaceIntent::AddTableRow {
                 table,
                 row_id,
@@ -449,12 +503,12 @@ impl Dispatcher for HostDispatcher {
                 .apply_workspace_transaction_edit(|session| {
                     session.add_table_row_transaction(&table, row_id, values)
                 })
-                .map_or_else(IntentReceipt::rejected, receipt_for_publication),
+                .map_or_else(|error| self.reject_current(error), receipt_for_publication),
             WorkspaceIntent::DeleteTableRow { table, row_id } => self
                 .apply_workspace_transaction_edit(|session| {
                     session.delete_table_row_transaction(&table, &row_id)
                 })
-                .map_or_else(IntentReceipt::rejected, receipt_for_publication),
+                .map_or_else(|error| self.reject_current(error), receipt_for_publication),
             WorkspaceIntent::RenameTableRow {
                 table,
                 row_id,
@@ -463,7 +517,7 @@ impl Dispatcher for HostDispatcher {
                 .apply_workspace_transaction_edit(|session| {
                     session.rename_table_row_transaction(&table, &row_id, new_row_id)
                 })
-                .map_or_else(IntentReceipt::rejected, receipt_for_publication),
+                .map_or_else(|error| self.reject_current(error), receipt_for_publication),
             WorkspaceIntent::ReorderTableRow {
                 table,
                 row_id,
@@ -472,12 +526,12 @@ impl Dispatcher for HostDispatcher {
                 .apply_workspace_transaction_edit(|session| {
                     session.reorder_table_row_transaction(&table, &row_id, new_index)
                 })
-                .map_or_else(IntentReceipt::rejected, receipt_for_publication),
+                .map_or_else(|error| self.reject_current(error), receipt_for_publication),
             WorkspaceIntent::RenameTable { table, name } => self
                 .apply_workspace_transaction_edit(|session| {
                     session.rename_table_transaction(&table, name)
                 })
-                .map_or_else(IntentReceipt::rejected, receipt_for_publication),
+                .map_or_else(|error| self.reject_current(error), receipt_for_publication),
             WorkspaceIntent::AddTableColumn {
                 table,
                 column_id,
@@ -487,7 +541,7 @@ impl Dispatcher for HostDispatcher {
                 .apply_workspace_transaction_edit(|session| {
                     session.add_table_column_transaction(&table, column_id, name, values)
                 })
-                .map_or_else(IntentReceipt::rejected, receipt_for_publication),
+                .map_or_else(|error| self.reject_current(error), receipt_for_publication),
             WorkspaceIntent::AddTableFormulaColumn {
                 table,
                 column_id,
@@ -502,7 +556,7 @@ impl Dispatcher for HostDispatcher {
                         formula_text,
                     )
                 })
-                .map_or_else(IntentReceipt::rejected, receipt_for_publication),
+                .map_or_else(|error| self.reject_current(error), receipt_for_publication),
             WorkspaceIntent::EditTableColumnFormula {
                 table,
                 column_id,
@@ -511,7 +565,7 @@ impl Dispatcher for HostDispatcher {
                 .apply_workspace_transaction_edit(|session| {
                     session.edit_table_column_formula_transaction(&table, &column_id, formula_text)
                 })
-                .map_or_else(IntentReceipt::rejected, receipt_for_publication),
+                .map_or_else(|error| self.reject_current(error), receipt_for_publication),
             WorkspaceIntent::SetTableTotalsFormula {
                 table,
                 column_id,
@@ -520,22 +574,22 @@ impl Dispatcher for HostDispatcher {
                 .apply_workspace_transaction_edit(|session| {
                     session.set_table_totals_formula_transaction(&table, &column_id, formula_text)
                 })
-                .map_or_else(IntentReceipt::rejected, receipt_for_publication),
+                .map_or_else(|error| self.reject_current(error), receipt_for_publication),
             WorkspaceIntent::ClearTableTotalsFormula { table, column_id } => self
                 .apply_workspace_transaction_edit(|session| {
                     session.clear_table_totals_formula_transaction(&table, &column_id)
                 })
-                .map_or_else(IntentReceipt::rejected, receipt_for_publication),
+                .map_or_else(|error| self.reject_current(error), receipt_for_publication),
             WorkspaceIntent::SetTableHeaderRowVisible { table, visible } => self
                 .apply_workspace_transaction_edit(|session| {
                     session.set_table_header_row_visible_transaction(&table, visible)
                 })
-                .map_or_else(IntentReceipt::rejected, receipt_for_publication),
+                .map_or_else(|error| self.reject_current(error), receipt_for_publication),
             WorkspaceIntent::SetTableTotalsRowVisible { table, visible } => self
                 .apply_workspace_transaction_edit(|session| {
                     session.set_table_totals_row_visible_transaction(&table, visible)
                 })
-                .map_or_else(IntentReceipt::rejected, receipt_for_publication),
+                .map_or_else(|error| self.reject_current(error), receipt_for_publication),
             WorkspaceIntent::RenameTableColumn {
                 table,
                 column_id,
@@ -544,7 +598,7 @@ impl Dispatcher for HostDispatcher {
                 .apply_workspace_transaction_edit(|session| {
                     session.rename_table_column_transaction(&table, &column_id, name)
                 })
-                .map_or_else(IntentReceipt::rejected, receipt_for_publication),
+                .map_or_else(|error| self.reject_current(error), receipt_for_publication),
             WorkspaceIntent::ReorderTableColumn {
                 table,
                 column_id,
@@ -553,36 +607,36 @@ impl Dispatcher for HostDispatcher {
                 .apply_workspace_transaction_edit(|session| {
                     session.reorder_table_column_transaction(&table, &column_id, new_index)
                 })
-                .map_or_else(IntentReceipt::rejected, receipt_for_publication),
+                .map_or_else(|error| self.reject_current(error), receipt_for_publication),
             WorkspaceIntent::DeleteTableColumn { table, column_id } => self
                 .apply_workspace_transaction_edit(|session| {
                     session.delete_table_column_transaction(&table, &column_id)
                 })
-                .map_or_else(IntentReceipt::rejected, receipt_for_publication),
+                .map_or_else(|error| self.reject_current(error), receipt_for_publication),
             WorkspaceIntent::NavigateRevision { revision_id } => self
                 .apply_workspace_edit(
                     |session| session.navigate_workspace_revision(&revision_id),
                     WorkspaceEditPublication::ProjectOnly,
                 )
-                .map_or_else(IntentReceipt::rejected, receipt_for_publication),
+                .map_or_else(|error| self.reject_current(error), receipt_for_publication),
             WorkspaceIntent::Undo => self
                 .undo_revision()
-                .map_or_else(IntentReceipt::rejected, receipt_for_publication),
+                .map_or_else(|error| self.reject_current(error), receipt_for_publication),
             WorkspaceIntent::Redo => self
                 .redo_revision()
-                .map_or_else(IntentReceipt::rejected, receipt_for_publication),
+                .map_or_else(|error| self.reject_current(error), receipt_for_publication),
             WorkspaceIntent::NewWorkspace => self
                 .create_workspace()
-                .map_or_else(IntentReceipt::rejected, receipt_for_publication),
+                .map_or_else(|error| self.reject_current(error), receipt_for_publication),
             WorkspaceIntent::SwitchWorkspace { workspace_id } => self
                 .switch_workspace(&workspace_id)
-                .map_or_else(IntentReceipt::rejected, receipt_for_publication),
+                .map_or_else(|error| self.reject_current(error), receipt_for_publication),
             // The framework's WorkspaceIntent is intentionally
             // `#[non_exhaustive]` so adding a variant in a future bead is
             // an additive change. A variant that reaches this branch is
             // one this dispatcher version does not know — reject loudly
             // rather than silently ignore.
-            _ => IntentReceipt::rejected(IntentError::Unsupported),
+            _ => self.reject_current(IntentError::Unsupported),
         }
     }
 }
@@ -691,9 +745,7 @@ impl HostDispatcher {
         let clipboard = clipboard_from_projection(&before, &scope, payload, operation)?;
         let mut after = before.clone();
         after.clipboard = Some(clipboard);
-        after.projection_seq = self.next_projection_seq.fetch_add(1, Ordering::Relaxed);
-        let delta = workspace_delta(Some(&before), &after, false);
-        workspace.set(after);
+        let (_, delta) = self.publish_projection_state(Some(&before), after, false);
         Ok(IntentReceipt::accepted().with_delta(delta))
     }
 
@@ -706,7 +758,7 @@ impl HostDispatcher {
             session.set_number_format_transaction(target, number_format_code)
         }) {
             Ok(publication) => Ok(receipt_for_publication(publication)),
-            Err(error) => Ok(IntentReceipt::rejected(error)),
+            Err(error) => Ok(self.reject_current(error)),
         }
     }
 
@@ -740,7 +792,7 @@ impl HostDispatcher {
         }
         match self.apply_literal_value_paste_transaction(target, payload) {
             Ok(publication) => Ok(receipt_for_publication(publication)),
-            Err(error) => Ok(IntentReceipt::rejected(error)),
+            Err(error) => Ok(self.reject_current(error)),
         }
     }
 
@@ -787,7 +839,7 @@ impl HostDispatcher {
         };
         match publication {
             Ok(publication) => Ok(receipt_for_publication(publication)),
-            Err(error) => Ok(IntentReceipt::rejected(error)),
+            Err(error) => Ok(self.reject_current(error)),
         }
     }
 
@@ -824,12 +876,8 @@ impl HostDispatcher {
             } else {
                 before.as_ref().and_then(|state| state.clipboard.clone())
             };
-            after.projection_seq = self.next_projection_seq.fetch_add(1, Ordering::Relaxed);
-            let delta = workspace_delta(before.as_ref(), &after, false);
+            let (after, delta) = self.publish_projection_state(before.as_ref(), after, false);
             let produced_revision = after.revision.workspace_revision_id.clone();
-            if let Some(workspace) = self.workspace {
-                workspace.set(after);
-            }
             Ok(PublishedWorkspaceEdit {
                 result: transaction.result,
                 delta,
@@ -865,8 +913,7 @@ impl HostDispatcher {
                 .workspace_state()
                 .map_err(intent_error_from_session)?;
             after.clipboard = before.as_ref().and_then(|state| state.clipboard.clone());
-            after.projection_seq = self.next_projection_seq.fetch_add(1, Ordering::Relaxed);
-            let delta = workspace_delta(before.as_ref(), &after, false);
+            let (after, delta) = self.publish_projection_state(before.as_ref(), after, false);
             let produced_revision = match before
                 .as_ref()
                 .and_then(|state| state.revision.workspace_revision_id.as_deref())
@@ -878,9 +925,6 @@ impl HostDispatcher {
                 }
                 _ => after.revision.workspace_revision_id.clone(),
             };
-            if let Some(workspace) = self.workspace {
-                workspace.set(after);
-            }
             Ok(PublishedWorkspaceEdit {
                 result,
                 delta,
@@ -915,13 +959,9 @@ impl HostDispatcher {
                 .workspace_state()
                 .map_err(intent_error_from_session)?;
             after.clipboard = before.as_ref().and_then(|state| state.clipboard.clone());
-            after.projection_seq = self.next_projection_seq.fetch_add(1, Ordering::Relaxed);
-            let delta = workspace_delta(before.as_ref(), &after, false);
+            let (after, delta) = self.publish_projection_state(before.as_ref(), after, false);
             let produced_revision = after.revision.workspace_revision_id.clone();
             self.record_revision_undo_boundary(before.as_ref(), &after)?;
-            if let Some(workspace) = self.workspace {
-                workspace.set(after);
-            }
             Ok(PublishedWorkspaceEdit {
                 result: transaction.result,
                 delta,
@@ -953,11 +993,7 @@ impl HostDispatcher {
                 .workspace_state()
                 .map_err(intent_error_from_session)?;
             after.clipboard = before.as_ref().and_then(|state| state.clipboard.clone());
-            after.projection_seq = self.next_projection_seq.fetch_add(1, Ordering::Relaxed);
-            let delta = workspace_delta(before.as_ref(), &after, false);
-            if let Some(workspace) = self.workspace {
-                workspace.set(after);
-            }
+            let (_, delta) = self.publish_projection_state(before.as_ref(), after, false);
             Ok(PublishedWorkspaceEdit {
                 result,
                 delta,
@@ -987,11 +1023,7 @@ impl HostDispatcher {
                 .workspace_state()
                 .map_err(intent_error_from_session)?;
             after.clipboard = before.as_ref().and_then(|state| state.clipboard.clone());
-            after.projection_seq = self.next_projection_seq.fetch_add(1, Ordering::Relaxed);
-            let delta = workspace_delta(before.as_ref(), &after, false);
-            if let Some(workspace) = self.workspace {
-                workspace.set(after);
-            }
+            let (_, delta) = self.publish_projection_state(before.as_ref(), after, false);
             Ok(PublishedWorkspaceEdit {
                 result,
                 delta,
@@ -1020,11 +1052,7 @@ impl HostDispatcher {
                 .workspace_state()
                 .map_err(intent_error_from_session)?;
             after.clipboard = before.as_ref().and_then(|state| state.clipboard.clone());
-            after.projection_seq = self.next_projection_seq.fetch_add(1, Ordering::Relaxed);
-            let delta = workspace_delta(before.as_ref(), &after, false);
-            if let Some(workspace) = self.workspace {
-                workspace.set(after);
-            }
+            let (_, delta) = self.publish_projection_state(before.as_ref(), after, false);
             Ok(IntentReceipt::accepted().with_delta(delta))
         })
     }
@@ -1048,11 +1076,7 @@ impl HostDispatcher {
                 .workspace_state()
                 .map_err(intent_error_from_session)?;
             after.clipboard = before.as_ref().and_then(|state| state.clipboard.clone());
-            after.projection_seq = self.next_projection_seq.fetch_add(1, Ordering::Relaxed);
-            let delta = workspace_delta(before.as_ref(), &after, false);
-            if let Some(workspace) = self.workspace {
-                workspace.set(after);
-            }
+            let (_, delta) = self.publish_projection_state(before.as_ref(), after, false);
             Ok(IntentReceipt::accepted().with_delta(delta))
         })
     }
@@ -1079,13 +1103,9 @@ impl HostDispatcher {
                 .workspace_state()
                 .map_err(intent_error_from_session)?;
             after.clipboard = before.as_ref().and_then(|state| state.clipboard.clone());
-            after.projection_seq = self.next_projection_seq.fetch_add(1, Ordering::Relaxed);
-            let delta = workspace_delta(before.as_ref(), &after, false);
+            let (after, delta) = self.publish_projection_state(before.as_ref(), after, false);
             let produced_revision = after.revision.workspace_revision_id.clone();
             self.record_revision_undo_boundary(before.as_ref(), &after)?;
-            if let Some(workspace) = self.workspace {
-                workspace.set(after);
-            }
             Ok(PublishedWorkspaceEdit {
                 result: removed.handle,
                 delta,
@@ -1198,6 +1218,37 @@ impl HostDispatcher {
         Ok(())
     }
 
+    fn publish_projection_state(
+        &self,
+        before: Option<&WorkspaceState>,
+        mut after: WorkspaceState,
+        full_reset: bool,
+    ) -> (WorkspaceState, WorkspaceDelta) {
+        after.projection_seq = self.next_projection_seq.fetch_add(1, Ordering::Relaxed);
+        let delta = workspace_delta(before, &after, full_reset);
+        if let Some(workspace) = self.workspace {
+            workspace.set(after.clone());
+        }
+        self.publish_delta(delta.clone());
+        (after, delta)
+    }
+
+    fn publish_unchanged_delta(&self) -> WorkspaceDelta {
+        let delta = WorkspaceDelta::unchanged(self.current_projection_seq());
+        self.publish_delta(delta.clone());
+        delta
+    }
+
+    fn reject_current(&self, error: IntentError) -> IntentReceipt {
+        IntentReceipt::rejected(error).with_delta(self.publish_unchanged_delta())
+    }
+
+    fn publish_delta(&self, delta: WorkspaceDelta) {
+        if let Some(latest_delta) = self.latest_delta {
+            latest_delta.set(delta);
+        }
+    }
+
     fn record_revision_undo_boundary(
         &self,
         before: Option<&WorkspaceState>,
@@ -1278,17 +1329,13 @@ impl HostDispatcher {
             .lock()
             .map_err(|_| host_failure("workspace session id mutex poisoned"))? = Some(session_id);
         let before = self.workspace.map(|workspace| workspace.get_untracked());
-        let mut state = session
+        let state = session
             .lock()
             .map_err(|_| host_failure("workspace session mutex poisoned"))?
             .workspace_state()
             .map_err(intent_error_from_session)?;
-        state.projection_seq = self.next_projection_seq.fetch_add(1, Ordering::Relaxed);
+        let (state, delta) = self.publish_projection_state(before.as_ref(), state, true);
         let produced_revision = state.revision.workspace_revision_id.clone();
-        let delta = workspace_delta(before.as_ref(), &state, true);
-        if let Some(workspace) = self.workspace {
-            workspace.set(state);
-        }
         self.undo_stack
             .lock()
             .map_err(|_| host_failure("revision cursor mutex poisoned"))?

@@ -544,6 +544,16 @@ Use this as the per-tranche goal statement before implementation:
       separation, and scenario deletion cleanup. Explicit `series(scope)` selection, unit metadata,
       direct sweep/goal-seek series, richer value provenance, and engine-published scenario revision
       history remain open.
+- [x] W5 early `projection-delta-channel` / `projection-version-stamp` synchronous projection slice:
+      Skin IR now carries a required `latest_delta: ReadSignal<WorkspaceDelta>` beside the full
+      `WorkspaceState` signal, and the host dispatcher owns a single publication path that stamps
+      full snapshots with monotonic `projection_seq` values while emitting the matching receipt and
+      latest-delta payload. Accepted no-op selection and rejected live-host intents publish unchanged
+      deltas at the current sequence instead of falling back to sequence zero. Programmable Skin IR
+      and walking-skeleton tests prove mutation deltas, full-reset deltas, no-op deltas, rejected
+      no-op deltas, workspace switching, and shell/registry context wiring. Delta-only replay/resync,
+      gap-recovery UI, worker calc, virtualization, frame telemetry, and later W5 platform hardening
+      remain open.
 - [ ] `candidate-overlay-handle`: continue toward fully addressable, layerable, non-publishing
       candidate contexts with optimized live layering/merge rebase, candidate add-node template
       initial content, direct sweep/goal-seek comparison columns, scoped/unit series projection, and
@@ -558,7 +568,8 @@ Only pull these forward when their prerequisites above are met:
   insertion, paste special, duplicate subtree, set membership, notes, formats).
 - W4a/W4b/W4c: revision navigation, candidate overlays, speculation, scenarios, and comparative
   projections.
-- W5 early subset: projection delta channel, version stamp, persistence, design tokens, a11y.
+- W5 early remaining subset: persistence, design tokens, a11y, plus delta-only resync/gap-recovery
+  policy on top of the landed projection delta/version stream.
 - W5+ later platform: worker calc, multi-slot composition, keybinding registry, virtualization,
   capability negotiation, error isolation, telemetry.
 - W6: templates, table structural authoring, import/export, external feeds, sensitivity/goal seek,

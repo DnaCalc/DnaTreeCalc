@@ -26,7 +26,7 @@ use dnatreecalc_host::app::{
 use dnatreecalc_host::model::{WorkspaceFixture, WorkspaceModel};
 use dnatreecalc_skin_framework::{
     Dispatcher, ErasedSkinContext, NodeId, SelectionState, SharedSkinState, SharedSkinStateHandle,
-    WorkspaceIntent,
+    WorkspaceDelta, WorkspaceIntent,
 };
 use dnatreecalc_skins::{
     DEPENDENCY_INSPECTOR_ID, FORMULA_TREE_ID, OUTLINE_TABLE_ID, TRIPLE_EDITOR_ID, VALUE_BOARD_ID,
@@ -121,12 +121,16 @@ fn mounting_and_switching_skins_never_recalculates_the_oxcalc_context() {
     ));
     let workspace_state = session.lock().unwrap().workspace_state().unwrap();
     let workspace = RwSignal::new(workspace_state);
+    let latest_delta = RwSignal::new(WorkspaceDelta::unchanged(
+        workspace.get_untracked().projection_seq,
+    ));
     let selection = RwSignal::new(SelectionState::default());
     let shared = SharedSkinStateHandle::new(SharedSkinState::default());
 
     let dispatcher = Arc::new(HostDispatcher::with_session(
         selection,
         workspace,
+        latest_delta,
         session.clone(),
     ));
     let dispatch: Arc<dyn Dispatcher> = dispatcher.clone();
@@ -148,6 +152,7 @@ fn mounting_and_switching_skins_never_recalculates_the_oxcalc_context() {
     // Mount A — triple-editor.
     let cx_a = ErasedSkinContext {
         workspace: workspace.read_only(),
+        latest_delta: latest_delta.read_only(),
         selection: selection.read_only(),
         shared,
         dispatch: dispatch.clone(),
@@ -164,6 +169,7 @@ fn mounting_and_switching_skins_never_recalculates_the_oxcalc_context() {
     // selection signals, different skin in the same conceptual slot.
     let cx_b = ErasedSkinContext {
         workspace: workspace.read_only(),
+        latest_delta: latest_delta.read_only(),
         selection: selection.read_only(),
         shared,
         dispatch: dispatch.clone(),
@@ -201,6 +207,9 @@ fn selection_signal_visible_to_both_skins_via_their_contexts() {
     let _owner = Owner::new();
 
     let workspace = RwSignal::new(preview_accounts_workspace_state());
+    let latest_delta = RwSignal::new(WorkspaceDelta::unchanged(
+        workspace.get_untracked().projection_seq,
+    ));
     let selection = RwSignal::new(SelectionState::default());
     let shared = SharedSkinStateHandle::new(SharedSkinState::default());
     let dispatcher = Arc::new(HostDispatcher::new(selection));
@@ -208,12 +217,14 @@ fn selection_signal_visible_to_both_skins_via_their_contexts() {
 
     let cx_for_first = ErasedSkinContext {
         workspace: workspace.read_only(),
+        latest_delta: latest_delta.read_only(),
         selection: selection.read_only(),
         shared,
         dispatch: dispatch.clone(),
     };
     let cx_for_second = ErasedSkinContext {
         workspace: workspace.read_only(),
+        latest_delta: latest_delta.read_only(),
         selection: selection.read_only(),
         shared,
         dispatch,
@@ -255,8 +266,12 @@ fn edit_formula_intent_recalculates_direct_context_and_updates_workspace_signal(
     let session = Arc::new(std::sync::Mutex::new(initial_session));
 
     let workspace = RwSignal::new(workspace_state);
+    let latest_delta = RwSignal::new(WorkspaceDelta::unchanged(
+        workspace.get_untracked().projection_seq,
+    ));
     let selection = RwSignal::new(SelectionState::default());
-    let dispatcher = HostDispatcher::with_session(selection, workspace, session.clone());
+    let dispatcher =
+        HostDispatcher::with_session(selection, workspace, latest_delta, session.clone());
 
     let receipt = dispatcher.dispatch(WorkspaceIntent::EditFormula {
         node: NodeId::new("Accounts.2005.Q1.Income.Sales"),
@@ -264,6 +279,7 @@ fn edit_formula_intent_recalculates_direct_context_and_updates_workspace_signal(
     });
 
     assert!(receipt.accepted, "{:?}", receipt.error);
+    assert_eq!(latest_delta.get_untracked(), receipt.delta);
     assert_eq!(session.lock().unwrap().recalc_count(), 2);
     let state = workspace.get_untracked();
     assert_eq!(
@@ -286,12 +302,20 @@ fn workspace_management_intents_create_and_switch_projected_sessions() {
     let session = Arc::new(std::sync::Mutex::new(initial_session));
 
     let workspace = RwSignal::new(workspace_state);
+    let latest_delta = RwSignal::new(WorkspaceDelta::unchanged(
+        workspace.get_untracked().projection_seq,
+    ));
     let selection = RwSignal::new(SelectionState::with_primary(Some(NodeId::new(
         "Accounts.2005.Q1.Income",
     ))));
     let shared = SharedSkinStateHandle::new(SharedSkinState::default());
-    let dispatcher =
-        HostDispatcher::with_session_and_shared(selection, workspace, session, Some(shared));
+    let dispatcher = HostDispatcher::with_session_and_shared(
+        selection,
+        workspace,
+        latest_delta,
+        session,
+        Some(shared),
+    );
 
     assert_eq!(
         shared.get_untracked().active_workspace_id.as_deref(),
@@ -304,6 +328,7 @@ fn workspace_management_intents_create_and_switch_projected_sessions() {
 
     let receipt = dispatcher.dispatch(WorkspaceIntent::NewWorkspace);
     assert!(receipt.accepted, "{:?}", receipt.error);
+    assert_eq!(latest_delta.get_untracked(), receipt.delta);
     assert_eq!(workspace.get_untracked().workspace_id, "Workspace 1");
     assert_eq!(workspace.get_untracked().len(), 0);
     assert_eq!(selection.get_untracked().primary, None);
@@ -364,11 +389,15 @@ fn walking_skeleton_click_through_harness_edits_switches_saves_and_reopens() {
     let session = Arc::new(std::sync::Mutex::new(initial_session));
 
     let workspace = RwSignal::new(workspace_state);
+    let latest_delta = RwSignal::new(WorkspaceDelta::unchanged(
+        workspace.get_untracked().projection_seq,
+    ));
     let selection = RwSignal::new(SelectionState::default());
     let shared = SharedSkinStateHandle::new(SharedSkinState::default());
     let dispatcher = Arc::new(HostDispatcher::with_session(
         selection,
         workspace,
+        latest_delta,
         session.clone(),
     ));
     let dispatch: Arc<dyn Dispatcher> = dispatcher.clone();
@@ -397,6 +426,7 @@ fn walking_skeleton_click_through_harness_edits_switches_saves_and_reopens() {
     ] {
         let cx = ErasedSkinContext {
             workspace: workspace.read_only(),
+            latest_delta: latest_delta.read_only(),
             selection: selection.read_only(),
             shared,
             dispatch: dispatch.clone(),

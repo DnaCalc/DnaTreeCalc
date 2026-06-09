@@ -3,7 +3,7 @@ use std::sync::Arc;
 use leptos::prelude::*;
 
 use crate::identity::SkinId;
-use crate::intent::Dispatcher;
+use crate::intent::{Dispatcher, WorkspaceDelta};
 use crate::manifest::{SkinCapabilities, SkinManifest};
 use crate::selection::SelectionState;
 use crate::state::{SharedSkinStateHandle, SkinState, SkinStateHandle};
@@ -19,6 +19,7 @@ use crate::workspace::WorkspaceState;
 #[derive(Clone)]
 pub struct SkinContext<S: SkinState> {
     pub workspace: ReadSignal<WorkspaceState>,
+    pub latest_delta: ReadSignal<WorkspaceDelta>,
     pub selection: ReadSignal<SelectionState>,
     pub shared: SharedSkinStateHandle,
     pub state: SkinStateHandle<S>,
@@ -33,6 +34,7 @@ pub struct SkinContext<S: SkinState> {
 #[derive(Clone)]
 pub struct ErasedSkinContext {
     pub workspace: ReadSignal<WorkspaceState>,
+    pub latest_delta: ReadSignal<WorkspaceDelta>,
     pub selection: ReadSignal<SelectionState>,
     pub shared: SharedSkinStateHandle,
     pub dispatch: Arc<dyn Dispatcher>,
@@ -118,6 +120,7 @@ impl<K: WorkspaceSkin> ErasedSkinFactory for TypedFactory<K> {
         let typed_state = SkinStateHandle::<K::State>::new(K::State::default());
         let typed_cx = SkinContext {
             workspace: cx.workspace,
+            latest_delta: cx.latest_delta,
             selection: cx.selection,
             shared: cx.shared,
             state: typed_state,

@@ -18,7 +18,7 @@ use dnatreecalc_host::app::{
 use dnatreecalc_shell::WorkspaceShell;
 #[cfg(target_arch = "wasm32")]
 use dnatreecalc_skin_framework::{
-    Dispatcher, NodeId, SelectionState, SharedSkinState, SharedSkinStateHandle,
+    Dispatcher, NodeId, SelectionState, SharedSkinState, SharedSkinStateHandle, WorkspaceDelta,
 };
 #[cfg(target_arch = "wasm32")]
 use dnatreecalc_skins::TRIPLE_EDITOR_ID;
@@ -50,6 +50,9 @@ pub fn mount_dnatreecalc(element_id: &str) -> Result<(), JsValue> {
         .workspace_state()
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
     let workspace = RwSignal::new(workspace_state);
+    let latest_delta = RwSignal::new(WorkspaceDelta::unchanged(
+        workspace.get_untracked().projection_seq,
+    ));
     let selection = RwSignal::new(SelectionState::with_primary(Some(NodeId::new(
         "Sheet1.RandArray5x5",
     ))));
@@ -58,6 +61,7 @@ pub fn mount_dnatreecalc(element_id: &str) -> Result<(), JsValue> {
     let dispatcher = Arc::new(HostDispatcher::with_session_and_shared(
         selection,
         workspace,
+        latest_delta,
         session,
         Some(shared),
     ));
@@ -69,6 +73,7 @@ pub fn mount_dnatreecalc(element_id: &str) -> Result<(), JsValue> {
         view! {
             <WorkspaceShell
                 workspace=workspace.read_only()
+                latest_delta=latest_delta.read_only()
                 selection=selection
                 shared=shared
                 dispatch=dispatch.clone()

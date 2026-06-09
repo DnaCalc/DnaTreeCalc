@@ -2985,6 +2985,7 @@ fn programmable_skin_receipts_carry_projection_deltas() {
         .iter()
         .any(|change| matches!(change, WorkspaceDeltaChange::Structural(delta) if !delta.added.is_empty())));
     assert_eq!(skin.state().projection_seq, add_root.delta.to_seq);
+    assert_eq!(skin.latest_delta(), add_root.delta);
 
     skin.add_node(Some("Root"), "A", "3");
     skin.add_node(Some("Root"), "B", "=A+1");
@@ -2999,6 +3000,8 @@ fn programmable_skin_receipts_carry_projection_deltas() {
         "{edit_transaction_id}"
     );
     assert_eq!(edit.delta.from_seq + 1, edit.delta.to_seq);
+    assert_eq!(skin.state().projection_seq, edit.delta.to_seq);
+    assert_eq!(skin.latest_delta(), edit.delta);
     assert!(edit.delta.changes.iter().any(
         |change| matches!(change, WorkspaceDeltaChange::ValuesChanged(values) if values
             .iter()
@@ -3017,10 +3020,20 @@ fn programmable_skin_receipts_carry_projection_deltas() {
     assert_eq!(select.delta.from_seq, before_select_seq);
     assert_eq!(select.delta.to_seq, before_select_seq);
     assert!(select.delta.changes.is_empty());
+    assert_eq!(skin.latest_delta(), select.delta);
+
+    let reject_seq = skin.state().projection_seq;
+    let rejected_select = skin.try_select_table_cell("MissingTable", Some("row:none"), "col:none");
+    assert!(!rejected_select.accepted);
+    assert_eq!(rejected_select.delta.from_seq, reject_seq);
+    assert_eq!(rejected_select.delta.to_seq, reject_seq);
+    assert!(rejected_select.delta.changes.is_empty());
+    assert_eq!(skin.latest_delta(), rejected_select.delta);
 
     let new_workspace = skin.try_new_workspace();
     assert!(new_workspace.accepted, "{:?}", new_workspace.error);
     assert_eq!(new_workspace.transaction_id, None);
+    assert_eq!(skin.latest_delta(), new_workspace.delta);
     assert!(
         new_workspace
             .delta
@@ -3033,6 +3046,7 @@ fn programmable_skin_receipts_carry_projection_deltas() {
     let switch_back = skin.try_switch_workspace("programmable-skin-ir");
     assert!(switch_back.accepted, "{:?}", switch_back.error);
     assert_eq!(switch_back.transaction_id, None);
+    assert_eq!(skin.latest_delta(), switch_back.delta);
     assert!(
         switch_back
             .delta

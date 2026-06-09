@@ -12,7 +12,9 @@ use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::identity::{NodeId, SkinId};
-use crate::intent::{Dispatcher, InMemoryDispatcher, IntentReceipt, WorkspaceIntent};
+use crate::intent::{
+    Dispatcher, InMemoryDispatcher, IntentReceipt, WorkspaceDelta, WorkspaceIntent,
+};
 use crate::manifest::{SkinCapabilities, SkinCategory, SkinManifest};
 use crate::registry::SkinRegistry;
 use crate::selection::SelectionState;
@@ -119,12 +121,16 @@ fn registry_mount_invokes_typed_skin_with_default_state() {
     let mut registry = SkinRegistry::new();
     let id = registry.register(InertSkin::new("alpha"));
     let workspace = RwSignal::new(WorkspaceState::default());
+    let latest_delta = RwSignal::new(WorkspaceDelta::unchanged(
+        workspace.get_untracked().projection_seq,
+    ));
     let selection = RwSignal::new(SelectionState::default());
     let dispatcher: Arc<dyn Dispatcher> = Arc::new(InMemoryDispatcher::new(selection));
     let shared = SharedSkinStateHandle::new(SharedSkinState::default());
 
     let cx = ErasedSkinContext {
         workspace: workspace.read_only(),
+        latest_delta: latest_delta.read_only(),
         selection: selection.read_only(),
         shared,
         dispatch: dispatcher,

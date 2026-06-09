@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use dnatreecalc_skin_framework::{
     Dispatcher, ErasedSkinContext, NodeId, SelectionState, SharedSkinStateHandle, SkinId,
-    SkinRegistry, WorkspaceIntent, WorkspaceRecalcMode, WorkspaceState,
+    SkinRegistry, WorkspaceDelta, WorkspaceIntent, WorkspaceRecalcMode, WorkspaceState,
 };
 use leptos::prelude::*;
 use wasm_bindgen::JsCast;
@@ -27,6 +27,7 @@ use crate::theme::SHELL_CSS;
 #[component]
 pub fn WorkspaceShell(
     workspace: ReadSignal<WorkspaceState>,
+    latest_delta: ReadSignal<WorkspaceDelta>,
     selection: RwSignal<SelectionState>,
     shared: SharedSkinStateHandle,
     dispatch: Arc<dyn Dispatcher>,
@@ -102,6 +103,7 @@ pub fn WorkspaceShell(
                     };
                     let cx = ErasedSkinContext {
                         workspace,
+                        latest_delta,
                         selection: selection.read_only(),
                         shared,
                         dispatch: dispatch_for_view.clone(),

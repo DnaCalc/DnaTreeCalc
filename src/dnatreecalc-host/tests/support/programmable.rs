@@ -12,8 +12,8 @@ use dnatreecalc_skin_framework::{
     NodeValueProjection, RecalcPlanMutation, RecalcPlanProjection, RegisteredSkin, SelectionState,
     SharedSkinState, SharedSkinStateHandle, SkinCapabilities, SkinCategory, SkinContext,
     SkinHandle, SkinId, SkinManifest, SkinState, TableCellInput, TableFormulaBindPreviewProjection,
-    TableRowInput, WorkspaceIntent, WorkspaceRecalcMode, WorkspaceRevisionProjection,
-    WorkspaceSkin, WorkspaceState,
+    TableRowInput, WorkspaceDelta, WorkspaceIntent, WorkspaceRecalcMode,
+    WorkspaceRevisionProjection, WorkspaceSkin, WorkspaceState,
 };
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -34,12 +34,17 @@ impl SkinState for ProgrammableSkinState {
 #[derive(Clone)]
 pub struct ProgrammableDriver {
     workspace: ReadSignal<WorkspaceState>,
+    latest_delta: ReadSignal<WorkspaceDelta>,
     selection: ReadSignal<SelectionState>,
     shared: SharedSkinStateHandle,
     dispatch: Arc<dyn Dispatcher>,
 }
 
 impl ProgrammableDriver {
+    pub fn latest_delta(&self) -> WorkspaceDelta {
+        self.latest_delta.get_untracked()
+    }
+
     pub fn add_node(&self, parent: Option<&str>, symbol: &str, content: &str) {
         self.accept(self.add_node_intent(parent, symbol, content));
     }
@@ -1074,6 +1079,7 @@ impl WorkspaceSkin for ProgrammableSkin {
             .lock()
             .expect("programmable skin lock poisoned") = Some(ProgrammableDriver {
             workspace: cx.workspace,
+            latest_delta: cx.latest_delta,
             selection: cx.selection,
             shared: cx.shared,
             dispatch: cx.dispatch,
@@ -1112,11 +1118,15 @@ impl Harness {
         let owner = Owner::new();
         let session = Arc::new(Mutex::new(session));
         let workspace = RwSignal::new(session.lock().unwrap().workspace_state().unwrap());
+        let latest_delta = RwSignal::new(WorkspaceDelta::unchanged(
+            workspace.get_untracked().projection_seq,
+        ));
         let selection = RwSignal::new(SelectionState::default());
         let shared = SharedSkinStateHandle::new(SharedSkinState::default());
         let dispatcher = Arc::new(HostDispatcher::with_session(
             selection,
             workspace,
+            latest_delta,
             session.clone(),
         ));
         let dispatch: Arc<dyn Dispatcher> = dispatcher;
@@ -1127,6 +1137,7 @@ impl Harness {
         let registered = RegisteredSkin::from_skin(skin);
         let handle = registered.mount(ErasedSkinContext {
             workspace: workspace.read_only(),
+            latest_delta: latest_delta.read_only(),
             selection: selection.read_only(),
             shared,
             dispatch,
