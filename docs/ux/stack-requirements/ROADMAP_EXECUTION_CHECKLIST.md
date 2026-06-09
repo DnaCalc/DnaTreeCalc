@@ -52,8 +52,12 @@ advancing model revisions.
 The second `paste-special` slice is landed for constant-source values:
 `PasteClipboardValues` consumes a single value clipboard carrier only when it has authored constant
 input text, applies it through the existing scoped content transaction path, and rejects computed
-formula results, arrays, multi-source value payloads, formula paste, OS clipboard transfer, source
-deletion, and subtree rebind. The remaining paste-special semantics are recorded in
+formula results, arrays, multi-source value payloads, formula paste, OS clipboard transfer,
+formula/subtree source deletion, and subtree rebind. The first cut/paste commit slice is also landed
+for constant values:
+successful `CutToClipboard(Values)` followed by `PasteClipboardValues` applies the target write and
+source clear in one OxCalc transaction, then clears the host clipboard; rejected paste attempts leave
+source and clipboard intact. The remaining paste-special semantics are recorded in
 `../../handovers/HANDOVER_OXFML_paste_special_authoring.md`.
 
 Do not advance to W4 speculation/history or W5 platform polish as the default next step while W3
@@ -203,13 +207,17 @@ Use this as the per-tranche goal statement before implementation:
       source `content_kind` and optional `constant_input_text`, then pastes exactly one authored
       constant source through the scoped content transaction path with a real transaction id.
       Computed formula values, arrays, multi-source value payloads, formula paste, OS clipboard
-      transfer, source deletion for cuts, and subtree rebind remain open.
+      transfer, and subtree rebind remain open.
+- [x] Land first cut/paste commit tranche for constant values:
+      a successful cut-value paste clears the source in the same OxCalc transaction as the target
+      write and clears `WorkspaceState.clipboard`; rejected paste attempts preserve both source and
+      clipboard. Formula/subtree source deletion remains open until formula rebind support exists.
 - [x] File OxFml handoff for the remaining W3 paste-special APIs:
       computed value literalization, formula rebind, formula-and-format paste, and subtree
       internal-reference rebind support.
 - [ ] Continue W3 with the next feasible tranche: continue `clipboard-transfer-model`
-      toward source deletion or OS clipboard import/export where ownership is clear, or move to
-      OxFml-unblocked formula authoring.
+      toward OS clipboard import/export where ownership is clear, or move to OxFml-unblocked formula
+      authoring.
 
 ## Gated Workstreams
 

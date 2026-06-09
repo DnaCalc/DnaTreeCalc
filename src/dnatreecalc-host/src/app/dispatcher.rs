@@ -517,16 +517,77 @@ impl HostDispatcher {
     }
 
     fn paste_clipboard_values(&self, target: AuthoringScope) -> Result<IntentReceipt, IntentError> {
-        let content = self
+        self.workspace
+            .ok_or_else(|| host_failure("workspace projection handle is not attached"))
+            .and_then(|workspace| {
+                let before = workspace.get_untracked();
+                let targets = before.expand_authoring_scope(&target).map_err(|error| {
+                    clipboard_scope_error(ClipboardPayloadKind::Values, error.to_string())
+                })?;
+                if targets.is_empty() {
+                    return Err(clipboard_scope_error(
+                        ClipboardPayloadKind::Values,
+                        "value paste requires at least one target",
+                    ));
+                }
+                Ok(())
+            })?;
+        let payload = self
             .workspace
             .ok_or_else(|| host_failure("workspace projection handle is not attached"))
-            .and_then(|workspace| clipboard_constant_input_text(&workspace.get_untracked()))?;
-        match self.apply_workspace_transaction_edit(|session| {
-            session.edit_scoped_content_transaction(target, content)
-        }) {
+            .and_then(|workspace| clipboard_constant_value_payload(&workspace.get_untracked()))?;
+        match self.apply_constant_value_paste_transaction(target, payload) {
             Ok(publication) => Ok(receipt_for_publication(publication)),
             Err(error) => Ok(IntentReceipt::rejected(error)),
         }
+    }
+
+    fn apply_constant_value_paste_transaction(
+        &self,
+        target: AuthoringScope,
+        payload: ClipboardConstantValuePayload,
+    ) -> Result<PublishedWorkspaceEdit<bool>, IntentError> {
+        let session_id = self.active_session_id()?;
+        HOST_SESSIONS.with(|sessions| {
+            let session = sessions
+                .borrow()
+                .get(&session_id)
+                .cloned()
+                .ok_or_else(|| host_failure("workspace session handle is not available"))?;
+            let mut session = session
+                .lock()
+                .map_err(|_| host_failure("workspace session mutex poisoned"))?;
+            let before = self.workspace.map(|workspace| workspace.get_untracked());
+            let clear_clipboard_after = payload.operation == ClipboardOperationProjection::Cut;
+            let transaction = session
+                .paste_constant_value_transaction(
+                    target,
+                    payload.source,
+                    payload.content,
+                    clear_clipboard_after,
+                )
+                .map_err(intent_error_from_session)?;
+            let mut after = session
+                .workspace_state()
+                .map_err(intent_error_from_session)?;
+            after.clipboard = if clear_clipboard_after {
+                None
+            } else {
+                before.as_ref().and_then(|state| state.clipboard.clone())
+            };
+            after.projection_seq = self.next_projection_seq.fetch_add(1, Ordering::Relaxed);
+            let delta = workspace_delta(before.as_ref(), &after, false);
+            let produced_revision = after.revision.workspace_revision_id.clone();
+            if let Some(workspace) = self.workspace {
+                workspace.set(after);
+            }
+            Ok(PublishedWorkspaceEdit {
+                result: transaction.result,
+                delta,
+                produced_revision,
+                transaction_id: Some(transaction.transaction_id),
+            })
+        })
     }
 
     fn apply_workspace_edit<T>(
@@ -818,7 +879,16 @@ fn clipboard_number_format_code(workspace: &WorkspaceState) -> Result<Option<Str
         .and_then(|format| format.number_format_code.clone()))
 }
 
-fn clipboard_constant_input_text(workspace: &WorkspaceState) -> Result<String, IntentError> {
+#[derive(Debug, Clone)]
+struct ClipboardConstantValuePayload {
+    operation: ClipboardOperationProjection,
+    source: NodeKey,
+    content: String,
+}
+
+fn clipboard_constant_value_payload(
+    workspace: &WorkspaceState,
+) -> Result<ClipboardConstantValuePayload, IntentError> {
     let Some(clipboard) = &workspace.clipboard else {
         return Err(clipboard_payload_mismatch("values", "empty"));
     };
@@ -834,11 +904,16 @@ fn clipboard_constant_input_text(workspace: &WorkspaceState) -> Result<String, I
             format!("value_count={}", nodes.len()),
         ));
     };
-    node.constant_input_text.clone().ok_or_else(|| {
+    let content = node.constant_input_text.clone().ok_or_else(|| {
         clipboard_payload_mismatch(
             "single_constant_value",
             format!("source_content_kind={}", node.content_kind),
         )
+    })?;
+    Ok(ClipboardConstantValuePayload {
+        operation: clipboard.operation,
+        source: node.node.clone(),
+        content,
     })
 }
 

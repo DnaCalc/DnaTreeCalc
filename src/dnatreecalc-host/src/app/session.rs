@@ -1232,6 +1232,63 @@ impl TreeWorkspaceSession {
         })
     }
 
+    pub fn paste_constant_value_transaction(
+        &mut self,
+        target: AuthoringScope,
+        source: NodeKey,
+        content: impl Into<String>,
+        clear_source_after_paste: bool,
+    ) -> Result<TreeWorkspaceTransactionEdit<bool>, TreeWorkspaceSessionError> {
+        let content = content.into();
+        let state = self.workspace_state()?;
+        let target_keys = state.expand_authoring_scope(&target).map_err(|error| {
+            TreeWorkspaceSessionError::ProjectionOutOfSync {
+                node: error.to_string(),
+            }
+        })?;
+        let mut transaction = OxCalcTreeEditTransaction::new(self.workspace_id.clone())
+            .with_recalc_policy(TransactionRecalcPolicy::RecalculateAndPublishOnce);
+        let mut target_key_set = BTreeSet::new();
+
+        for key in &target_keys {
+            target_key_set.insert(key.clone());
+            let node = state.node_by_key(key).ok_or_else(|| {
+                TreeWorkspaceSessionError::ProjectionOutOfSync {
+                    node: format!("node key {key}"),
+                }
+            })?;
+            transaction = transaction.with_edit(OxCalcTreeEdit::SetNodeFormulaText {
+                node_id: self.tree_node_id(node.id.as_str())?,
+                formula_text: content.clone(),
+            });
+        }
+
+        let source_cleared = clear_source_after_paste && !target_key_set.contains(&source);
+        if source_cleared {
+            let source_node = state.node_by_key(&source).ok_or_else(|| {
+                TreeWorkspaceSessionError::ProjectionOutOfSync {
+                    node: format!("node key {source}"),
+                }
+            })?;
+            transaction = transaction.with_edit(OxCalcTreeEdit::SetNodeFormulaText {
+                node_id: self.tree_node_id(source_node.id.as_str())?,
+                formula_text: String::new(),
+            });
+        }
+
+        let outcome = self.context.apply_edit_transaction(transaction)?;
+        if let Some(calculation) = outcome.calculation {
+            self.recalc_count += 1;
+            self.last_outcome = Some(calculation);
+        } else {
+            self.last_outcome = None;
+        }
+        Ok(TreeWorkspaceTransactionEdit {
+            result: source_cleared,
+            transaction_id: outcome.transaction_id.to_string(),
+        })
+    }
+
     pub fn set_number_format_transaction(
         &mut self,
         scope: AuthoringScope,

@@ -243,7 +243,7 @@ one-line shape. Every field is verbatim in
   through the same dispatcher — not inverse-undo.*
 
 ### Enriching / frontier
-- `clipboard-transfer-model` · new · M — `WorkspaceState.clipboard: Clipboard { operation: Copy|Cut, payload: Values{content_kind,constant_input_text?,value} | Formula{source} | Format | Subtree{root} }`; `CopyToClipboard`/`CutToClipboard` populate, `PasteClipboardFormat` and constant-source `PasteClipboardValues` are the first paste consumers, Paste/PasteSubtree consume in the full model. Host-owned, distinct from OS clipboard.
+- `clipboard-transfer-model` · new · M — `WorkspaceState.clipboard: Clipboard { operation: Copy|Cut, payload: Values{content_kind,constant_input_text?,value} | Formula{source} | Format | Subtree{root} }`; `CopyToClipboard`/`CutToClipboard` populate, `PasteClipboardFormat` and constant-source `PasteClipboardValues` are the first paste consumers, and successful constant-value cut paste clears the source plus host clipboard in one transaction. Paste/PasteSubtree consume in the full model. Host-owned, distinct from OS clipboard.
 - `add-node-content-policy` · extend · S — `AddNode` gains `initial: Empty|InheritColumnFormula{table,column_id}|TemplateBound{id}|Literal` and `is_meta: bool`.
 - `note-write` · extend · S — `::SetNote{node, note:Option<NoteContent>}`; `NodeView.note`. *Authored notes that round-trip to Excel comments; may stay allowed for Reviewer.*
 - `template-subsystem` · new · L — `::PromoteToTemplate`, `::InstantiateTemplate{template_id, parent, bindings}`, `::EditTemplate`, `::SyncInstance`, `::DetachInstance`; `template_index` + `NodeView.instance_of/drift`.

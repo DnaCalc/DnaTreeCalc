@@ -63,9 +63,12 @@ now landed for constant-source values only: value clipboard carriers record sour
 an optional authored constant input string, and `PasteClipboardValues` applies a single constant
 source through the scoped content transaction path without converting rendered values into input
 text. Computed formula-result paste, array literalization, formula paste, OS clipboard integration,
-source deletion for cut/paste, and subtree rebind remain open. A focused OxFml handoff now records
-the missing paste-special APIs for computed value literalization, formula rebind, formula-and-format
-paste, and subtree internal-reference rebind support.
+formula/subtree source deletion, and subtree rebind remain open. Constant-value cut/paste commit is
+also now landed: a successful `CutToClipboard(Values)` followed by `PasteClipboardValues` applies the
+target write and clears the source in one OxCalc transaction, then clears the host clipboard. Rejected
+cut-paste attempts leave the source and clipboard intact. A focused OxFml handoff records the missing
+paste-special APIs for computed value literalization, formula rebind, formula-and-format paste, and
+subtree internal-reference rebind support.
 
 ## Roadmap Position
 
@@ -248,14 +251,19 @@ The roadmap alignment rule is:
       only when the source was an authored constant. The carrier includes `content_kind` plus
       `constant_input_text`, and paste routes that authored input through the existing scoped content
       transaction path with a real OxCalc transaction id. It deliberately rejects computed formula
-      values, arrays, multi-source value payloads, formula paste, OS clipboard transfer, source
-      deletion for cuts, and subtree rebind until the owning OxFml/OxCalc literalization and rebind
+      values, arrays, multi-source value payloads, formula paste, OS clipboard transfer, and subtree
+      rebind until the owning OxFml/OxCalc literalization and rebind machinery exists.
+- [x] Implement the first cut/paste commit slice for constant values:
+      successful `CutToClipboard { payload: Values }` plus `PasteClipboardValues` applies the target
+      constant write and clears the cut source in one OxCalc transaction when the target does not
+      include the source, then clears the host clipboard. Failed paste attempts preserve both source
+      content and clipboard. Formula/subtree source deletion remains open until the owning rebind
       machinery exists.
 - [x] File the OxFml W3 paste-special handoff for computed value literalization, formula rebind,
       formula-and-format paste, and subtree internal-reference rebind support.
 - [ ] Continue W3 with the next ownership-correct slice. Candidate order after the OxFml-blocked
-      formula rewrite verbs: continue `clipboard-transfer-model` toward source deletion or OS
-      clipboard import/export only where ownership is clear, complete remaining
+      formula rewrite verbs: continue `clipboard-transfer-model` toward OS clipboard import/export
+      only where ownership is clear, complete remaining
       `add-node-content-policy` only when template substrate exists, or move to OxFml-unblocked
       formula authoring when that API lands.
 
