@@ -39,6 +39,10 @@ The second `add-node-content-policy` widening is landed for
 `InheritColumnFormula { table, column_id }`: table-column formula metadata can seed a new node when
 OxCalc dry-binds it in the prospective node context; row-context/table-only formulas reject before
 mutation; constant columns reject with typed table-column errors.
+The first `clipboard-transfer-model` tranche is landed: `CopyToClipboard` populates a host-owned,
+typed `WorkspaceState.clipboard` carrier for values, formula source, formats, and subtrees from
+`AuthoringScope`, with a `ClipboardChanged` projection delta. Paste/cut, OS clipboard integration,
+formula rewrite, and subtree rebind remain separate work.
 
 Do not advance to W4 speculation/history or W5 platform polish as the default next step while W3
 authoring verbs remain incomplete.
@@ -167,8 +171,14 @@ Use this as the per-tranche goal statement before implementation:
       Row-context/table-only formulas reject with bind diagnostics before mutation; constant columns
       reject with typed table-column errors. `TemplateBound` remains blocked on the template
       subsystem.
-- [ ] Continue W3 with the next feasible tranche: complete `add-node-content-policy`
-      subject/substrate design or OxFml-unblocked formula authoring.
+- [x] Land first `clipboard-transfer-model` tranche:
+      `WorkspaceIntent::CopyToClipboard { scope, payload }` builds a typed host-owned carrier for
+      `Values`, `Formula`, `Format`, and `Subtree` payloads from projected state and emits
+      `WorkspaceDeltaChange::ClipboardChanged`. This is a transfer artifact only; paste-special,
+      cut/delete coupling, OS clipboard export/import, formula rewrite, and subtree rebind remain
+      open.
+- [ ] Continue W3 with the next feasible tranche: continue `clipboard-transfer-model`
+      toward paste/cut where ownership is clear, or move to OxFml-unblocked formula authoring.
 
 ## Gated Workstreams
 

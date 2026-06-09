@@ -6,13 +6,13 @@ use dnatreecalc_host::app::{HostDispatcher, TreeWorkspaceSession};
 use dnatreecalc_host::model::{WorkspaceFixture, WorkspaceModel};
 use dnatreecalc_skin_framework::{
     ActiveNodeDetailProjection, ActiveSelectionDetailProjection, ActiveTableCellDetailProjection,
-    AuthoringScope, Dispatcher, ErasedSkinContext, FormulaBindPreviewProjection,
-    InitialNodeContentProjection, IntentError, IntentReceipt, MutationImpactProjection,
-    NodeAttributePatch, NodeId, NodeKey, RecalcPlanMutation, RecalcPlanProjection, RegisteredSkin,
-    SelectionState, SharedSkinState, SharedSkinStateHandle, SkinCapabilities, SkinCategory,
-    SkinContext, SkinHandle, SkinId, SkinManifest, SkinState, TableCellInput,
-    TableFormulaBindPreviewProjection, TableRowInput, WorkspaceIntent, WorkspaceRecalcMode,
-    WorkspaceRevisionProjection, WorkspaceSkin, WorkspaceState,
+    AuthoringScope, ClipboardPayloadKind, Dispatcher, ErasedSkinContext,
+    FormulaBindPreviewProjection, InitialNodeContentProjection, IntentError, IntentReceipt,
+    MutationImpactProjection, NodeAttributePatch, NodeId, NodeKey, RecalcPlanMutation,
+    RecalcPlanProjection, RegisteredSkin, SelectionState, SharedSkinState, SharedSkinStateHandle,
+    SkinCapabilities, SkinCategory, SkinContext, SkinHandle, SkinId, SkinManifest, SkinState,
+    TableCellInput, TableFormulaBindPreviewProjection, TableRowInput, WorkspaceIntent,
+    WorkspaceRecalcMode, WorkspaceRevisionProjection, WorkspaceSkin, WorkspaceState,
 };
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -114,6 +114,15 @@ impl ProgrammableDriver {
     ) -> IntentReceipt {
         self.dispatch
             .dispatch(WorkspaceIntent::SetNodeAttributes { node, attrs })
+    }
+
+    pub fn try_copy_to_clipboard(
+        &self,
+        scope: AuthoringScope,
+        payload: ClipboardPayloadKind,
+    ) -> IntentReceipt {
+        self.dispatch
+            .dispatch(WorkspaceIntent::CopyToClipboard { scope, payload })
     }
 
     pub fn edit_deferred(&self, node: &str, content: &str) {

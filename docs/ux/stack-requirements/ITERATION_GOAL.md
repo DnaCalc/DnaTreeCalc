@@ -41,7 +41,10 @@ and commit rejects invalid literal formulas before model mutation. The next `add
 slice is now implemented for `InheritColumnFormula { table, column_id }`: the host reads formula
 text from table column metadata, OxCalc dry-binds it in the prospective new-node context, and
 row-context/table-only formulas are rejected rather than faking table context. `TemplateBound` still
-waits for the template subsystem.
+waits for the template subsystem. The first `clipboard-transfer-model` tranche is now landed:
+`CopyToClipboard` populates a host-owned typed clipboard carrier for values, formula source,
+formats, and subtrees from `AuthoringScope`, projects it through `WorkspaceState.clipboard`, and
+emits a typed clipboard delta without involving the OS clipboard or fabricating paste semantics.
 
 ## Roadmap Position
 
@@ -202,9 +205,17 @@ The roadmap alignment rule is:
       table-only formulas are rejected with bind diagnostics before mutation, and constant columns are
       rejected with typed table-column errors. `TemplateBound` remains blocked on the template
       subsystem.
+- [x] Implement the first `clipboard-transfer-model` tranche:
+      `WorkspaceIntent::CopyToClipboard { scope, payload }` expands host-owned `AuthoringScope` and
+      projects a typed `WorkspaceState.clipboard` carrier for `Values`, `Formula`, `Format`, and
+      `Subtree` payloads. Values use projected typed `NodeValueProjection`; formula copy carries one
+      source `NodeKey` plus authored content text without rewriting it; format copy carries projected
+      effective format; subtree copy carries the expanded key set. This tranche does not implement
+      paste, cut, OS clipboard integration, formula rewrite, or subtree rebind.
 - [ ] Continue W3 with the next ownership-correct slice. Candidate order after the OxFml-blocked
-      formula rewrite verbs: complete `add-node-content-policy` subject/substrate design, or move to
-      OxFml-unblocked formula authoring when that API lands.
+      formula rewrite verbs: continue `clipboard-transfer-model` toward paste/cut where ownership is
+      clear, complete remaining `add-node-content-policy` only when template substrate exists, or move
+      to OxFml-unblocked formula authoring when that API lands.
 
 ### Gating Engine Workstreams
 

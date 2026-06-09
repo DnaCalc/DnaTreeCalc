@@ -3427,6 +3427,7 @@ impl TreeWorkspaceSession {
             nodes,
             dependencies,
             tables,
+            clipboard: None,
             diagnostics,
         })
     }

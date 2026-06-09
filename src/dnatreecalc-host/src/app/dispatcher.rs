@@ -1,8 +1,10 @@
 use std::sync::{Arc, Mutex};
 
 use dnatreecalc_skin_framework::{
-    DependencyDeltaProjection, Dispatcher, IntentError, IntentReceipt, NodeId, NodeKey,
-    NodeValueDeltaProjection, NodeView, SelectionState, SharedSkinStateHandle,
+    AuthoringScope, ClipboardNodeFormatProjection, ClipboardNodeValueProjection,
+    ClipboardPayloadKind, ClipboardPayloadProjection, ClipboardProjection,
+    DependencyDeltaProjection, Dispatcher, IntentError, IntentReceipt, NodeContentKind, NodeId,
+    NodeKey, NodeValueDeltaProjection, NodeView, SelectionState, SharedSkinStateHandle,
     StructuralDeltaProjection, TableCellSelection, WorkspaceDelta, WorkspaceDeltaChange,
     WorkspaceIntent, WorkspaceState,
 };
@@ -204,6 +206,9 @@ impl Dispatcher for HostDispatcher {
                     session.set_node_attributes_transaction(node, attrs)
                 })
                 .map_or_else(IntentReceipt::rejected, receipt_for_publication),
+            WorkspaceIntent::CopyToClipboard { scope, payload } => self
+                .copy_to_clipboard(scope, payload)
+                .unwrap_or_else(IntentReceipt::rejected),
             WorkspaceIntent::Recalculate => self
                 .apply_workspace_edit(|_| Ok(()), WorkspaceEditPublication::Recalculate)
                 .map_or_else(IntentReceipt::rejected, receipt_for_publication),
@@ -470,6 +475,24 @@ fn receipt_for_publication<T>(publication: PublishedWorkspaceEdit<T>) -> IntentR
 }
 
 impl HostDispatcher {
+    fn copy_to_clipboard(
+        &self,
+        scope: AuthoringScope,
+        payload: ClipboardPayloadKind,
+    ) -> Result<IntentReceipt, IntentError> {
+        let workspace = self
+            .workspace
+            .ok_or_else(|| host_failure("workspace projection handle is not attached"))?;
+        let before = workspace.get_untracked();
+        let clipboard = clipboard_from_projection(&before, &scope, payload)?;
+        let mut after = before.clone();
+        after.clipboard = Some(clipboard);
+        after.projection_seq = self.next_projection_seq.fetch_add(1, Ordering::Relaxed);
+        let delta = workspace_delta(Some(&before), &after, false);
+        workspace.set(after);
+        Ok(IntentReceipt::accepted().with_delta(delta))
+    }
+
     fn apply_workspace_edit<T>(
         &self,
         edit: impl FnOnce(
@@ -495,6 +518,7 @@ impl HostDispatcher {
             let mut after = session
                 .workspace_state()
                 .map_err(intent_error_from_session)?;
+            after.clipboard = before.as_ref().and_then(|state| state.clipboard.clone());
             after.projection_seq = self.next_projection_seq.fetch_add(1, Ordering::Relaxed);
             let delta = workspace_delta(before.as_ref(), &after, false);
             let produced_revision = after.revision.workspace_revision_id.clone();
@@ -534,6 +558,7 @@ impl HostDispatcher {
             let mut after = session
                 .workspace_state()
                 .map_err(intent_error_from_session)?;
+            after.clipboard = before.as_ref().and_then(|state| state.clipboard.clone());
             after.projection_seq = self.next_projection_seq.fetch_add(1, Ordering::Relaxed);
             let delta = workspace_delta(before.as_ref(), &after, false);
             let produced_revision = after.revision.workspace_revision_id.clone();
@@ -646,6 +671,118 @@ impl HostDispatcher {
             produced_revision,
             transaction_id: None,
         })
+    }
+}
+
+fn clipboard_from_projection(
+    workspace: &WorkspaceState,
+    scope: &AuthoringScope,
+    payload: ClipboardPayloadKind,
+) -> Result<ClipboardProjection, IntentError> {
+    let node_keys = workspace
+        .expand_authoring_scope(scope)
+        .map_err(|error| clipboard_scope_error(payload, error.to_string()))?;
+    let payload = match payload {
+        ClipboardPayloadKind::Values => ClipboardPayloadProjection::Values {
+            nodes: node_keys
+                .iter()
+                .map(|node_key| {
+                    let node = workspace.node_by_key(node_key).ok_or_else(|| {
+                        clipboard_scope_error(
+                            payload,
+                            format!("expanded node {node_key} is absent from projection"),
+                        )
+                    })?;
+                    Ok(ClipboardNodeValueProjection {
+                        node: node.key.clone(),
+                        path: node.id.clone(),
+                        value: node.computed_value.clone(),
+                    })
+                })
+                .collect::<Result<Vec<_>, _>>()?,
+        },
+        ClipboardPayloadKind::Formula => {
+            let node = single_clipboard_node(workspace, &node_keys, payload)?;
+            if node.content_kind != NodeContentKind::Formula {
+                return Err(clipboard_scope_error(
+                    payload,
+                    format!(
+                        "formula clipboard payload requires a formula node, got {}",
+                        node.content_kind
+                    ),
+                ));
+            }
+            ClipboardPayloadProjection::Formula {
+                source: node.key.clone(),
+                source_path: node.id.clone(),
+                content: node.content_text.clone(),
+            }
+        }
+        ClipboardPayloadKind::Format => ClipboardPayloadProjection::Format {
+            nodes: node_keys
+                .iter()
+                .map(|node_key| {
+                    let node = workspace.node_by_key(node_key).ok_or_else(|| {
+                        clipboard_scope_error(
+                            payload,
+                            format!("expanded node {node_key} is absent from projection"),
+                        )
+                    })?;
+                    Ok(ClipboardNodeFormatProjection {
+                        node: node.key.clone(),
+                        path: node.id.clone(),
+                        effective_format: node.effective_format.clone(),
+                    })
+                })
+                .collect::<Result<Vec<_>, _>>()?,
+        },
+        ClipboardPayloadKind::Subtree => {
+            let AuthoringScope::Subtree(root) = scope else {
+                return Err(clipboard_scope_error(
+                    payload,
+                    "subtree clipboard payload requires AuthoringScope::Subtree",
+                ));
+            };
+            let root_node = workspace.node_by_key(root).ok_or_else(|| {
+                clipboard_scope_error(payload, format!("unknown subtree root {root}"))
+            })?;
+            ClipboardPayloadProjection::Subtree {
+                root: root_node.key.clone(),
+                root_path: root_node.id.clone(),
+                nodes: node_keys,
+            }
+        }
+    };
+    Ok(ClipboardProjection { payload })
+}
+
+fn single_clipboard_node<'a>(
+    workspace: &'a WorkspaceState,
+    node_keys: &[NodeKey],
+    payload: ClipboardPayloadKind,
+) -> Result<&'a NodeView, IntentError> {
+    let [node_key] = node_keys else {
+        return Err(clipboard_scope_error(
+            payload,
+            format!(
+                "{} clipboard payload requires exactly one source node, got {}",
+                payload.stable_id(),
+                node_keys.len()
+            ),
+        ));
+    };
+    workspace.node_by_key(node_key).ok_or_else(|| {
+        clipboard_scope_error(
+            payload,
+            format!("expanded node {node_key} is absent from projection"),
+        )
+    })
+}
+
+fn clipboard_scope_error(payload: ClipboardPayloadKind, detail: impl Into<String>) -> IntentError {
+    IntentError::ClipboardScopeUnsupported {
+        payload: payload.stable_id().to_string(),
+        detail: detail.into(),
     }
 }
 
@@ -772,6 +909,12 @@ fn workspace_delta(
 
     if let Some(run) = after.last_run.clone() {
         changes.push(WorkspaceDeltaChange::CalcRun(run));
+    }
+
+    if before.clipboard != after.clipboard {
+        changes.push(WorkspaceDeltaChange::ClipboardChanged(
+            after.clipboard.clone(),
+        ));
     }
 
     WorkspaceDelta {

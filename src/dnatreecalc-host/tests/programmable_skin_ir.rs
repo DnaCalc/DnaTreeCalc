@@ -2,11 +2,11 @@ mod support;
 
 use dnatreecalc_host::app::TreeWorkspaceSession;
 use dnatreecalc_skin_framework::{
-    ActiveSelectionDetailProjection, AuthoringScope, CalcRunStateProjection,
-    FormulaBindPreviewDiagnosticStage, FormulaBindPreviewInputKind, InitialNodeContentProjection,
-    IntentError, InvalidationReasonProjection, MutationImpactBlockedReasonProjection,
-    MutationImpactIntentProjection, NodeAttributePatch, NodeContentKind, NodeId,
-    NodeValueProjection, RecalcPlanMutation, ReferenceTargetProjection,
+    ActiveSelectionDetailProjection, AuthoringScope, CalcRunStateProjection, ClipboardPayloadKind,
+    ClipboardPayloadProjection, FormulaBindPreviewDiagnosticStage, FormulaBindPreviewInputKind,
+    InitialNodeContentProjection, IntentError, InvalidationReasonProjection,
+    MutationImpactBlockedReasonProjection, MutationImpactIntentProjection, NodeAttributePatch,
+    NodeContentKind, NodeId, NodeValueProjection, RecalcPlanMutation, ReferenceTargetProjection,
     RuntimeEffectFamilyProjection, RuntimeOverlayKindProjection, TableCellEditabilityProjection,
     TableCellRegionProjection, TableColumnBodyProjection, TableDependencyFactKindProjection,
     TableDependencyFactStatusProjection, TreeReferenceCollectionFamilyProjection,
@@ -2791,6 +2791,144 @@ fn programmable_skin_sets_node_attributes_via_meta_nodes() {
         reserved.error,
         Some(IntentError::AttributePathReserved {
             node: "Root.B.Attributes".to_string()
+        })
+    );
+}
+
+#[test]
+fn programmable_skin_populates_typed_clipboard_carriers_from_projection() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+    assert!(skin.try_add_node(None, "Root", "").accepted);
+    assert!(skin.try_add_node(Some("Root"), "A", "2").accepted);
+    assert!(skin.try_add_node(Some("Root"), "B", "=A+1").accepted);
+    assert!(skin.try_add_node(Some("Root.B"), "B1", "7").accepted);
+    skin.recalc();
+
+    let state = skin.state();
+    let root_key = state.node(&NodeId::new("Root")).unwrap().key.clone();
+    let a_key = state.node(&NodeId::new("Root.A")).unwrap().key.clone();
+    let b_key = state.node(&NodeId::new("Root.B")).unwrap().key.clone();
+
+    let values = skin.try_copy_to_clipboard(
+        AuthoringScope::Nodes(vec![a_key.clone(), b_key.clone()]),
+        ClipboardPayloadKind::Values,
+    );
+    assert!(values.accepted, "{:?}", values.error);
+    assert_eq!(values.transaction_id, None);
+    assert!(
+        values
+            .delta
+            .changes
+            .iter()
+            .any(|change| matches!(change, WorkspaceDeltaChange::ClipboardChanged(Some(_))))
+    );
+    let state = skin.state();
+    let Some(clipboard) = &state.clipboard else {
+        panic!("clipboard projects after value copy");
+    };
+    let ClipboardPayloadProjection::Values { nodes } = &clipboard.payload else {
+        panic!("expected values clipboard payload");
+    };
+    assert_eq!(nodes.len(), 2);
+    assert_eq!(nodes[0].node, a_key);
+    assert_eq!(nodes[0].path, NodeId::new("Root.A"));
+    assert_eq!(nodes[0].value.display_text(), "2");
+    assert_eq!(nodes[1].node, b_key);
+    assert_eq!(nodes[1].path, NodeId::new("Root.B"));
+    assert_eq!(nodes[1].value.display_text(), "3");
+
+    let formula = skin.try_copy_to_clipboard(
+        AuthoringScope::Node(b_key.clone()),
+        ClipboardPayloadKind::Formula,
+    );
+    assert!(formula.accepted, "{:?}", formula.error);
+    let state = skin.state();
+    let Some(clipboard) = &state.clipboard else {
+        panic!("clipboard projects after formula copy");
+    };
+    let ClipboardPayloadProjection::Formula {
+        source,
+        source_path,
+        content,
+    } = &clipboard.payload
+    else {
+        panic!("expected formula clipboard payload");
+    };
+    assert_eq!(source, &b_key);
+    assert_eq!(source_path, &NodeId::new("Root.B"));
+    assert_eq!(content, "=A+1");
+
+    let constant_formula = skin.try_copy_to_clipboard(
+        AuthoringScope::Node(a_key.clone()),
+        ClipboardPayloadKind::Formula,
+    );
+    assert!(!constant_formula.accepted);
+    assert_eq!(
+        constant_formula.error,
+        Some(IntentError::ClipboardScopeUnsupported {
+            payload: "formula".to_string(),
+            detail: "formula clipboard payload requires a formula node, got constant".to_string()
+        })
+    );
+
+    let formatted = skin.try_set_number_format(AuthoringScope::Node(a_key.clone()), Some("0.00"));
+    assert!(formatted.accepted, "{:?}", formatted.error);
+    let format = skin.try_copy_to_clipboard(
+        AuthoringScope::Node(a_key.clone()),
+        ClipboardPayloadKind::Format,
+    );
+    assert!(format.accepted, "{:?}", format.error);
+    let state = skin.state();
+    let Some(clipboard) = &state.clipboard else {
+        panic!("clipboard projects after format copy");
+    };
+    let ClipboardPayloadProjection::Format { nodes } = &clipboard.payload else {
+        panic!("expected format clipboard payload");
+    };
+    assert_eq!(nodes.len(), 1);
+    assert_eq!(nodes[0].node, a_key);
+    assert_eq!(nodes[0].path, NodeId::new("Root.A"));
+    assert_eq!(
+        nodes[0]
+            .effective_format
+            .as_ref()
+            .and_then(|format| format.number_format_code.as_deref()),
+        Some("0.00")
+    );
+
+    let subtree = skin.try_copy_to_clipboard(
+        AuthoringScope::Subtree(root_key.clone()),
+        ClipboardPayloadKind::Subtree,
+    );
+    assert!(subtree.accepted, "{:?}", subtree.error);
+    let state = skin.state();
+    let Some(clipboard) = &state.clipboard else {
+        panic!("clipboard projects after subtree copy");
+    };
+    let ClipboardPayloadProjection::Subtree {
+        root,
+        root_path,
+        nodes,
+    } = &clipboard.payload
+    else {
+        panic!("expected subtree clipboard payload");
+    };
+    assert_eq!(root, &root_key);
+    assert_eq!(root_path, &NodeId::new("Root"));
+    assert_eq!(nodes.len(), 4);
+    assert!(nodes.contains(&b_key));
+
+    let unsupported = skin.try_copy_to_clipboard(
+        AuthoringScope::Nodes(vec![root_key, b_key]),
+        ClipboardPayloadKind::Formula,
+    );
+    assert!(!unsupported.accepted);
+    assert_eq!(
+        unsupported.error,
+        Some(IntentError::ClipboardScopeUnsupported {
+            payload: "formula".to_string(),
+            detail: "formula clipboard payload requires exactly one source node, got 2".to_string()
         })
     );
 }

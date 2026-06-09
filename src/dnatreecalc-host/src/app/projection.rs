@@ -101,6 +101,7 @@ pub fn workspace_state_from_model(model: &WorkspaceModel) -> WorkspaceState {
         nodes,
         dependencies: DependencyGraphProjection::default(),
         tables: BTreeMap::new(),
+        clipboard: None,
         diagnostics: Vec::new(),
     }
 }

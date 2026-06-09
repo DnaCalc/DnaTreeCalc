@@ -19,9 +19,10 @@ pub mod workspace;
 
 pub use identity::{NodeId, NodeKey, SkinId, SkinMountSlot};
 pub use intent::{
-    AuthoringScope, DependencyDeltaProjection, Dispatcher, InMemoryDispatcher, IntentError,
-    IntentReceipt, NodeAttributePatch, NodeValueDeltaProjection, StructuralDeltaProjection,
-    TableCellInput, TableRowInput, WorkspaceDelta, WorkspaceDeltaChange, WorkspaceIntent,
+    AuthoringScope, ClipboardPayloadKind, DependencyDeltaProjection, Dispatcher,
+    InMemoryDispatcher, IntentError, IntentReceipt, NodeAttributePatch, NodeValueDeltaProjection,
+    StructuralDeltaProjection, TableCellInput, TableRowInput, WorkspaceDelta, WorkspaceDeltaChange,
+    WorkspaceIntent,
 };
 pub use manifest::{SkinCapabilities, SkinCategory, SkinManifest};
 pub use registry::SkinRegistry;
@@ -36,15 +37,17 @@ pub use state::{
 pub use workspace::{
     ActiveNodeDetailProjection, ActiveSelectionDetailProjection, ActiveTableCellDetailProjection,
     AuthoringScopeExpansionError, BindingDiagnosticProjection, CalcRunProjection,
-    CalcRunStateProjection, DependencyDescriptorProjection, DependencyEdgeProjection,
-    DependencyGraphProjection, DependencyKindProjection, DerivationHoleBindingProjection,
-    DerivationInvocationProjection, DerivationOxfmlTraceEventProjection,
-    DerivationPreparedArgumentProjection, DerivationTemplateHoleProjection,
-    DerivationTemplateSelectionProjection, DerivationTraceProjection, EffectiveFormatProjection,
-    FormatSourceProjection, FormulaBindPreviewDiagnosticProjection,
-    FormulaBindPreviewDiagnosticStage, FormulaBindPreviewInputKind,
-    FormulaBindPreviewProfileViolationKindProjection, FormulaBindPreviewProfileViolationProjection,
-    FormulaBindPreviewProjection, InitialNodeContentProjection, InvalidationReasonProjection,
+    CalcRunStateProjection, ClipboardNodeFormatProjection, ClipboardNodeValueProjection,
+    ClipboardPayloadProjection, ClipboardProjection, DependencyDescriptorProjection,
+    DependencyEdgeProjection, DependencyGraphProjection, DependencyKindProjection,
+    DerivationHoleBindingProjection, DerivationInvocationProjection,
+    DerivationOxfmlTraceEventProjection, DerivationPreparedArgumentProjection,
+    DerivationTemplateHoleProjection, DerivationTemplateSelectionProjection,
+    DerivationTraceProjection, EffectiveFormatProjection, FormatSourceProjection,
+    FormulaBindPreviewDiagnosticProjection, FormulaBindPreviewDiagnosticStage,
+    FormulaBindPreviewInputKind, FormulaBindPreviewProfileViolationKindProjection,
+    FormulaBindPreviewProfileViolationProjection, FormulaBindPreviewProjection,
+    InitialNodeContentProjection, InvalidationReasonProjection,
     MutationImpactBlockedReasonProjection, MutationImpactIntentProjection,
     MutationImpactProjection, NameCollisionProjection, NodeCalcStateProjection, NodeContentKind,
     NodeInvalidationProjection, NodeNoteProjection, NodeValueProjection, NodeView,

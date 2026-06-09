@@ -4,7 +4,8 @@ use std::sync::{Arc, Mutex};
 use crate::identity::{NodeId, NodeKey};
 use crate::selection::{SelectionState, TableCellSelection};
 use crate::workspace::{
-    CalcRunProjection, DependencyKindProjection, InitialNodeContentProjection, NodeValueProjection,
+    CalcRunProjection, ClipboardProjection, DependencyKindProjection, InitialNodeContentProjection,
+    NodeValueProjection,
 };
 use leptos::prelude::*;
 
@@ -129,6 +130,13 @@ pub enum WorkspaceIntent {
         node: NodeKey,
         attrs: NodeAttributePatch,
     },
+    /// Populate the host-owned clipboard carrier from a typed scope. The
+    /// clipboard is distinct from the OS clipboard and carries typed model
+    /// facts for later paste/duplicate verbs.
+    CopyToClipboard {
+        scope: AuthoringScope,
+        payload: ClipboardPayloadKind,
+    },
     AddNode {
         parent: Option<NodeId>,
         symbol: String,
@@ -246,6 +254,26 @@ pub struct TableRowInput {
     pub content: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClipboardPayloadKind {
+    Values,
+    Formula,
+    Format,
+    Subtree,
+}
+
+impl ClipboardPayloadKind {
+    #[must_use]
+    pub const fn stable_id(self) -> &'static str {
+        match self {
+            Self::Values => "values",
+            Self::Formula => "formula",
+            Self::Format => "format",
+            Self::Subtree => "subtree",
+        }
+    }
+}
+
 /// Outcome of dispatching a single intent.
 ///
 /// Carries a coarse acceptance flag plus the typed error variant
@@ -356,6 +384,8 @@ pub enum IntentError {
     AttributePathReserved { node: String },
     #[error("attribute key {key} is not path-safe")]
     InvalidAttributeKey { key: String },
+    #[error("clipboard payload {payload} cannot be built from this scope: {detail}")]
+    ClipboardScopeUnsupported { payload: String, detail: String },
     #[error("engine rejected the intent: {0}")]
     EngineRejected(String),
     #[error("host failed to dispatch the intent: {0}")]
@@ -388,6 +418,7 @@ pub enum WorkspaceDeltaChange {
     ValuesChanged(Vec<NodeValueDeltaProjection>),
     DepsChanged(Vec<DependencyDeltaProjection>),
     CalcRun(CalcRunProjection),
+    ClipboardChanged(Option<ClipboardProjection>),
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -489,6 +520,7 @@ impl Dispatcher for InMemoryDispatcher {
             | WorkspaceIntent::SetNote { .. }
             | WorkspaceIntent::SetMeta { .. }
             | WorkspaceIntent::SetNodeAttributes { .. }
+            | WorkspaceIntent::CopyToClipboard { .. }
             | WorkspaceIntent::AddNode { .. }
             | WorkspaceIntent::RenameNode { .. }
             | WorkspaceIntent::MoveNode { .. }

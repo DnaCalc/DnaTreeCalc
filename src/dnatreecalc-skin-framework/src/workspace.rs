@@ -30,6 +30,7 @@ pub struct WorkspaceState {
     pub nodes: BTreeMap<NodeId, NodeView>,
     pub dependencies: DependencyGraphProjection,
     pub tables: BTreeMap<NodeId, TableProjection>,
+    pub clipboard: Option<ClipboardProjection>,
     pub diagnostics: Vec<String>,
 }
 
@@ -311,6 +312,45 @@ pub struct ActiveNodeDetailProjection {
     pub binding_diagnostics: Vec<BindingDiagnosticProjection>,
     pub outgoing_references: Vec<ReferenceResolutionProjection>,
     pub incoming_reference_handles: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClipboardProjection {
+    pub payload: ClipboardPayloadProjection,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ClipboardPayloadProjection {
+    Values {
+        nodes: Vec<ClipboardNodeValueProjection>,
+    },
+    Formula {
+        source: NodeKey,
+        source_path: NodeId,
+        content: String,
+    },
+    Format {
+        nodes: Vec<ClipboardNodeFormatProjection>,
+    },
+    Subtree {
+        root: NodeKey,
+        root_path: NodeId,
+        nodes: Vec<NodeKey>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClipboardNodeValueProjection {
+    pub node: NodeKey,
+    pub path: NodeId,
+    pub value: NodeValueProjection,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClipboardNodeFormatProjection {
+    pub node: NodeKey,
+    pub path: NodeId,
+    pub effective_format: Option<EffectiveFormatProjection>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
