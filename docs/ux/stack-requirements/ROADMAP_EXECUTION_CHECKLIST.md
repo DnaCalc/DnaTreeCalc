@@ -112,7 +112,12 @@ and attributes by creating the same canonical meta nodes under cloned nodes in t
 The third slice is now landed for hidden non-canonical formula-free meta descendants: duplicate
 subtree preserves those custom hidden branches through the same OxCalc transaction while keeping
 them out of ordinary projected node lists. Table subtree cloning, table-backed meta
-descendants, formula-bearing meta descendants, and formula rebind remain open.
+descendants, formula-bearing meta descendants, and formula rebind remain open. The fourth slice is
+also landed for constant-only table snapshots: duplicate subtree creates a fresh table id/name/path
+identity, clones generated table cell meta nodes, and sets the cloned OxCalc table snapshot to those
+new generated node ids in one transaction. Formula-backed table columns, totals formulas,
+formula-bearing table cell nodes, and formula-visible table-name collisions remain rejected before
+mutation until table formula rebind support exists.
 
 Do not advance to W4 speculation/history or W5 platform polish as the default next step while W3
 authoring verbs remain incomplete.
@@ -353,6 +358,12 @@ Use this as the per-tranche goal statement before implementation:
       descendants without projecting those hidden nodes into ordinary `WorkspaceState` lists.
       Formula-bearing meta descendants, table-backed meta descendants, table subtree cloning, and
       formula rebind remain open.
+- [x] Land fourth `duplicate-subtree` tranche:
+      constant-only table snapshots are cloned through the same transaction as the duplicated table
+      node. The clone receives a fresh table id/name/path identity, generated table cell meta nodes
+      are recreated under the cloned table node, and the cloned OxCalc table snapshot points at the
+      cloned generated node ids. Formula-backed table columns, totals formulas, formula-bearing
+      table cell nodes, formula-visible table-name collisions, and formula rebind remain open.
 - [ ] Continue W3 with the next feasible tranche: move to the next OxFml-backed formula authoring
       verb (`f4-toggle-binding`, `replicate-by-id`, formula paste/rebind) when its rewrite semantics
       are available, or record a focused blocker if the current editor surface cannot support it.

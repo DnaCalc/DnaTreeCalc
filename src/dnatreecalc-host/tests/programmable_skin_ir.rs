@@ -1,6 +1,11 @@
 mod support;
 
 use dnatreecalc_host::app::TreeWorkspaceSession;
+use dnatreecalc_host::model::{
+    TableCellFixture, TableColumnBodyFixture, TableColumnBodyKind, TableColumnFixture,
+    TableIdentityPolicyFixture, TableNodeFixture, TableRowFixture, TableSectionFixture,
+    WorkspaceFixture, WorkspaceNodeFixture,
+};
 use dnatreecalc_skin_framework::{
     ActiveSelectionDetailProjection, AuthoringScope, CalcRunStateProjection,
     ClipboardOperationProjection, ClipboardPayloadKind, ClipboardPayloadProjection,
@@ -3919,6 +3924,98 @@ fn programmable_skin_duplicates_hidden_custom_meta_subtree_without_projecting_it
 }
 
 #[test]
+fn programmable_skin_duplicates_constant_table_subtree_through_skin_ir() {
+    let harness = Harness::from_fixture(constant_table_fixture());
+    let skin = harness.driver.clone();
+    skin.recalc();
+
+    let state = skin.state();
+    let source_table = state
+        .tables
+        .get(&NodeId::new("InputTable"))
+        .expect("source constant-only table projects");
+    assert_eq!(table_body_row(source_table, 0), vec!["5", "1"]);
+    assert_eq!(table_body_row(source_table, 1), vec!["15", "2"]);
+    let source_table_id = source_table.table_id.clone();
+    let source_key = state.node(&NodeId::new("InputTable")).unwrap().key.clone();
+
+    let duplicate = skin.try_duplicate_subtree(source_key, None, "ScenarioTable");
+    assert!(duplicate.accepted, "{:?}", duplicate.error);
+    assert_any_transaction(&duplicate);
+
+    let state = skin.state();
+    let cloned = state
+        .tables
+        .get(&NodeId::new("ScenarioTable"))
+        .expect("cloned table projects");
+    assert_eq!(cloned.table_name, "ScenarioTable");
+    assert_ne!(cloned.table_id, source_table_id);
+    assert!(cloned.table_id.contains("ScenarioTable"));
+    assert_eq!(cloned.row_count, 2);
+    assert_eq!(cloned.column_count, 2);
+    assert_eq!(table_body_row(cloned, 0), vec!["5", "1"]);
+    assert_eq!(table_body_row(cloned, 1), vec!["15", "2"]);
+    assert!(
+        state
+            .node(&NodeId::new("ScenarioTable.__table_body_r1_c1"))
+            .is_none()
+    );
+
+    let occupied = skin.try_add_node(Some("ScenarioTable"), "__table_body_r1_c1", "");
+    assert!(!occupied.accepted);
+    assert_eq!(
+        occupied.error,
+        Some(IntentError::DuplicateNode {
+            node: "ScenarioTable.__table_body_r1_c1".to_string()
+        })
+    );
+}
+
+#[test]
+fn programmable_skin_rejects_formula_backed_table_subtree_duplicate() {
+    let harness = Harness::from_repo_fixture("tables");
+    let skin = harness.driver.clone();
+    let source_key = skin
+        .state()
+        .node(&NodeId::new("SalesTable"))
+        .unwrap()
+        .key
+        .clone();
+
+    let duplicate = skin.try_duplicate_subtree(source_key, None, "SalesCopy");
+    assert!(!duplicate.accepted);
+    assert_eq!(
+        duplicate.error,
+        Some(IntentError::DuplicateSubtreeUnsupported {
+            node: "SalesTable".to_string(),
+            detail: "formula-backed table columns require OxFml-owned table formula rebind"
+                .to_string()
+        })
+    );
+    assert!(skin.state().node(&NodeId::new("SalesCopy")).is_none());
+}
+
+#[test]
+fn programmable_skin_rejects_table_duplicate_that_would_collide_by_table_name() {
+    let harness = Harness::from_fixture(nested_constant_table_fixture());
+    let skin = harness.driver.clone();
+    let source_key = skin.state().node(&NodeId::new("Root")).unwrap().key.clone();
+
+    let duplicate = skin.try_duplicate_subtree(source_key, None, "Scenario");
+    assert!(!duplicate.accepted);
+    assert_eq!(
+        duplicate.error,
+        Some(IntentError::DuplicateSubtreeUnsupported {
+            node: "Root.InputTable".to_string(),
+            detail:
+                "table subtree duplication would duplicate formula-visible table name InputTable"
+                    .to_string()
+        })
+    );
+    assert!(skin.state().node(&NodeId::new("Scenario")).is_none());
+}
+
+#[test]
 fn programmable_skin_rejects_duplicate_subtree_that_needs_formula_rebind() {
     let harness = Harness::empty();
     let skin = harness.driver.clone();
@@ -4876,6 +4973,105 @@ fn table_body_row(
                 .unwrap_or_default()
         })
         .collect()
+}
+
+fn constant_table_fixture() -> WorkspaceFixture {
+    WorkspaceFixture {
+        schema_version: "treecalc-workspace-v1".to_string(),
+        workspace_id: "constant-table-duplicate".to_string(),
+        description: Some("constant-only table duplicate Skin IR fixture".to_string()),
+        profile: None,
+        nodes: vec![WorkspaceNodeFixture {
+            node_id: "InputTable".to_string(),
+            formula: String::new(),
+            is_meta: false,
+            table: Some(TableNodeFixture {
+                table_id: "tree-table:input".to_string(),
+                display_path: None,
+                canonical_path: None,
+                table_namespace_version: "table-namespace:input:v1".to_string(),
+                row_membership_version: "table-rows:input:membership:v1".to_string(),
+                row_order_version: "table-rows:input:order:v1".to_string(),
+                column_identity_version: "table-columns:input:v1".to_string(),
+                identity_policy: TableIdentityPolicyFixture {
+                    rename_preserves_table_id: true,
+                    move_preserves_table_id: true,
+                    delete_releases_table_id: true,
+                    note: "constant-only test table".to_string(),
+                },
+                header: TableSectionFixture { present: true },
+                totals: TableSectionFixture { present: false },
+                rows: vec![
+                    TableRowFixture {
+                        row_id: "row:one".to_string(),
+                        ordinal: 1,
+                    },
+                    TableRowFixture {
+                        row_id: "row:two".to_string(),
+                        ordinal: 2,
+                    },
+                ],
+                columns: vec![
+                    TableColumnFixture {
+                        column_id: "col:amount".to_string(),
+                        name: "Amount".to_string(),
+                        ordinal: 1,
+                        body: TableColumnBodyFixture {
+                            kind: TableColumnBodyKind::ConstantCells,
+                            constants: vec![
+                                TableCellFixture {
+                                    row_id: "row:one".to_string(),
+                                    value: "5".to_string(),
+                                },
+                                TableCellFixture {
+                                    row_id: "row:two".to_string(),
+                                    value: "15".to_string(),
+                                },
+                            ],
+                            formula: None,
+                        },
+                        totals_formula: None,
+                    },
+                    TableColumnFixture {
+                        column_id: "col:rate".to_string(),
+                        name: "Rate".to_string(),
+                        ordinal: 2,
+                        body: TableColumnBodyFixture {
+                            kind: TableColumnBodyKind::ConstantCells,
+                            constants: vec![
+                                TableCellFixture {
+                                    row_id: "row:one".to_string(),
+                                    value: "1".to_string(),
+                                },
+                                TableCellFixture {
+                                    row_id: "row:two".to_string(),
+                                    value: "2".to_string(),
+                                },
+                            ],
+                            formula: None,
+                        },
+                        totals_formula: None,
+                    },
+                ],
+            }),
+        }],
+    }
+}
+
+fn nested_constant_table_fixture() -> WorkspaceFixture {
+    let mut fixture = constant_table_fixture();
+    fixture.workspace_id = "nested-constant-table-duplicate".to_string();
+    fixture.nodes.insert(
+        0,
+        WorkspaceNodeFixture {
+            node_id: "Root".to_string(),
+            formula: String::new(),
+            is_meta: false,
+            table: None,
+        },
+    );
+    fixture.nodes[1].node_id = "Root.InputTable".to_string();
+    fixture
 }
 
 fn assert_table_transaction(receipt: &dnatreecalc_skin_framework::IntentReceipt) {

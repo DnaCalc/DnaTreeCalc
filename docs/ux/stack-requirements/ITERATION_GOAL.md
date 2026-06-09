@@ -127,7 +127,13 @@ effective formats are not converted into local authored metadata. The third `dup
 slice is now landed: hidden non-canonical formula-free meta descendants are cloned
 through the same OxCalc transaction without projecting those hidden nodes into ordinary
 `WorkspaceState` views. Formula-bearing meta descendants, table-backed meta descendants, table
-subtree cloning, formula rebind, and formula/subtree source deletion remain open.
+subtree cloning, formula rebind, and formula/subtree source deletion remain open. The fourth
+`duplicate-subtree` slice is also landed for constant-only table snapshots: the host clones the
+table node, assigns a fresh table id/name/path identity, recreates generated table cell meta nodes,
+and points the cloned OxCalc table snapshot at those cloned generated nodes in one transaction.
+Formula-backed table columns, totals formulas, formula-bearing table cell nodes, and
+formula-visible table-name collisions still reject before mutation until OxFml/OxCalc table formula
+rebind support exists.
 
 ## Roadmap Position
 

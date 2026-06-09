@@ -134,12 +134,27 @@ struct DuplicateSubtreeNode {
     note: Option<String>,
     number_format_code: Option<String>,
     attributes: BTreeMap<String, String>,
+    table: Option<DuplicateSubtreeTable>,
 }
 
 #[derive(Debug, Clone)]
 struct DuplicateSubtreeMetaNode {
     source_path: NodeId,
     parent_source_path: Option<NodeId>,
+    symbol: String,
+    content_text: String,
+}
+
+#[derive(Debug, Clone)]
+struct DuplicateSubtreeTable {
+    snapshot: TreeCalcTableNodeSnapshot,
+    generated_nodes: Vec<DuplicateSubtreeTableGeneratedNode>,
+}
+
+#[derive(Debug, Clone)]
+struct DuplicateSubtreeTableGeneratedNode {
+    source_node_id: TreeNodeId,
+    clone_path: NodeId,
     symbol: String,
     content_text: String,
 }
@@ -2011,13 +2026,6 @@ impl TreeWorkspaceSession {
                             .to_string(),
                 });
             }
-            if node.table.is_some() {
-                return Err(TreeWorkspaceSessionError::DuplicateSubtreeUnsupported {
-                    node: node.id.to_string(),
-                    detail: "table subtree duplication requires table snapshot clone support"
-                        .to_string(),
-                });
-            }
             let parent_source_key = node.parent.as_ref().and_then(|parent_id| {
                 state
                     .node(parent_id)
@@ -2045,6 +2053,19 @@ impl TreeWorkspaceSession {
                     node: clone_path.to_string(),
                 });
             }
+            let table = match &node.table {
+                Some(_) => Some(self.table_for_duplicate(
+                    node,
+                    &clone_path,
+                    if key == &source {
+                        &new_symbol
+                    } else {
+                        &node.display_name
+                    },
+                    &views_by_tree_id,
+                )?),
+                None => None,
+            };
             clone_nodes.push(DuplicateSubtreeNode {
                 source_key: key.clone(),
                 source_path: node.id.clone(),
@@ -2060,6 +2081,7 @@ impl TreeWorkspaceSession {
                 note: local_note_text(node),
                 number_format_code: local_number_format_code(node),
                 attributes: node.attributes.clone(),
+                table,
             });
             clone_meta_nodes.extend(self.noncanonical_meta_descendants_for_duplicate(
                 node,
@@ -2072,6 +2094,15 @@ impl TreeWorkspaceSession {
         let mut reserved_by_source = BTreeMap::new();
         for clone in &clone_nodes {
             reserved_by_source.insert(clone.source_key.clone(), self.context.reserve_node_id());
+        }
+        let mut reserved_table_generated_by_source = BTreeMap::new();
+        for clone in &clone_nodes {
+            if let Some(table) = &clone.table {
+                for generated in &table.generated_nodes {
+                    reserved_table_generated_by_source
+                        .insert(generated.source_node_id, self.context.reserve_node_id());
+                }
+            }
         }
         let mut reserved_meta_by_source = BTreeMap::new();
         for meta in &clone_meta_nodes {
@@ -2103,6 +2134,53 @@ impl TreeWorkspaceSession {
                 .with_meta(clone.is_meta)
                 .with_reserved_node_id(reserved_node_id),
             });
+            if let Some(table) = &clone.table {
+                let mut snapshot = table.snapshot.clone();
+                snapshot.table_node_id = reserved_node_id;
+                for binding in &mut snapshot.body_cell_nodes {
+                    binding.node_id = *reserved_table_generated_by_source
+                        .get(&binding.node_id)
+                        .ok_or_else(|| TreeWorkspaceSessionError::ProjectionOutOfSync {
+                            node: format!(
+                                "missing reserved table body cell for cloned table {}",
+                                clone.clone_path
+                            ),
+                        })?;
+                }
+                for binding in &mut snapshot.totals_cell_nodes {
+                    binding.node_id = *reserved_table_generated_by_source
+                        .get(&binding.node_id)
+                        .ok_or_else(|| TreeWorkspaceSessionError::ProjectionOutOfSync {
+                            node: format!(
+                                "missing reserved table totals cell for cloned table {}",
+                                clone.clone_path
+                            ),
+                        })?;
+                }
+                for generated in &table.generated_nodes {
+                    let generated_node_id = *reserved_table_generated_by_source
+                        .get(&generated.source_node_id)
+                        .ok_or_else(|| TreeWorkspaceSessionError::ProjectionOutOfSync {
+                            node: format!(
+                                "missing reserved id for cloned generated table node {}",
+                                generated.clone_path
+                            ),
+                        })?;
+                    transaction = transaction.with_edit(OxCalcTreeEdit::AddNode {
+                        request: OxCalcTreeNodeCreate::new(
+                            generated.symbol.clone(),
+                            generated.content_text.clone(),
+                        )
+                        .under(reserved_node_id)
+                        .with_meta(true)
+                        .with_reserved_node_id(generated_node_id),
+                    });
+                }
+                transaction = transaction.with_edit(OxCalcTreeEdit::SetNodeTable {
+                    node_id: reserved_node_id,
+                    snapshot,
+                });
+            }
             if let Some(note) = &clone.note {
                 transaction = transaction.with_edit(OxCalcTreeEdit::AddNode {
                     request: OxCalcTreeNodeCreate::new("Note", note.clone())
@@ -2210,12 +2288,17 @@ impl TreeWorkspaceSession {
         views_by_tree_id: &BTreeMap<TreeNodeId, OxCalcTreeNodeView>,
     ) -> Result<Vec<DuplicateSubtreeMetaNode>, TreeWorkspaceSessionError> {
         let source_prefix = format!("{}.", source_node.id.as_str());
+        let table_generated_sources =
+            self.table_generated_node_sources(source_node, views_by_tree_id);
         let mut meta_nodes = Vec::new();
         for (candidate_path, candidate_tree_id) in &self.node_ids {
             let candidate_path_text = candidate_path.as_str();
             let Some(relative_path) = candidate_path_text.strip_prefix(&source_prefix) else {
                 continue;
             };
+            if table_generated_sources.contains(candidate_tree_id) {
+                continue;
+            }
             if relative_path.is_empty()
                 || canonical_duplicate_metadata_path(source_node.id.as_str(), candidate_path_text)
                 || nearest_source_ancestor(candidate_path_text, source_path_set)
@@ -2265,6 +2348,172 @@ impl TreeWorkspaceSession {
             )
         });
         Ok(meta_nodes)
+    }
+
+    fn table_for_duplicate(
+        &self,
+        source_node: &NodeView,
+        clone_path: &NodeId,
+        clone_symbol: &str,
+        views_by_tree_id: &BTreeMap<TreeNodeId, OxCalcTreeNodeView>,
+    ) -> Result<DuplicateSubtreeTable, TreeWorkspaceSessionError> {
+        let source_tree_id = self.tree_node_id(source_node.id.as_str())?;
+        let source_tree_view = views_by_tree_id.get(&source_tree_id).ok_or_else(|| {
+            TreeWorkspaceSessionError::ProjectionOutOfSync {
+                node: source_node.id.to_string(),
+            }
+        })?;
+        let source_table = source_tree_view.table.as_ref().ok_or_else(|| {
+            TreeWorkspaceSessionError::ProjectionOutOfSync {
+                node: format!(
+                    "node {} projected a table without an OxCalc table",
+                    source_node.id
+                ),
+            }
+        })?;
+        if self
+            .context
+            .workspace_view(&self.workspace_id)?
+            .tables
+            .iter()
+            .any(|table| table.table_name == clone_symbol)
+        {
+            return Err(TreeWorkspaceSessionError::DuplicateSubtreeUnsupported {
+                node: source_node.id.to_string(),
+                detail: format!(
+                    "table subtree duplication would duplicate formula-visible table name {clone_symbol}"
+                ),
+            });
+        }
+        if source_table.snapshot.columns.iter().any(|column| {
+            matches!(
+                column.body_metadata,
+                TreeCalcTableColumnBodyMetadata::Formula(_)
+            )
+        }) {
+            return Err(TreeWorkspaceSessionError::DuplicateSubtreeUnsupported {
+                node: source_node.id.to_string(),
+                detail: "formula-backed table columns require OxFml-owned table formula rebind"
+                    .to_string(),
+            });
+        }
+        if source_table
+            .snapshot
+            .columns
+            .iter()
+            .any(|column| column.totals_metadata.is_some())
+        {
+            return Err(TreeWorkspaceSessionError::DuplicateSubtreeUnsupported {
+                node: source_node.id.to_string(),
+                detail: "table totals formulas require OxFml-owned table formula rebind"
+                    .to_string(),
+            });
+        }
+
+        let mut generated_nodes = Vec::new();
+        for source_generated_node_id in source_table
+            .snapshot
+            .body_cell_nodes
+            .iter()
+            .map(|binding| binding.node_id)
+            .chain(
+                source_table
+                    .snapshot
+                    .totals_cell_nodes
+                    .iter()
+                    .map(|binding| binding.node_id),
+            )
+        {
+            let source_generated_path = self.node_id_for_tree_node(source_generated_node_id)?;
+            let generated_tree_view =
+                views_by_tree_id
+                    .get(&source_generated_node_id)
+                    .ok_or_else(|| TreeWorkspaceSessionError::ProjectionOutOfSync {
+                        node: source_generated_path.to_string(),
+                    })?;
+            if content_kind_for_text(&generated_tree_view.formula_text)
+                == FrameworkContentKind::Formula
+            {
+                return Err(TreeWorkspaceSessionError::DuplicateSubtreeUnsupported {
+                    node: source_generated_path.to_string(),
+                    detail:
+                        "formula-bearing table cell nodes require OxFml-owned table formula rebind"
+                            .to_string(),
+                });
+            }
+            let symbol = generated_tree_view.symbol.clone();
+            let clone_generated_path = NodeId::new(format!("{}.{}", clone_path.as_str(), symbol));
+            if self.node_ids.contains_key(&clone_generated_path) {
+                return Err(TreeWorkspaceSessionError::DuplicateNodePath {
+                    node: clone_generated_path.to_string(),
+                });
+            }
+            generated_nodes.push(DuplicateSubtreeTableGeneratedNode {
+                source_node_id: source_generated_node_id,
+                clone_path: clone_generated_path,
+                symbol,
+                content_text: generated_tree_view.formula_text.clone(),
+            });
+        }
+
+        let mut snapshot = source_table.snapshot.clone();
+        snapshot.table_id = duplicate_table_id(&snapshot.table_id, clone_path);
+        snapshot.table_name = clone_symbol.to_string();
+        snapshot.display_path = clone_path.as_str().to_string();
+        snapshot.canonical_path = clone_path.as_str().to_string();
+        snapshot.virtual_anchor.sheet_scope_ref = clone_path.as_str().to_string();
+        snapshot.table_namespace_version = bumped_table_version(
+            &snapshot.table_namespace_version,
+            "duplicate",
+            clone_path.as_str(),
+        );
+        snapshot.row_membership_version = bumped_table_version(
+            &snapshot.row_membership_version,
+            "duplicate",
+            clone_path.as_str(),
+        );
+        snapshot.row_order_version = bumped_table_version(
+            &snapshot.row_order_version,
+            "duplicate",
+            clone_path.as_str(),
+        );
+        snapshot.column_identity_version = bumped_table_version(
+            &snapshot.column_identity_version,
+            "duplicate",
+            clone_path.as_str(),
+        );
+
+        Ok(DuplicateSubtreeTable {
+            snapshot,
+            generated_nodes,
+        })
+    }
+
+    fn table_generated_node_sources(
+        &self,
+        source_node: &NodeView,
+        views_by_tree_id: &BTreeMap<TreeNodeId, OxCalcTreeNodeView>,
+    ) -> BTreeSet<TreeNodeId> {
+        self.node_ids
+            .get(&source_node.id)
+            .and_then(|source_tree_id| views_by_tree_id.get(source_tree_id))
+            .and_then(|view| view.table.as_ref())
+            .map(|table| {
+                table
+                    .snapshot
+                    .body_cell_nodes
+                    .iter()
+                    .map(|binding| binding.node_id)
+                    .chain(
+                        table
+                            .snapshot
+                            .totals_cell_nodes
+                            .iter()
+                            .map(|binding| binding.node_id),
+                    )
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 
     pub fn rename_node(
@@ -5406,6 +5655,13 @@ fn table_body_cell_symbol(row_ordinal: u32, column_ordinal: u32) -> String {
 
 fn bumped_table_version(current: &str, kind: &str, id: &str) -> String {
     format!("{current};{kind}+={id}")
+}
+
+fn duplicate_table_id(source_table_id: &str, clone_path: &NodeId) -> String {
+    format!(
+        "{source_table_id}:duplicate:{}",
+        table_formula_identity_segment(clone_path.as_str())
+    )
 }
 
 fn bumped_formula_text_version(current: &str) -> String {
