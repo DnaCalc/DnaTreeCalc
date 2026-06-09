@@ -130,6 +130,9 @@ struct DuplicateSubtreeNode {
     content_text: String,
     is_meta: bool,
     clone_path: NodeId,
+    note: Option<String>,
+    number_format_code: Option<String>,
+    attributes: BTreeMap<String, String>,
 }
 
 impl TreeWorkspaceSession {
@@ -2038,6 +2041,9 @@ impl TreeWorkspaceSession {
                 content_text: node.content_text.clone(),
                 is_meta: node.is_meta,
                 clone_path,
+                note: local_note_text(node),
+                number_format_code: local_number_format_code(node),
+                attributes: node.attributes.clone(),
             });
         }
 
@@ -2070,6 +2076,43 @@ impl TreeWorkspaceSession {
                 .with_meta(clone.is_meta)
                 .with_reserved_node_id(reserved_node_id),
             });
+            if let Some(note) = &clone.note {
+                transaction = transaction.with_edit(OxCalcTreeEdit::AddNode {
+                    request: OxCalcTreeNodeCreate::new("Note", note.clone())
+                        .under(reserved_node_id)
+                        .with_meta(true),
+                });
+            }
+            if let Some(number_format_code) = &clone.number_format_code {
+                let format_node_id = self.context.reserve_node_id();
+                transaction = transaction.with_edit(OxCalcTreeEdit::AddNode {
+                    request: OxCalcTreeNodeCreate::new("Format", "")
+                        .under(reserved_node_id)
+                        .with_meta(true)
+                        .with_reserved_node_id(format_node_id),
+                });
+                transaction = transaction.with_edit(OxCalcTreeEdit::AddNode {
+                    request: OxCalcTreeNodeCreate::new("NumberFormat", number_format_code.clone())
+                        .under(format_node_id)
+                        .with_meta(true),
+                });
+            }
+            if !clone.attributes.is_empty() {
+                let attributes_node_id = self.context.reserve_node_id();
+                transaction = transaction.with_edit(OxCalcTreeEdit::AddNode {
+                    request: OxCalcTreeNodeCreate::new("Attributes", "")
+                        .under(reserved_node_id)
+                        .with_meta(true)
+                        .with_reserved_node_id(attributes_node_id),
+                });
+                for (key, value) in &clone.attributes {
+                    transaction = transaction.with_edit(OxCalcTreeEdit::AddNode {
+                        request: OxCalcTreeNodeCreate::new(key.clone(), value.clone())
+                            .under(attributes_node_id)
+                            .with_meta(true),
+                    });
+                }
+            }
         }
         let outcome = self.context.apply_edit_transaction(transaction)?;
         if let Some(calculation) = outcome.calculation {
@@ -5625,6 +5668,27 @@ fn calc_state_projection_for(calc_state: NodeCalcState) -> NodeCalcStateProjecti
 
 fn node_key_for_tree_node(tree_node_id: TreeNodeId) -> NodeKey {
     NodeKey::from_engine_id(tree_node_id.0)
+}
+
+fn local_note_text(node: &NodeView) -> Option<String> {
+    let note_path = NodeId::new(format!("{}.Note", node.id.as_str()));
+    node.note
+        .as_ref()
+        .filter(|note| note.source.node == note_path)
+        .map(|note| note.text.clone())
+}
+
+fn local_number_format_code(node: &NodeView) -> Option<String> {
+    let format_path = NodeId::new(format!("{}.Format", node.id.as_str()));
+    node.effective_format
+        .as_ref()
+        .filter(|format| {
+            format
+                .inherited_from
+                .as_ref()
+                .is_some_and(|source| source.node == format_path)
+        })
+        .and_then(|format| format.number_format_code.clone())
 }
 
 struct FormulaBindPreviewPayload {

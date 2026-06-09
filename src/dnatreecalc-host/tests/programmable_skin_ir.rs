@@ -3789,6 +3789,24 @@ fn programmable_skin_duplicates_formula_free_subtree_through_skin_ir() {
         skin.try_add_node(Some("Book.Template"), "Inputs", "7")
             .accepted
     );
+    let state = skin.state();
+    let input_key = state
+        .node(&NodeId::new("Book.Template.Inputs"))
+        .unwrap()
+        .key
+        .clone();
+    assert!(
+        skin.try_set_note(input_key.clone(), Some("Scenario input"))
+            .accepted
+    );
+    assert!(
+        skin.try_set_number_format(AuthoringScope::Node(input_key.clone()), Some("0.00"))
+            .accepted
+    );
+    assert!(
+        skin.try_set_node_attributes(input_key, NodeAttributePatch::set("owner", "planning"))
+            .accepted
+    );
     skin.recalc();
 
     let state = skin.state();
@@ -3810,7 +3828,22 @@ fn programmable_skin_duplicates_formula_free_subtree_through_skin_ir() {
     );
     assert_eq!(input.content_kind, NodeContentKind::Constant);
     assert_eq!(input.content_text, "7");
-    skin.assert_scalar("Book.Scenario.Inputs", "7");
+    assert_eq!(
+        input.note.as_ref().map(|note| note.text.as_str()),
+        Some("Scenario input")
+    );
+    assert_eq!(
+        input
+            .effective_format
+            .as_ref()
+            .and_then(|format| format.number_format_code.as_deref()),
+        Some("0.00")
+    );
+    assert_eq!(
+        input.attributes.get("owner").map(String::as_str),
+        Some("planning")
+    );
+    skin.assert_scalar("Book.Scenario.Inputs", "7.00");
     assert!(duplicate.delta.changes.iter().any(|change| matches!(
         change,
         WorkspaceDeltaChange::Structural(structural)

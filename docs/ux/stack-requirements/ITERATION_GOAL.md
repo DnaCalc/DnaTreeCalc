@@ -121,6 +121,10 @@ The first `duplicate-subtree` slice is now landed for formula-free ordinary subt
 the projected subtree shape, rejects formula-bearing or table-backed subtrees before mutation, and
 applies the clone as one OxCalc transaction with reserved engine node ids. Formula rebind,
 formula/subtree source deletion, table subtree cloning, and meta-subtree breadth remain open.
+The second `duplicate-subtree` slice preserves host-authored local notes, number formats, and
+attributes by cloning the canonical metadata nodes in the same OxCalc transaction. Inherited
+effective formats are not converted into local authored metadata; arbitrary meta subtrees remain
+open.
 
 ## Roadmap Position
 

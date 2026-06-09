@@ -107,7 +107,9 @@ The first `duplicate-subtree` slice is now landed for formula-free ordinary subt
 `DuplicateSubtree { source, destination_parent, new_symbol }` creates cloned nodes through one
 OxCalc edit transaction with reserved engine node ids, projects the normal structural delta, and
 rejects formula-bearing subtrees before mutation because internal-reference rebind remains
-OxFml-owned and unavailable. Table subtree cloning and meta-subtree breadth remain open.
+OxFml-owned and unavailable. The second slice preserves host-authored local notes, number formats,
+and attributes by creating the same canonical meta nodes under cloned nodes in that transaction.
+Table subtree cloning, arbitrary meta-subtree breadth, and formula rebind remain open.
 
 Do not advance to W4 speculation/history or W5 platform polish as the default next step while W3
 authoring verbs remain incomplete.
@@ -336,6 +338,12 @@ Use this as the per-tranche goal statement before implementation:
       normal structural delta. Formula-bearing subtrees reject with typed
       `DuplicateSubtreeUnsupported` rather than copying stale formula text; formula rebind,
       formula/subtree cut source deletion, table subtree cloning, and meta-subtree breadth remain
+      open.
+- [x] Land second `duplicate-subtree` tranche:
+      formula-free subtree duplication now preserves host-authored local `Note`, `Format.NumberFormat`,
+      and `Attributes.<key>` metadata by creating canonical meta nodes under each cloned node in
+      the same OxCalc transaction. Inherited/effective format is not converted into local authored
+      metadata; arbitrary meta-subtree breadth, table subtree cloning, and formula rebind remain
       open.
 - [ ] Continue W3 with the next feasible tranche: move to the next OxFml-backed formula authoring
       verb (`f4-toggle-binding`, `replicate-by-id`, formula paste/rebind) when its rewrite semantics
