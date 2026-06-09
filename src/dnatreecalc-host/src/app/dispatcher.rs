@@ -520,25 +520,33 @@ impl HostDispatcher {
     }
 
     fn paste_clipboard_values(&self, target: AuthoringScope) -> Result<IntentReceipt, IntentError> {
-        self.workspace
-            .ok_or_else(|| host_failure("workspace projection handle is not attached"))
-            .and_then(|workspace| {
-                let before = workspace.get_untracked();
-                let targets = before.expand_authoring_scope(&target).map_err(|error| {
-                    clipboard_scope_error(ClipboardPayloadKind::Values, error.to_string())
-                })?;
-                if targets.is_empty() {
-                    return Err(clipboard_scope_error(
-                        ClipboardPayloadKind::Values,
-                        "value paste requires at least one target",
-                    ));
-                }
-                Ok(())
-            })?;
-        let payload = self
+        let before = self
             .workspace
             .ok_or_else(|| host_failure("workspace projection handle is not attached"))
-            .and_then(|workspace| clipboard_constant_value_payload(&workspace.get_untracked()))?;
+            .map(|workspace| workspace.get_untracked())?;
+        let targets = before.expand_authoring_scope(&target).map_err(|error| {
+            clipboard_scope_error(ClipboardPayloadKind::Values, error.to_string())
+        })?;
+        if targets.is_empty() {
+            return Err(clipboard_scope_error(
+                ClipboardPayloadKind::Values,
+                "value paste requires at least one target",
+            ));
+        }
+        let payload = clipboard_constant_value_payload(&before)?;
+        if payload.items.len() > 1
+            && (!matches!(&target, AuthoringScope::Nodes(_))
+                || payload.items.len() != targets.len())
+        {
+            return Err(clipboard_payload_mismatch(
+                "ordered_constant_values",
+                format!(
+                    "value_count={},target_count={}",
+                    payload.items.len(),
+                    targets.len()
+                ),
+            ));
+        }
         match self.apply_constant_value_paste_transaction(target, payload) {
             Ok(publication) => Ok(receipt_for_publication(publication)),
             Err(error) => Ok(IntentReceipt::rejected(error)),
@@ -596,7 +604,7 @@ impl HostDispatcher {
         &self,
         target: AuthoringScope,
         payload: ClipboardConstantValuePayload,
-    ) -> Result<PublishedWorkspaceEdit<bool>, IntentError> {
+    ) -> Result<PublishedWorkspaceEdit<Vec<NodeKey>>, IntentError> {
         let session_id = self.active_session_id()?;
         HOST_SESSIONS.with(|sessions| {
             let session = sessions
@@ -609,13 +617,13 @@ impl HostDispatcher {
                 .map_err(|_| host_failure("workspace session mutex poisoned"))?;
             let before = self.workspace.map(|workspace| workspace.get_untracked());
             let clear_clipboard_after = payload.operation == ClipboardOperationProjection::Cut;
+            let items = payload
+                .items
+                .into_iter()
+                .map(|item| (item.source, item.content))
+                .collect();
             let transaction = session
-                .paste_constant_value_transaction(
-                    target,
-                    payload.source,
-                    payload.content,
-                    clear_clipboard_after,
-                )
+                .paste_constant_values_transaction(target, items, clear_clipboard_after)
                 .map_err(intent_error_from_session)?;
             let mut after = session
                 .workspace_state()
@@ -981,6 +989,11 @@ fn clipboard_number_format_code(workspace: &WorkspaceState) -> Result<Option<Str
 #[derive(Debug, Clone)]
 struct ClipboardConstantValuePayload {
     operation: ClipboardOperationProjection,
+    items: Vec<ClipboardConstantValueItem>,
+}
+
+#[derive(Debug, Clone)]
+struct ClipboardConstantValueItem {
     source: NodeKey,
     content: String,
 }
@@ -997,22 +1010,29 @@ fn clipboard_constant_value_payload(
             clipboard_payload_actual(&clipboard.payload),
         ));
     };
-    let [node] = nodes.as_slice() else {
-        return Err(clipboard_payload_mismatch(
-            "single_constant_value",
-            format!("value_count={}", nodes.len()),
-        ));
-    };
-    let content = node.constant_input_text.clone().ok_or_else(|| {
-        clipboard_payload_mismatch(
-            "single_constant_value",
-            format!("source_content_kind={}", node.content_kind),
-        )
-    })?;
+    let mut items = Vec::new();
+    for (index, node) in nodes.iter().enumerate() {
+        let content = node.constant_input_text.clone().ok_or_else(|| {
+            if nodes.len() == 1 {
+                clipboard_payload_mismatch(
+                    "single_constant_value",
+                    format!("source_content_kind={}", node.content_kind),
+                )
+            } else {
+                clipboard_payload_mismatch(
+                    "ordered_constant_values",
+                    format!("source_content_kind={} at index {index}", node.content_kind),
+                )
+            }
+        })?;
+        items.push(ClipboardConstantValueItem {
+            source: node.node.clone(),
+            content,
+        });
+    }
     Ok(ClipboardConstantValuePayload {
         operation: clipboard.operation,
-        source: node.node.clone(),
-        content,
+        items,
     })
 }
 

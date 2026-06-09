@@ -1285,7 +1285,24 @@ impl TreeWorkspaceSession {
         content: impl Into<String>,
         clear_source_after_paste: bool,
     ) -> Result<TreeWorkspaceTransactionEdit<bool>, TreeWorkspaceSessionError> {
-        let content = content.into();
+        let transaction = self.paste_constant_values_transaction(
+            target,
+            vec![(source.clone(), content.into())],
+            clear_source_after_paste,
+        )?;
+        let source_cleared = transaction.result.contains(&source);
+        Ok(TreeWorkspaceTransactionEdit {
+            result: source_cleared,
+            transaction_id: transaction.transaction_id,
+        })
+    }
+
+    pub fn paste_constant_values_transaction(
+        &mut self,
+        target: AuthoringScope,
+        values: Vec<(NodeKey, String)>,
+        clear_sources_after_paste: bool,
+    ) -> Result<TreeWorkspaceTransactionEdit<Vec<NodeKey>>, TreeWorkspaceSessionError> {
         let state = self.workspace_state()?;
         let target_keys = state.expand_authoring_scope(&target).map_err(|error| {
             TreeWorkspaceSessionError::ProjectionOutOfSync {
@@ -1296,30 +1313,59 @@ impl TreeWorkspaceSession {
             .with_recalc_policy(TransactionRecalcPolicy::RecalculateAndPublishOnce);
         let mut target_key_set = BTreeSet::new();
 
-        for key in &target_keys {
+        let ordered_values = if values.len() == 1 {
+            target_keys
+                .iter()
+                .map(|key| (key.clone(), values[0].1.clone()))
+                .collect::<Vec<_>>()
+        } else {
+            if target_keys.len() != values.len() {
+                return Err(TreeWorkspaceSessionError::ProjectionOutOfSync {
+                    node: format!(
+                        "constant value count {} does not match target count {}",
+                        values.len(),
+                        target_keys.len()
+                    ),
+                });
+            }
+            target_keys
+                .iter()
+                .cloned()
+                .zip(values.iter().map(|(_, content)| content.clone()))
+                .collect::<Vec<_>>()
+        };
+
+        for (key, content) in ordered_values {
             target_key_set.insert(key.clone());
-            let node = state.node_by_key(key).ok_or_else(|| {
+            let node = state.node_by_key(&key).ok_or_else(|| {
                 TreeWorkspaceSessionError::ProjectionOutOfSync {
                     node: format!("node key {key}"),
                 }
             })?;
             transaction = transaction.with_edit(OxCalcTreeEdit::SetNodeFormulaText {
                 node_id: self.tree_node_id(node.id.as_str())?,
-                formula_text: content.clone(),
+                formula_text: content,
             });
         }
 
-        let source_cleared = clear_source_after_paste && !target_key_set.contains(&source);
-        if source_cleared {
-            let source_node = state.node_by_key(&source).ok_or_else(|| {
-                TreeWorkspaceSessionError::ProjectionOutOfSync {
-                    node: format!("node key {source}"),
+        let mut cleared_sources = Vec::new();
+        if clear_sources_after_paste {
+            let mut seen_sources = BTreeSet::new();
+            for (source, _) in values {
+                if target_key_set.contains(&source) || !seen_sources.insert(source.clone()) {
+                    continue;
                 }
-            })?;
-            transaction = transaction.with_edit(OxCalcTreeEdit::SetNodeFormulaText {
-                node_id: self.tree_node_id(source_node.id.as_str())?,
-                formula_text: String::new(),
-            });
+                let source_node = state.node_by_key(&source).ok_or_else(|| {
+                    TreeWorkspaceSessionError::ProjectionOutOfSync {
+                        node: format!("node key {source}"),
+                    }
+                })?;
+                transaction = transaction.with_edit(OxCalcTreeEdit::SetNodeFormulaText {
+                    node_id: self.tree_node_id(source_node.id.as_str())?,
+                    formula_text: String::new(),
+                });
+                cleared_sources.push(source);
+            }
         }
 
         let outcome = self.context.apply_edit_transaction(transaction)?;
@@ -1330,7 +1376,7 @@ impl TreeWorkspaceSession {
             self.last_outcome = None;
         }
         Ok(TreeWorkspaceTransactionEdit {
-            result: source_cleared,
+            result: cleared_sources,
             transaction_id: outcome.transaction_id.to_string(),
         })
     }

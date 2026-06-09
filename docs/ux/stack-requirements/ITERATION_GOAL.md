@@ -62,13 +62,17 @@ model untouched until a later paste/commit verb owns the mutation. The next past
 now landed for constant-source values only: value clipboard carriers record source content kind plus
 an optional authored constant input string, and `PasteClipboardValues` applies a single constant
 source through the scoped content transaction path without converting rendered values into input
-text. Computed formula-result paste, array literalization, formula paste, OS clipboard integration,
-formula/subtree source deletion, and subtree rebind remain open. Constant-value cut/paste commit is
-also now landed: a successful `CutToClipboard(Values)` followed by `PasteClipboardValues` applies the
-target write and clears the source in one OxCalc transaction, then clears the host clipboard. Rejected
-cut-paste attempts leave the source and clipboard intact. A focused OxFml handoff records the missing
-paste-special APIs for computed value literalization, formula rebind, formula-and-format paste, and
-subtree internal-reference rebind support. The W3 `set-membership-write` assessment is also complete:
+text. Constant-value cut/paste commit is also now landed: a successful `CutToClipboard(Values)`
+followed by `PasteClipboardValues` applies the target write and clears the source in one OxCalc
+transaction, then clears the host clipboard. Rejected cut-paste attempts leave the source and
+clipboard intact. The next constant-value paste-special slice is landed for multi-source authored
+constants: multiple constant value carriers paste one-to-one over an explicitly ordered node target
+scope in a single OxCalc transaction, and multi-source cut paste clears copied sources not included
+in the target scope. Computed formula-result paste, array literalization, formula paste,
+formula/subtree source deletion, and subtree rebind remain open. A focused OxFml handoff records the
+missing paste-special APIs for computed value literalization, formula rebind, formula-and-format
+paste, and subtree internal-reference rebind support. The W3 `set-membership-write` assessment is
+also complete:
 current OxCalc publishes `TreeReferenceCollectionDependency` facts and DnaTreeCalc can expand
 `AuthoringScope::Collection` for read/scoped operations, but OxCalc has no transaction edit for
 authored collection membership/order changes. A focused OxCalc handoff records the required
@@ -263,14 +267,20 @@ The roadmap alignment rule is:
       only when the source was an authored constant. The carrier includes `content_kind` plus
       `constant_input_text`, and paste routes that authored input through the existing scoped content
       transaction path with a real OxCalc transaction id. It deliberately rejects computed formula
-      values, arrays, multi-source value payloads, formula paste, OS clipboard transfer, and subtree
-      rebind until the owning OxFml/OxCalc literalization and rebind machinery exists.
+      values, arrays, formula paste, OS clipboard transfer, and subtree rebind until the owning
+      OxFml/OxCalc literalization and rebind machinery exists.
 - [x] Implement the first cut/paste commit slice for constant values:
       successful `CutToClipboard { payload: Values }` plus `PasteClipboardValues` applies the target
       constant write and clears the cut source in one OxCalc transaction when the target does not
       include the source, then clears the host clipboard. Failed paste attempts preserve both source
       content and clipboard. Formula/subtree source deletion remains open until the owning rebind
       machinery exists.
+- [x] Implement the next constant-value paste-special slice:
+      multi-source value clipboard carriers paste only when every source has authored constant input
+      text and the target is an explicitly ordered node scope of the same length. Matching sources
+      apply one-to-one in one OxCalc transaction. Multi-source cut paste clears copied sources not
+      included in the target scope and clears the host clipboard after success. Computed values,
+      arrays, formula paste, formula/subtree source deletion, and subtree rebind remain open.
 - [x] File the OxFml W3 paste-special handoff for computed value literalization, formula rebind,
       formula-and-format paste, and subtree internal-reference rebind support.
 - [x] Assess `set-membership-write` against live OxCalc/DnaTreeCalc code and file the OxCalc handoff:
