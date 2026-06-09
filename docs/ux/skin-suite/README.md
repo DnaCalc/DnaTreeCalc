@@ -18,6 +18,10 @@ composition** — built on the [upgraded stack](../stack-requirements/) and usin
   [`reference/ATLAS_SUITE.raw.json`](reference/ATLAS_SUITE.raw.json).
 - **Requirements:** ATLAS consumes [`../stack-requirements/`](../stack-requirements/) and surfaced six
   additions, folded in there as the *Suite-surfaced additions*.
+- **Built (Phase A, slice 1):** the shared spine — [`SPINE.md`](SPINE.md) (one grammar / one
+  continuity / one styling, in `dnatreecalc-skin-framework`) — and the reference lens —
+  [`lenses/FLOW.md`](lenses/FLOW.md) (`dnatreecalc-skins/src/flow.rs`, `Ctrl+6`). The cockpit /
+  multi-slot platform (Phase B) is not built yet; the spine is built so it drops in without rework.
 
 This README is the durable summary. (The fuller per-lens / spine / journey breakout can be expanded
 into a doc set on request; the raw synthesis holds every field today.)
