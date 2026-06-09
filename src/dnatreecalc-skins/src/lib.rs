@@ -13,6 +13,7 @@ pub mod dependency_inspector;
 pub mod flow;
 pub mod formula_tree;
 mod node_management;
+pub mod ledger;
 pub mod outline_table;
 mod spine_widgets;
 pub mod tree;
@@ -24,6 +25,7 @@ pub use dependency_inspector::{
     DEPENDENCY_INSPECTOR_ID, DependencyInspector, DependencyInspectorState,
 };
 pub use flow::{FLOW_ID, FlowLens, FlowState};
+pub use ledger::{LEDGER_ID, LedgerLens, LedgerState};
 pub use formula_tree::{FORMULA_TREE_ID, FormulaTree, FormulaTreeState};
 pub use outline_table::{OUTLINE_TABLE_ID, OutlineTable, OutlineTableState};
 pub use tree::{TREE_ID, TreeLens, TreeState};
