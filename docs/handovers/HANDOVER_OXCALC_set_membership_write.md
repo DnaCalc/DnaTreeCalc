@@ -14,6 +14,18 @@ OxCalc dependency descriptors. The slice returns typed `UnknownReferenceCollecti
 dependents, or publish updated descriptors, so this handoff remains open for the positive mutation
 substrate.
 
+Update 2026-06-09: A direct OxCalc spike tested the tempting first positive substrate for
+`ReferenceLiteralArrayV1`: store an edited member/order list keyed by `(owner_node_id,
+source_reference_handle)` and apply it while building dependency descriptors. The spike is a no-go
+as a standalone OxCalc implementation. It can make descriptors republish edited membership/order,
+but OxFml runtime invocation still evaluates the original authored formula source, for example
+`=SUM({A,C,A})` continues to compute from `A,C,A` after the descriptor membership is changed to
+`C,A`. Shipping that would split dependency truth from runtime value truth. Positive
+set-membership-write therefore needs an owning seam that changes both together: either an
+OxFml-owned formula rewrite/bound-formula invocation API, or an OxCalc/OxFml runtime packet that
+lets an edited reference collection replace the bound/evaluated collection value without changing
+displayed authored text.
+
 ## Required Shape
 
 The DnaTreeCalc host needs an OxCalc transaction API along these lines:
@@ -36,6 +48,8 @@ or an equivalent API that:
 5. invalidates membership and member-value dependencies with typed reasons,
 6. runs inside `OxCalcTreeEditTransaction` and returns a real transaction id,
 7. republishes reference-resolution and dependency descriptors so DnaTreeCalc can project the updated collection without reinterpretation.
+8. proves that the same edited membership/order drives formula evaluation, not only dependency
+   descriptor projection. Descriptor-only overrides are explicitly rejected.
 
 ## Boundary
 

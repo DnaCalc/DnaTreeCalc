@@ -84,7 +84,11 @@ current OxCalc publishes `TreeReferenceCollectionDependency` facts and DnaTreeCa
 `SetReferenceCollectionMembership` edit slice that validates owner/source-handle/member ids and
 returns typed unknown/non-editable errors for current derived collections, but it still has no
 positive authored membership/order store, version bump, invalidation, or descriptor republication.
-A focused OxCalc handoff records the remaining substrate. The first system-clipboard interchange slice is
+A focused OxCalc handoff records the remaining substrate. A follow-up OxCalc spike ruled out a
+descriptor-only positive edit for `ReferenceLiteralArrayV1`: edited descriptors can be produced, but
+runtime evaluation remains bound to the original OxFml-authored formula source, so descriptor truth
+and computed value truth diverge. Positive set-membership-write stays blocked until the owning seam
+can update both dependency descriptors and evaluated reference collection values together. The first system-clipboard interchange slice is
 now landed without giving the host OS clipboard authority: typed clipboard carriers project optional
 plain text for platform export, and `PasteExternalClipboardText` accepts text supplied by the
 skin/platform clipboard layer and routes it through the existing authored-content transaction path.
@@ -318,6 +322,13 @@ The roadmap alignment rule is:
       checks and typed non-editable derived collection errors. `SetCollectionMembership` remains
       unsupported in Skin IR until OxCalc owns positive authored membership/order storage,
       invalidation, and descriptor republication.
+- [x] Spike positive `set-membership-write` for the first plausible editable family:
+      `ReferenceLiteralArrayV1` descriptor overrides alone are a no-go. A direct OxCalc test showed
+      the descriptor membership/order can be changed independently, but the runtime result still
+      evaluates the original OxFml-authored source (`=SUM({A,C,A})` remains `11` after a descriptor
+      override to `C,A`). Positive membership writes therefore require an OxFml formula-rewrite or
+      bound/evaluated-collection replacement seam that keeps dependency descriptors and computed
+      values aligned. No Skin IR `SetCollectionMembership` support is exposed yet.
 - [x] Implement the first system-clipboard interchange slice:
       `ClipboardProjection.plain_text` exports deterministic text for supported typed clipboard
       payloads (`Values` as scalar text or array TSV, `Formula` as authored formula text), while

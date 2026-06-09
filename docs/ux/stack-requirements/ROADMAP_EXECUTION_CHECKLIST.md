@@ -70,7 +70,9 @@ The W3 `set-membership-write` assessment is complete and recorded in
 `../../handovers/HANDOVER_OXCALC_set_membership_write.md`: current collection membership/order is an
 OxCalc-published dependency fact. OxCalc now has a first transaction edit slice for typed
 owner/source-handle/member validation and derived-collection rejection, but not yet positive
-authored membership/order mutation.
+authored membership/order mutation. A follow-up positive-substrate spike ruled out
+descriptor-only overrides for `ReferenceLiteralArrayV1`, because runtime evaluation remains tied to
+the original OxFml-authored source and would diverge from edited descriptor truth.
 The first system-clipboard interchange slice is landed without giving the host OS clipboard
 authority: typed clipboard carriers project optional plain text for platform export, and
 `PasteExternalClipboardText` accepts platform-supplied clipboard text as authored content.
@@ -264,6 +266,11 @@ Use this as the per-tranche goal statement before implementation:
       collections remain non-editable and there is no authored collection-membership/order store.
       `SetCollectionMembership` remains unsupported until OxCalc provides that positive transaction
       substrate.
+- [x] Spike the first positive `set-membership-write` substrate:
+      A descriptor-only `ReferenceLiteralArrayV1` override is rejected as insufficient. It can change
+      projected membership/order descriptors, but not the value computed from the OxFml-authored
+      formula source. The next implementation path needs OxFml rewrite/bound invocation support or
+      an equivalent evaluated-collection replacement seam owned by the engine boundary.
 - [x] Land first system-clipboard interchange tranche:
       `ClipboardProjection.plain_text` exports deterministic text for supported typed clipboard
       payloads (`Values` as scalar text or array TSV, `Formula` as authored formula text), and
