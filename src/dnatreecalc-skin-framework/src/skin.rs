@@ -10,6 +10,7 @@ use crate::state::{
     SharedSkinStateHandle, SkinState, SkinStateHandle, SkinStatePersistenceKey,
     SkinStatePersistenceStore,
 };
+use crate::theme::ThemeTokens;
 use crate::workspace::WorkspaceState;
 
 /// Typed context passed to a [`WorkspaceSkin`] at mount time.
@@ -25,6 +26,7 @@ pub struct SkinContext<S: SkinState> {
     pub latest_delta: ReadSignal<WorkspaceDelta>,
     pub selection: ReadSignal<SelectionState>,
     pub shared: SharedSkinStateHandle,
+    pub tokens: ThemeTokens,
     pub state: SkinStateHandle<S>,
     pub dispatch: Arc<dyn Dispatcher>,
 }
@@ -40,6 +42,7 @@ pub struct ErasedSkinContext {
     pub latest_delta: ReadSignal<WorkspaceDelta>,
     pub selection: ReadSignal<SelectionState>,
     pub shared: SharedSkinStateHandle,
+    pub tokens: ThemeTokens,
     pub slot: SkinMountSlot,
     pub skin_state_store: Arc<dyn SkinStatePersistenceStore>,
     pub dispatch: Arc<dyn Dispatcher>,
@@ -144,6 +147,7 @@ impl<K: WorkspaceSkin> ErasedSkinFactory for TypedFactory<K> {
             latest_delta: cx.latest_delta,
             selection: cx.selection,
             shared: cx.shared,
+            tokens: cx.tokens,
             state: typed_state,
             dispatch: cx.dispatch,
         };

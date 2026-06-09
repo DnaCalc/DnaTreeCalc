@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use dnatreecalc_skin_framework::{
     Dispatcher, ErasedSkinContext, NodeId, SelectionState, SharedSkinStateHandle, SkinId,
-    SkinMountSlot, SkinRegistry, SkinStatePersistenceStore, WorkspaceDelta, WorkspaceIntent,
-    WorkspaceRecalcMode, WorkspaceState,
+    SkinMountSlot, SkinRegistry, SkinStatePersistenceStore, ThemeTokens, WorkspaceDelta,
+    WorkspaceIntent, WorkspaceRecalcMode, WorkspaceState,
 };
 use leptos::prelude::*;
 use wasm_bindgen::JsCast;
@@ -35,6 +35,7 @@ pub fn WorkspaceShell(
     dispatch: Arc<dyn Dispatcher>,
     registry: Arc<SkinRegistry>,
     initial_skin: SkinId,
+    tokens: ThemeTokens,
 ) -> impl IntoView {
     let current_skin = RwSignal::new(initial_skin);
     let registry_for_view = registry.clone();
@@ -64,9 +65,10 @@ pub fn WorkspaceShell(
 
     let registry_for_tabs = registry.clone();
     let shortcut_dispatch = dispatch.clone();
+    let shell_css = format!("{}\n{}", tokens.css_rule(".dtc-shell"), SHELL_CSS);
 
     view! {
-        <style>{SHELL_CSS}</style>
+        <style>{shell_css}</style>
         <div
             class="dtc-shell"
             tabindex="0"
@@ -109,6 +111,7 @@ pub fn WorkspaceShell(
                         latest_delta,
                         selection: selection.read_only(),
                         shared,
+                        tokens: tokens.clone(),
                         slot: SkinMountSlot::Main,
                         skin_state_store: skin_state_store_for_view.clone(),
                         dispatch: dispatch_for_view.clone(),

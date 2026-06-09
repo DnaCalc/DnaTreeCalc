@@ -24,6 +24,7 @@ use crate::state::{
     InMemorySkinStatePersistenceStore, MigrationError, PersistedSkinStateRecord, SharedSkinState,
     SharedSkinStateHandle, SkinState, SkinStatePersistenceKey,
 };
+use crate::theme::{ThemeMode, ThemeTokens};
 use crate::workspace::WorkspaceState;
 
 #[derive(Default, Clone, Serialize, Deserialize)]
@@ -215,6 +216,7 @@ fn registry_mount_invokes_typed_skin_with_default_state() {
         latest_delta: latest_delta.read_only(),
         selection: selection.read_only(),
         shared,
+        tokens: ThemeTokens::light(),
         slot: SkinMountSlot::Main,
         skin_state_store,
         dispatch: dispatcher,
@@ -223,6 +225,7 @@ fn registry_mount_invokes_typed_skin_with_default_state() {
     let skin = registry.get(id).expect("registered skin must resolve");
     let handle = skin.mount(cx);
     assert!(handle.on_deactivate.is_none());
+    assert_eq!(ThemeTokens::light().mode, ThemeMode::Light);
     // The view itself is opaque AnyView; reaching it would require a
     // rendered tree which the framework crate deliberately does not
     // depend on. Skin behavior under render is covered by the shell-
@@ -354,6 +357,27 @@ fn local_file_skin_state_store_roundtrips_records() {
     std::fs::remove_dir_all(&root).expect("cleanup local file store");
 }
 
+#[test]
+fn theme_tokens_emit_skin_css_custom_properties() {
+    let light = ThemeTokens::light();
+    let css = light.css_rule(".dtc-shell");
+
+    assert_eq!(light.mode, ThemeMode::Light);
+    assert!(css.starts_with(".dtc-shell {"));
+    assert!(css.contains("--dtc-surface: #ffffff;"));
+    assert!(css.contains("--dtc-accent: #245f9c;"));
+    assert!(
+        ThemeTokens::dark()
+            .css_custom_properties()
+            .contains("#111827")
+    );
+    assert!(
+        ThemeTokens::high_contrast()
+            .css_custom_properties()
+            .contains("--dtc-focus: #ffff00;")
+    );
+}
+
 fn mount_persisted_skin(
     skin: &crate::skin::RegisteredSkin,
     store: Arc<InMemorySkinStatePersistenceStore>,
@@ -379,6 +403,7 @@ fn mount_persisted_skin(
         latest_delta: latest_delta.read_only(),
         selection: selection.read_only(),
         shared,
+        tokens: ThemeTokens::light(),
         slot,
         skin_state_store: store,
         dispatch: dispatcher,

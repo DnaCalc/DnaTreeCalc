@@ -670,8 +670,17 @@ The roadmap alignment rule is:
       migration, slot/workspace isolation, NodeKey GC, and native local-file storage. Walking
       skeleton and programmable Skin IR tests prove the required persisted-state store is threaded
       through real shell/skin mounts without recalculating or adding skin-side semantics. Shared-state
-      audit, scenario metadata persistence policy, design tokens, a11y helpers, and multi-slot
-      composition remain later W5 work.
+      audit, scenario metadata persistence policy, a11y helpers, and multi-slot composition remain
+      later W5 work.
+- [x] W5 early `design-token-layer` slice:
+      Skin IR now carries required `ThemeTokens` on both `SkinContext` and `ErasedSkinContext`,
+      with typed `ThemeMode { Light, Dark, HighContrast }` and CSS custom property emission. The
+      shell accepts the active token set, injects the corresponding `.dtc-shell` variables, and
+      passes the same tokens through every mounted skin context. Built-in shell/skin CSS now consumes
+      `var(--dtc-...)` presentation tokens rather than raw stylesheet colors. Framework tests prove
+      token emission for light/dark/high-contrast modes, while walking-skeleton and programmable Skin
+      IR tests prove token context wiring through real mounts. Runtime theme selection, per-skin
+      overrides, locale tokens, and a11y helpers remain later W5 work.
 - [ ] `candidate-overlay-handle`: continue toward fully addressable, layerable, non-publishing
       candidate contexts with optimized live layering/merge rebase, candidate add-node template
       initial content, direct sweep/goal-seek comparison columns, scoped/unit series projection, and

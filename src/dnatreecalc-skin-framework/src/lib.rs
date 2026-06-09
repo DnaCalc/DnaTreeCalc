@@ -15,6 +15,7 @@ pub mod registry;
 pub mod selection;
 pub mod skin;
 pub mod state;
+pub mod theme;
 pub mod workspace;
 
 pub use identity::{NodeId, NodeKey, SkinId, SkinMountSlot};
@@ -36,6 +37,7 @@ pub use state::{
     SharedSkinStateHandle, SkinState, SkinStateHandle, SkinStatePersistenceError,
     SkinStatePersistenceKey, SkinStatePersistenceStore, WorkspaceRecalcMode,
 };
+pub use theme::{ThemeMode, ThemeTokens};
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use state::LocalFileSkinStatePersistenceStore;

@@ -26,7 +26,8 @@ use dnatreecalc_host::app::{
 use dnatreecalc_host::model::{WorkspaceFixture, WorkspaceModel};
 use dnatreecalc_skin_framework::{
     Dispatcher, ErasedSkinContext, InMemorySkinStatePersistenceStore, NodeId, SelectionState,
-    SharedSkinState, SharedSkinStateHandle, SkinMountSlot, WorkspaceDelta, WorkspaceIntent,
+    SharedSkinState, SharedSkinStateHandle, SkinMountSlot, ThemeTokens, WorkspaceDelta,
+    WorkspaceIntent,
 };
 use dnatreecalc_skins::{
     DEPENDENCY_INSPECTOR_ID, FORMULA_TREE_ID, OUTLINE_TABLE_ID, TRIPLE_EDITOR_ID, VALUE_BOARD_ID,
@@ -156,6 +157,7 @@ fn mounting_and_switching_skins_never_recalculates_the_oxcalc_context() {
         latest_delta: latest_delta.read_only(),
         selection: selection.read_only(),
         shared,
+        tokens: ThemeTokens::light(),
         slot: SkinMountSlot::Main,
         skin_state_store: skin_state_store.clone(),
         dispatch: dispatch.clone(),
@@ -175,6 +177,7 @@ fn mounting_and_switching_skins_never_recalculates_the_oxcalc_context() {
         latest_delta: latest_delta.read_only(),
         selection: selection.read_only(),
         shared,
+        tokens: ThemeTokens::light(),
         slot: SkinMountSlot::Main,
         skin_state_store,
         dispatch: dispatch.clone(),
@@ -226,6 +229,7 @@ fn selection_signal_visible_to_both_skins_via_their_contexts() {
         latest_delta: latest_delta.read_only(),
         selection: selection.read_only(),
         shared,
+        tokens: ThemeTokens::light(),
         slot: SkinMountSlot::Main,
         skin_state_store: skin_state_store.clone(),
         dispatch: dispatch.clone(),
@@ -235,6 +239,7 @@ fn selection_signal_visible_to_both_skins_via_their_contexts() {
         latest_delta: latest_delta.read_only(),
         selection: selection.read_only(),
         shared,
+        tokens: ThemeTokens::light(),
         slot: SkinMountSlot::Main,
         skin_state_store,
         dispatch,
@@ -440,6 +445,7 @@ fn walking_skeleton_click_through_harness_edits_switches_saves_and_reopens() {
             latest_delta: latest_delta.read_only(),
             selection: selection.read_only(),
             shared,
+            tokens: ThemeTokens::light(),
             slot: SkinMountSlot::Main,
             skin_state_store: skin_state_store.clone(),
             dispatch: dispatch.clone(),

@@ -1,10 +1,9 @@
 /// Inline CSS for the walking-skeleton shell + the built-in skins.
 ///
 /// Inlining keeps the WASM bundle self-contained (no external stylesheet
-/// fetch) and matches DnaOneCalc's pattern. A real design-token system
-/// (CSS variables, theme switching, per-skin overrides) layers in with
-/// W006 hardening; the skeleton just needs the layout shape to read
-/// honestly.
+/// fetch) and matches DnaOneCalc's pattern. The active `ThemeTokens`
+/// object injects CSS custom properties into `.dtc-shell`; this stylesheet
+/// consumes those variables so skins can share one presentation token surface.
 pub const SHELL_CSS: &str = r#"
 .dtc-shell {
     display: grid;
@@ -12,8 +11,8 @@ pub const SHELL_CSS: &str = r#"
     height: 100vh;
     width: 100%;
     font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-    color: #1f2933;
-    background: #f6f8fb;
+    color: var(--dtc-text);
+    background: var(--dtc-surface-subtle);
 }
 
 .dtc-context-strip {
@@ -21,8 +20,8 @@ pub const SHELL_CSS: &str = r#"
     align-items: center;
     gap: 1rem;
     padding: 0.5rem 0.75rem;
-    border-bottom: 1px solid #d6dde7;
-    background: #ffffff;
+    border-bottom: 1px solid var(--dtc-border);
+    background: var(--dtc-surface);
     font-size: 0.875rem;
 }
 
@@ -32,7 +31,7 @@ pub const SHELL_CSS: &str = r#"
 
 .dtc-context-strip__profile {
     padding: 0.125rem 0.5rem;
-    background: #eef2f7;
+    background: var(--dtc-surface-muted);
     border-radius: 999px;
     font-size: 0.75rem;
     text-transform: uppercase;
@@ -52,18 +51,18 @@ pub const SHELL_CSS: &str = r#"
 .dtc-workspace-control__select {
     min-width: 10rem;
     max-width: 16rem;
-    border: 1px solid #cbd5e1;
+    border: 1px solid var(--dtc-border-strong);
     border-radius: 4px;
-    background: #ffffff;
+    background: var(--dtc-surface);
     padding: 0.25rem 0.5rem;
     color: inherit;
     font: inherit;
 }
 
 .dtc-workspace-control__new {
-    border: 1px solid #cbd5e1;
+    border: 1px solid var(--dtc-border-strong);
     border-radius: 4px;
-    background: #ffffff;
+    background: var(--dtc-surface);
     padding: 0.25rem 0.625rem;
     color: inherit;
     font: inherit;
@@ -71,7 +70,7 @@ pub const SHELL_CSS: &str = r#"
 }
 
 .dtc-workspace-control__new:hover {
-    background: #eef2f7;
+    background: var(--dtc-surface-muted);
 }
 
 .dtc-skin-switcher {
@@ -91,19 +90,19 @@ pub const SHELL_CSS: &str = r#"
 }
 
 .dtc-skin-switcher__tab:hover {
-    background: #eef2f7;
+    background: var(--dtc-surface-muted);
 }
 
 .dtc-skin-switcher__tab--active {
-    background: #2563eb;
-    color: #ffffff;
-    border-color: #1d4ed8;
+    background: var(--dtc-accent);
+    color: var(--dtc-surface);
+    border-color: var(--dtc-accent-text);
 }
 
 .dtc-main-slot {
     overflow: auto;
-    background: #ffffff;
-    border-bottom: 1px solid #d6dde7;
+    background: var(--dtc-surface);
+    border-bottom: 1px solid var(--dtc-border);
 }
 
 .dtc-status-foot {
@@ -111,9 +110,9 @@ pub const SHELL_CSS: &str = r#"
     align-items: center;
     gap: 1rem;
     padding: 0.375rem 0.75rem;
-    background: #f1f3f7;
+    background: var(--dtc-surface-muted);
     font-size: 0.75rem;
-    color: #475569;
+    color: var(--dtc-text-muted);
 }
 
 .dtc-recalc-mode {
@@ -123,9 +122,9 @@ pub const SHELL_CSS: &str = r#"
 }
 
 .dtc-recalc-mode button {
-    border: 1px solid #cbd5e1;
+    border: 1px solid var(--dtc-border-strong);
     border-radius: 4px;
-    background: #ffffff;
+    background: var(--dtc-surface);
     padding: 0.1875rem 0.5rem;
     color: inherit;
     font: inherit;
@@ -133,19 +132,19 @@ pub const SHELL_CSS: &str = r#"
 }
 
 .dtc-recalc-mode button:hover {
-    background: #eef2f7;
+    background: var(--dtc-surface-muted);
 }
 
 .dtc-recalc-mode__button--active {
-    border-color: #2563eb;
-    background: #dbeafe !important;
-    color: #1d4ed8;
+    border-color: var(--dtc-accent);
+    background: var(--dtc-accent-surface) !important;
+    color: var(--dtc-accent-text);
 }
 
 .dtc-recalc-mode__calculate--pending {
-    border-color: #d97706 !important;
-    background: #fffbeb !important;
-    color: #92400e !important;
+    border-color: var(--dtc-warning) !important;
+    background: var(--dtc-warning-surface) !important;
+    color: var(--dtc-warning-text) !important;
 }
 
 /* triple-editor minimal layout */
@@ -163,12 +162,12 @@ pub const SHELL_CSS: &str = r#"
 }
 
 .dtc-triple-editor__nav {
-    border-right: 1px solid #e2e8ef;
-    background: #fafbfc;
+    border-right: 1px solid var(--dtc-border-muted);
+    background: var(--dtc-surface-panel);
 }
 
 .dtc-triple-editor__editor {
-    border-right: 1px solid #e2e8ef;
+    border-right: 1px solid var(--dtc-border-muted);
 }
 
 .dtc-tree-row {
@@ -183,12 +182,12 @@ pub const SHELL_CSS: &str = r#"
 }
 
 .dtc-tree-row:hover {
-    background: #eef2f7;
+    background: var(--dtc-surface-muted);
 }
 
 .dtc-tree-row--selected {
-    background: #dbeafe;
-    color: #1d4ed8;
+    background: var(--dtc-accent-surface);
+    color: var(--dtc-accent-text);
 }
 
 .dtc-tree-row--meta {
@@ -198,9 +197,9 @@ pub const SHELL_CSS: &str = r#"
 
 .dtc-formula-display {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    background: #f8fafc;
+    background: var(--dtc-surface-subtle);
     padding: 0.5rem;
-    border: 1px solid #e2e8ef;
+    border: 1px solid var(--dtc-border-muted);
     border-radius: 4px;
     min-height: 2.5rem;
     white-space: pre-wrap;
@@ -217,7 +216,7 @@ pub const SHELL_CSS: &str = r#"
 }
 
 .dtc-value-display--error {
-    color: #b91c1c;
+    color: var(--dtc-danger);
 }
 
 .dtc-section-label {
@@ -225,7 +224,7 @@ pub const SHELL_CSS: &str = r#"
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    color: #64748b;
+    color: var(--dtc-text-subtle);
     margin-bottom: 0.375rem;
 }
 
@@ -234,9 +233,9 @@ pub const SHELL_CSS: &str = r#"
     gap: 0.5rem;
     padding: 0.625rem;
     margin-bottom: 0.75rem;
-    border: 1px solid #e2e8ef;
+    border: 1px solid var(--dtc-border-muted);
     border-radius: 6px;
-    background: #f8fafc;
+    background: var(--dtc-surface-subtle);
 }
 
 .dtc-node-management__row,
@@ -248,9 +247,9 @@ pub const SHELL_CSS: &str = r#"
 
 .dtc-node-management input {
     min-width: 0;
-    border: 1px solid #cbd5e1;
+    border: 1px solid var(--dtc-border-strong);
     border-radius: 4px;
-    background: #ffffff;
+    background: var(--dtc-surface);
     padding: 0.375rem 0.5rem;
     font: 0.8125rem ui-monospace, SFMono-Regular, Menlo, monospace;
 }
@@ -264,9 +263,9 @@ pub const SHELL_CSS: &str = r#"
 }
 
 .dtc-node-management button {
-    border: 1px solid #cbd5e1;
+    border: 1px solid var(--dtc-border-strong);
     border-radius: 4px;
-    background: #ffffff;
+    background: var(--dtc-surface);
     padding: 0.375rem 0.5rem;
     font: 0.8125rem ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
     cursor: pointer;
@@ -274,7 +273,7 @@ pub const SHELL_CSS: &str = r#"
 }
 
 .dtc-node-management button:hover {
-    background: #eef2f7;
+    background: var(--dtc-surface-muted);
 }
 
 /* outline-table minimal layout */
@@ -288,15 +287,15 @@ pub const SHELL_CSS: &str = r#"
 .dtc-outline-table thead th {
     text-align: left;
     padding: 0.375rem 0.5rem;
-    background: #f1f5f9;
-    border-bottom: 1px solid #d6dde7;
+    background: var(--dtc-surface-muted);
+    border-bottom: 1px solid var(--dtc-border);
     font-weight: 600;
-    color: #475569;
+    color: var(--dtc-text-muted);
 }
 
 .dtc-outline-table tbody td {
     padding: 0.25rem 0.5rem;
-    border-bottom: 1px solid #f1f5f9;
+    border-bottom: 1px solid var(--dtc-surface-muted);
     vertical-align: top;
 }
 
@@ -305,11 +304,11 @@ pub const SHELL_CSS: &str = r#"
 }
 
 .dtc-outline-table tbody tr:hover {
-    background: #eef2f7;
+    background: var(--dtc-surface-muted);
 }
 
 .dtc-outline-table tbody tr.dtc-outline-row--selected {
-    background: #dbeafe;
+    background: var(--dtc-accent-surface);
 }
 
 .dtc-outline-table__content-input {
@@ -324,15 +323,15 @@ pub const SHELL_CSS: &str = r#"
 }
 
 .dtc-outline-table__content-input:hover {
-    border-color: #cbd5e1;
-    background: #ffffff;
+    border-color: var(--dtc-border-strong);
+    background: var(--dtc-surface);
 }
 
 .dtc-outline-table__content-input:focus {
-    outline: 2px solid #93c5fd;
+    outline: 2px solid var(--dtc-focus);
     outline-offset: 1px;
-    border-color: #2563eb;
-    background: #ffffff;
+    border-color: var(--dtc-accent);
+    background: var(--dtc-surface);
 }
 
 .dtc-formula-tree {
@@ -344,8 +343,8 @@ pub const SHELL_CSS: &str = r#"
 .dtc-formula-tree__nav {
     padding: 0.75rem;
     overflow: auto;
-    border-right: 1px solid #e2e8ef;
-    background: #fafbfc;
+    border-right: 1px solid var(--dtc-border-muted);
+    background: var(--dtc-surface-panel);
 }
 
 .dtc-formula-tree__workbench {
@@ -360,7 +359,7 @@ pub const SHELL_CSS: &str = r#"
     width: 100%;
     min-height: 8rem;
     resize: vertical;
-    border: 1px solid #cbd5e1;
+    border: 1px solid var(--dtc-border-strong);
     border-radius: 6px;
     padding: 0.625rem;
     font: 0.875rem ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -372,23 +371,23 @@ pub const SHELL_CSS: &str = r#"
 }
 
 .dtc-formula-tree__commands button {
-    border: 1px solid #cbd5e1;
+    border: 1px solid var(--dtc-border-strong);
     border-radius: 6px;
-    background: #ffffff;
+    background: var(--dtc-surface);
     padding: 0.375rem 0.75rem;
     font: inherit;
     cursor: pointer;
 }
 
 .dtc-formula-tree__commands button:hover {
-    background: #eef2f7;
+    background: var(--dtc-surface-muted);
 }
 
 .dtc-array-value {
     display: inline-grid;
     gap: 1px;
-    border: 1px solid #cbd5e1;
-    background: #cbd5e1;
+    border: 1px solid var(--dtc-border-strong);
+    background: var(--dtc-border-strong);
     max-width: 100%;
     overflow: auto;
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -406,25 +405,25 @@ pub const SHELL_CSS: &str = r#"
     flex-wrap: wrap;
     gap: 0.5rem;
     font: 0.75rem ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-    color: #475569;
+    color: var(--dtc-text-muted);
 }
 
 .dtc-array-value-shell__omitted {
-    color: #64748b;
+    color: var(--dtc-text-subtle);
 }
 
 .dtc-array-value-shell__toggle {
-    border: 1px solid #cbd5e1;
+    border: 1px solid var(--dtc-border-strong);
     border-radius: 4px;
-    background: #ffffff;
+    background: var(--dtc-surface);
     padding: 0.1875rem 0.5rem;
-    color: #2563eb;
+    color: var(--dtc-accent);
     font: inherit;
     cursor: pointer;
 }
 
 .dtc-array-value-shell__toggle:hover {
-    background: #eef2f7;
+    background: var(--dtc-surface-muted);
 }
 
 .dtc-array-value__row {
@@ -435,7 +434,7 @@ pub const SHELL_CSS: &str = r#"
 .dtc-array-value__cell {
     min-width: 4rem;
     padding: 0.25rem 0.375rem;
-    background: #ffffff;
+    background: var(--dtc-surface);
 }
 
 .dtc-value-board {
@@ -453,28 +452,28 @@ pub const SHELL_CSS: &str = r#"
     align-items: center;
     margin: 0;
     padding: 0.625rem 0.75rem;
-    border: 1px solid #bae6fd;
+    border: 1px solid var(--dtc-info-border);
     border-radius: 6px;
-    background: #f0f9ff;
+    background: var(--dtc-info-surface);
     font-size: 0.8125rem;
 }
 
 .dtc-value-board__active-selection dt {
-    color: #475569;
+    color: var(--dtc-text-muted);
 }
 
 .dtc-value-board__active-selection dd {
     margin: 0;
     font-weight: 700;
-    color: #075985;
+    color: var(--dtc-info-text);
 }
 
 .dtc-value-board__active-detail {
     grid-column: 1 / -1;
     padding: 0.75rem;
-    border: 1px solid #d1d5db;
+    border: 1px solid var(--dtc-border);
     border-radius: 6px;
-    background: #ffffff;
+    background: var(--dtc-surface);
 }
 
 .dtc-value-board__active-detail dl {
@@ -486,13 +485,13 @@ pub const SHELL_CSS: &str = r#"
 }
 
 .dtc-value-board__active-detail dt {
-    color: #64748b;
+    color: var(--dtc-text-subtle);
 }
 
 .dtc-value-board__active-detail dd {
     min-width: 0;
     margin: 0;
-    color: #0f172a;
+    color: var(--dtc-text);
     font-weight: 600;
     overflow-wrap: anywhere;
 }
@@ -504,10 +503,10 @@ pub const SHELL_CSS: &str = r#"
 }
 
 .dtc-value-card {
-    border: 1px solid #e2e8ef;
+    border: 1px solid var(--dtc-border-muted);
     border-radius: 8px;
     padding: 0.75rem;
-    background: #ffffff;
+    background: var(--dtc-surface);
     min-width: 0;
 }
 
@@ -523,7 +522,7 @@ pub const SHELL_CSS: &str = r#"
 .dtc-value-card__formula {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 0.75rem;
-    color: #64748b;
+    color: var(--dtc-text-subtle);
     overflow-wrap: anywhere;
 }
 
@@ -540,7 +539,7 @@ pub const SHELL_CSS: &str = r#"
 }
 
 .dtc-table-summary dt {
-    color: #64748b;
+    color: var(--dtc-text-subtle);
 }
 
 .dtc-table-summary dd {
@@ -554,20 +553,20 @@ pub const SHELL_CSS: &str = r#"
     align-items: center;
     margin: 0;
     padding: 0.5rem 0.625rem;
-    border: 1px solid #c7d2fe;
+    border: 1px solid var(--dtc-accent-border);
     border-radius: 6px;
-    background: #eef2ff;
+    background: var(--dtc-accent-surface-muted);
     font-size: 0.75rem;
 }
 
 .dtc-table-card__active-cell dt {
-    color: #475569;
+    color: var(--dtc-text-muted);
 }
 
 .dtc-table-card__active-cell dd {
     margin: 0;
     font-weight: 700;
-    color: #312e81;
+    color: var(--dtc-accent-text);
 }
 
 .dtc-table-card {
@@ -584,7 +583,7 @@ pub const SHELL_CSS: &str = r#"
     gap: 0.375rem;
     align-items: center;
     font-size: 0.75rem;
-    color: #475569;
+    color: var(--dtc-text-muted);
 }
 
 .dtc-table-card__table-name {
@@ -595,9 +594,9 @@ pub const SHELL_CSS: &str = r#"
     display: grid;
     gap: 1px;
     overflow-x: auto;
-    border: 1px solid #d8dee8;
+    border: 1px solid var(--dtc-border);
     border-radius: 6px;
-    background: #d8dee8;
+    background: var(--dtc-border);
 }
 
 .dtc-table-card__row {
@@ -615,46 +614,46 @@ pub const SHELL_CSS: &str = r#"
     border: 0;
     border-radius: 0;
     padding: 0.375rem 0.5rem;
-    background: #ffffff;
+    background: var(--dtc-surface);
     font: 0.8125rem ui-monospace, SFMono-Regular, Menlo, monospace;
-    color: #1f2937;
+    color: var(--dtc-text);
 }
 
 .dtc-table-card__row-action {
-    background: #fff7ed;
-    color: #9a3412;
+    background: var(--dtc-danger-surface);
+    color: var(--dtc-danger-text);
     font-weight: 700;
     cursor: pointer;
 }
 
 .dtc-table-card__row-action:hover {
-    background: #ffedd5;
+    background: var(--dtc-danger-surface);
 }
 
 .dtc-table-card__row-action:disabled {
     cursor: default;
-    color: #94a3b8;
-    background: #f8fafc;
+    color: var(--dtc-text-subtle);
+    background: var(--dtc-surface-subtle);
 }
 
 .dtc-table-card__header-cell {
-    background: #f3f6f9;
+    background: var(--dtc-surface-muted);
     font-weight: 700;
-    color: #475569;
+    color: var(--dtc-text-muted);
 }
 
 .dtc-table-card__row--totals .dtc-table-card__formula-cell {
-    background: #f8fafc;
+    background: var(--dtc-surface-subtle);
     font-weight: 700;
 }
 
 .dtc-table-card__cell-input:focus {
-    outline: 2px solid #2563eb;
+    outline: 2px solid var(--dtc-accent);
     outline-offset: -2px;
 }
 
 .dtc-table-card__cell--selected {
-    box-shadow: inset 0 0 0 2px #2563eb;
+    box-shadow: inset 0 0 0 2px var(--dtc-accent);
 }
 
 .dtc-table-card__add-row,
@@ -679,7 +678,7 @@ pub const SHELL_CSS: &str = r#"
 .dtc-table-card__delete-column select {
     flex: 1 1 7rem;
     min-width: 0;
-    border: 1px solid #d8dee8;
+    border: 1px solid var(--dtc-border);
     border-radius: 4px;
     padding: 0.375rem 0.5rem;
     font: 0.8125rem ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -692,18 +691,18 @@ pub const SHELL_CSS: &str = r#"
 .dtc-table-card__column-metadata button,
 .dtc-table-card__totals-formulas button,
 .dtc-table-card__delete-column button {
-    border: 1px solid #bfdbfe;
+    border: 1px solid var(--dtc-accent-border);
     border-radius: 4px;
     padding: 0.375rem 0.625rem;
-    background: #eff6ff;
-    color: #1d4ed8;
+    background: var(--dtc-accent-surface-muted);
+    color: var(--dtc-accent-text);
     font-weight: 700;
 }
 
 .dtc-table-card__delete-column button {
-    border-color: #fed7aa;
-    background: #fff7ed;
-    color: #9a3412;
+    border-color: var(--dtc-danger-border);
+    background: var(--dtc-danger-surface);
+    color: var(--dtc-danger-text);
 }
 
 .dtc-table-card__totals-toggle {
@@ -712,7 +711,7 @@ pub const SHELL_CSS: &str = r#"
     align-items: center;
     width: fit-content;
     font-size: 0.8125rem;
-    color: #475569;
+    color: var(--dtc-text-muted);
 }
 
 .dtc-table-card__formula-edits {
@@ -741,12 +740,12 @@ pub const SHELL_CSS: &str = r#"
     gap: 0.375rem;
     align-items: center;
     font-size: 0.8125rem;
-    color: #475569;
+    color: var(--dtc-text-muted);
 }
 
 .dtc-table-card__row-rename input {
     min-width: 0;
-    border: 1px solid #d8dee8;
+    border: 1px solid var(--dtc-border);
     border-radius: 4px;
     padding: 0.375rem 0.5rem;
     font: 0.8125rem ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -758,12 +757,12 @@ pub const SHELL_CSS: &str = r#"
     gap: 0.375rem;
     align-items: center;
     font-size: 0.8125rem;
-    color: #475569;
+    color: var(--dtc-text-muted);
 }
 
 .dtc-table-card__column-rename input {
     min-width: 0;
-    border: 1px solid #d8dee8;
+    border: 1px solid var(--dtc-border);
     border-radius: 4px;
     padding: 0.375rem 0.5rem;
     font: 0.8125rem ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -775,7 +774,7 @@ pub const SHELL_CSS: &str = r#"
     gap: 0.375rem;
     align-items: center;
     font-size: 0.8125rem;
-    color: #475569;
+    color: var(--dtc-text-muted);
 }
 
 .dtc-table-card__totals-formula {
@@ -784,7 +783,7 @@ pub const SHELL_CSS: &str = r#"
     gap: 0.375rem;
     align-items: center;
     font-size: 0.8125rem;
-    color: #475569;
+    color: var(--dtc-text-muted);
 }
 
 .dtc-dependency-inspector {
@@ -796,8 +795,8 @@ pub const SHELL_CSS: &str = r#"
 .dtc-dependency-inspector__list {
     padding: 0.75rem;
     overflow: auto;
-    border-right: 1px solid #e2e8ef;
-    background: #fafbfc;
+    border-right: 1px solid var(--dtc-border-muted);
+    background: var(--dtc-surface-panel);
 }
 
 .dtc-dependency-inspector__detail {
@@ -820,26 +819,26 @@ pub const SHELL_CSS: &str = r#"
 }
 
 .dtc-dependency-row:hover {
-    background: #eef2f7;
+    background: var(--dtc-surface-muted);
 }
 
 .dtc-dependency-row--selected {
-    background: #dbeafe;
-    color: #1d4ed8;
+    background: var(--dtc-accent-surface);
+    color: var(--dtc-accent-text);
 }
 
 .dtc-dependency-card {
-    border: 1px solid #e2e8ef;
+    border: 1px solid var(--dtc-border-muted);
     border-radius: 8px;
     padding: 0.75rem;
     margin-bottom: 0.625rem;
-    background: #ffffff;
+    background: var(--dtc-surface);
 }
 
 .dtc-dependency-card code {
     display: block;
     margin-top: 0.375rem;
-    color: #475569;
+    color: var(--dtc-text-muted);
     overflow-wrap: anywhere;
 }
 
@@ -847,19 +846,19 @@ pub const SHELL_CSS: &str = r#"
     display: flex;
     gap: 0.75rem;
     margin-top: 0.5rem;
-    color: #64748b;
+    color: var(--dtc-text-subtle);
     font-size: 0.75rem;
 }
 
 .dtc-empty-detail {
-    color: #64748b;
+    color: var(--dtc-text-subtle);
 }
 
 /* UX polish pass: denser, clearer, keyboard-friendly chrome and skins. */
 .dtc-shell {
     grid-template-rows: auto auto 1fr auto;
-    color: #18212f;
-    background: #eef3f8;
+    color: var(--dtc-text);
+    background: var(--dtc-surface-muted);
 }
 
 .dtc-shell:focus {
@@ -869,8 +868,8 @@ pub const SHELL_CSS: &str = r#"
 .dtc-context-strip {
     gap: 0.75rem;
     padding: 0.625rem 0.875rem;
-    border-bottom-color: #ccd6e2;
-    background: #fbfcfe;
+    border-bottom-color: var(--dtc-border);
+    background: var(--dtc-surface-panel);
 }
 
 .dtc-brand-block {
@@ -888,15 +887,15 @@ pub const SHELL_CSS: &str = r#"
 }
 
 .dtc-context-strip__profile {
-    border: 1px solid #d6dde7;
+    border: 1px solid var(--dtc-border);
     border-radius: 6px;
-    background: #f4f7fb;
-    color: #4b647c;
+    background: var(--dtc-surface-subtle);
+    color: var(--dtc-text-muted);
     letter-spacing: 0;
 }
 
 .dtc-workspace-control__select {
-    border-color: #bdc9d8;
+    border-color: var(--dtc-border-strong);
 }
 
 .dtc-workspace-control__new,
@@ -908,21 +907,21 @@ pub const SHELL_CSS: &str = r#"
 }
 
 .dtc-workspace-control__new {
-    border-color: #7aa37d;
-    background: #f4fbf4;
-    color: #245c2a;
+    border-color: var(--dtc-success-border);
+    background: var(--dtc-success-surface);
+    color: var(--dtc-success);
 }
 
 .dtc-workspace-control__new:hover {
-    background: #e8f5e8;
+    background: var(--dtc-success-surface);
 }
 
 .dtc-skin-switcher {
     gap: 0.1875rem;
     padding: 0.1875rem;
-    border: 1px solid #d6dde7;
+    border: 1px solid var(--dtc-border);
     border-radius: 8px;
-    background: #f4f7fb;
+    background: var(--dtc-surface-subtle);
 }
 
 .dtc-skin-switcher__tab {
@@ -930,13 +929,13 @@ pub const SHELL_CSS: &str = r#"
 }
 
 .dtc-skin-switcher__tab:hover {
-    background: #ffffff;
+    background: var(--dtc-surface);
 }
 
 .dtc-skin-switcher__tab--active {
-    border-color: #1f4f83;
-    background: #245f9c;
-    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.16);
+    border-color: var(--dtc-accent-hover);
+    background: var(--dtc-accent);
+    box-shadow: 0 1px 2px var(--dtc-shadow-medium);
 }
 
 .dtc-shortcut-bar {
@@ -945,9 +944,9 @@ pub const SHELL_CSS: &str = r#"
     gap: 0.5rem;
     min-height: 2rem;
     padding: 0.3125rem 0.875rem;
-    border-bottom: 1px solid #dce3ec;
-    background: #f5f8fc;
-    color: #52677d;
+    border-bottom: 1px solid var(--dtc-border);
+    background: var(--dtc-surface-subtle);
+    color: var(--dtc-text-muted);
     font-size: 0.75rem;
 }
 
@@ -962,43 +961,43 @@ pub const SHELL_CSS: &str = r#"
     align-items: center;
     min-height: 1.125rem;
     padding: 0 0.3125rem;
-    border: 1px solid #c4cfdc;
-    border-bottom-color: #aab7c7;
+    border: 1px solid var(--dtc-kbd-border);
+    border-bottom-color: var(--dtc-kbd-border-strong);
     border-radius: 4px;
-    background: #ffffff;
-    color: #33485f;
+    background: var(--dtc-surface);
+    color: var(--dtc-kbd-text);
     font: 0.6875rem ui-monospace, SFMono-Regular, Menlo, monospace;
     white-space: nowrap;
 }
 
 .dtc-main-slot {
-    background: #f9fbfd;
-    border-bottom-color: #ccd6e2;
+    background: var(--dtc-surface-panel);
+    border-bottom-color: var(--dtc-border);
 }
 
 .dtc-status-foot {
-    border-top: 1px solid #d6dde7;
-    background: #f7f9fc;
+    border-top: 1px solid var(--dtc-border);
+    background: var(--dtc-surface-subtle);
 }
 
 .dtc-status-pill {
     padding: 0.125rem 0.5rem;
-    border: 1px solid #b9d5bb;
+    border: 1px solid var(--dtc-success-border);
     border-radius: 999px;
-    background: #eef8ef;
-    color: #2f6b35;
+    background: var(--dtc-success-surface);
+    color: var(--dtc-success-text);
 }
 
 .dtc-recalc-mode__button--active {
-    border-color: #245f9c;
-    background: #e7f0f9 !important;
-    color: #245f9c;
+    border-color: var(--dtc-accent);
+    background: var(--dtc-accent-surface) !important;
+    color: var(--dtc-accent);
 }
 
 .dtc-recalc-mode__calculate--pending {
-    border-color: #b7791f !important;
-    background: #fff7e6 !important;
-    color: #8a5a12 !important;
+    border-color: var(--dtc-warning) !important;
+    background: var(--dtc-warning-surface) !important;
+    color: var(--dtc-warning-text) !important;
 }
 
 .dtc-triple-editor {
@@ -1008,17 +1007,17 @@ pub const SHELL_CSS: &str = r#"
 .dtc-triple-editor__nav,
 .dtc-formula-tree__nav,
 .dtc-dependency-inspector__list {
-    border-right-color: #dce3ec;
-    background: #f6f9fc;
+    border-right-color: var(--dtc-border);
+    background: var(--dtc-surface-subtle);
 }
 
 .dtc-triple-editor__editor,
 .dtc-formula-tree__workbench {
-    background: #ffffff;
+    background: var(--dtc-surface);
 }
 
 .dtc-triple-editor__value {
-    background: #fbfcfe;
+    background: var(--dtc-surface-panel);
 }
 
 .dtc-tree-row {
@@ -1034,15 +1033,15 @@ pub const SHELL_CSS: &str = r#"
 .dtc-node-management button:hover,
 .dtc-formula-tree__commands button:hover,
 .dtc-dependency-row:hover {
-    background: #eef4fa;
+    background: var(--dtc-accent-surface-muted);
 }
 
 .dtc-tree-row--selected,
 .dtc-dependency-row--selected,
 .dtc-outline-table tbody tr.dtc-outline-row--selected {
-    border-color: #8bb7dd;
-    background: #e5f1fb;
-    color: #20537f;
+    border-color: var(--dtc-accent-border);
+    background: var(--dtc-accent-surface);
+    color: var(--dtc-accent-text);
 }
 
 .dtc-tree-row:focus-visible,
@@ -1053,7 +1052,7 @@ pub const SHELL_CSS: &str = r#"
 .dtc-formula-tree__commands button:focus-visible,
 .dtc-outline-table__content-input:focus-visible,
 .dtc-dependency-row:focus-visible {
-    outline: 2px solid #3c7fb1;
+    outline: 2px solid var(--dtc-focus);
     outline-offset: 2px;
 }
 
@@ -1062,33 +1061,33 @@ pub const SHELL_CSS: &str = r#"
 }
 
 .dtc-formula-tree__input {
-    border-color: #bdc9d8;
-    background: #ffffff;
-    color: #172033;
-    box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.04);
+    border-color: var(--dtc-border-strong);
+    background: var(--dtc-surface);
+    color: var(--dtc-text);
+    box-shadow: inset 0 1px 2px var(--dtc-shadow-inset);
 }
 
 .dtc-node-management,
 .dtc-value-card,
 .dtc-dependency-card {
-    border-color: #d4dde8;
-    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+    border-color: var(--dtc-border);
+    box-shadow: 0 1px 2px var(--dtc-shadow-soft);
 }
 
 .dtc-node-management {
-    background: #f7fafc;
+    background: var(--dtc-surface-subtle);
 }
 
 .dtc-node-management input,
 .dtc-node-management button,
 .dtc-formula-tree__commands button {
-    border-color: #bdc9d8;
+    border-color: var(--dtc-border-strong);
 }
 
 .dtc-outline-table {
     border-collapse: separate;
     border-spacing: 0;
-    background: #ffffff;
+    background: var(--dtc-surface);
 }
 
 .dtc-outline-table thead th {
@@ -1096,23 +1095,23 @@ pub const SHELL_CSS: &str = r#"
     top: 0;
     z-index: 1;
     padding: 0.5rem 0.625rem;
-    border-bottom-color: #cbd7e5;
-    background: #eef4fa;
-    color: #3d5268;
+    border-bottom-color: var(--dtc-border);
+    background: var(--dtc-accent-surface-muted);
+    color: var(--dtc-text-muted);
 }
 
 .dtc-outline-table tbody td {
     padding: 0.3125rem 0.625rem;
-    border-bottom-color: #edf2f7;
+    border-bottom-color: var(--dtc-surface-muted);
 }
 
 .dtc-outline-table tbody tr:hover {
-    background: #f3f8fc;
+    background: var(--dtc-surface-muted);
 }
 
 .dtc-array-value {
-    border-color: #bdc9d8;
-    background: #bdc9d8;
+    border-color: var(--dtc-border-strong);
+    background: var(--dtc-border-strong);
 }
 
 .dtc-array-value__cell {
@@ -1125,7 +1124,7 @@ pub const SHELL_CSS: &str = r#"
 
 .dtc-value-card,
 .dtc-dependency-card {
-    background: #ffffff;
+    background: var(--dtc-surface);
 }
 
 .dtc-dependency-row {

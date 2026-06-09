@@ -562,6 +562,12 @@ Use this as the per-tranche goal statement before implementation:
       persisted roundtrip, migration, slot/workspace isolation, identity-keyed GC, and local-file
       storage. Walking-skeleton and programmable Skin IR tests prove the store is threaded through
       real shell/skin mounts without recalc or skin-side semantics.
+- [x] W5 early `design-token-layer` slice:
+      Skin IR now exposes required `ThemeTokens` with typed light, dark, and high-contrast modes.
+      The shell injects those tokens as `.dtc-shell` CSS custom properties and passes the same
+      object through each mounted `SkinContext`. Built-in shell/skin CSS consumes `var(--dtc-...)`
+      presentation tokens instead of literal colors. Framework tests prove token CSS emission;
+      walking-skeleton and programmable Skin IR tests prove the token context reaches real mounts.
 - [ ] `candidate-overlay-handle`: continue toward fully addressable, layerable, non-publishing
       candidate contexts with optimized live layering/merge rebase, candidate add-node template
       initial content, direct sweep/goal-seek comparison columns, scoped/unit series projection, and
@@ -576,8 +582,9 @@ Only pull these forward when their prerequisites above are met:
   insertion, paste special, duplicate subtree, set membership, notes, formats).
 - W4a/W4b/W4c: revision navigation, candidate overlays, speculation, scenarios, and comparative
   projections.
-- W5 early remaining subset: design tokens, a11y, plus delta-only resync/gap-recovery policy on top
-  of the landed projection delta/version stream.
+- W5 early remaining subset: a11y plus delta-only resync/gap-recovery policy on top of the landed
+  projection delta/version stream, with runtime theme switching and per-skin token overrides as later
+  token-layer follow-through.
 - W5+ later platform: worker calc, multi-slot composition, keybinding registry, virtualization,
   capability negotiation, error isolation, telemetry.
 - W6: templates, table structural authoring, import/export, external feeds, sensitivity/goal seek,

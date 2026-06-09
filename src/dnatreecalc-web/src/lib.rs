@@ -20,7 +20,7 @@ use dnatreecalc_shell::WorkspaceShell;
 use dnatreecalc_skin_framework::{
     Dispatcher, NodeId, PersistedSkinStateRecord, SelectionState, SharedSkinState,
     SharedSkinStateHandle, SkinStatePersistenceError, SkinStatePersistenceKey,
-    SkinStatePersistenceStore, WorkspaceDelta,
+    SkinStatePersistenceStore, ThemeTokens, WorkspaceDelta,
 };
 #[cfg(target_arch = "wasm32")]
 use dnatreecalc_skins::TRIPLE_EDITOR_ID;
@@ -145,6 +145,7 @@ pub fn mount_dnatreecalc(element_id: &str) -> Result<(), JsValue> {
                 dispatch=dispatch.clone()
                 registry=registry.clone()
                 initial_skin=TRIPLE_EDITOR_ID
+                tokens=ThemeTokens::light()
             />
         }
     });

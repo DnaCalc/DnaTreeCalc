@@ -12,8 +12,9 @@ use dnatreecalc_skin_framework::{
     NodeValueProjection, RecalcPlanMutation, RecalcPlanProjection, RegisteredSkin, SelectionState,
     SharedSkinState, SharedSkinStateHandle, SkinCapabilities, SkinCategory, SkinContext,
     SkinHandle, SkinId, SkinManifest, SkinMountSlot, SkinState, TableCellInput,
-    TableFormulaBindPreviewProjection, TableRowInput, WorkspaceDelta, WorkspaceIntent,
-    WorkspaceRecalcMode, WorkspaceRevisionProjection, WorkspaceSkin, WorkspaceState,
+    TableFormulaBindPreviewProjection, TableRowInput, ThemeMode, ThemeTokens, WorkspaceDelta,
+    WorkspaceIntent, WorkspaceRecalcMode, WorkspaceRevisionProjection, WorkspaceSkin,
+    WorkspaceState,
 };
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -38,9 +39,14 @@ pub struct ProgrammableDriver {
     selection: ReadSignal<SelectionState>,
     shared: SharedSkinStateHandle,
     dispatch: Arc<dyn Dispatcher>,
+    tokens: ThemeTokens,
 }
 
 impl ProgrammableDriver {
+    pub fn theme_mode(&self) -> ThemeMode {
+        self.tokens.mode
+    }
+
     pub fn latest_delta(&self) -> WorkspaceDelta {
         self.latest_delta.get_untracked()
     }
@@ -1083,6 +1089,7 @@ impl WorkspaceSkin for ProgrammableSkin {
             selection: cx.selection,
             shared: cx.shared,
             dispatch: cx.dispatch,
+            tokens: cx.tokens,
         });
         SkinHandle::new(view! { <div class="dtc-programmable-test-skin"></div> }.into_any())
     }
@@ -1142,6 +1149,7 @@ impl Harness {
             latest_delta: latest_delta.read_only(),
             selection: selection.read_only(),
             shared,
+            tokens: ThemeTokens::light(),
             slot: SkinMountSlot::Main,
             skin_state_store,
             dispatch,
@@ -1152,6 +1160,7 @@ impl Harness {
             .expect("programmable skin lock poisoned")
             .clone()
             .expect("programmable skin mounted");
+        assert_eq!(driver.theme_mode(), ThemeMode::Light);
         Self {
             driver,
             session,
