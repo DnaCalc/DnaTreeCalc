@@ -6,7 +6,9 @@ before moving on.
 
 ## Iteration Contract
 
-Every tranche should answer these before it is committed:
+Every tranche should answer these before it is committed. The checklist is deliberately about the
+roadmap boundary, not general task hygiene: it proves that the work advanced the sequenced stack
+requirements and did not move semantics into the host or skin layer.
 
 - [ ] Which `ROADMAP.md` wave and requirement did this advance?
 - [ ] Was the readiness tag checked against live code (`expose`, `extend`, or `new`)?
@@ -15,6 +17,14 @@ Every tranche should answer these before it is committed:
 - [ ] Is there a programmable Skin IR test or real-skin exercise from outside the engine?
 - [ ] Were changed specs, handovers, or checklist notes updated?
 - [ ] Did the final status name product scope, evidence, still-open gaps, and next roadmap item?
+
+Use this decision rule when picking the next item:
+
+1. Stay on the earliest roadmap wave with open product behavior.
+2. Prefer a small engine/language exposure over a skin workaround.
+3. If the needed substrate is absent, write a spike or handoff before dependent UI work.
+4. Move to later-wave polish only when the earlier open item is either landed or explicitly blocked
+   by an owning-layer substrate.
 
 ## Active Cursor
 

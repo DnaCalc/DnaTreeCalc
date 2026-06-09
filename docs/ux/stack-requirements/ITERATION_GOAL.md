@@ -2,24 +2,28 @@
 
 ## Goal Statement
 
-Drive the DNA TreeCalc stack-requirements roadmap in dependency order by turning each iteration into
-one ownership-correct capability push: take the earliest unclosed roadmap item, verify the current
-OxFml/OxCalc/DnaTreeCalc code against the readiness claim, implement the smallest useful tranche in
-the layer that owns the truth, and prove the result from the outside through the host projection,
-closed intent seam, programmable Skin IR tests, or a real skin.
+Drive the DNA TreeCalc stack-requirements roadmap in dependency order by making each iteration a
+small, ownership-correct capability push that moves semantic truth upward from the engine/language
+layers into the host projection and Skin IR.
 
-Each iteration must leave the stack more truthful, not just more decorated. The work should expose
-or strengthen engine facts that skins can consume, route authoring through closed typed intents, and
-avoid any host or skin workaround that parses formulas, recomputes values, fabricates transaction
-ids, or invents semantic state that OxFml or OxCalc should own.
+The work is not "skin polish" unless the roadmap item says the platform/skin layer owns it. The
+default move is to expose or strengthen typed truth at the layer that owns it: OxFml owns formula
+grammar, binding, rewriting, single-node evaluation, and format rendering; OxCalc owns dependency
+facts, invalidation, transactions, publication, overlays, epochs, revisions, scheduling, and
+candidate state; the DnaTreeCalc host owns projection, workspace dispatch, structural editing, and
+closed intents; skins render typed state and send typed commands.
 
-The purpose is not to polish skins opportunistically. The purpose is to make richer skins possible
-without giving them semantic ownership. OxFml must own formula parsing, binding, rewriting, and
-format rendering; OxCalc must own dependency facts, invalidation, transactions, publication,
-overlays, epochs, revisions, and scheduling; the DnaTreeCalc host must project typed facts and
-dispatch closed intents; skins must only render state and send typed commands.
+Each iteration should leave one of the roadmap waves more real:
 
-The iteration loop is:
+| Roadmap band | Iteration meaning |
+|---|---|
+| W0/W1 | Expose typed identity, value, dependency, invalidation, formatting, trace, and runtime facts already owned by OxCalc/OxFml. |
+| W2 | Make structural authoring safe through typed subjects, previews, transaction ids, and typed rejection. |
+| W3 | Add content/reference authoring verbs without host-side formula rewriting or semantic reconstruction. |
+| W4a/W4b/W4c | Build the real revision and candidate-overlay substrates before any undo, history, or what-if skin claim. |
+| W5+ | Add platform/frontier features only on top of the typed engine substrate they require. |
+
+The standard iteration loop is:
 
 1. choose the earliest unmet `ROADMAP.md` wave item,
 2. confirm the readiness tag against live OxFml/OxCalc/DnaTreeCalc code,
