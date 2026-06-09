@@ -2189,6 +2189,119 @@ fn programmable_skin_rebases_candidate_rename_and_move_over_live_content_edits()
 }
 
 #[test]
+fn programmable_skin_rebases_multi_edit_candidate_over_live_content_edits() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "SourceParent", "10");
+    skin.add_node(None, "DestinationParent", "");
+    skin.add_node(Some("SourceParent"), "RenameMe", "1");
+    skin.add_node(Some("SourceParent"), "MoveMe", "2");
+    let source_parent_key = skin
+        .state()
+        .node(&NodeId::new("SourceParent"))
+        .expect("source parent should project")
+        .key
+        .clone();
+    let destination_parent_key = skin
+        .state()
+        .node(&NodeId::new("DestinationParent"))
+        .expect("destination parent should project")
+        .key
+        .clone();
+    let rename_key = skin
+        .state()
+        .node(&NodeId::new("SourceParent.RenameMe"))
+        .expect("rename target should project")
+        .key
+        .clone();
+    let move_key = skin
+        .state()
+        .node(&NodeId::new("SourceParent.MoveMe"))
+        .expect("move target should project")
+        .key
+        .clone();
+
+    let open = skin.try_open_candidate();
+    assert!(open.accepted, "{:?}", open.error);
+    let handle = skin.state().candidates[0].handle.clone();
+
+    let rename = skin.try_rename_candidate_node(&handle, rename_key, "Renamed");
+    assert!(rename.accepted, "{:?}", rename.error);
+    let moved = skin.try_move_candidate_node(&handle, move_key, Some(destination_parent_key), None);
+    assert!(moved.accepted, "{:?}", moved.error);
+    let add = skin.try_add_candidate_node(
+        &handle,
+        Some(source_parent_key),
+        "CandidateOnly",
+        InitialNodeContentProjection::Literal {
+            content: "5".to_string(),
+        },
+        false,
+    );
+    assert!(add.accepted, "{:?}", add.error);
+
+    skin.edit("SourceParent", "11");
+    skin.edit("SourceParent.RenameMe", "3");
+    skin.edit("SourceParent.MoveMe", "4");
+    let current_revision = skin
+        .state()
+        .revision
+        .workspace_revision_id
+        .clone()
+        .expect("published workspace revision should project");
+
+    let rebase = skin.try_rebase_candidate(&handle);
+    assert!(rebase.accepted, "{:?}", rebase.error);
+    let rebased = skin
+        .state()
+        .candidates
+        .iter()
+        .find(|candidate| candidate.handle == handle)
+        .expect("rebased candidate should remain retained")
+        .clone();
+    assert_eq!(rebased.basis_revision_id, current_revision);
+    assert!(rebased.nodes.iter().any(|node| {
+        node.id == NodeId::new("SourceParent.Renamed") && node.content_text == "3"
+    }));
+    assert!(rebased.nodes.iter().any(|node| {
+        node.id == NodeId::new("DestinationParent.MoveMe") && node.content_text == "4"
+    }));
+    assert!(rebased.nodes.iter().any(|node| {
+        node.id == NodeId::new("SourceParent.CandidateOnly") && node.content_text == "5"
+    }));
+    assert!(
+        rebased.values_by_key.is_empty(),
+        "rebase should not carry stale candidate values"
+    );
+    assert!(
+        skin.state()
+            .node(&NodeId::new("SourceParent.CandidateOnly"))
+            .is_none()
+    );
+    skin.assert_scalar("SourceParent", "11");
+    skin.assert_scalar("SourceParent.RenameMe", "3");
+    skin.assert_scalar("SourceParent.MoveMe", "4");
+
+    let commit = skin.try_commit_candidate(&handle);
+    assert!(commit.accepted, "{:?}", commit.error);
+    assert!(
+        skin.state()
+            .node(&NodeId::new("SourceParent.RenameMe"))
+            .is_none()
+    );
+    assert!(
+        skin.state()
+            .node(&NodeId::new("SourceParent.MoveMe"))
+            .is_none()
+    );
+    skin.assert_scalar("SourceParent", "11");
+    skin.assert_scalar("SourceParent.Renamed", "3");
+    skin.assert_scalar("DestinationParent.MoveMe", "4");
+    skin.assert_scalar("SourceParent.CandidateOnly", "5");
+}
+
+#[test]
 fn programmable_skin_projects_layered_child_candidate_values() {
     let harness = Harness::empty();
     let skin = harness.driver.clone();

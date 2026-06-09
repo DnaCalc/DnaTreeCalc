@@ -534,6 +534,13 @@ Use this as the per-tranche goal statement before implementation:
       parent/order, move, and delete conflicts remain rejected. Focused OxCalc tests prove the
       positive merge and existing conflict cases; programmable Skin IR tests prove accepted
       rebase/commit paths through the host projection.
+- [x] `candidate-overlay-handle` multi-edit structural/content rebase slice:
+      A stale candidate containing multiple private structural edits now has direct evidence for
+      compatible rebase: candidate rename, move, and add replay together over live content edits on
+      the affected nodes/parent, keep candidate-only structure unpublished until commit, and then
+      promote the merged structure and values through the normal commit bridge. Focused OxCalc and
+      programmable Skin IR tests prove this from the engine and host seams. Full competing
+      structural merge algebra remains open.
 - [x] W4c `scenario-projection` first candidate-backed scenario rail slice:
       DnaTreeCalc projects `WorkspaceState.scenarios` as a host-owned manifest over existing OxCalc
       candidate handles and exposes closed create/activate/delete scenario intents. Creating a

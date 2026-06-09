@@ -83,7 +83,10 @@ mark their removed subtree, and explicit candidate reorder marks the parent lane
 lane-aware merge slice is also landed: OxCalc now separates content-node touches from structural
 parent/order lanes during candidate rebase, so candidate structural adds can rebase over live
 content edits on the same parent and candidate rename/move can rebase over live content edits on
-the affected node without publishing candidate-only structure. Candidate add-node template policy
+the affected node without publishing candidate-only structure. The compatible multi-edit rebase
+slice is also landed: one stale candidate can combine private rename, move, and add edits over live
+content edits on the affected nodes/parent, then commit the merged structure and values through the
+normal candidate bridge. Candidate add-node template policy, competing structural merge algebra,
 and full scenario/what-if UX remain open. The
 first richer host-pin retention slice
 is also landed: OxCalc exposes explicit candidate retention pins that protect active candidates from
@@ -659,6 +662,14 @@ The roadmap alignment rule is:
       merge cases and the existing conflict cases; programmable Skin IR tests prove accepted
       rebase/commit paths through the host projection. Broader multi-edit merge algebra, template
       initial content, and scenario/what-if UX remain open.
+- [x] `candidate-overlay-handle` multi-edit structural/content rebase slice:
+      The lane-aware rebase policy is now exercised across a candidate with multiple private
+      structural edits in one stale overlay: rename, move, and add replay together over live content
+      edits on the renamed node, moved node, and add parent without publishing candidate-only
+      structure before commit. Focused OxCalc and programmable Skin IR tests prove the full
+      rebase/commit path from engine and host seams. Full structural merge algebra for competing
+      structural order/name/delete combinations, template initial content, and broader what-if UX
+      remain open.
 - [x] W4c `scenario-projection` first candidate-backed scenario rail slice:
       DnaTreeCalc projects `WorkspaceState.scenarios` as a host-owned manifest over existing OxCalc
       candidate handles, with closed `CreateScenarioFromCandidate`, `ActivateScenario`, and
