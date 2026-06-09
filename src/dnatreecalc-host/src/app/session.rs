@@ -1469,6 +1469,24 @@ impl TreeWorkspaceSession {
         Ok(handle.to_string())
     }
 
+    pub fn pin_candidate_retention(
+        &mut self,
+        handle: &str,
+    ) -> Result<CandidateProjection, TreeWorkspaceSessionError> {
+        let handle = self.candidate_handle(handle)?;
+        let view = self.context.pin_candidate_retention(&handle)?;
+        self.candidate_projection_for_view(&view)
+    }
+
+    pub fn unpin_candidate_retention(
+        &mut self,
+        handle: &str,
+    ) -> Result<CandidateProjection, TreeWorkspaceSessionError> {
+        let handle = self.candidate_handle(handle)?;
+        let view = self.context.unpin_candidate_retention(&handle)?;
+        self.candidate_projection_for_view(&view)
+    }
+
     pub fn reap_candidates(
         &mut self,
         max_retained: usize,
@@ -4706,6 +4724,7 @@ impl TreeWorkspaceSession {
             handle: view.handle.to_string(),
             basis_revision_id: view.basis_revision_id.to_string(),
             parent_handle: view.parent_candidate.as_ref().map(ToString::to_string),
+            retention_pin_count: view.retention_pin_count,
             workspace_revision_id: view.workspace_revision_id.to_string(),
             revision_history: RevisionHistoryProjection {
                 current_revision_id: Some(view.workspace_revision_id.to_string()),
@@ -7198,6 +7217,8 @@ fn speculation_pressure_projection_for(
 ) -> SpeculationPressureProjection {
     SpeculationPressureProjection {
         retained_candidate_count: pressure.retained_candidate_count,
+        child_protected_candidate_count: pressure.child_protected_candidate_count,
+        host_pinned_candidate_count: pressure.host_pinned_candidate_count,
         protected_candidate_count: pressure.protected_candidate_count,
         reclaimable_candidate_count: pressure.reclaimable_candidate_count,
         over_budget_candidate_count: pressure.over_budget_candidate_count,

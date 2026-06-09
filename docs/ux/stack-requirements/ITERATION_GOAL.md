@@ -68,8 +68,10 @@ formulas before private mutation. The first candidate speculation-budget/GC slic
 OxCalc computes typed candidate pressure from live candidate handles, reaps unprotected candidates
 to a requested budget, and DnaTreeCalc projects the pressure plus a closed `ReapCandidates` Skin IR
 intent without host-side lifecycle fabrication. Optimized layering/rebase, candidate add-node
-template policy, scenario/what-if UX, and richer lease/host-pin candidate retention policy remain
-open. Remaining W3
+template policy, and scenario/what-if UX remain open. The first richer host-pin retention slice is
+also landed: OxCalc exposes explicit candidate retention pins that protect active candidates from
+budget reaping, DnaTreeCalc projects pin counts and pressure reason counts, and Skin IR exposes
+closed pin/unpin intents without owning lifecycle semantics. Remaining W3
 formula-rewrite/rebind verbs stay parked until their owning
 OxFml/OxCalc substrates are available. W2 safe structural authoring is
 closed for the current Skin IR surface: receipts carry typed errors and real OxCalc transaction ids,
@@ -561,9 +563,16 @@ The roadmap alignment rule is:
       through `WorkspaceState.speculation_pressure` and exposes a closed `ReapCandidates` Skin IR
       intent. Programmable Skin IR tests prove candidate removal deltas and pressure updates are
       observed from outside the engine without publishing workspace node state.
+- [x] `candidate-overlay-handle` host-retention pin slice:
+      OxCalc exposes explicit candidate retention pins, reports child-protected and host-pinned
+      pressure reason counts, and protects host-pinned candidates from budget reaping. DnaTreeCalc
+      projects `CandidateProjection.retention_pin_count`, reason-specific speculation pressure, and
+      closed `PinCandidateRetention` / `UnpinCandidateRetention` Skin IR intents. Programmable Skin
+      IR tests prove a pinned candidate survives reaping while an unpinned candidate is reclaimed,
+      pin/unpin emits candidate-change deltas, and an unbalanced unpin is rejected.
 - [ ] `candidate-overlay-handle`: continue toward fully addressable, layerable, non-publishing
       candidate contexts with optimized layering/rebase, candidate add-node template initial content,
-      and richer lease/host-pin candidate retention policy.
+      and scenario/what-if UX.
 - [x] `value-epoch-keying`: per-node published-value epoch distinct from input epoch.
 
 ## Status Template

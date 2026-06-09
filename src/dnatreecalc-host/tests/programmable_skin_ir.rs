@@ -909,6 +909,12 @@ fn programmable_skin_reaps_candidates_to_budget_and_projects_pressure() {
     let before = skin.state();
     assert_eq!(before.candidates.len(), 3);
     assert_eq!(before.speculation_pressure.retained_candidate_count, 3);
+    assert_eq!(
+        before.speculation_pressure.child_protected_candidate_count,
+        0
+    );
+    assert_eq!(before.speculation_pressure.host_pinned_candidate_count, 0);
+    assert_eq!(before.speculation_pressure.protected_candidate_count, 0);
     assert_eq!(before.speculation_pressure.reclaimable_candidate_count, 3);
     assert_eq!(before.speculation_pressure.over_budget_candidate_count, 1);
     let first = before.candidates[0].handle.clone();
@@ -926,6 +932,78 @@ fn programmable_skin_reaps_candidates_to_budget_and_projects_pressure() {
     assert!(receipt.delta.changes.iter().any(|change| {
         matches!(change, WorkspaceDeltaChange::CandidateRemoved(handle) if handle == &second)
     }));
+}
+
+#[test]
+fn programmable_skin_pins_candidate_retention_against_reaping() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    assert!(skin.try_open_candidate().accepted);
+    assert!(skin.try_open_candidate().accepted);
+    let before = skin.state();
+    let pinned_handle = before.candidates[0].handle.clone();
+    let reclaimable_handle = before.candidates[1].handle.clone();
+
+    let pin = skin.try_pin_candidate_retention(&pinned_handle);
+    assert!(pin.accepted, "{:?}", pin.error);
+    let pinned_state = skin.state();
+    let pinned = pinned_state
+        .candidates
+        .iter()
+        .find(|candidate| candidate.handle == pinned_handle)
+        .expect("pinned candidate should project");
+    assert_eq!(pinned.retention_pin_count, 1);
+    assert_eq!(
+        pinned_state.speculation_pressure.retained_candidate_count,
+        2
+    );
+    assert_eq!(
+        pinned_state
+            .speculation_pressure
+            .host_pinned_candidate_count,
+        1
+    );
+    assert_eq!(
+        pinned_state.speculation_pressure.protected_candidate_count,
+        1
+    );
+    assert_eq!(
+        pinned_state
+            .speculation_pressure
+            .reclaimable_candidate_count,
+        1
+    );
+    assert!(pin.delta.changes.iter().any(|change| {
+        matches!(change, WorkspaceDeltaChange::CandidateChanged(candidate) if candidate.handle == pinned_handle && candidate.retention_pin_count == 1)
+    }));
+
+    let reap = skin.try_reap_candidates(1);
+    assert!(reap.accepted, "{:?}", reap.error);
+    let reaped_state = skin.state();
+    assert_eq!(reaped_state.candidates.len(), 1);
+    assert_eq!(reaped_state.candidates[0].handle, pinned_handle);
+    assert!(reap.delta.changes.iter().any(|change| {
+        matches!(change, WorkspaceDeltaChange::CandidateRemoved(handle) if handle == &reclaimable_handle)
+    }));
+
+    let unpin = skin.try_unpin_candidate_retention(&pinned_handle);
+    assert!(unpin.accepted, "{:?}", unpin.error);
+    let unpinned_state = skin.state();
+    assert_eq!(unpinned_state.candidates[0].retention_pin_count, 0);
+    assert_eq!(
+        unpinned_state
+            .speculation_pressure
+            .host_pinned_candidate_count,
+        0
+    );
+    assert!(unpin.delta.changes.iter().any(|change| {
+        matches!(change, WorkspaceDeltaChange::CandidateChanged(candidate) if candidate.handle == pinned_handle && candidate.retention_pin_count == 0)
+    }));
+
+    let extra_unpin = skin.try_unpin_candidate_retention(&pinned_handle);
+    assert!(!extra_unpin.accepted);
 }
 
 #[test]

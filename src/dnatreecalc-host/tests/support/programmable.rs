@@ -293,6 +293,20 @@ impl ProgrammableDriver {
         })
     }
 
+    pub fn try_pin_candidate_retention(&self, handle: &str) -> IntentReceipt {
+        self.dispatch
+            .dispatch(WorkspaceIntent::PinCandidateRetention {
+                handle: handle.to_string(),
+            })
+    }
+
+    pub fn try_unpin_candidate_retention(&self, handle: &str) -> IntentReceipt {
+        self.dispatch
+            .dispatch(WorkspaceIntent::UnpinCandidateRetention {
+                handle: handle.to_string(),
+            })
+    }
+
     pub fn try_reap_candidates(&self, max_retained: usize) -> IntentReceipt {
         self.dispatch
             .dispatch(WorkspaceIntent::ReapCandidates { max_retained })

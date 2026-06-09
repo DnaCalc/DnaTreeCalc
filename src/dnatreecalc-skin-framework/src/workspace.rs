@@ -40,6 +40,8 @@ pub struct WorkspaceState {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SpeculationPressureProjection {
     pub retained_candidate_count: usize,
+    pub child_protected_candidate_count: usize,
+    pub host_pinned_candidate_count: usize,
     pub protected_candidate_count: usize,
     pub reclaimable_candidate_count: usize,
     pub over_budget_candidate_count: usize,
@@ -713,6 +715,7 @@ pub struct CandidateProjection {
     pub handle: String,
     pub basis_revision_id: String,
     pub parent_handle: Option<String>,
+    pub retention_pin_count: usize,
     pub workspace_revision_id: String,
     pub revision_history: RevisionHistoryProjection,
     pub nodes: Vec<CandidateNodeProjection>,

@@ -251,6 +251,15 @@ pub enum WorkspaceIntent {
     DiscardCandidate {
         handle: String,
     },
+    /// Protect a candidate from engine-owned budget reaping while a host view
+    /// or workflow actively retains it.
+    PinCandidateRetention {
+        handle: String,
+    },
+    /// Release one host retention pin previously held for a candidate.
+    UnpinCandidateRetention {
+        handle: String,
+    },
     /// Ask the engine to reclaim unprotected candidates until the retained
     /// candidate count is at or below the requested budget.
     ReapCandidates {
@@ -693,6 +702,8 @@ impl Dispatcher for InMemoryDispatcher {
             | WorkspaceIntent::AddCandidateNode { .. }
             | WorkspaceIntent::EvaluateCandidate { .. }
             | WorkspaceIntent::DiscardCandidate { .. }
+            | WorkspaceIntent::PinCandidateRetention { .. }
+            | WorkspaceIntent::UnpinCandidateRetention { .. }
             | WorkspaceIntent::ReapCandidates { .. }
             | WorkspaceIntent::CommitCandidate { .. }
             | WorkspaceIntent::AddNode { .. }

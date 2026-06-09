@@ -320,6 +320,14 @@ impl Dispatcher for HostDispatcher {
             WorkspaceIntent::DiscardCandidate { handle } => self
                 .discard_candidate(&handle)
                 .unwrap_or_else(IntentReceipt::rejected),
+            WorkspaceIntent::PinCandidateRetention { handle } => self
+                .apply_candidate_projection_edit(|session| session.pin_candidate_retention(&handle))
+                .map_or_else(IntentReceipt::rejected, receipt_for_candidate_change),
+            WorkspaceIntent::UnpinCandidateRetention { handle } => self
+                .apply_candidate_projection_edit(|session| {
+                    session.unpin_candidate_retention(&handle)
+                })
+                .map_or_else(IntentReceipt::rejected, receipt_for_candidate_change),
             WorkspaceIntent::ReapCandidates { max_retained } => self
                 .reap_candidates(max_retained)
                 .unwrap_or_else(IntentReceipt::rejected),
