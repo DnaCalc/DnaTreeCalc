@@ -562,6 +562,14 @@ Use this as the per-tranche goal statement before implementation:
       through OxCalc typed structural lane touches when deleted/touched nodes do not overlap and
       replay validation succeeds. Existing delete-descendant conflict coverage keeps destructive
       overlap conservative. Focused OxCalc and programmable Skin IR tests prove both accepted paths.
+- [x] `candidate-overlay-handle` sibling add/reorder and delete/reorder structural merge slice:
+      Candidate add over live sibling reorder, candidate reorder over live sibling add, candidate
+      delete over live sibling reorder, and candidate reorder over live sibling delete now rebase
+      through OxCalc typed structural lane touches when deleted/touched nodes do not overlap and
+      replay validation succeeds. Competing reorder/order edits remain conservative conflicts.
+      OxCalc node views publish ordered parent/child ids and DnaTreeCalc consumes them for published
+      and candidate child projections, so programmable Skin IR tests verify speculative tree order
+      from outside the engine.
 - [x] W4c `scenario-projection` first candidate-backed scenario rail slice:
       DnaTreeCalc projects `WorkspaceState.scenarios` as a host-owned manifest over existing OxCalc
       candidate handles and exposes closed create/activate/delete scenario intents. Creating a
@@ -650,9 +658,9 @@ Use this as the per-tranche goal statement before implementation:
       programmable Skin IR tests prove the real skins still mount and route host selection/dispatch.
 - [ ] `candidate-overlay-handle`: continue W4b with broader structural order/delete/name-collision
       merge algebra beyond same-node rename/move, same-parent rename/add, and same-parent
-      rename/reorder facet merging plus sibling add/delete merging, candidate add-node template
-      initial content, direct sweep/goal-seek comparison columns/series, and broader what-if UX
-      before goal seek or sweeps.
+      rename/reorder facet merging plus sibling add/delete, sibling add/reorder, and sibling
+      delete/reorder merging, candidate add-node template initial content, direct sweep/goal-seek
+      comparison columns/series, and broader what-if UX before goal seek or sweeps.
 - [x] `value-epoch-keying`: per-node published-value epoch is available for projection consumers.
 
 ## Next-Wave Parking Lot

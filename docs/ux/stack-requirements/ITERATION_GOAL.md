@@ -97,9 +97,15 @@ live sibling reorder and candidate reorder can rebase over live sibling rename. 
 a closed `ReorderCandidateNode` intent so candidate-private order edits are testable without skin
 semantics. The first sibling add/delete merge slice is now landed too: candidate add over live
 sibling delete and candidate delete over live sibling add rebase and commit when the touched nodes
-are distinct, while deleted-subtree overlap remains rejected. Candidate add-node template policy,
-competing structural order/delete/name merge algebra beyond these rename/move, rename/add,
-rename/reorder, and sibling add/delete facets, and full scenario/what-if UX remain open. The
+are distinct, while deleted-subtree overlap remains rejected. The first sibling add/reorder and
+delete/reorder merge slice is now landed as well: candidate add/reorder and delete/reorder
+combinations rebase and commit when touched/deleted nodes do not overlap and replay validation
+succeeds, while competing reorder/order edits remain rejected. OxCalc node views now publish ordered
+parent/child ids and DnaTreeCalc consumes those ids for published and candidate tree projections, so
+skins no longer reconstruct child order from paths. Candidate add-node template policy, competing
+structural name merge algebra beyond these rename/move, rename/add, rename/reorder, sibling
+add/delete, sibling add/reorder, and sibling delete/reorder facets, and full scenario/what-if UX
+remain open. The
 first richer host-pin retention slice
 is also landed: OxCalc exposes explicit candidate retention pins that protect active candidates from
 budget reaping, DnaTreeCalc projects pin counts and pressure reason counts, and Skin IR exposes
@@ -712,6 +718,15 @@ The roadmap alignment rule is:
       delete-descendant overlap test keeps destructive overlaps rejected. Programmable Skin IR tests
       prove both directions from outside the engine. Reorder/add index semantics, deeper delete
       merge algebra, template initial content, and broader what-if UX remain open.
+- [x] `candidate-overlay-handle` sibling add/reorder and delete/reorder structural merge slice:
+      OxCalc now treats same-parent add/reorder and delete/reorder lane touches as compatible when
+      touched/deleted node sets do not overlap and replay validation succeeds. Candidate add over
+      live sibling reorder, candidate reorder over live sibling add, candidate delete over live
+      sibling reorder, and candidate reorder over live sibling delete all rebase and commit, while
+      competing reorder/order edits remain rejected. OxCalc projects ordered parent/child ids on
+      node views and DnaTreeCalc uses them for published and candidate child projections, so Skin IR
+      tests can verify speculative tree order without host-side reconstruction. Template initial
+      content and broader name-collision/what-if UX remain open.
 - [x] W4c `scenario-projection` first candidate-backed scenario rail slice:
       DnaTreeCalc projects `WorkspaceState.scenarios` as a host-owned manifest over existing OxCalc
       candidate handles, with closed `CreateScenarioFromCandidate`, `ActivateScenario`, and
@@ -814,10 +829,10 @@ The roadmap alignment rule is:
       a11y helpers for ValueBoard's `TableCellSelection`, focus-boundary helpers for future
       multi-slot composition, and broader screen-reader/browser audits remain later W5 work.
 - [ ] `candidate-overlay-handle`: continue toward fully addressable, layerable, non-publishing
-      candidate contexts with broader structural order/delete/name-collision merge algebra beyond
-      same-node rename/move, same-parent rename/add, and same-parent rename/reorder facet merging,
-      sibling add/delete merging, candidate add-node template initial content, direct sweep/goal-seek
-      comparison columns/series, and broader what-if UX.
+      candidate contexts with broader structural name-collision merge algebra beyond same-node
+      rename/move, same-parent rename/add, same-parent rename/reorder, sibling add/delete, sibling
+      add/reorder, and sibling delete/reorder facet merging, candidate add-node template initial
+      content, direct sweep/goal-seek comparison columns/series, and broader what-if UX.
 - [x] `value-epoch-keying`: per-node published-value epoch distinct from input epoch.
 
 ## Status Template

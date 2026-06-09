@@ -4663,15 +4663,9 @@ impl TreeWorkspaceSession {
         )?;
 
         let known_ids = self.display_order.iter().cloned().collect::<BTreeSet<_>>();
-        let mut child_map = BTreeMap::<NodeId, Vec<NodeId>>::new();
         let mut root_paths = Vec::new();
         for node_id in &self.display_order {
-            if let Some(parent) = parent_path(node_id.as_str()) {
-                child_map
-                    .entry(NodeId::new(parent))
-                    .or_default()
-                    .push(node_id.clone());
-            } else {
+            if parent_path(node_id.as_str()).is_none() {
                 root_paths.push(node_id.clone());
             }
         }
@@ -4684,9 +4678,16 @@ impl TreeWorkspaceSession {
                     node: node_id.to_string(),
                 }
             })?;
-            let parent = parent_path(node_id.as_str())
-                .map(NodeId::new)
+            let parent = tree_view
+                .parent_node_id
+                .and_then(|parent| self.node_id_for_tree_node(parent).ok())
                 .filter(|parent| known_ids.contains(parent));
+            let children = tree_view
+                .child_node_ids
+                .iter()
+                .filter_map(|child| self.node_id_for_tree_node(*child).ok())
+                .filter(|child| known_ids.contains(child))
+                .collect::<Vec<_>>();
             let content_kind = content_kind_for_text(&tree_view.formula_text);
             let outcome_calc_value = self
                 .last_outcome
@@ -4717,7 +4718,7 @@ impl TreeWorkspaceSession {
                     id: node_id.clone(),
                     display_name: tree_view.symbol.clone(),
                     parent,
-                    children: child_map.remove(node_id).unwrap_or_default(),
+                    children,
                     depth: depth_of(node_id.as_str()),
                     content_kind,
                     content_text: tree_view.formula_text.clone(),
@@ -7667,18 +7668,6 @@ fn candidate_nodes_projection_for_view(
         .iter()
         .filter_map(|node| candidate_node_ids.get(&node.node_id).cloned())
         .collect::<BTreeSet<_>>();
-    let mut child_map = BTreeMap::<NodeId, Vec<NodeId>>::new();
-    for node in &view.nodes {
-        let Some(node_id) = candidate_node_ids.get(&node.node_id).cloned() else {
-            continue;
-        };
-        if let Some(parent) = parent_path(node_id.as_str())
-            .map(NodeId::new)
-            .filter(|parent| candidate_ids.contains(parent))
-        {
-            child_map.entry(parent).or_default().push(node_id);
-        }
-    }
     view.nodes
         .iter()
         .filter(|node| node.canonical_path != ENGINE_ROOT_SYMBOL)
@@ -7689,15 +7678,22 @@ fn candidate_nodes_projection_for_view(
                 .ok_or_else(|| TreeWorkspaceSessionError::ProjectionOutOfSync {
                     node: node.canonical_path.clone(),
                 })?;
-            let parent = parent_path(node_id.as_str())
-                .map(NodeId::new)
+            let parent = node
+                .parent_node_id
+                .and_then(|parent| candidate_node_ids.get(&parent).cloned())
                 .filter(|parent| candidate_ids.contains(parent));
+            let children = node
+                .child_node_ids
+                .iter()
+                .filter_map(|child| candidate_node_ids.get(child).cloned())
+                .filter(|child| candidate_ids.contains(child))
+                .collect::<Vec<_>>();
             Ok(CandidateNodeProjection {
                 key: node_key_for_tree_node(node.node_id),
                 id: node_id.clone(),
                 display_name: node.symbol.clone(),
                 parent,
-                children: child_map.remove(&node_id).unwrap_or_default(),
+                children,
                 depth: depth_of(node_id.as_str()),
                 content_kind: content_kind_for_text(&node.formula_text),
                 content_text: node.formula_text.clone(),

@@ -7,7 +7,7 @@ use dnatreecalc_host::model::{
     WorkspaceFixture, WorkspaceNodeFixture,
 };
 use dnatreecalc_skin_framework::{
-    ActiveSelectionDetailProjection, AuthoringScope, CalcRunStateProjection,
+    ActiveSelectionDetailProjection, AuthoringScope, CalcRunStateProjection, CandidateProjection,
     ClipboardOperationProjection, ClipboardPayloadKind, ClipboardPayloadProjection,
     ComparativeSourceProjection, FormulaBindPreviewDiagnosticStage, FormulaBindPreviewInputKind,
     FormulaReferenceInsertionTarget, InitialNodeContentProjection, IntentError,
@@ -21,6 +21,16 @@ use dnatreecalc_skin_framework::{
 };
 
 use support::programmable::{Harness, revision_fingerprint};
+
+fn candidate_children(candidate: &CandidateProjection, node: &str) -> Vec<NodeId> {
+    candidate
+        .nodes
+        .iter()
+        .find(|candidate_node| candidate_node.id == NodeId::new(node))
+        .unwrap_or_else(|| panic!("{node} should project in candidate"))
+        .children
+        .clone()
+}
 
 #[test]
 fn programmable_skin_commands_route_through_host_dispatcher() {
@@ -2881,6 +2891,258 @@ fn programmable_skin_rebases_candidate_delete_over_live_sibling_add() {
             .is_none()
     );
     skin.assert_scalar("Root.Parent.LiveAdded", "2");
+}
+
+#[test]
+fn programmable_skin_rebases_candidate_add_over_live_sibling_reorder() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    skin.add_node(Some("Root"), "Parent", "");
+    skin.add_node(Some("Root.Parent"), "First", "1");
+    skin.add_node(Some("Root.Parent"), "Second", "2");
+    let parent_key = skin
+        .state()
+        .node(&NodeId::new("Root.Parent"))
+        .expect("Parent should project")
+        .key
+        .clone();
+
+    let open = skin.try_open_candidate();
+    assert!(open.accepted, "{:?}", open.error);
+    let handle = skin.state().candidates[0].handle.clone();
+    let candidate_add = skin.try_add_candidate_node(
+        &handle,
+        Some(parent_key),
+        "CandidateAdded",
+        InitialNodeContentProjection::Literal {
+            content: "3".to_string(),
+        },
+        false,
+    );
+    assert!(candidate_add.accepted, "{:?}", candidate_add.error);
+
+    let live_reorder = skin.try_reorder("Root.Parent.Second", 0);
+    assert!(live_reorder.accepted, "{:?}", live_reorder.error);
+    skin.assert_children("Root.Parent", &["Root.Parent.Second", "Root.Parent.First"]);
+
+    let rebase = skin.try_rebase_candidate(&handle);
+    assert!(rebase.accepted, "{:?}", rebase.error);
+    let rebased = skin
+        .state()
+        .candidates
+        .iter()
+        .find(|candidate| candidate.handle == handle)
+        .expect("rebased candidate should remain retained")
+        .clone();
+    assert_eq!(
+        candidate_children(&rebased, "Root.Parent"),
+        vec![
+            NodeId::new("Root.Parent.Second"),
+            NodeId::new("Root.Parent.First"),
+            NodeId::new("Root.Parent.CandidateAdded")
+        ]
+    );
+    assert!(
+        skin.state()
+            .node(&NodeId::new("Root.Parent.CandidateAdded"))
+            .is_none()
+    );
+
+    let commit = skin.try_commit_candidate(&handle);
+    assert!(commit.accepted, "{:?}", commit.error);
+    skin.assert_children(
+        "Root.Parent",
+        &[
+            "Root.Parent.Second",
+            "Root.Parent.First",
+            "Root.Parent.CandidateAdded",
+        ],
+    );
+    skin.assert_scalar("Root.Parent.CandidateAdded", "3");
+}
+
+#[test]
+fn programmable_skin_rebases_candidate_reorder_over_live_sibling_add() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    skin.add_node(Some("Root"), "Parent", "");
+    skin.add_node(Some("Root.Parent"), "First", "1");
+    skin.add_node(Some("Root.Parent"), "Second", "2");
+    let second_key = skin
+        .state()
+        .node(&NodeId::new("Root.Parent.Second"))
+        .expect("Second should project")
+        .key
+        .clone();
+
+    let open = skin.try_open_candidate();
+    assert!(open.accepted, "{:?}", open.error);
+    let handle = skin.state().candidates[0].handle.clone();
+    let candidate_reorder = skin.try_reorder_candidate_node(&handle, second_key, 0);
+    assert!(candidate_reorder.accepted, "{:?}", candidate_reorder.error);
+
+    let live_add = skin.try_add_node(Some("Root.Parent"), "LiveAdded", "3");
+    assert!(live_add.accepted, "{:?}", live_add.error);
+    skin.assert_children(
+        "Root.Parent",
+        &[
+            "Root.Parent.First",
+            "Root.Parent.Second",
+            "Root.Parent.LiveAdded",
+        ],
+    );
+
+    let rebase = skin.try_rebase_candidate(&handle);
+    assert!(rebase.accepted, "{:?}", rebase.error);
+    let rebased = skin
+        .state()
+        .candidates
+        .iter()
+        .find(|candidate| candidate.handle == handle)
+        .expect("rebased candidate should remain retained")
+        .clone();
+    assert_eq!(
+        candidate_children(&rebased, "Root.Parent"),
+        vec![
+            NodeId::new("Root.Parent.Second"),
+            NodeId::new("Root.Parent.First"),
+            NodeId::new("Root.Parent.LiveAdded")
+        ]
+    );
+
+    let commit = skin.try_commit_candidate(&handle);
+    assert!(commit.accepted, "{:?}", commit.error);
+    skin.assert_children(
+        "Root.Parent",
+        &[
+            "Root.Parent.Second",
+            "Root.Parent.First",
+            "Root.Parent.LiveAdded",
+        ],
+    );
+    skin.assert_scalar("Root.Parent.LiveAdded", "3");
+}
+
+#[test]
+fn programmable_skin_rebases_candidate_delete_over_live_sibling_reorder() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    skin.add_node(Some("Root"), "Parent", "");
+    skin.add_node(Some("Root.Parent"), "First", "1");
+    skin.add_node(Some("Root.Parent"), "Second", "2");
+    skin.add_node(Some("Root.Parent"), "DeleteMe", "3");
+    let delete_key = skin
+        .state()
+        .node(&NodeId::new("Root.Parent.DeleteMe"))
+        .expect("DeleteMe should project")
+        .key
+        .clone();
+
+    let open = skin.try_open_candidate();
+    assert!(open.accepted, "{:?}", open.error);
+    let handle = skin.state().candidates[0].handle.clone();
+    let candidate_delete = skin.try_delete_candidate_node(&handle, delete_key);
+    assert!(candidate_delete.accepted, "{:?}", candidate_delete.error);
+
+    let live_reorder = skin.try_reorder("Root.Parent.Second", 0);
+    assert!(live_reorder.accepted, "{:?}", live_reorder.error);
+
+    let rebase = skin.try_rebase_candidate(&handle);
+    assert!(rebase.accepted, "{:?}", rebase.error);
+    let rebased = skin
+        .state()
+        .candidates
+        .iter()
+        .find(|candidate| candidate.handle == handle)
+        .expect("rebased candidate should remain retained")
+        .clone();
+    assert_eq!(
+        candidate_children(&rebased, "Root.Parent"),
+        vec![
+            NodeId::new("Root.Parent.Second"),
+            NodeId::new("Root.Parent.First")
+        ]
+    );
+    assert!(
+        !rebased
+            .nodes
+            .iter()
+            .any(|node| node.id == NodeId::new("Root.Parent.DeleteMe"))
+    );
+
+    let commit = skin.try_commit_candidate(&handle);
+    assert!(commit.accepted, "{:?}", commit.error);
+    skin.assert_children("Root.Parent", &["Root.Parent.Second", "Root.Parent.First"]);
+    assert!(
+        skin.state()
+            .node(&NodeId::new("Root.Parent.DeleteMe"))
+            .is_none()
+    );
+}
+
+#[test]
+fn programmable_skin_rebases_candidate_reorder_over_live_sibling_delete() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    skin.add_node(Some("Root"), "Parent", "");
+    skin.add_node(Some("Root.Parent"), "First", "1");
+    skin.add_node(Some("Root.Parent"), "Second", "2");
+    skin.add_node(Some("Root.Parent"), "DeleteMe", "3");
+    let second_key = skin
+        .state()
+        .node(&NodeId::new("Root.Parent.Second"))
+        .expect("Second should project")
+        .key
+        .clone();
+
+    let open = skin.try_open_candidate();
+    assert!(open.accepted, "{:?}", open.error);
+    let handle = skin.state().candidates[0].handle.clone();
+    let candidate_reorder = skin.try_reorder_candidate_node(&handle, second_key, 0);
+    assert!(candidate_reorder.accepted, "{:?}", candidate_reorder.error);
+
+    let live_delete = skin.try_delete("Root.Parent.DeleteMe");
+    assert!(live_delete.accepted, "{:?}", live_delete.error);
+
+    let rebase = skin.try_rebase_candidate(&handle);
+    assert!(rebase.accepted, "{:?}", rebase.error);
+    let rebased = skin
+        .state()
+        .candidates
+        .iter()
+        .find(|candidate| candidate.handle == handle)
+        .expect("rebased candidate should remain retained")
+        .clone();
+    assert_eq!(
+        candidate_children(&rebased, "Root.Parent"),
+        vec![
+            NodeId::new("Root.Parent.Second"),
+            NodeId::new("Root.Parent.First")
+        ]
+    );
+    assert!(
+        !rebased
+            .nodes
+            .iter()
+            .any(|node| node.id == NodeId::new("Root.Parent.DeleteMe"))
+    );
+
+    let commit = skin.try_commit_candidate(&handle);
+    assert!(commit.accepted, "{:?}", commit.error);
+    skin.assert_children("Root.Parent", &["Root.Parent.Second", "Root.Parent.First"]);
+    assert!(
+        skin.state()
+            .node(&NodeId::new("Root.Parent.DeleteMe"))
+            .is_none()
+    );
 }
 
 #[test]
