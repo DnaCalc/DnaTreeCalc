@@ -529,10 +529,11 @@ Use this as the per-tranche goal statement before implementation:
 - [x] `candidate-overlay-handle` lane-aware rebase merge slice:
       OxCalc classifies rebase touches into content nodes, structural parent/order lanes,
       structural node edits, and deleted nodes instead of using one coarse overlap set. Candidate
-      structural add now rebases over a live content edit on the same parent while same-node content,
+      structural add now rebases over a live content edit on the same parent, and candidate
+      rename/move now rebase over live content edits on the affected node, while same-node content,
       parent/order, move, and delete conflicts remain rejected. Focused OxCalc tests prove the
-      positive merge and existing conflict cases; programmable Skin IR tests prove the accepted
-      rebase/commit path through the host projection.
+      positive merge and existing conflict cases; programmable Skin IR tests prove accepted
+      rebase/commit paths through the host projection.
 - [x] W4c `scenario-projection` first candidate-backed scenario rail slice:
       DnaTreeCalc projects `WorkspaceState.scenarios` as a host-owned manifest over existing OxCalc
       candidate handles and exposes closed create/activate/delete scenario intents. Creating a
