@@ -6,12 +6,13 @@ use dnatreecalc_host::app::{HostDispatcher, TreeWorkspaceSession};
 use dnatreecalc_host::model::{WorkspaceFixture, WorkspaceModel};
 use dnatreecalc_skin_framework::{
     ActiveNodeDetailProjection, ActiveSelectionDetailProjection, ActiveTableCellDetailProjection,
-    AuthoringScope, Dispatcher, ErasedSkinContext, FormulaBindPreviewProjection, IntentError,
-    IntentReceipt, MutationImpactProjection, NodeId, RecalcPlanMutation, RecalcPlanProjection,
-    RegisteredSkin, SelectionState, SharedSkinState, SharedSkinStateHandle, SkinCapabilities,
-    SkinCategory, SkinContext, SkinHandle, SkinId, SkinManifest, SkinState, TableCellInput,
-    TableFormulaBindPreviewProjection, TableRowInput, WorkspaceIntent, WorkspaceRecalcMode,
-    WorkspaceRevisionProjection, WorkspaceSkin, WorkspaceState,
+    AuthoringScope, Dispatcher, ErasedSkinContext, FormulaBindPreviewProjection,
+    InitialNodeContentProjection, IntentError, IntentReceipt, MutationImpactProjection, NodeId,
+    RecalcPlanMutation, RecalcPlanProjection, RegisteredSkin, SelectionState, SharedSkinState,
+    SharedSkinStateHandle, SkinCapabilities, SkinCategory, SkinContext, SkinHandle, SkinId,
+    SkinManifest, SkinState, TableCellInput, TableFormulaBindPreviewProjection, TableRowInput,
+    WorkspaceIntent, WorkspaceRecalcMode, WorkspaceRevisionProjection, WorkspaceSkin,
+    WorkspaceState,
 };
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -45,6 +46,21 @@ impl ProgrammableDriver {
     pub fn try_add_node(&self, parent: Option<&str>, symbol: &str, content: &str) -> IntentReceipt {
         self.dispatch
             .dispatch(self.add_node_intent(parent, symbol, content))
+    }
+
+    pub fn try_add_node_initial(
+        &self,
+        parent: Option<&str>,
+        symbol: &str,
+        initial: InitialNodeContentProjection,
+        is_meta: bool,
+    ) -> IntentReceipt {
+        self.dispatch.dispatch(WorkspaceIntent::AddNode {
+            parent: parent.map(NodeId::new),
+            symbol: symbol.to_string(),
+            initial,
+            is_meta,
+        })
     }
 
     pub fn edit(&self, node: &str, content: &str) {
@@ -634,7 +650,10 @@ impl ProgrammableDriver {
         WorkspaceIntent::AddNode {
             parent: parent.map(NodeId::new),
             symbol: symbol.to_string(),
-            content: content.to_string(),
+            initial: InitialNodeContentProjection::Literal {
+                content: content.to_string(),
+            },
+            is_meta: false,
         }
     }
 
@@ -926,6 +945,21 @@ impl Harness {
             .lock()
             .unwrap()
             .preview_rename_node_impact(&NodeId::new(node), new_symbol)
+            .unwrap()
+    }
+
+    pub fn preview_add_node_impact(
+        &self,
+        parent: Option<&str>,
+        symbol: &str,
+        initial: InitialNodeContentProjection,
+        is_meta: bool,
+    ) -> MutationImpactProjection {
+        let parent = parent.map(NodeId::new);
+        self.session
+            .lock()
+            .unwrap()
+            .preview_add_node_impact(parent.as_ref(), symbol, initial, is_meta)
             .unwrap()
     }
 

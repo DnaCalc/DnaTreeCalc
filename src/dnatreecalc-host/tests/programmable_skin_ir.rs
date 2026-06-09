@@ -2,8 +2,8 @@ mod support;
 
 use dnatreecalc_skin_framework::{
     ActiveSelectionDetailProjection, AuthoringScope, CalcRunStateProjection,
-    FormulaBindPreviewDiagnosticStage, FormulaBindPreviewInputKind, IntentError,
-    InvalidationReasonProjection, MutationImpactBlockedReasonProjection,
+    FormulaBindPreviewDiagnosticStage, FormulaBindPreviewInputKind, InitialNodeContentProjection,
+    IntentError, InvalidationReasonProjection, MutationImpactBlockedReasonProjection,
     MutationImpactIntentProjection, NodeContentKind, NodeId, NodeValueProjection,
     RecalcPlanMutation, ReferenceTargetProjection, RuntimeEffectFamilyProjection,
     RuntimeOverlayKindProjection, TableCellEditabilityProjection, TableCellRegionProjection,
@@ -467,6 +467,122 @@ fn programmable_skin_previews_scoped_content_edit_legality_impact_from_projectio
         before_revision
     );
     skin.assert_scalar("Root.D", "4");
+}
+
+#[test]
+fn programmable_skin_previews_add_node_initial_content_policy() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    skin.add_node(Some("Root"), "Existing", "1");
+    let before_revision = revision_fingerprint(&skin.state().revision);
+
+    let literal = harness.preview_add_node_impact(
+        Some("Root"),
+        "Child",
+        InitialNodeContentProjection::Literal {
+            content: "=Existing+1".to_string(),
+        },
+        false,
+    );
+    assert!(literal.legal, "{literal:?}");
+    assert!(literal.blocked_reason.is_none());
+    assert!(literal.collisions.is_empty());
+    assert!(literal.invalidation_plan.invalidated_nodes.is_empty());
+    let MutationImpactIntentProjection::AddNode {
+        parent,
+        symbol,
+        initial,
+        is_meta,
+    } = &literal.intent
+    else {
+        panic!("expected add-node impact intent");
+    };
+    assert_eq!(parent, &Some(NodeId::new("Root")));
+    assert_eq!(symbol, "Child");
+    assert_eq!(
+        initial,
+        &InitialNodeContentProjection::Literal {
+            content: "=Existing+1".to_string()
+        }
+    );
+    assert!(!is_meta);
+
+    let empty_meta = harness.preview_add_node_impact(
+        None,
+        "MetaRoot",
+        InitialNodeContentProjection::Empty,
+        true,
+    );
+    assert!(empty_meta.legal, "{empty_meta:?}");
+    let MutationImpactIntentProjection::AddNode {
+        parent,
+        symbol,
+        initial,
+        is_meta,
+    } = &empty_meta.intent
+    else {
+        panic!("expected add-node impact intent");
+    };
+    assert_eq!(parent, &None);
+    assert_eq!(symbol, "MetaRoot");
+    assert_eq!(initial, &InitialNodeContentProjection::Empty);
+    assert!(is_meta);
+
+    let collision = harness.preview_add_node_impact(
+        Some("Root"),
+        "Existing",
+        InitialNodeContentProjection::Empty,
+        false,
+    );
+    assert!(!collision.legal);
+    assert_eq!(
+        collision.blocked_reason,
+        Some(MutationImpactBlockedReasonProjection::NameCollision)
+    );
+    assert_eq!(collision.collisions.len(), 1);
+    assert_eq!(collision.collisions[0].attempted, "Root.Existing");
+
+    let template = harness.preview_add_node_impact(
+        Some("Root"),
+        "Templated",
+        InitialNodeContentProjection::TemplateBound {
+            template_id: "starter".to_string(),
+        },
+        false,
+    );
+    assert!(!template.legal);
+    assert_eq!(
+        template.blocked_reason,
+        Some(MutationImpactBlockedReasonProjection::UnsupportedInitialContent)
+    );
+
+    let unsupported_receipt = skin.try_add_node_initial(
+        Some("Root"),
+        "Templated",
+        InitialNodeContentProjection::InheritColumnFormula,
+        false,
+    );
+    assert!(!unsupported_receipt.accepted);
+    assert_eq!(
+        unsupported_receipt.error,
+        Some(IntentError::UnsupportedInitialContent {
+            policy: "inherit_column_formula".to_string()
+        })
+    );
+    assert_eq!(
+        revision_fingerprint(&skin.state().revision),
+        before_revision
+    );
+    assert!(skin.state().node(&NodeId::new("Root.Child")).is_none());
+    assert!(skin.state().node(&NodeId::new("MetaRoot")).is_none());
+    skin.assert_scalar("Root.Existing", "1");
+
+    let meta_receipt =
+        skin.try_add_node_initial(None, "MetaRoot", InitialNodeContentProjection::Empty, true);
+    assert!(meta_receipt.accepted, "{:?}", meta_receipt.error);
+    assert!(skin.state().node(&NodeId::new("MetaRoot")).unwrap().is_meta);
 }
 
 #[test]

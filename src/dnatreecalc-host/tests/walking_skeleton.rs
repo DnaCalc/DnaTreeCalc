@@ -319,7 +319,10 @@ fn workspace_management_intents_create_and_switch_projected_sessions() {
     let add_receipt = dispatcher.dispatch(WorkspaceIntent::AddNode {
         parent: None,
         symbol: "Root".to_string(),
-        content: "1".to_string(),
+        initial: dnatreecalc_skin_framework::InitialNodeContentProjection::Literal {
+            content: "1".to_string(),
+        },
+        is_meta: false,
     });
     assert!(add_receipt.accepted, "{:?}", add_receipt.error);
     assert_eq!(workspace.get_untracked().len(), 1);

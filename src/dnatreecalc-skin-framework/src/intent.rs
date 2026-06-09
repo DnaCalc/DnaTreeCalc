@@ -2,7 +2,9 @@ use std::sync::{Arc, Mutex};
 
 use crate::identity::{NodeId, NodeKey};
 use crate::selection::{SelectionState, TableCellSelection};
-use crate::workspace::{CalcRunProjection, DependencyKindProjection, NodeValueProjection};
+use crate::workspace::{
+    CalcRunProjection, DependencyKindProjection, InitialNodeContentProjection, NodeValueProjection,
+};
 use leptos::prelude::*;
 
 /// Typed subject for authoring verbs.
@@ -66,7 +68,8 @@ pub enum WorkspaceIntent {
     AddNode {
         parent: Option<NodeId>,
         symbol: String,
-        content: String,
+        initial: InitialNodeContentProjection,
+        is_meta: bool,
     },
     RenameNode {
         node: NodeId,
@@ -237,7 +240,7 @@ impl IntentReceipt {
     }
 }
 
-#[derive(Debug, Clone, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum IntentError {
     #[error("intent variant not yet supported by this dispatcher")]
     Unsupported,
@@ -275,6 +278,8 @@ pub enum IntentError {
     FormulaTableCellEdit { table: String, column_id: String },
     #[error("table constant column {column_id} in table {table} does not carry formula metadata")]
     ConstantTableColumnFormulaEdit { table: String, column_id: String },
+    #[error("initial node content policy {policy} is not yet supported")]
+    UnsupportedInitialContent { policy: String },
     #[error("host projection is out of sync for {node}")]
     ProjectionOutOfSync { node: String },
     #[error("engine rejected the intent: {0}")]

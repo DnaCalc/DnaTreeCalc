@@ -117,8 +117,11 @@ The roadmap alignment rule is:
       now joins host-owned drop validity and destination collision checks with OxCalc structural
       invalidation planning. Delete/orphan structural preview now reports outside dependents from
       engine-published reference-resolution maps and OxCalc delete invalidation planning without
-      mutating state. Remaining closure is add/default-content policy preview, broader table
-      row/column structural preview breadth, and a final W2 ownership review.
+      mutating state. Add-node preview now carries typed initial-content policy and `is_meta`,
+      reports name collisions before mutation, accepts empty/literal policies, and returns typed
+      unsupported-policy blockers for inherited column formulas and template-bound content until
+      those later substrates exist. Remaining closure is broader table row/column structural preview
+      breadth and a final W2 ownership review.
 
 ### Gating Engine Workstreams
 

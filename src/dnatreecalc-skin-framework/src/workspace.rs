@@ -637,6 +637,35 @@ pub enum RecalcPlanMutation {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InitialNodeContentProjection {
+    Empty,
+    Literal { content: String },
+    InheritColumnFormula,
+    TemplateBound { template_id: String },
+}
+
+impl InitialNodeContentProjection {
+    #[must_use]
+    pub const fn stable_id(&self) -> &'static str {
+        match self {
+            Self::Empty => "empty",
+            Self::Literal { .. } => "literal",
+            Self::InheritColumnFormula => "inherit_column_formula",
+            Self::TemplateBound { .. } => "template_bound",
+        }
+    }
+
+    #[must_use]
+    pub fn supported_content(&self) -> Option<&str> {
+        match self {
+            Self::Empty => Some(""),
+            Self::Literal { content } => Some(content),
+            Self::InheritColumnFormula | Self::TemplateBound { .. } => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RecalcPlanInvalidationProjection {
     pub node: NodeId,
     pub node_key: NodeKey,
@@ -746,6 +775,12 @@ pub struct TableFormulaBindPreviewProjection {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MutationImpactIntentProjection {
+    AddNode {
+        parent: Option<NodeId>,
+        symbol: String,
+        initial: InitialNodeContentProjection,
+        is_meta: bool,
+    },
     EditContent {
         node: NodeId,
         content: String,
@@ -778,6 +813,7 @@ impl MutationImpactIntentProjection {
     #[must_use]
     pub const fn stable_id(&self) -> &'static str {
         match self {
+            Self::AddNode { .. } => "add_node",
             Self::EditContent { .. } => "edit_content",
             Self::EditScopedContent { .. } => "edit_scoped_content",
             Self::RenameNode { .. } => "rename_node",
@@ -795,6 +831,7 @@ pub enum MutationImpactBlockedReasonProjection {
     ProfileViolation,
     NameCollision,
     InvalidDrop,
+    UnsupportedInitialContent,
 }
 
 impl MutationImpactBlockedReasonProjection {
@@ -806,6 +843,7 @@ impl MutationImpactBlockedReasonProjection {
             Self::ProfileViolation => "profile_violation",
             Self::NameCollision => "name_collision",
             Self::InvalidDrop => "invalid_drop",
+            Self::UnsupportedInitialContent => "unsupported_initial_content",
         }
     }
 }

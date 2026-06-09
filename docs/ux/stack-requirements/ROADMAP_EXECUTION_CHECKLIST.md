@@ -56,7 +56,9 @@ next step while these W2 items remain open.
       planning.
 - [x] Delete/orphan structural preview reports outside dependents and invalidation impact without
       mutation.
-- [ ] Add/default-content policy preview is typed and tested.
+- [x] Add/default-content policy preview is typed and tested for empty/literal content, meta-node
+      flagging, name-collision blocking, and typed unsupported blockers for inherited/template
+      policies.
 - [ ] Broader table row/column structural preview breadth is typed and tested.
 - [ ] Remaining multi-target/table transaction ids are backed by OxCalc transaction operation
       coverage rather than host batching.

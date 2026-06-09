@@ -1,10 +1,10 @@
 use std::sync::{Arc, Mutex};
 
 use dnatreecalc_skin_framework::{
-    DependencyDeltaProjection, Dispatcher, IntentError, IntentReceipt, NodeId, NodeKey,
-    NodeValueDeltaProjection, NodeView, SelectionState, SharedSkinStateHandle,
-    StructuralDeltaProjection, TableCellSelection, WorkspaceDelta, WorkspaceDeltaChange,
-    WorkspaceIntent, WorkspaceState,
+    DependencyDeltaProjection, Dispatcher, InitialNodeContentProjection, IntentError,
+    IntentReceipt, NodeId, NodeKey, NodeValueDeltaProjection, NodeView, SelectionState,
+    SharedSkinStateHandle, StructuralDeltaProjection, TableCellSelection, WorkspaceDelta,
+    WorkspaceDeltaChange, WorkspaceIntent, WorkspaceState,
 };
 use leptos::prelude::*;
 use oxcalc_core::consumer::TransactionRecalcPolicy;
@@ -182,9 +182,17 @@ impl Dispatcher for HostDispatcher {
             WorkspaceIntent::AddNode {
                 parent,
                 symbol,
-                content,
-            } => match self.apply_workspace_transaction_edit(|session| {
-                session.add_node_transaction(parent.as_ref(), symbol, content)
+                initial,
+                is_meta,
+            } => match initial_node_content(&initial).and_then(|content| {
+                self.apply_workspace_transaction_edit(|session| {
+                    session.add_node_transaction_with_meta(
+                        parent.as_ref(),
+                        symbol,
+                        content,
+                        is_meta,
+                    )
+                })
             }) {
                 Ok(publication) => {
                     let created = publication.result.clone();
@@ -633,6 +641,16 @@ impl HostDispatcher {
 
 fn host_failure(message: impl Into<String>) -> IntentError {
     IntentError::HostFailure(message.into())
+}
+
+fn initial_node_content(initial: &InitialNodeContentProjection) -> Result<String, IntentError> {
+    if let Some(content) = initial.supported_content() {
+        Ok(content.to_string())
+    } else {
+        Err(IntentError::UnsupportedInitialContent {
+            policy: initial.stable_id().to_string(),
+        })
+    }
 }
 
 fn intent_error_from_session(error: TreeWorkspaceSessionError) -> IntentError {

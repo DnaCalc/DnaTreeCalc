@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use dnatreecalc_skin_framework::{
-    Dispatcher, NodeId, SelectionState, WorkspaceIntent, WorkspaceState,
+    Dispatcher, InitialNodeContentProjection, NodeId, SelectionState, WorkspaceIntent,
+    WorkspaceState,
 };
 use leptos::prelude::*;
 
@@ -63,7 +64,10 @@ pub(crate) fn NodeManagementPanel(
                             add_root_dispatch.dispatch(WorkspaceIntent::AddNode {
                                 parent: None,
                                 symbol: symbol.trim().to_string(),
-                                content: new_content.get_untracked(),
+                                initial: InitialNodeContentProjection::Literal {
+                                    content: new_content.get_untracked(),
+                                },
+                                is_meta: false,
                             });
                             new_symbol.set(String::new());
                             new_content.set(String::new());
@@ -84,7 +88,10 @@ pub(crate) fn NodeManagementPanel(
                             add_child_dispatch.dispatch(WorkspaceIntent::AddNode {
                                 parent: Some(parent),
                                 symbol: symbol.trim().to_string(),
-                                content: new_content.get_untracked(),
+                                initial: InitialNodeContentProjection::Literal {
+                                    content: new_content.get_untracked(),
+                                },
+                                is_meta: false,
                             });
                             new_symbol.set(String::new());
                             new_content.set(String::new());

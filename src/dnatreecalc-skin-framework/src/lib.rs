@@ -44,7 +44,7 @@ pub use workspace::{
     FormatSourceProjection, FormulaBindPreviewDiagnosticProjection,
     FormulaBindPreviewDiagnosticStage, FormulaBindPreviewInputKind,
     FormulaBindPreviewProfileViolationKindProjection, FormulaBindPreviewProfileViolationProjection,
-    FormulaBindPreviewProjection, InvalidationReasonProjection,
+    FormulaBindPreviewProjection, InitialNodeContentProjection, InvalidationReasonProjection,
     MutationImpactBlockedReasonProjection, MutationImpactIntentProjection,
     MutationImpactProjection, NameCollisionProjection, NodeCalcStateProjection, NodeContentKind,
     NodeInvalidationProjection, NodeValueProjection, NodeView, PhaseKeyProjection,

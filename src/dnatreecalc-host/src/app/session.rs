@@ -10,16 +10,17 @@ use dnatreecalc_skin_framework::{
     FormulaBindPreviewDiagnosticProjection, FormulaBindPreviewDiagnosticStage,
     FormulaBindPreviewInputKind, FormulaBindPreviewProfileViolationKindProjection,
     FormulaBindPreviewProfileViolationProjection, FormulaBindPreviewProjection,
-    InvalidationReasonProjection, MutationImpactBlockedReasonProjection,
-    MutationImpactIntentProjection, MutationImpactProjection, NameCollisionProjection,
-    NodeCalcStateProjection, NodeContentKind as FrameworkContentKind, NodeId,
-    NodeInvalidationProjection, NodeKey, NodeValueProjection, NodeView, PhaseKeyProjection,
-    RecalcPlanInvalidationProjection, RecalcPlanMutation, RecalcPlanProjection,
-    ReferenceResolutionProjection, ReferenceTargetProjection, RuntimeEffectFamilyProjection,
-    RuntimeEffectProjection, RuntimeOverlayKindProjection, RuntimeOverlayProjection,
-    SourceSpanProjection, TableAnchorProjection, TableCellInput, TableCellProjection,
-    TableCellRegionProjection, TableCellsProjection, TableColumnBodyProjection,
-    TableColumnProjection, TableDependencyFactBlockerProjection, TableDependencyFactKindProjection,
+    InitialNodeContentProjection, InvalidationReasonProjection,
+    MutationImpactBlockedReasonProjection, MutationImpactIntentProjection,
+    MutationImpactProjection, NameCollisionProjection, NodeCalcStateProjection,
+    NodeContentKind as FrameworkContentKind, NodeId, NodeInvalidationProjection, NodeKey,
+    NodeValueProjection, NodeView, PhaseKeyProjection, RecalcPlanInvalidationProjection,
+    RecalcPlanMutation, RecalcPlanProjection, ReferenceResolutionProjection,
+    ReferenceTargetProjection, RuntimeEffectFamilyProjection, RuntimeEffectProjection,
+    RuntimeOverlayKindProjection, RuntimeOverlayProjection, SourceSpanProjection,
+    TableAnchorProjection, TableCellInput, TableCellProjection, TableCellRegionProjection,
+    TableCellsProjection, TableColumnBodyProjection, TableColumnProjection,
+    TableDependencyFactBlockerProjection, TableDependencyFactKindProjection,
     TableDependencyFactProjection, TableDependencyFactStatusProjection,
     TableFormulaBindPreviewProjection, TableFormulaMetadataProjection, TableProjection,
     TableRowInput, TableRowProjection, TreeReferenceCollectionFamilyProjection,
@@ -669,6 +670,45 @@ impl TreeWorkspaceSession {
         })
     }
 
+    pub fn preview_add_node_impact(
+        &self,
+        parent: Option<&NodeId>,
+        symbol: impl Into<String>,
+        initial: InitialNodeContentProjection,
+        is_meta: bool,
+    ) -> Result<MutationImpactProjection, TreeWorkspaceSessionError> {
+        if let Some(parent) = parent {
+            self.tree_node_id(parent.as_str())?;
+        }
+        let symbol = symbol.into();
+        let attempted = added_node_path(parent, &symbol);
+        let collisions = self.name_collisions_for_new_node(&attempted);
+        let blocked_reason = if !collisions.is_empty() {
+            Some(MutationImpactBlockedReasonProjection::NameCollision)
+        } else if initial.supported_content().is_some() {
+            None
+        } else {
+            Some(MutationImpactBlockedReasonProjection::UnsupportedInitialContent)
+        };
+        Ok(MutationImpactProjection {
+            intent: MutationImpactIntentProjection::AddNode {
+                parent: parent.cloned(),
+                symbol,
+                initial,
+                is_meta,
+            },
+            legal: blocked_reason.is_none(),
+            blocked_reason,
+            profile_violations: Vec::new(),
+            bind_diagnostics: Vec::new(),
+            requires_rebind: Vec::new(),
+            affected_refs: Vec::new(),
+            orphaned_dependents: Vec::new(),
+            collisions,
+            invalidation_plan: RecalcPlanProjection::default(),
+        })
+    }
+
     pub fn preview_delete_node_impact(
         &self,
         node: &NodeId,
@@ -854,6 +894,16 @@ impl TreeWorkspaceSession {
         symbol: impl Into<String>,
         content: impl Into<String>,
     ) -> Result<TreeWorkspaceTransactionEdit<NodeId>, TreeWorkspaceSessionError> {
+        self.add_node_transaction_with_meta(parent, symbol, content, false)
+    }
+
+    pub fn add_node_transaction_with_meta(
+        &mut self,
+        parent: Option<&NodeId>,
+        symbol: impl Into<String>,
+        content: impl Into<String>,
+        is_meta: bool,
+    ) -> Result<TreeWorkspaceTransactionEdit<NodeId>, TreeWorkspaceSessionError> {
         let symbol = symbol.into();
         let parent_tree_node_id = match parent {
             Some(parent) => self.tree_node_id(parent.as_str())?,
@@ -872,7 +922,9 @@ impl TreeWorkspaceSession {
         let outcome = self.context.apply_edit_transaction(
             OxCalcTreeEditTransaction::new(self.workspace_id.clone())
                 .with_edit(OxCalcTreeEdit::AddNode {
-                    request: OxCalcTreeNodeCreate::new(symbol, content).under(parent_tree_node_id),
+                    request: OxCalcTreeNodeCreate::new(symbol, content)
+                        .under(parent_tree_node_id)
+                        .with_meta(is_meta),
                 })
                 .with_recalc_policy(TransactionRecalcPolicy::ApplyOnly),
         )?;
@@ -2243,6 +2295,19 @@ impl TreeWorkspaceSession {
             .unwrap_or_default()
     }
 
+    fn name_collisions_for_new_node(&self, attempted: &NodeId) -> Vec<NameCollisionProjection> {
+        self.node_ids
+            .get(attempted)
+            .map(|tree_node_id| {
+                vec![NameCollisionProjection {
+                    attempted: attempted.to_string(),
+                    existing: attempted.clone(),
+                    existing_key: node_key_for_tree_node(*tree_node_id),
+                }]
+            })
+            .unwrap_or_default()
+    }
+
     fn move_would_target_self_or_descendant(
         &self,
         state: &WorkspaceState,
@@ -3208,6 +3273,13 @@ fn renamed_node_path(node: &NodeId, new_symbol: &str) -> NodeId {
     match parent_path(node.as_str()) {
         Some(parent) => NodeId::new(format!("{parent}.{new_symbol}")),
         None => NodeId::new(new_symbol.to_string()),
+    }
+}
+
+fn added_node_path(parent: Option<&NodeId>, symbol: &str) -> NodeId {
+    match parent {
+        Some(parent) => NodeId::new(format!("{}.{}", parent.as_str(), symbol)),
+        None => NodeId::new(symbol.to_string()),
     }
 }
 
