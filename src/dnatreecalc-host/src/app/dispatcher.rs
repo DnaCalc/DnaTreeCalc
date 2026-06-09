@@ -782,13 +782,24 @@ impl HostDispatcher {
             after.clipboard = before.as_ref().and_then(|state| state.clipboard.clone());
             after.projection_seq = self.next_projection_seq.fetch_add(1, Ordering::Relaxed);
             let delta = workspace_delta(before.as_ref(), &after, false);
+            let produced_revision = match before
+                .as_ref()
+                .and_then(|state| state.revision.workspace_revision_id.as_deref())
+            {
+                Some(before_revision)
+                    if after.revision.workspace_revision_id.as_deref() == Some(before_revision) =>
+                {
+                    None
+                }
+                _ => after.revision.workspace_revision_id.clone(),
+            };
             if let Some(workspace) = self.workspace {
                 workspace.set(after);
             }
             Ok(PublishedWorkspaceEdit {
                 result,
                 delta,
-                produced_revision: None,
+                produced_revision,
                 transaction_id: None,
             })
         })
@@ -929,10 +940,10 @@ impl HostDispatcher {
                 workspace.set(after);
             }
             Ok(PublishedWorkspaceEdit {
-                result: removed,
+                result: removed.handle,
                 delta,
                 produced_revision,
-                transaction_id: None,
+                transaction_id: removed.transaction_id,
             })
         })
     }

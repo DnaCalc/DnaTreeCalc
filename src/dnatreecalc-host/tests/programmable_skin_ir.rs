@@ -311,8 +311,32 @@ fn programmable_skin_projects_candidate_values_without_publishing_until_commit()
 
     let edit = skin.try_edit_candidate_content(&handle, "Root.A", "5");
     assert!(edit.accepted, "{:?}", edit.error);
+    assert_eq!(edit.transaction_id, None);
+    let edited_candidate = skin
+        .state()
+        .candidates
+        .iter()
+        .find(|candidate| candidate.handle == handle)
+        .expect("candidate should remain projected after edit")
+        .clone();
+    let edited_revision_entry = edited_candidate
+        .revision_history
+        .entries
+        .iter()
+        .find(|entry| entry.revision_id == edited_candidate.workspace_revision_id)
+        .expect("candidate edit revision should project");
+    let candidate_transaction_id = edited_revision_entry
+        .transaction_id
+        .as_deref()
+        .expect("candidate private edit should project its real transaction id");
+    assert!(
+        candidate_transaction_id.starts_with("transaction:programmable-skin-ir:"),
+        "{candidate_transaction_id}"
+    );
+    assert_eq!(edited_revision_entry.transaction_summary, None);
     let evaluate = skin.try_evaluate_candidate(&handle);
     assert!(evaluate.accepted, "{:?}", evaluate.error);
+    assert_eq!(evaluate.transaction_id, None);
     assert!(evaluate.produced_revision.is_none());
     assert_eq!(
         skin.state().revision.workspace_revision_id.as_deref(),
@@ -339,6 +363,10 @@ fn programmable_skin_projects_candidate_values_without_publishing_until_commit()
 
     let commit = skin.try_commit_candidate(&handle);
     assert!(commit.accepted, "{:?}", commit.error);
+    assert_eq!(
+        commit.transaction_id.as_deref(),
+        Some(candidate_transaction_id)
+    );
     assert!(commit.produced_revision.is_some());
     assert_ne!(
         skin.state().revision.workspace_revision_id.as_deref(),

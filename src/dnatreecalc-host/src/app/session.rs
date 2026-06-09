@@ -64,6 +64,7 @@ use oxcalc_core::treecalc::{
     DerivationInvocationTraceNode, DerivationPreparedArgumentTrace, DerivationTraceRecord,
     LocalTreeCalcPhaseKey,
 };
+use oxcalc_core::workspace_revision::WorkspaceRevisionGraphEntry;
 use oxcalc_core::workspace_revision::WorkspaceRevisionId;
 use oxfml_core::binding::NameKind;
 use oxfml_core::consumer::editor::{
@@ -125,6 +126,12 @@ pub struct TreeWorkspaceSession {
 pub struct TreeWorkspaceTransactionEdit<T> {
     pub result: T,
     pub transaction_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TreeWorkspaceCandidateCommit {
+    pub handle: String,
+    pub transaction_id: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -1305,9 +1312,17 @@ impl TreeWorkspaceSession {
         Ok(handle.to_string())
     }
 
-    pub fn commit_candidate(&mut self, handle: &str) -> Result<String, TreeWorkspaceSessionError> {
+    pub fn commit_candidate(
+        &mut self,
+        handle: &str,
+    ) -> Result<TreeWorkspaceCandidateCommit, TreeWorkspaceSessionError> {
         let handle_value = self.candidate_handle(handle)?;
         let outcome = self.context.commit_candidate(&handle_value)?;
+        let transaction_id = outcome
+            .workspace_revision_graph_entries
+            .iter()
+            .find(|entry| entry.revision_id == outcome.successor_workspace_revision_id)
+            .and_then(|entry| entry.transaction_id.clone());
         self.candidate_handles.remove(handle);
         if let Some(calculation) = outcome.calculation {
             self.recalc_count += 1;
@@ -1316,7 +1331,10 @@ impl TreeWorkspaceSession {
             self.last_outcome = None;
         }
         self.refresh_projection_from_context()?;
-        Ok(handle.to_string())
+        Ok(TreeWorkspaceCandidateCommit {
+            handle: handle.to_string(),
+            transaction_id,
+        })
     }
 
     pub fn edit_scoped_content_transaction(
@@ -4210,37 +4228,11 @@ impl TreeWorkspaceSession {
             entries: workspace_view
                 .workspace_revision_graph_entries
                 .iter()
-                .map(|entry| RevisionHistoryEntryProjection {
-                    revision_id: entry.revision_id.to_string(),
-                    parent_revision_id: entry.parent_revision_id.as_ref().map(ToString::to_string),
-                    structural_snapshot_id: entry.structure_snapshot_id.to_string(),
-                    node_input_snapshot_id: entry.node_input_snapshot_id.to_string(),
-                    namespace_snapshot_id: entry.namespace_snapshot_id.to_string(),
-                    transaction_summary: entry.transaction_summary.as_ref().map(|summary| {
-                        RevisionTransactionSummaryProjection {
-                            transaction_id: summary.transaction_id.clone(),
-                            invalidated_nodes: summary
-                                .invalidated_nodes
-                                .iter()
-                                .map(|entry| RevisionInvalidationSummaryEntryProjection {
-                                    node: node_key_for_tree_node(entry.node_id),
-                                    requires_rebind: entry.requires_rebind,
-                                    reasons: entry
-                                        .reasons
-                                        .iter()
-                                        .map(|reason| invalidation_reason_projection_for(*reason))
-                                        .collect(),
-                                })
-                                .collect(),
-                            requires_rebind: summary
-                                .requires_rebind
-                                .iter()
-                                .map(|node_id| node_key_for_tree_node(*node_id))
-                                .collect(),
-                            estimated_node_count: summary.estimated_node_count,
-                        }
-                    }),
-                    is_current: entry.revision_id == workspace_view.workspace_revision_id,
+                .map(|entry| {
+                    revision_history_entry_projection_for(
+                        entry,
+                        &workspace_view.workspace_revision_id.to_string(),
+                    )
                 })
                 .collect(),
         };
@@ -4533,6 +4525,19 @@ impl TreeWorkspaceSession {
             basis_revision_id: view.basis_revision_id.to_string(),
             parent_handle: view.parent_candidate.as_ref().map(ToString::to_string),
             workspace_revision_id: view.workspace_revision_id.to_string(),
+            revision_history: RevisionHistoryProjection {
+                current_revision_id: Some(view.workspace_revision_id.to_string()),
+                entries: view
+                    .workspace_revision_graph_entries
+                    .iter()
+                    .map(|entry| {
+                        revision_history_entry_projection_for(
+                            entry,
+                            &view.workspace_revision_id.to_string(),
+                        )
+                    })
+                    .collect(),
+            },
             values_by_key,
             run,
         })
@@ -6848,6 +6853,45 @@ fn invalidation_reason_projection_for(
         InvalidationReasonKind::DynamicDependencyReclassified => {
             InvalidationReasonProjection::DynamicDependencyReclassified
         }
+    }
+}
+
+fn revision_history_entry_projection_for(
+    entry: &WorkspaceRevisionGraphEntry,
+    current_revision_id: &str,
+) -> RevisionHistoryEntryProjection {
+    RevisionHistoryEntryProjection {
+        revision_id: entry.revision_id.to_string(),
+        parent_revision_id: entry.parent_revision_id.as_ref().map(ToString::to_string),
+        structural_snapshot_id: entry.structure_snapshot_id.to_string(),
+        node_input_snapshot_id: entry.node_input_snapshot_id.to_string(),
+        namespace_snapshot_id: entry.namespace_snapshot_id.to_string(),
+        transaction_id: entry.transaction_id.clone(),
+        transaction_summary: entry.transaction_summary.as_ref().map(|summary| {
+            RevisionTransactionSummaryProjection {
+                transaction_id: summary.transaction_id.clone(),
+                invalidated_nodes: summary
+                    .invalidated_nodes
+                    .iter()
+                    .map(|entry| RevisionInvalidationSummaryEntryProjection {
+                        node: node_key_for_tree_node(entry.node_id),
+                        requires_rebind: entry.requires_rebind,
+                        reasons: entry
+                            .reasons
+                            .iter()
+                            .map(|reason| invalidation_reason_projection_for(*reason))
+                            .collect(),
+                    })
+                    .collect(),
+                requires_rebind: summary
+                    .requires_rebind
+                    .iter()
+                    .map(|node_id| node_key_for_tree_node(*node_id))
+                    .collect(),
+                estimated_node_count: summary.estimated_node_count,
+            }
+        }),
+        is_current: entry.revision_id.to_string() == current_revision_id,
     }
 }
 

@@ -39,9 +39,11 @@ live revision still equals the candidate basis. The first host/Skin IR projectio
 implemented for content-only candidate preview/evaluate, discard, and commit; candidate values
 project separately from published workspace values. The first parented copy-layer slice is also
 implemented: child candidates open from a parent candidate's private state, project the parent
-handle, and keep parent lifecycle guarded while children are retained. OxCalc owns candidate state,
-publication/discard, overlay provenance, and value epochs; the DnaTreeCalc host exposes only typed
-handles, projections, and closed intents.
+handle, and keep parent lifecycle guarded while children are retained. Candidate-private revision
+history is now projected with real transaction ids and optional invalidation summaries, so commit
+receipts can carry the promoted private revision's real transaction id without host fabrication.
+OxCalc owns candidate state, publication/discard, overlay provenance, and value epochs; the
+DnaTreeCalc host exposes only typed handles, projections, and closed intents.
 
 Context: first W3 assessment is complete. The formula rewrite verbs
 (`replicate-by-id`, `f4-toggle-binding`, and broader `reference-insertion`) require OxFml-owned
@@ -422,6 +424,11 @@ Use this as the per-tranche goal statement before implementation:
       parent candidate's private state at child-open time; DnaTreeCalc projects `parent_handle` and
       programmable Skin IR tests cover layered child values, parent retained-child rejection, and
       child commit.
+- [x] `candidate-overlay-handle` candidate-private revision history slice: OxCalc revision graph
+      entries carry real transaction ids separately from optional invalidation summaries, candidate
+      views/commit outcomes expose private graph entries, and DnaTreeCalc projects
+      `CandidateProjection.revision_history`. Programmable Skin IR tests prove candidate edit/evaluate
+      remain non-publishing while commit receipts use a real promoted-revision transaction id.
 - [ ] `candidate-overlay-handle`: implement N addressable, layerable, non-publishing candidate
       contexts before scenarios, what-if previews, goal seek, sweeps, or comparative overlays.
 - [x] `value-epoch-keying`: per-node published-value epoch is available for projection consumers.

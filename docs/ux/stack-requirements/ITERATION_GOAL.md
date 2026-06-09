@@ -50,8 +50,11 @@ candidate, or commit it when the basis is current. Candidate projections live be
 workspace values, so candidate evaluation does not rewrite published node state. The first parented
 copy-layer slice is now landed: a child candidate can open over a parent candidate's private state,
 project its parent handle, and commit the stacked private state while parent lifecycle is guarded.
-Optimized layering/rebase, structural candidate edits, scenario/what-if UX, and richer candidate
-transaction summaries remain open. Remaining W3
+The candidate-private revision-history slice is now landed: candidate projections carry private
+revision graph entries, apply-only private edit revisions carry real engine transaction ids without
+fabricated invalidation summaries, and candidate commit receipts use the promoted revision's real
+transaction id when one exists. Optimized layering/rebase, structural candidate edits,
+scenario/what-if UX, and richer candidate invalidation summaries remain open. Remaining W3
 formula-rewrite/rebind verbs stay parked until their owning
 OxFml/OxCalc substrates are available. W2 safe structural authoring is
 closed for the current Skin IR surface: receipts carry typed errors and real OxCalc transaction ids,
@@ -484,6 +487,14 @@ The roadmap alignment rule is:
       through `CandidateProjection.parent_handle`, parent discard/commit is rejected while a retained
       child depends on it, and programmable Skin IR tests prove layered child values stay separate
       from published node values until commit.
+- [x] `candidate-overlay-handle` candidate-private revision history slice: OxCalc revision graph
+      entries now carry real transaction identity separately from optional invalidation summaries,
+      candidate views/commit outcomes expose their private revision graph entries, and DnaTreeCalc
+      projects that history through `CandidateProjection.revision_history`. Candidate edit/evaluate
+      receipts remain non-publishing and transactionless; candidate commit receipts use the promoted
+      private revision's real transaction id when present. Focused OxCalc and programmable Skin IR
+      tests prove the transaction id is real and no invalidation summary is fabricated for
+      apply-only candidate edits.
 - [ ] `candidate-overlay-handle`: addressable, layerable, non-publishing candidate contexts.
 - [x] `value-epoch-keying`: per-node published-value epoch distinct from input epoch.
 

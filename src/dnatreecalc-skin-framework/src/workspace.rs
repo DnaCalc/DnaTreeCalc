@@ -679,6 +679,7 @@ pub struct RevisionHistoryEntryProjection {
     pub structural_snapshot_id: String,
     pub node_input_snapshot_id: String,
     pub namespace_snapshot_id: String,
+    pub transaction_id: Option<String>,
     pub transaction_summary: Option<RevisionTransactionSummaryProjection>,
     pub is_current: bool,
 }
@@ -704,6 +705,7 @@ pub struct CandidateProjection {
     pub basis_revision_id: String,
     pub parent_handle: Option<String>,
     pub workspace_revision_id: String,
+    pub revision_history: RevisionHistoryProjection,
     pub values_by_key: BTreeMap<NodeKey, NodeValueProjection>,
     pub run: Option<CalcRunProjection>,
 }
