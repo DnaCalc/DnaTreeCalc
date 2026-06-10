@@ -97,6 +97,30 @@ fn resolve_skin<'r>(
     registry.iter().find(|skin| skin.id().as_str() == id)
 }
 
+/// The companion slots whose configured skins can actually mount: registered
+/// AND negotiating their slot successfully. Published as
+/// `companion_slots_active` so lenses only stand their embedded widgets down
+/// for companions that will really render (a fail-loud fallback card must not
+/// blank the embedded copy too).
+#[must_use]
+pub fn validated_companion_slots(
+    registry: &SkinRegistry,
+    layout: &CockpitLayout,
+) -> Vec<SkinMountSlot> {
+    let mut slots = Vec::new();
+    let mut check = |slot: SkinMountSlot, id: &Option<String>| {
+        if let Some(id) = id
+            && let Some(skin) = resolve_skin(registry, id)
+            && skin.negotiate_slot(slot).is_ok()
+        {
+            slots.push(slot);
+        }
+    };
+    check(SkinMountSlot::RightInspector, &layout.inspector);
+    check(SkinMountSlot::BottomConsole, &layout.console);
+    slots
+}
+
 /// Build a layout from a preset, keeping the current main when the preset's
 /// main is unregistered and dropping unregistered companions.
 #[must_use]
@@ -214,16 +238,49 @@ pub fn WorkspaceShell(
         registry: registry.clone(),
     };
 
-    // Keep companion occupancy + persistence in sync with the layout.
+    // The workspace the current layout belongs to — saves are keyed by this,
+    // never by whatever workspace happens to be active at save time, so a
+    // workspace switch can never clobber another workspace's persisted layout.
+    let layout_owner = StoredValue::new(initial_workspace_id.clone());
+    let workspace_id = Memo::new(move |_| workspace.with(|ws| ws.workspace_id.clone()));
+
+    // Reload the persisted layout when the active workspace changes. A
+    // workspace with no persisted layout adopts the current composition
+    // (saved under its own key by the sync effect below).
+    let reload_store = skin_state_store.clone();
+    Effect::new(move |_| {
+        let id = workspace_id.get();
+        if layout_owner.get_value() != id {
+            let next = load_cockpit_layout(reload_store.as_ref(), &id)
+                .unwrap_or_else(|| layout.get_untracked());
+            layout_owner.set_value(id);
+            layout.set(next);
+        }
+    });
+
+    // Keep companion occupancy, focus sanity, and persistence in sync with
+    // the layout. Occupancy is VALIDATED (registered + slot-negotiated) so a
+    // fallback card never stands embedded widgets down, and a focused slot
+    // that no longer exists snaps back to Main.
     let sync_store = skin_state_store.clone();
+    let sync_registry = registry.clone();
     Effect::new(move |_| {
         let current = layout.get();
+        let active = validated_companion_slots(&sync_registry, &current);
         shared.apply(
-            SharedStateChange::SetCompanionSlots(current.companion_slots()),
+            SharedStateChange::SetCompanionSlots(active.clone()),
             SharedStateOrigin::Shell,
         );
-        let workspace_id = workspace.with_untracked(|ws| ws.workspace_id.clone());
-        save_cockpit_layout(sync_store.as_ref(), &workspace_id, &current);
+        if let Some(focused) = shared.get_untracked().focused_slot
+            && focused != SkinMountSlot::Main
+            && !active.contains(&focused)
+        {
+            shared.apply(
+                SharedStateChange::SetFocusedSlot(Some(SkinMountSlot::Main)),
+                SharedStateOrigin::Shell,
+            );
+        }
+        save_cockpit_layout(sync_store.as_ref(), &layout_owner.get_value(), &current);
     });
 
     let title = Memo::new(move |_| {
@@ -553,6 +610,15 @@ fn PresetPicker(registry: Arc<SkinRegistry>, layout: RwSignal<CockpitLayout>) ->
                     if let Some(preset) = builtin_presets().into_iter().find(|p| p.name == name) {
                         let current_main = layout.with_untracked(|l| l.main.clone());
                         layout.set(layout_from_preset(&registry, &preset, &current_main));
+                    }
+                    // Snap back to the placeholder so the same preset can be
+                    // re-applied (a select holding its last value fires no
+                    // change event for a repeat pick).
+                    if let Some(select) = ev
+                        .target()
+                        .and_then(|target| target.dyn_into::<web_sys::HtmlSelectElement>().ok())
+                    {
+                        select.set_value("");
                     }
                 }
             >
@@ -1021,6 +1087,20 @@ mod tests {
 
         assert_eq!(load_cockpit_layout(&store, "workspace:a"), Some(layout));
         assert_eq!(load_cockpit_layout(&store, "workspace:b"), None);
+    }
+
+    #[test]
+    fn validated_companion_slots_exclude_unmountable_ids() {
+        // Empty registry: occupied slots whose skins can't resolve are NOT
+        // published as active, so embedded widgets don't stand down for a
+        // fallback card.
+        let registry = SkinRegistry::new();
+        let layout = CockpitLayout {
+            main: "flow".to_string(),
+            inspector: Some("lens".to_string()),
+            console: Some("missing".to_string()),
+        };
+        assert!(validated_companion_slots(&registry, &layout).is_empty());
     }
 
     #[test]

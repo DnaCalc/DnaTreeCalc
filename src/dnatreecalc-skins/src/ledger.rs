@@ -34,8 +34,8 @@ use dnatreecalc_skin_framework::{
     ClipboardPayloadKind, Dispatcher, IntentReceipt, KeyChord, KeybindingRegistry,
     NodeCalcStateProjection, NodeKey, NodeValueProjection, NodeView, SharedSkinStateHandle,
     SharedStateChange, SharedStateOrigin, SkinCapabilities, SkinCategory, SkinContext, SkinHandle,
-    SkinId, SkinManifest, SkinState, SkinStateHandle, SkinVerb, WorkspaceIntent, WorkspaceSkin,
-    WorkspaceState, calc_state_class, provenance_tint, selection_mode_class,
+    SkinId, SkinManifest, SkinMountSlot, SkinState, SkinStateHandle, SkinVerb, WorkspaceIntent,
+    WorkspaceSkin, WorkspaceState, calc_state_class, provenance_tint, selection_mode_class,
 };
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -338,8 +338,12 @@ fn LedgerView(cx: SkinContext<LedgerState>) -> impl IntoView {
     // (F9, Ctrl+Z/Y, Ctrl+N, lens switch, arrows) bubble to the shell.
     let grammar = KeybindingRegistry::universal();
     let root_keydown = move |ev: leptos::ev::KeyboardEvent| {
-        // Bare-key grammar never fires while typing — the contract.
-        if event_target_is_text_entry(&ev) || editing.get_untracked() {
+        // Bare-key grammar never fires while typing — the contract. (The
+        // editing flag deliberately does NOT gate here: while the buffer has
+        // focus its own handler stops propagation, and when editing is set
+        // with no mounted buffer — e.g. after a companion stand-down —
+        // Escape must still be able to clear it.)
+        if event_target_is_text_entry(&ev) {
             return;
         }
         let command = ev.ctrl_key() || ev.meta_key();
@@ -351,6 +355,16 @@ fn LedgerView(cx: SkinContext<LedgerState>) -> impl IntoView {
             SkinVerb::Commit => {
                 // Enter on a focused button must activate the button.
                 if event_target_is_interactive(&ev) {
+                    return;
+                }
+                // While a Lens companion is mounted the embedded buffer is
+                // stood down — the companion owns editing; never set a local
+                // editing flag with no buffer to land in.
+                if shared
+                    .get_untracked()
+                    .companion_slots_active
+                    .contains(&SkinMountSlot::RightInspector)
+                {
                     return;
                 }
                 if selected.get_untracked().is_some() {
@@ -520,9 +534,10 @@ fn LedgerView(cx: SkinContext<LedgerState>) -> impl IntoView {
                     editor_text=editor_text
                     edit_ref=edit_ref
                     commit=Arc::new(commit)
+                    shared=shared
                 />
             </div>
-            <ConsoleBar workspace=workspace dispatch=console_dispatch />
+            <ConsoleBar workspace=workspace dispatch=console_dispatch shared=shared />
         </section>
     }
 }
@@ -1033,9 +1048,7 @@ const LEDGER_CSS: &str = r#"
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dnatreecalc_skin_framework::{
-        IntentError, NodeContentKind, NodeId, SharedSkinState, SkinMountSlot,
-    };
+    use dnatreecalc_skin_framework::{IntentError, NodeContentKind, NodeId, SharedSkinState};
 
     fn node(key: &str, path: &str) -> NodeView {
         NodeView {

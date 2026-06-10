@@ -379,8 +379,12 @@ fn FlowView(cx: SkinContext<FlowState>) -> impl IntoView {
     let grammar = KeybindingRegistry::universal();
     let grammar_state = state.clone();
     let root_keydown = move |ev: leptos::ev::KeyboardEvent| {
-        // Bare-key grammar never fires while typing — the contract.
-        if event_target_is_text_entry(&ev) || editing.get_untracked() {
+        // Bare-key grammar never fires while typing — the contract. (The
+        // editing flag deliberately does NOT gate here: while the buffer has
+        // focus its own handler stops propagation, and when editing is set
+        // with no mounted buffer — e.g. after a companion stand-down —
+        // Escape must still be able to clear it.)
+        if event_target_is_text_entry(&ev) {
             return;
         }
         let command = ev.ctrl_key() || ev.meta_key();
@@ -392,6 +396,16 @@ fn FlowView(cx: SkinContext<FlowState>) -> impl IntoView {
             SkinVerb::Commit => {
                 // Enter on a focused button must activate the button.
                 if event_target_is_interactive(&ev) {
+                    return;
+                }
+                // While a Lens companion is mounted the embedded buffer is
+                // stood down — the companion owns editing; never set a local
+                // editing flag with no buffer to land in.
+                if shared
+                    .get_untracked()
+                    .companion_slots_active
+                    .contains(&SkinMountSlot::RightInspector)
+                {
                     return;
                 }
                 if selected.get_untracked().is_some() {
@@ -502,22 +516,6 @@ fn FlowView(cx: SkinContext<FlowState>) -> impl IntoView {
     let explain_state = state.clone();
     let console_dispatch = dispatch.clone();
 
-    // Cockpit re-projection: when a Lens/Console companion slot is mounted,
-    // the embedded copies stand down — same truth, one rendering.
-    let shared_signal = shared.signal();
-    let lens_companion_active = Memo::new(move |_| {
-        shared_signal.with(|s| {
-            s.companion_slots_active
-                .contains(&SkinMountSlot::RightInspector)
-        })
-    });
-    let console_companion_active = Memo::new(move |_| {
-        shared_signal.with(|s| {
-            s.companion_slots_active
-                .contains(&SkinMountSlot::BottomConsole)
-        })
-    });
-
     // The explain stack renders as the lens-specific extra inside the shared
     // inspector.
     let explain_detail = Memo::new(move |_| {
@@ -559,60 +557,47 @@ fn FlowView(cx: SkinContext<FlowState>) -> impl IntoView {
                     <TraceBar state=state.clone() reading_head=reading_head workspace=workspace dispatch=dispatch.clone() />
                     {stage}
                 </div>
-                {move || {
-                    if lens_companion_active.get() {
-                        return ().into_any();
-                    }
-                    let commit_arc = commit_arc.clone();
-                    view! {
-                        <NodeInspector
-                            workspace=workspace
-                            selection=selection
-                            editing=editing
-                            editor_text=editor_text
-                            edit_ref=edit_ref
-                            commit=commit_arc
-                        >
-                            {move || {
-                                view! {
-                                    <div class="dtc-flow-explain-block">
-                                        <div class="dtc-section-label">"Explain (E)"</div>
-                                        {move || explain_open.get().then(|| {
-                                            let traces = traces.get();
-                                            if traces.is_empty() {
-                                                view! { <p class="dtc-inspector__empty">"No derivation trace for this node yet — recalculate."</p> }.into_any()
-                                            } else {
-                                                view! {
-                                                    <div class="dtc-flow-explain">
-                                                        {traces.into_iter().map(|trace| view! {
-                                                            <div class="dtc-flow-explain__trace">
-                                                                <div class="dtc-flow-explain__result">
-                                                                    "= "{trace.kernel_returned_value.clone()}
-                                                                </div>
-                                                                <ul class="dtc-flow-explain__tree">
-                                                                    {trace.sub_invocation_tree.iter().map(render_invocation).collect::<Vec<_>>()}
-                                                                </ul>
-                                                            </div>
-                                                        }).collect::<Vec<_>>()}
+                <NodeInspector
+                    workspace=workspace
+                    selection=selection
+                    editing=editing
+                    editor_text=editor_text
+                    edit_ref=edit_ref
+                    commit=commit_arc
+                    shared=shared
+                >
+                    {move || {
+                        view! {
+                            <div class="dtc-flow-explain-block">
+                                <div class="dtc-section-label">"Explain (E)"</div>
+                                {move || explain_open.get().then(|| {
+                                    let traces = traces.get();
+                                    if traces.is_empty() {
+                                        view! { <p class="dtc-inspector__empty">"No derivation trace for this node yet — recalculate."</p> }.into_any()
+                                    } else {
+                                        view! {
+                                            <div class="dtc-flow-explain">
+                                                {traces.into_iter().map(|trace| view! {
+                                                    <div class="dtc-flow-explain__trace">
+                                                        <div class="dtc-flow-explain__result">
+                                                            "= "{trace.kernel_returned_value.clone()}
+                                                        </div>
+                                                        <ul class="dtc-flow-explain__tree">
+                                                            {trace.sub_invocation_tree.iter().map(render_invocation).collect::<Vec<_>>()}
+                                                        </ul>
                                                     </div>
-                                                }.into_any()
-                                            }
-                                        })}
-                                    </div>
-                                }
-                                .into_any()
-                            }}
-                        </NodeInspector>
-                    }
-                    .into_any()
-                }}
-            </div>
-            {move || {
-                (!console_companion_active.get()).then(|| {
-                    view! { <ConsoleBar workspace=workspace dispatch=console_dispatch.clone() /> }
+                                                }).collect::<Vec<_>>()}
+                                            </div>
+                                        }.into_any()
+                                    }
+                                })}
+                            </div>
+                        }
                         .into_any()
-                })
-            }}
+                    }}
+                </NodeInspector>
+            </div>
+            <ConsoleBar workspace=workspace dispatch=console_dispatch shared=shared />
         </section>
     }
 }

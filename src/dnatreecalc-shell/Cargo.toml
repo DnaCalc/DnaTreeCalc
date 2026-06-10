@@ -10,7 +10,7 @@ dnatreecalc-skin-framework = { path = "../dnatreecalc-skin-framework" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 wasm-bindgen = "=0.2.117"
-web-sys = { version = "0.3", features = ["Element", "EventTarget", "KeyboardEvent"] }
+web-sys = { version = "0.3", features = ["Element", "EventTarget", "HtmlSelectElement", "KeyboardEvent"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 leptos = { version = "0.8.17", default-features = false, features = ["ssr"] }

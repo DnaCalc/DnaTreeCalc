@@ -29,8 +29,9 @@ use dnatreecalc_skin_framework::{
     ATLAS_SPINE_CSS, CandidateProjection, CommandIntentKindProjection, Dispatcher, KeyChord,
     KeybindingRegistry, RevisionHistoryProjection, RevisionInvalidationSummaryEntryProjection,
     RevisionTransactionSummaryProjection, SelectionState, SharedStateOrigin, SkinCapabilities,
-    SkinCategory, SkinContext, SkinHandle, SkinId, SkinManifest, SkinState, SkinStateHandle,
-    SkinVerb, WorkspaceDelta, WorkspaceDeltaChange, WorkspaceIntent, WorkspaceSkin, WorkspaceState,
+    SkinCategory, SkinContext, SkinHandle, SkinId, SkinManifest, SkinMountSlot, SkinState,
+    SkinStateHandle, SkinVerb, WorkspaceDelta, WorkspaceDeltaChange, WorkspaceIntent,
+    WorkspaceSkin, WorkspaceState,
 };
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -343,8 +344,12 @@ fn TransportView(cx: SkinContext<TransportState>) -> impl IntoView {
     // particular Ctrl+Z/Y stay shell-owned even in the undo lens.
     let grammar = KeybindingRegistry::universal();
     let root_keydown = move |ev: leptos::ev::KeyboardEvent| {
-        // Bare-key grammar never fires while typing — the contract.
-        if event_target_is_text_entry(&ev) || editing.get_untracked() {
+        // Bare-key grammar never fires while typing — the contract. (The
+        // editing flag deliberately does NOT gate here: while the buffer has
+        // focus its own handler stops propagation, and when editing is set
+        // with no mounted buffer — e.g. after a companion stand-down —
+        // Escape must still be able to clear it.)
+        if event_target_is_text_entry(&ev) {
             return;
         }
         let command = ev.ctrl_key() || ev.meta_key();
@@ -358,6 +363,16 @@ fn TransportView(cx: SkinContext<TransportState>) -> impl IntoView {
                 // timeline cards and transport buttons keep their native
                 // Enter activation.
                 if event_target_is_interactive(&ev) {
+                    return;
+                }
+                // While a Lens companion is mounted the embedded buffer is
+                // stood down — the companion owns editing; never set a local
+                // editing flag with no buffer to land in.
+                if shared
+                    .get_untracked()
+                    .companion_slots_active
+                    .contains(&SkinMountSlot::RightInspector)
+                {
                     return;
                 }
                 if selected.get_untracked().is_some() {
@@ -504,9 +519,10 @@ fn TransportView(cx: SkinContext<TransportState>) -> impl IntoView {
                     editor_text=editor_text
                     edit_ref=edit_ref
                     commit=Arc::new(commit)
+                    shared=shared
                 />
             </div>
-            <ConsoleBar workspace=workspace dispatch=console_dispatch />
+            <ConsoleBar workspace=workspace dispatch=console_dispatch shared=shared />
         </section>
     }
 }

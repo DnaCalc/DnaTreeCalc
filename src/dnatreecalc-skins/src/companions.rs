@@ -155,6 +155,8 @@ fn LensCompanionView(cx: SkinContext<LensCompanionState>) -> impl IntoView {
                 editor_text=editor_text
                 edit_ref=edit_ref
                 commit=commit
+                shared=shared
+                standalone=true
             />
         </section>
     }
@@ -243,7 +245,7 @@ fn ConsoleCompanionView(cx: SkinContext<ConsoleCompanionState>) -> impl IntoView
                     {move || workspace_label.get()}
                 </span>
             </div>
-            <ConsoleBar workspace=workspace dispatch=dispatch.clone() />
+            <ConsoleBar workspace=workspace dispatch=dispatch.clone() shared=cx.shared standalone=true />
         </section>
     }
 }

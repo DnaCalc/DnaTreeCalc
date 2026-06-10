@@ -216,37 +216,59 @@ pub(crate) fn health_tallies(workspace: &WorkspaceState) -> (usize, usize, usize
 
 /// The embedded **Console**: calc-state health tallies, node count, the
 /// capability-profile badge, and the recalculate affordance. One per lens,
-/// identical everywhere; promoted to a real companion slot in Phase B.
+/// identical everywhere.
+///
+/// An EMBEDDED console (the default) **stands down** while a Console companion
+/// occupies the `BottomConsole` slot — same truth, one rendering, in every
+/// lens for free. The companion itself passes `standalone=true`.
 #[component]
 pub(crate) fn ConsoleBar(
     workspace: ReadSignal<WorkspaceState>,
     dispatch: Arc<dyn Dispatcher>,
+    shared: SharedSkinStateHandle,
+    #[prop(optional)] standalone: bool,
 ) -> impl IntoView {
+    let shared_signal = shared.signal();
+    let stood_down = Memo::new(move |_| {
+        !standalone
+            && shared_signal.with(|s| {
+                s.companion_slots_active
+                    .contains(&dnatreecalc_skin_framework::SkinMountSlot::BottomConsole)
+            })
+    });
     let health = Memo::new(move |_| workspace.with(health_tallies));
     let profile = Memo::new(move |_| workspace.with(|ws| ws.profile));
-    let recalc_dispatch = dispatch.clone();
 
     view! {
-        <footer class="dtc-console" aria-label="Model health">
-            <span class="dtc-console__group">
-                <span class="dtc-calc-dot dtc-calc--clean"></span>
-                <span>{move || format!("{} clean", health.get().1)}</span>
-            </span>
-            <span class="dtc-console__group">
-                <span class="dtc-calc-dot dtc-calc--stale"></span>
-                <span>{move || format!("{} stale", health.get().2)}</span>
-            </span>
-            <span class="dtc-console__group">
-                <span class="dtc-calc-dot dtc-calc--rejected"></span>
-                <span>{move || format!("{} error", health.get().3)}</span>
-            </span>
-            <span class="dtc-console__spacer"></span>
-            <span class="dtc-console__group">{move || format!("{} nodes", health.get().0)}</span>
-            <span class="dtc-console__profile" title="Capability profile">{move || profile.get()}</span>
-            <button type="button" on:click=move |_| { recalc_dispatch.dispatch(WorkspaceIntent::Recalculate); }>
-                "Recalculate (F9)"
-            </button>
-        </footer>
+        {move || {
+            if stood_down.get() {
+                return ().into_any();
+            }
+            let recalc_dispatch = dispatch.clone();
+            view! {
+                <footer class="dtc-console" aria-label="Model health">
+                    <span class="dtc-console__group">
+                        <span class="dtc-calc-dot dtc-calc--clean"></span>
+                        <span>{move || format!("{} clean", health.get().1)}</span>
+                    </span>
+                    <span class="dtc-console__group">
+                        <span class="dtc-calc-dot dtc-calc--stale"></span>
+                        <span>{move || format!("{} stale", health.get().2)}</span>
+                    </span>
+                    <span class="dtc-console__group">
+                        <span class="dtc-calc-dot dtc-calc--rejected"></span>
+                        <span>{move || format!("{} error", health.get().3)}</span>
+                    </span>
+                    <span class="dtc-console__spacer"></span>
+                    <span class="dtc-console__group">{move || format!("{} nodes", health.get().0)}</span>
+                    <span class="dtc-console__profile" title="Capability profile">{move || profile.get()}</span>
+                    <button type="button" on:click=move |_| { recalc_dispatch.dispatch(WorkspaceIntent::Recalculate); }>
+                        "Recalculate (F9)"
+                    </button>
+                </footer>
+            }
+            .into_any()
+        }}
     }
 }
 
@@ -259,6 +281,10 @@ pub(crate) fn ConsoleBar(
 /// the caller so the lens grammar (Enter-to-edit with programmatic focus) can
 /// drive them. The textarea stops propagation of every keydown — its keys are
 /// its own while focused.
+///
+/// An EMBEDDED inspector (the default) **stands down** while a Lens companion
+/// occupies the `RightInspector` slot — same truth, one rendering, in every
+/// lens for free. The companion itself passes `standalone=true`.
 #[component]
 pub(crate) fn NodeInspector(
     workspace: ReadSignal<WorkspaceState>,
@@ -267,16 +293,33 @@ pub(crate) fn NodeInspector(
     editor_text: RwSignal<String>,
     edit_ref: NodeRef<leptos::html::Textarea>,
     commit: Arc<dyn Fn() + Send + Sync>,
+    shared: SharedSkinStateHandle,
+    #[prop(optional)] standalone: bool,
     #[prop(optional)] children: Option<ChildrenFn>,
 ) -> impl IntoView {
+    let shared_signal = shared.signal();
+    let stood_down = Memo::new(move |_| {
+        !standalone
+            && shared_signal.with(|s| {
+                s.companion_slots_active
+                    .contains(&dnatreecalc_skin_framework::SkinMountSlot::RightInspector)
+            })
+    });
     let detail =
         Memo::new(move |_| selection.with(|sel| workspace.with(|ws| ws.active_node_detail(sel))));
     let commit_for_button = commit.clone();
     let commit_for_keys = commit;
 
     view! {
-        <aside class="dtc-inspector" aria-label="Selection inspector">
-            {move || match detail.get() {
+        <aside
+            class="dtc-inspector"
+            class:dtc-inspector--stood-down=move || stood_down.get()
+            aria-label="Selection inspector"
+        >
+            {move || if stood_down.get() {
+                ().into_any()
+            } else {
+                match detail.get() {
                 None => view! { <p class="dtc-inspector__empty">"Select a node to inspect it."</p> }.into_any(),
                 Some(detail) => {
                     let calc = detail.calc_state.map_or("—".to_string(), |state| state.to_string());
@@ -349,7 +392,7 @@ pub(crate) fn NodeInspector(
                     }
                     .into_any()
                 }
-            }}
+            }}}
         </aside>
     }
 }
@@ -393,6 +436,7 @@ pub(crate) const SPINE_WIDGETS_CSS: &str = r#"
   width: 320px; flex-shrink: 0; overflow: auto; padding: 12px;
   border-left: 1px solid var(--dtc-border-muted); background: var(--dtc-surface-panel);
 }
+.dtc-inspector--stood-down { display: none; }
 .dtc-inspector__empty { color: var(--dtc-text-subtle); font-style: italic; }
 .dtc-inspector__header { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; }
 .dtc-inspector__name { font-weight: 700; font-size: 15px; }

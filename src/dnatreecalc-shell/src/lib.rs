@@ -15,5 +15,8 @@
 mod shell;
 mod theme;
 
-pub use shell::WorkspaceShell;
+pub use shell::{
+    CockpitLayout, CockpitPreset, WorkspaceShell, builtin_presets, layout_from_preset,
+    validated_companion_slots,
+};
 pub use theme::SHELL_CSS;

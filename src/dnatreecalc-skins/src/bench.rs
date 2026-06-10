@@ -28,8 +28,8 @@ use dnatreecalc_skin_framework::{
     ATLAS_SPINE_CSS, ComparativeSourceProjection, Dispatcher, IntentReceipt, KeyChord,
     KeybindingRegistry, NodeId, NodeKey, NodeValueProjection, NodeView, ScenarioProjection,
     SelectionState, SeriesProjection, SharedStateOrigin, SkinCapabilities, SkinCategory,
-    SkinContext, SkinHandle, SkinId, SkinManifest, SkinState, SkinStateHandle, SkinVerb,
-    SweepPointInput, SweepProjection, WorkspaceIntent, WorkspaceSkin, WorkspaceState,
+    SkinContext, SkinHandle, SkinId, SkinManifest, SkinMountSlot, SkinState, SkinStateHandle,
+    SkinVerb, SweepPointInput, SweepProjection, WorkspaceIntent, WorkspaceSkin, WorkspaceState,
     calc_state_class, selection_mode_class,
 };
 use leptos::prelude::*;
@@ -433,8 +433,12 @@ fn BenchView(cx: SkinContext<BenchState>) -> impl IntoView {
     // (F9, Ctrl+Z/Y, Ctrl+N, lens switch, arrows) bubble to the shell.
     let grammar = KeybindingRegistry::universal();
     let root_keydown = move |ev: leptos::ev::KeyboardEvent| {
-        // Bare-key grammar never fires while typing — the contract.
-        if event_target_is_text_entry(&ev) || editing.get_untracked() {
+        // Bare-key grammar never fires while typing — the contract. (The
+        // editing flag deliberately does NOT gate here: while the buffer has
+        // focus its own handler stops propagation, and when editing is set
+        // with no mounted buffer — e.g. after a companion stand-down —
+        // Escape must still be able to clear it.)
+        if event_target_is_text_entry(&ev) {
             return;
         }
         let command = ev.ctrl_key() || ev.meta_key();
@@ -446,6 +450,16 @@ fn BenchView(cx: SkinContext<BenchState>) -> impl IntoView {
             SkinVerb::Commit => {
                 // Enter on a focused button must activate the button.
                 if event_target_is_interactive(&ev) {
+                    return;
+                }
+                // While a Lens companion is mounted the embedded buffer is
+                // stood down — the companion owns editing; never set a local
+                // editing flag with no buffer to land in.
+                if shared
+                    .get_untracked()
+                    .companion_slots_active
+                    .contains(&SkinMountSlot::RightInspector)
+                {
                     return;
                 }
                 if selected.get_untracked().is_some() {
@@ -526,9 +540,10 @@ fn BenchView(cx: SkinContext<BenchState>) -> impl IntoView {
                     editor_text=editor_text
                     edit_ref=edit_ref
                     commit=Arc::new(commit)
+                    shared=shared
                 />
             </div>
-            <ConsoleBar workspace=workspace dispatch=console_dispatch />
+            <ConsoleBar workspace=workspace dispatch=console_dispatch shared=shared />
         </section>
     }
 }

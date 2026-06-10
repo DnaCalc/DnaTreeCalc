@@ -526,8 +526,12 @@ fn CaptureView(cx: SkinContext<CaptureState>) -> impl IntoView {
     // (F9, Ctrl+Z/Y, Ctrl+N, lens switch, arrows) bubble to the shell.
     let grammar = KeybindingRegistry::universal();
     let root_keydown = move |ev: leptos::ev::KeyboardEvent| {
-        // Bare-key grammar never fires while typing — the contract.
-        if event_target_is_text_entry(&ev) || editing.get_untracked() {
+        // Bare-key grammar never fires while typing — the contract. (The
+        // editing flag deliberately does NOT gate here: while the buffer has
+        // focus its own handler stops propagation, and when editing is set
+        // with no mounted buffer — e.g. after a companion stand-down —
+        // Escape must still be able to clear it.)
+        if event_target_is_text_entry(&ev) {
             return;
         }
         let command = ev.ctrl_key() || ev.meta_key();
@@ -745,9 +749,10 @@ fn CaptureView(cx: SkinContext<CaptureState>) -> impl IntoView {
                     editor_text=editor_text
                     edit_ref=edit_ref
                     commit=Arc::new(commit)
+                    shared=shared
                 />
             </div>
-            <ConsoleBar workspace=workspace dispatch=console_dispatch />
+            <ConsoleBar workspace=workspace dispatch=console_dispatch shared=shared />
         </section>
     }
 }
