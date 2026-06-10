@@ -323,6 +323,18 @@ The roadmap alignment rule is:
       OxFml-backed numeric display rendering through `NodeView` and active-node detail.
 - [x] Implement OxCalc per-node published-value epochs distinct from input epochs and project them
       through `NodeView.value_epoch` and active-node detail; keep delta work decoupled.
+- [x] Project dependency facts between calculation runs instead of publishing an empty graph:
+      OxCalc now exposes `OxCalcTreeContext::current_dependency_graph`, building the committed
+      dependency graph from the current bound formula catalog plus retained published
+      dynamic-dependency facts (same declared-potential filter as a run's effective graph), so
+      dependency truth stays engine-owned and revision-current. DnaTreeCalc projects
+      `WorkspaceState.dependencies` from the run outcome when one is retained and from the engine's
+      current graph when an intent left no calculation run (deferred edits, unevaluated candidate
+      commit, undo/redo revision navigation), instead of defaulting to an empty
+      `DependencyGraphProjection`. Focused OxCalc and programmable Skin IR tests prove edges,
+      reverse edges, and reference resolutions stay projected and revision-correct without a recalc.
+      Between-runs graphs carry committed facts only; runtime-resolved dynamic descriptors still
+      refresh on the next calculation run.
 
 ### W2 Structural Authoring Tranche
 

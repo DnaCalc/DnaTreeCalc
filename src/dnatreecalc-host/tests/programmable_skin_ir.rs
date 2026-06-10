@@ -434,6 +434,151 @@ fn programmable_skin_undo_redo_routes_through_retained_revisions() {
 }
 
 #[test]
+fn programmable_skin_projects_dependencies_after_deferred_edit_without_recalc() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    skin.add_node(Some("Root"), "A", "1");
+    skin.add_node(Some("Root"), "B", "=A+1");
+    skin.add_node(Some("Root"), "C", "=B*2");
+    skin.recalc();
+    assert_eq!(skin.outgoing_count("Root.C"), 1);
+    assert_eq!(skin.incoming_count("Root.B"), 1);
+
+    skin.edit_deferred("Root.C", "=A*10");
+
+    let state = skin.state();
+    assert!(
+        state.last_run.is_none(),
+        "a deferred edit should not leave a calculation run behind"
+    );
+    let a_key = state.node(&NodeId::new("Root.A")).unwrap().key.clone();
+    let b_key = state.node(&NodeId::new("Root.B")).unwrap().key.clone();
+    let c_key = state.node(&NodeId::new("Root.C")).unwrap().key.clone();
+    let c_edges = state
+        .dependencies
+        .edges_by_owner_key
+        .get(&c_key)
+        .expect("dependencies should stay projected without a calculation run");
+    assert!(
+        c_edges.iter().any(|edge| edge.target_key == a_key),
+        "the projected graph should reflect the applied edit, not the stale run graph"
+    );
+    assert!(
+        c_edges.iter().all(|edge| edge.target_key != b_key),
+        "the stale pre-edit dependency should not survive the deferred edit"
+    );
+    assert!(
+        state
+            .dependencies
+            .reverse_edges_by_key
+            .get(&a_key)
+            .is_some_and(|edges| edges.iter().any(|edge| edge.owner_key == c_key)),
+        "reverse edges should name the dependent without a calculation run"
+    );
+    assert!(
+        state
+            .dependencies
+            .reference_resolutions
+            .values()
+            .any(|resolution| resolution.owner_key == c_key),
+        "reference resolutions should stay projected without a calculation run"
+    );
+    assert_eq!(skin.outgoing_count("Root.B"), 1);
+    assert_eq!(skin.incoming_count("Root.A"), 2);
+}
+
+#[test]
+fn programmable_skin_projects_dependencies_after_undo_without_recalc() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    skin.add_node(Some("Root"), "A", "1");
+    skin.add_node(Some("Root"), "B", "=A+1");
+    skin.add_node(Some("Root"), "C", "=B*2");
+    skin.recalc();
+    skin.edit("Root.C", "=A*10");
+    assert_eq!(skin.incoming_count("Root.B"), 0);
+
+    let undo = skin.undo();
+    assert!(undo.accepted, "{:?}", undo.error);
+
+    let state = skin.state();
+    assert!(
+        state.last_run.is_none(),
+        "revision navigation should not fabricate a calculation run"
+    );
+    let b_key = state.node(&NodeId::new("Root.B")).unwrap().key.clone();
+    let c_key = state.node(&NodeId::new("Root.C")).unwrap().key.clone();
+    assert!(
+        state
+            .dependencies
+            .edges_by_owner_key
+            .get(&c_key)
+            .is_some_and(|edges| edges.iter().any(|edge| edge.target_key == b_key)),
+        "undo should restore the revision's dependency graph, not blank it"
+    );
+    assert_eq!(skin.outgoing_count("Root.C"), 1);
+    assert_eq!(skin.incoming_count("Root.B"), 1);
+    assert_eq!(skin.incoming_count("Root.A"), 1);
+}
+
+#[test]
+fn programmable_skin_projects_dependencies_after_candidate_commit_without_recalc() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    skin.add_node(Some("Root"), "A", "1");
+    skin.add_node(Some("Root"), "B", "=A+1");
+    skin.add_node(Some("Root"), "C", "=B*2");
+    skin.recalc();
+    assert_eq!(skin.incoming_count("Root.B"), 1);
+
+    let open = skin.try_open_candidate();
+    assert!(open.accepted, "{:?}", open.error);
+    let handle = skin
+        .state()
+        .candidates
+        .first()
+        .expect("candidate should project")
+        .handle
+        .clone();
+    let edit = skin.try_edit_candidate_content(&handle, "Root.C", "=A*10");
+    assert!(edit.accepted, "{:?}", edit.error);
+    // Commit deliberately without evaluating the candidate: the promoted
+    // workspace state then carries no calculation run at all.
+    let commit = skin.try_commit_candidate(&handle);
+    assert!(commit.accepted, "{:?}", commit.error);
+
+    let state = skin.state();
+    assert!(
+        state.last_run.is_none(),
+        "an unevaluated candidate commit publishes without a calculation run"
+    );
+    let a_key = state.node(&NodeId::new("Root.A")).unwrap().key.clone();
+    let b_key = state.node(&NodeId::new("Root.B")).unwrap().key.clone();
+    let c_key = state.node(&NodeId::new("Root.C")).unwrap().key.clone();
+    let c_edges = state
+        .dependencies
+        .edges_by_owner_key
+        .get(&c_key)
+        .expect("dependencies should stay projected after candidate commit");
+    assert!(
+        c_edges.iter().any(|edge| edge.target_key == a_key),
+        "the projected graph should carry the committed candidate dependency"
+    );
+    assert!(
+        c_edges.iter().all(|edge| edge.target_key != b_key),
+        "the pre-commit dependency should not survive the committed edit"
+    );
+    assert_eq!(skin.incoming_count("Root.B"), 0);
+    assert_eq!(skin.incoming_count("Root.A"), 2);
+}
+
+#[test]
 fn programmable_skin_projects_candidate_values_without_publishing_until_commit() {
     let harness = Harness::empty();
     let skin = harness.driver.clone();

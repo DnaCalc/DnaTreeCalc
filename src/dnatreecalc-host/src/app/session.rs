@@ -46,7 +46,7 @@ use oxcalc_core::consumer::{
 };
 use oxcalc_core::coordinator::{RuntimeEffect, RuntimeEffectFamily};
 use oxcalc_core::dependency::{
-    DependencyDescriptor, DependencyDescriptorKind, InvalidationReasonKind,
+    DependencyDescriptor, DependencyDescriptorKind, DependencyGraph, InvalidationReasonKind,
     TreeReferenceCollectionDependency, TreeReferenceCollectionFamily,
 };
 use oxcalc_core::recalc::NodeCalcState;
@@ -5208,10 +5208,15 @@ impl TreeWorkspaceSession {
             .into_iter()
             .map(|(tree_node_id, table)| Ok((self.node_id_for_tree_node(tree_node_id)?, table)))
             .collect::<Result<BTreeMap<_, _>, TreeWorkspaceSessionError>>()?;
-        let dependencies = self.last_outcome.as_ref().map_or_else(
-            || Ok(DependencyGraphProjection::default()),
-            |outcome| self.dependency_graph_projection(outcome),
-        )?;
+        let dependencies = match self.last_outcome.as_ref() {
+            Some(outcome) => self.dependency_graph_projection(&outcome.dependency_graph)?,
+            // Between calculation runs (structural edits, candidate commit,
+            // undo/redo) the engine still owns current dependency truth, so
+            // project it instead of publishing an empty graph.
+            None => self.dependency_graph_projection(
+                &self.context.current_dependency_graph(&self.workspace_id)?,
+            )?,
+        };
         let last_run = self
             .last_outcome
             .as_ref()
@@ -6364,11 +6369,11 @@ impl TreeWorkspaceSession {
 
     fn dependency_graph_projection(
         &self,
-        outcome: &OxCalcTreeCalculationOutcome,
+        dependency_graph: &DependencyGraph,
     ) -> Result<DependencyGraphProjection, TreeWorkspaceSessionError> {
         let mut descriptors_by_owner = BTreeMap::new();
         let mut descriptors_by_owner_key = BTreeMap::new();
-        for (owner, descriptors) in &outcome.dependency_graph.descriptors_by_owner {
+        for (owner, descriptors) in &dependency_graph.descriptors_by_owner {
             if *owner == self.engine_root_id {
                 continue;
             }
@@ -6410,7 +6415,7 @@ impl TreeWorkspaceSession {
 
         let mut edges_by_owner = BTreeMap::new();
         let mut edges_by_owner_key = BTreeMap::new();
-        for (owner, edges) in &outcome.dependency_graph.edges_by_owner {
+        for (owner, edges) in &dependency_graph.edges_by_owner {
             if *owner == self.engine_root_id {
                 continue;
             }
@@ -6427,7 +6432,7 @@ impl TreeWorkspaceSession {
 
         let mut reverse_edges = BTreeMap::new();
         let mut reverse_edges_by_key = BTreeMap::new();
-        for (target, edges) in &outcome.dependency_graph.reverse_edges {
+        for (target, edges) in &dependency_graph.reverse_edges {
             if *target == self.engine_root_id {
                 continue;
             }
@@ -6445,8 +6450,7 @@ impl TreeWorkspaceSession {
             reverse_edges_by_key.insert(target_key, projected);
         }
 
-        let cycle_group_keys = outcome
-            .dependency_graph
+        let cycle_group_keys = dependency_graph
             .cycle_groups
             .iter()
             .map(|group| {
@@ -6457,8 +6461,7 @@ impl TreeWorkspaceSession {
                     .collect::<Vec<_>>()
             })
             .collect::<Vec<_>>();
-        let cycle_groups = outcome
-            .dependency_graph
+        let cycle_groups = dependency_graph
             .cycle_groups
             .iter()
             .map(|group| {
@@ -6470,7 +6473,7 @@ impl TreeWorkspaceSession {
             })
             .collect::<Result<Vec<_>, _>>()?;
         let (reference_resolutions, reverse_references) =
-            self.reference_resolution_projection(outcome)?;
+            self.reference_resolution_projection(dependency_graph)?;
 
         Ok(DependencyGraphProjection {
             descriptors_by_owner_key,
@@ -6483,8 +6486,7 @@ impl TreeWorkspaceSession {
             reverse_references,
             cycle_group_keys,
             cycle_groups,
-            diagnostics: outcome
-                .dependency_graph
+            diagnostics: dependency_graph
                 .diagnostics
                 .iter()
                 .map(|diagnostic| {
@@ -6663,7 +6665,7 @@ impl TreeWorkspaceSession {
 
     fn reference_resolution_projection(
         &self,
-        outcome: &OxCalcTreeCalculationOutcome,
+        dependency_graph: &DependencyGraph,
     ) -> Result<
         (
             BTreeMap<String, ReferenceResolutionProjection>,
@@ -6672,7 +6674,7 @@ impl TreeWorkspaceSession {
         TreeWorkspaceSessionError,
     > {
         let mut resolutions = BTreeMap::new();
-        for (owner, descriptors) in &outcome.dependency_graph.descriptors_by_owner {
+        for (owner, descriptors) in &dependency_graph.descriptors_by_owner {
             if *owner == self.engine_root_id {
                 continue;
             }
