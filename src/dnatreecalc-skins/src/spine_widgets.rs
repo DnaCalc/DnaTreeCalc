@@ -103,36 +103,49 @@ pub(crate) fn first_match(workspace: &WorkspaceState, query: &str) -> Option<Nod
 
 /// The `/` Name-Box quick-jump bar. Renders only while `name_box` is `Some`.
 ///
-/// Every keydown stops propagation so typed characters can never reach a
-/// lens-level grammar handler (the grammar contract).
+/// The input is **uncontrolled**: the render closure depends only on the
+/// open/closed state (so typing never rebuilds the element), focus is applied
+/// programmatically on mount (`autofocus` is unreliable on dynamic insertion),
+/// and Enter reads the *live* value from the event target — never a captured
+/// snapshot. Every keydown stops propagation so typed characters can never
+/// reach a lens-level grammar handler (the grammar contract).
 #[component]
 pub(crate) fn NameBoxBar(
     name_box: RwSignal<Option<String>>,
     workspace: ReadSignal<WorkspaceState>,
     dispatch: Arc<dyn Dispatcher>,
 ) -> impl IntoView {
+    let open = Memo::new(move |_| name_box.with(Option::is_some));
+    let input_ref = NodeRef::<leptos::html::Input>::new();
+    // Focus the box whenever it mounts (NodeRef tracks attachment).
+    Effect::new(move |_| {
+        if let Some(input) = input_ref.get() {
+            let _ = input.focus();
+        }
+    });
     let jump_dispatch = dispatch.clone();
     view! {
         {move || {
-            name_box.get().map(|query| {
+            if !open.get() {
+                return ().into_any();
+            }
+            {
                 let jump_dispatch = jump_dispatch.clone();
-                let query_for_jump = query.clone();
                 view! {
                     <div class="dtc-namebox">
                         <span class="dtc-namebox__sigil">"/"</span>
                         <input
                             class="dtc-namebox__input"
-                            autofocus=true
+                            node_ref=input_ref
                             placeholder="jump to node…"
-                            prop:value=query.clone()
-                            on:input=move |ev| name_box.set(Some(event_target_value(&ev)))
                             on:keydown=move |ev: leptos::ev::KeyboardEvent| {
                                 // Typed characters belong to this input alone.
                                 ev.stop_propagation();
                                 match ev.key().as_str() {
                                     "Enter" => {
                                         ev.prevent_default();
-                                        if let Some(id) = first_match(&workspace.get_untracked(), &query_for_jump) {
+                                        let query = event_target_value(&ev);
+                                        if let Some(id) = first_match(&workspace.get_untracked(), &query) {
                                             jump_dispatch.dispatch(WorkspaceIntent::SelectNode(Some(id)));
                                         }
                                         name_box.set(None);
@@ -148,8 +161,7 @@ pub(crate) fn NameBoxBar(
                     </div>
                 }
                 .into_any()
-            })
-            .unwrap_or_else(|| ().into_any())
+            }
         }}
     }
 }

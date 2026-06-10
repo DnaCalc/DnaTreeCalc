@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "treecalc-web",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "cd src\\dnatreecalc-web && trunk serve --port 8421 --watch ..\\..\\src"],
+      "port": 8421
+    }
+  ]
+}

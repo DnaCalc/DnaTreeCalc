@@ -237,11 +237,18 @@ fn candidate_basis_counts(candidates: &[CandidateProjection]) -> BTreeMap<String
     counts
 }
 
-/// The last 8 characters of an opaque id, for compact display (the full id
-/// always travels in the `title` attribute). Char-boundary safe.
-fn short_id(id: &str) -> &str {
-    let start = id.char_indices().rev().nth(7).map_or(0, |(index, _)| index);
-    &id[start..]
+/// Compact display form of an opaque id (the full id always travels in the
+/// `title` attribute). OxCalc revision/transaction ids are long *structured*
+/// strings whose tails coincide across revisions, so a suffix slice collides;
+/// an FNV-1a hash of the whole id gives a stable, distinguishable 8-hex handle.
+/// Display-only — never used for addressing.
+fn short_id(id: &str) -> String {
+    let mut hash: u32 = 0x811c_9dc5;
+    for byte in id.as_bytes() {
+        hash ^= u32::from(*byte);
+        hash = hash.wrapping_mul(0x0100_0193);
+    }
+    format!("{hash:08x}")
 }
 
 /// Tooltip for an invalidated-node chip: the typed invalidation reasons,
@@ -1068,11 +1075,16 @@ mod tests {
     }
 
     #[test]
-    fn short_id_keeps_the_last_eight_chars() {
-        assert_eq!(short_id("rev-0123456789abcdef"), "89abcdef");
-        assert_eq!(short_id("exactly8"), "exactly8");
-        assert_eq!(short_id("tiny"), "tiny");
-        assert_eq!(short_id(""), "");
+    fn short_id_distinguishes_ids_that_share_a_tail() {
+        // OxCalc revision ids are structured strings with coinciding tails —
+        // the display hash must differ even when the suffix matches.
+        let a = short_id("rev:structural=1;input=2;namespace:n=4:none");
+        let b = short_id("rev:structural=9;input=7;namespace:n=4:none");
+        assert_ne!(a, b);
+        assert_eq!(a.len(), 8);
+        assert_eq!(b.len(), 8);
+        // Deterministic across calls.
+        assert_eq!(a, short_id("rev:structural=1;input=2;namespace:n=4:none"));
     }
 
     #[test]
