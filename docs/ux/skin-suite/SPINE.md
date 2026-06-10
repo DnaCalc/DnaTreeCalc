@@ -151,10 +151,29 @@ the ancestor chain per `docs/model/META_NODES.md` (self **or any ancestor**
 meta). Lenses use it instead of the raw `is_meta` flag; exposing the contagion
 on the engine node view itself is a tracked upstream follow-up.
 
-## Phase-B notes (not yet built)
+## Phase B.1 — the composition core (built)
 
-The spine is built so the cockpit drops in without rework. Phase B (stack wave
-W5) adds: multi-slot composition, focus arbitration, **per-slot** keybinding
-routing (the registry already exists to route through), capability-manifest
-negotiation, persona enforcement, and promotion of the embedded Lens/Console to
-real companion slots. None of that changes the contract above.
+- **Audited shared state:** suite mutations flow through
+  `SharedSkinStateHandle::apply(SharedStateChange, SharedStateOrigin)` — typed,
+  attributed (Shell / Host / Lens{skin, slot}), with a bounded audit ring. The
+  raw `update()` remains a documented host-internal escape hatch (legacy skins
+  still use it).
+- **Multi-slot cockpit:** `Main` + `RightInspector` + `BottomConsole` slots;
+  `SkinCapabilities.allowed_slots` (`None` = Main-only) negotiated at mount via
+  `RegisteredSkin::negotiate_slot`, refusals render a fail-loud fallback card.
+  `SkinContext` now carries its `slot`.
+- **Companions:** `LensCompanion` ("lens") and `ConsoleCompanion` ("console")
+  promote the embedded widgets to real slots; the shell publishes
+  `companion_slots_active` and lenses **stand their embedded copies down**
+  (re-projection, not duplication — Flow is the reference implementation).
+- **Presets + persistence:** built-in Solo/Modeling/Author/Audit presets
+  degrade to registered skins; the layout persists per workspace through the
+  skin-state store. Clicking a slot records `focused_slot` (audited).
+- **Leptos gotcha (load-bearing):** `slot` is a reserved `view!` prop name —
+  component props must use another name (`mount_slot`) or the element is
+  silently dropped.
+
+Still Phase B.2+: host-worker-calc (architecture GO per the OxCalc passivity
+spike; gated on the engine performance workstream `calc-ekq3`), per-slot
+keybinding overrides, persona enforcement, intent-log replay, telemetry,
+virtualization.

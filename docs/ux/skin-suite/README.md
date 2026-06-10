@@ -101,7 +101,8 @@ first**, then composes:
 | Phase | What | Stack | Status |
 |---|---|---|---|
 | **A — mono-lens core** | Flow as reference; Tree / Ledger / Sheet / Capture as **single-slot** lenses; Lens + Console embedded *inside* each mono-lens (shared `spine_widgets`); **plus Bench + Transport**, pulled forward from Phase C because their engine substrate landed | W0–W3 + the early-W5 subset + `cleave-predicate-shared`; W4a/b/c substrate (landed) for Bench/Transport | **Built** |
-| **B — composable cockpit** | The W5 platform: multi-slot, negotiation, focus/keybinding arbitration, persona, isolation, worker-calc; promote Lens + Console to real companion slots | W5 (the *last* platform wave — not the first) | Open |
+| **B.1 — composition core** | Multi-slot cockpit (Main + Lens + Console slots), capability-manifest slot negotiation with fail-loud fallbacks, **audited shared state** (`apply(SharedStateChange, origin)` chokepoint + ring), focused-slot tracking, built-in presets (Solo/Modeling/Author/Audit) persisted per workspace, Lens + Console **promoted to real companion slots** with lens stand-down re-projection | W5 composition subset | **Built** |
+| **B.2 — worker + flow control** | host-worker-calc (architecture GO per the OxCalc passivity spike — zero engine changes), serializable IR seam, Pending run-state, backpressure-coalescing, telemetry | gated on the OxCalc **performance workstream** (`calc-ekq3`): recalc is quadratic+ at hundreds of nodes, so worker plumbing waits for time-to-result to be fixable | Open |
 | **C — deeper speculation UX** | Ghost what-if inline in Flow, goal-seek, value-shape change-pulse between revisions, durable arbitrary-candidate scenarios | goal-seek substrate, value-shape diff, scenario durability (ROADMAP open Q10) | Open (the *rail* shipped in A) |
 | **D — narrative + tables + spatial reuse** | Story; Canvas revision-morphing + promote-to-template; Sheet table *authoring* depth → full ATLAS | W6 | Open |
 

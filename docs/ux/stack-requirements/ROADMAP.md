@@ -199,9 +199,15 @@ Mostly engine-readiness confirmations — run each spike before committing the d
 4. **Retained revision graph.** Confirm whether a navigable parent-linked revision store with a cursor
    is a bounded extension of the existing snapshot machinery or a from-scratch store with its own
    memory/GC budget.
-5. **Passivity model.** Confirm the engine's synchronous calc can be sliced/resumed cooperatively (so
-   the host worker can pump it without blocking a frame), or whether bounded-slice pumping itself
-   requires engine reentrancy work.
+5. **Passivity model.** ~~Confirm the engine's synchronous calc can be sliced/resumed cooperatively.~~
+   **Answered** (OxCalc `docs/spec/core-engine/CORE_ENGINE_HOST_WORKER_PASSIVITY_SPIKE.md`,
+   2026-06-10): `LocalTreeCalcEngine::execute` is a pure function of an owned input, so
+   **run-to-completion in a host worker needs zero engine changes**; cooperative slicing is not
+   warranted; a per-node cancellation hook is an S-cost option. The spike's *discovery*: recalc cost
+   is quadratic-or-worse in model size (1k nodes ≈ 4 min release-mode cold; warm no-op verification
+   10–80× slower than cold via `EdgeValueCacheLookup`/`DiagnosticSeedCollection`) — an OxCalc
+   **performance workstream (bead `calc-ekq3`) now precedes worker plumbing** as the real
+   scale prerequisite.
 6. **Per-edge cache outcomes.** Confirm the scheduler exposes per-edge `Hit/Miss/Bypassed`, or only an
    edge-value-cache *basis* fingerprint. `per-edge-cache-evidence` is `extend` pending this.
 7. **General iterative convergence.** Confirm whether OxCalc has a general iterative solver producing
