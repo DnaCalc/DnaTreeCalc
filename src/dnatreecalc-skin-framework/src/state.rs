@@ -403,6 +403,18 @@ pub struct SharedSkinState {
     pub workspace_ids: Vec<String>,
     pub active_workspace_id: Option<String>,
 
+    // --- Cockpit composition (Phase B) ---
+    /// The slot that currently owns keyboard focus in the cockpit.
+    #[serde(default)]
+    pub focused_slot: Option<SkinMountSlot>,
+    /// Cross-lens hover highlight (shared-focus arbitration).
+    #[serde(default)]
+    pub hovered: Option<NodeKey>,
+    /// Companion slots the shell currently has mounted, so a lens can adapt
+    /// (e.g. collapse its embedded inspector when a Lens companion is open).
+    #[serde(default)]
+    pub companion_slots_active: Vec<SkinMountSlot>,
+
     // --- ATLAS suite continuity (NodeKey-keyed; survives lens switch) ---
     /// Multi-select set; the dispatcher-routed `SelectionState.primary` remains
     /// the auditable single anchor and is unchanged.
@@ -462,11 +474,130 @@ impl SharedSkinState {
     }
 }
 
+/// A typed mutation of [`SharedSkinState`] — the audited-shared-state
+/// vocabulary. Every continuity change a lens or the shell makes goes through
+/// [`SharedSkinStateHandle::apply`] as one of these, so shared view-state
+/// mutations are observable and attributable like intents are.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SharedStateChange {
+    SetCleave(Option<CleavePredicate>),
+    SetSelectionSet(Vec<NodeKey>),
+    ToggleSelection(NodeKey),
+    ClearSelectionSet,
+    SetSelectionAnchor(Option<NodeKey>),
+    Fold(NodeKey),
+    Unfold(NodeKey),
+    Pin(NodeKey),
+    Unpin(NodeKey),
+    SetFocusKey(Option<NodeKey>),
+    SetHovered(Option<NodeKey>),
+    SetActiveLens(String),
+    SetRecalcMode(WorkspaceRecalcMode),
+    SetManualRecalcPending(bool),
+    SetWorkspaceIds(Vec<String>),
+    SetActiveWorkspaceId(Option<String>),
+    SetFocusedSlot(Option<SkinMountSlot>),
+    SetCompanionSlots(Vec<SkinMountSlot>),
+}
+
+/// Who asked for a shared-state change. Lenses identify by skin id + slot so
+/// the audit trail distinguishes the same lens mounted in different slots.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SharedStateOrigin {
+    Shell,
+    Host,
+    Lens {
+        skin_id: String,
+        slot: SkinMountSlot,
+    },
+}
+
+impl SharedStateOrigin {
+    #[must_use]
+    pub fn lens(skin_id: SkinId, slot: SkinMountSlot) -> Self {
+        Self::Lens {
+            skin_id: skin_id.as_str().to_string(),
+            slot,
+        }
+    }
+}
+
+/// One audited shared-state mutation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SharedStateAuditRecord {
+    pub seq: u64,
+    pub origin: SharedStateOrigin,
+    pub change: SharedStateChange,
+}
+
+/// Maximum retained audit records; older entries are dropped.
+pub const SHARED_AUDIT_CAPACITY: usize = 256;
+
+impl SharedSkinState {
+    /// Apply one typed change. Pure so the vocabulary is unit-testable.
+    pub fn apply_change(&mut self, change: &SharedStateChange) {
+        match change {
+            SharedStateChange::SetCleave(cleave) => self.cleave = cleave.clone(),
+            SharedStateChange::SetSelectionSet(keys) => self.selection_set = keys.clone(),
+            SharedStateChange::ToggleSelection(key) => {
+                if let Some(index) = self.selection_set.iter().position(|k| k == key) {
+                    self.selection_set.remove(index);
+                } else {
+                    self.selection_set.push(key.clone());
+                }
+            }
+            SharedStateChange::ClearSelectionSet => {
+                self.selection_set.clear();
+                self.selection_anchor = None;
+            }
+            SharedStateChange::SetSelectionAnchor(anchor) => {
+                self.selection_anchor = anchor.clone();
+            }
+            SharedStateChange::Fold(key) => {
+                self.collapsed_keys.insert(key.clone());
+            }
+            SharedStateChange::Unfold(key) => {
+                self.collapsed_keys.remove(key);
+            }
+            SharedStateChange::Pin(key) => {
+                if !self.pinned_keys.contains(key) {
+                    self.pinned_keys.push(key.clone());
+                }
+            }
+            SharedStateChange::Unpin(key) => {
+                self.pinned_keys.retain(|k| k != key);
+            }
+            SharedStateChange::SetFocusKey(key) => self.focus_key = key.clone(),
+            SharedStateChange::SetHovered(key) => self.hovered = key.clone(),
+            SharedStateChange::SetActiveLens(id) => self.active_lens = Some(id.clone()),
+            SharedStateChange::SetRecalcMode(mode) => self.recalc_mode = *mode,
+            SharedStateChange::SetManualRecalcPending(pending) => {
+                self.manual_recalc_pending = *pending;
+            }
+            SharedStateChange::SetWorkspaceIds(ids) => self.workspace_ids = ids.clone(),
+            SharedStateChange::SetActiveWorkspaceId(id) => {
+                self.active_workspace_id = id.clone();
+            }
+            SharedStateChange::SetFocusedSlot(slot) => self.focused_slot = *slot,
+            SharedStateChange::SetCompanionSlots(slots) => {
+                self.companion_slots_active = slots.clone();
+            }
+        }
+    }
+}
+
 /// Reactive handle to the shared meta-namespace state, mirrored from
 /// [`SkinStateHandle`] but specialized for [`SharedSkinState`] so the
 /// host can hand the same handle to every mounted skin.
+///
+/// Mutations flow through [`SharedSkinStateHandle::apply`] — the audited
+/// chokepoint. The raw `update` escape hatch remains for host-internal
+/// bookkeeping (e.g. recent-selection maintenance) but suite code must use
+/// typed changes.
 pub struct SharedSkinStateHandle {
     signal: RwSignal<SharedSkinState>,
+    audit: RwSignal<std::collections::VecDeque<SharedStateAuditRecord>>,
+    next_seq: RwSignal<u64>,
 }
 
 impl SharedSkinStateHandle {
@@ -474,6 +605,8 @@ impl SharedSkinStateHandle {
     pub fn new(initial: SharedSkinState) -> Self {
         Self {
             signal: RwSignal::new(initial),
+            audit: RwSignal::new(std::collections::VecDeque::new()),
+            next_seq: RwSignal::new(0),
         }
     }
 
@@ -485,6 +618,31 @@ impl SharedSkinStateHandle {
         self.signal.get_untracked()
     }
 
+    /// Apply one typed, attributed change — the audited mutation path.
+    pub fn apply(&self, change: SharedStateChange, origin: SharedStateOrigin) {
+        let seq = self.next_seq.get_untracked();
+        self.next_seq.set(seq + 1);
+        self.audit.update(|ring| {
+            ring.push_back(SharedStateAuditRecord {
+                seq,
+                origin,
+                change: change.clone(),
+            });
+            while ring.len() > SHARED_AUDIT_CAPACITY {
+                ring.pop_front();
+            }
+        });
+        self.signal.update(|state| state.apply_change(&change));
+    }
+
+    /// Snapshot of the audit ring (newest last).
+    #[must_use]
+    pub fn audit_log(&self) -> Vec<SharedStateAuditRecord> {
+        self.audit.with_untracked(|ring| ring.iter().cloned().collect())
+    }
+
+    /// Raw mutation escape hatch — host-internal bookkeeping only; suite code
+    /// uses [`Self::apply`] so changes stay audited.
     pub fn update(&self, f: impl FnOnce(&mut SharedSkinState)) {
         self.signal.update(f);
     }

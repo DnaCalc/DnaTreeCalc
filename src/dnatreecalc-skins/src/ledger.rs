@@ -33,9 +33,9 @@ use dnatreecalc_skin_framework::{
     ATLAS_SPINE_CSS, AuthoringScope, CleaveFilter, CleavePredicate, CleaveSort,
     ClipboardPayloadKind, Dispatcher, IntentReceipt, KeyChord, KeybindingRegistry,
     NodeCalcStateProjection, NodeKey, NodeValueProjection, NodeView, SharedSkinStateHandle,
-    SkinCapabilities, SkinCategory, SkinContext, SkinHandle, SkinId, SkinManifest, SkinState,
-    SkinStateHandle, SkinVerb, WorkspaceIntent, WorkspaceSkin, WorkspaceState, calc_state_class,
-    provenance_tint, selection_mode_class,
+    SharedStateChange, SharedStateOrigin, SkinCapabilities, SkinCategory, SkinContext, SkinHandle,
+    SkinId, SkinManifest, SkinState, SkinStateHandle, SkinVerb, WorkspaceIntent, WorkspaceSkin,
+    WorkspaceState, calc_state_class, provenance_tint, selection_mode_class,
 };
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -94,14 +94,12 @@ impl WorkspaceSkin for LedgerLens {
             supports_meta_node_display: false,
             renders_arrays_inline: false,
             renders_table_values: false,
+            allowed_slots: None,
         }
     }
 
     fn mount(&self, cx: SkinContext<Self::State>) -> SkinHandle {
-        // Record the active lens for cross-lens chrome/continuity. Runs once.
-        cx.shared.update(|state| {
-            state.active_lens = Some(LEDGER_ID.as_str().to_string());
-        });
+        crate::spine_widgets::stamp_active_lens(cx.shared, LEDGER_ID, cx.slot);
         SkinHandle::new(view! { <LedgerView cx=cx /> }.into_any())
     }
 }
@@ -148,16 +146,6 @@ fn bulk_copy_values_intent(selection: &[NodeKey]) -> WorkspaceIntent {
     WorkspaceIntent::CopyToClipboard {
         scope: AuthoringScope::Nodes(selection.to_vec()),
         payload: ClipboardPayloadKind::Values,
-    }
-}
-
-/// Toggle one key in the shared multi-select set, preserving insertion order
-/// for the keys that stay.
-fn toggle_selection_key(selection_set: &mut Vec<NodeKey>, key: &NodeKey) {
-    if let Some(index) = selection_set.iter().position(|existing| existing == key) {
-        selection_set.remove(index);
-    } else {
-        selection_set.push(key.clone());
     }
 }
 
@@ -288,6 +276,7 @@ fn LedgerView(cx: SkinContext<LedgerState>) -> impl IntoView {
     let shared = cx.shared;
     let dispatch = cx.dispatch.clone();
     let state = cx.state.clone();
+    let shared_origin = SharedStateOrigin::lens(LEDGER_ID, cx.slot);
 
     let editing = RwSignal::new(false);
     let editor_text = RwSignal::new(String::new());
@@ -326,6 +315,7 @@ fn LedgerView(cx: SkinContext<LedgerState>) -> impl IntoView {
 
     // The one commit path, shared with every lens.
     let commit_dispatch = dispatch.clone();
+    let commit_origin = shared_origin.clone();
     let commit = move || {
         let Some(node) = selected.get_untracked() else {
             return;
@@ -333,6 +323,7 @@ fn LedgerView(cx: SkinContext<LedgerState>) -> impl IntoView {
         let receipt = commit_content_edit(
             &commit_dispatch,
             shared,
+            &commit_origin,
             node.id,
             editor_text.get_untracked(),
         );
@@ -392,6 +383,7 @@ fn LedgerView(cx: SkinContext<LedgerState>) -> impl IntoView {
     let shared_signal = shared.signal();
     let table_state = state.clone();
     let table_dispatch = dispatch.clone();
+    let table_origin = shared_origin.clone();
     let table = move || {
         let ws = workspace.get();
         let shared_now = shared_signal.get();
@@ -450,6 +442,7 @@ fn LedgerView(cx: SkinContext<LedgerState>) -> impl IntoView {
                             checked.contains(key),
                             prov_class,
                             shared,
+                            &table_origin,
                             table_dispatch.clone(),
                             rejection,
                         ))
@@ -502,12 +495,13 @@ fn LedgerView(cx: SkinContext<LedgerState>) -> impl IntoView {
             <div class="dtc-ledger__body">
                 <div class="dtc-ledger__main">
                     <NameBoxBar name_box=name_box workspace=workspace dispatch=dispatch.clone() />
-                    <CleaveBar shared=shared state=state.clone() />
+                    <CleaveBar shared=shared state=state.clone() origin=shared_origin.clone() />
                     <BulkBar
                         shared=shared
                         workspace=workspace
                         dispatch=dispatch.clone()
                         rejection=rejection
+                        origin=shared_origin.clone()
                     />
                     {move || rejection.get().map(|message| view! {
                         <div class="dtc-ledger-reject" role="alert">
@@ -544,6 +538,7 @@ fn ledger_row_view(
     in_selection_set: bool,
     prov_class: &'static str,
     shared: SharedSkinStateHandle,
+    origin: &SharedStateOrigin,
     dispatch: Arc<dyn Dispatcher>,
     rejection: RwSignal<Option<String>>,
 ) -> AnyView {
@@ -585,9 +580,11 @@ fn ledger_row_view(
     let content = node.content_text.clone();
 
     let key_for_toggle = node.key.clone();
+    let toggle_origin = origin.clone();
     let id_for_click = node.id.clone();
     let id_for_edit = node.id.clone();
     let edit_dispatch = dispatch.clone();
+    let edit_origin = origin.clone();
 
     view! {
         <tr
@@ -607,9 +604,10 @@ fn ledger_row_view(
                     on:click=|ev| ev.stop_propagation()
                     on:keydown=|ev: leptos::ev::KeyboardEvent| ev.stop_propagation()
                     on:change=move |_| {
-                        shared.update(|shared_state| {
-                            toggle_selection_key(&mut shared_state.selection_set, &key_for_toggle);
-                        });
+                        shared.apply(
+                            SharedStateChange::ToggleSelection(key_for_toggle.clone()),
+                            toggle_origin.clone(),
+                        );
                     }
                 />
             </td>
@@ -627,6 +625,7 @@ fn ledger_row_view(
                         let receipt = commit_content_edit(
                             &edit_dispatch,
                             shared,
+                            &edit_origin,
                             id_for_edit.clone(),
                             event_target_value(&ev),
                         );
@@ -647,10 +646,15 @@ fn ledger_row_view(
 }
 
 /// The cleave bar — Ledger's signature control and the writer of the shared
-/// predicate. Reads AND writes `SharedSkinState.cleave`, so the same slice
-/// follows the user into every other lens.
+/// predicate. Reads AND writes `SharedSkinState.cleave` (writes go through the
+/// audited `apply` chokepoint), so the same slice follows the user into every
+/// other lens.
 #[component]
-fn CleaveBar(shared: SharedSkinStateHandle, state: SkinStateHandle<LedgerState>) -> impl IntoView {
+fn CleaveBar(
+    shared: SharedSkinStateHandle,
+    state: SkinStateHandle<LedgerState>,
+    origin: SharedStateOrigin,
+) -> impl IntoView {
     let shared_signal = shared.signal();
     let filter_choice = Memo::new(move |_| {
         shared_signal.with(|shared_state| {
@@ -691,6 +695,11 @@ fn CleaveBar(shared: SharedSkinStateHandle, state: SkinStateHandle<LedgerState>)
         Memo::new(move |_| state.with(|s| s.group_by_health))
     };
     let toggle_state = state;
+    // One owned origin per move closure — never share the original.
+    let filter_origin = origin.clone();
+    let text_origin = origin.clone();
+    let sort_origin = origin.clone();
+    let clear_origin = origin;
 
     view! {
         <div class="dtc-ledger-cleave" aria-label="Cleave (shared filter and sort)">
@@ -706,9 +715,8 @@ fn CleaveBar(shared: SharedSkinStateHandle, state: SkinStateHandle<LedgerState>)
                         _ => String::new(),
                     };
                     if let Some(filter) = cleave_filter_for_choice(&choice, &text) {
-                        shared.update(|shared_state| {
-                            shared_state.cleave = normalized_predicate(filter, current.sort);
-                        });
+                        let cleave = normalized_predicate(filter, current.sort);
+                        shared.apply(SharedStateChange::SetCleave(cleave), filter_origin.clone());
                     }
                 }
             >
@@ -718,42 +726,44 @@ fn CleaveBar(shared: SharedSkinStateHandle, state: SkinStateHandle<LedgerState>)
                 <option value="text">"Text…"</option>
                 <option value="other">"(custom)"</option>
             </select>
-            {move || (filter_choice.get() == "text").then(|| view! {
-                <input
-                    class="dtc-ledger-cleave__text"
-                    placeholder="match text…"
-                    aria-label="Cleave text filter"
-                    prop:value=move || text_value.get()
-                    // Typed characters belong to this input alone.
-                    on:keydown=|ev: leptos::ev::KeyboardEvent| ev.stop_propagation()
-                    on:change=move |ev| {
-                        let text = event_target_value(&ev);
-                        shared.update(|shared_state| {
-                            let sort = shared_state
+            {move || (filter_choice.get() == "text").then(|| {
+                let text_origin = text_origin.clone();
+                view! {
+                    <input
+                        class="dtc-ledger-cleave__text"
+                        placeholder="match text…"
+                        aria-label="Cleave text filter"
+                        prop:value=move || text_value.get()
+                        // Typed characters belong to this input alone.
+                        on:keydown=|ev: leptos::ev::KeyboardEvent| ev.stop_propagation()
+                        on:change=move |ev| {
+                            let text = event_target_value(&ev);
+                            let sort = shared
+                                .get_untracked()
                                 .cleave
-                                .as_ref()
                                 .and_then(|cleave| cleave.sort);
-                            shared_state.cleave = normalized_predicate(
-                                Some(CleaveFilter::TextMatch(text.clone())),
-                                sort,
+                            let cleave =
+                                normalized_predicate(Some(CleaveFilter::TextMatch(text)), sort);
+                            shared.apply(
+                                SharedStateChange::SetCleave(cleave),
+                                text_origin.clone(),
                             );
-                        });
-                    }
-                />
-            }.into_any())}
+                        }
+                    />
+                }
+                .into_any()
+            })}
             <select
                 aria-label="Cleave sort"
                 prop:value=move || sort_choice.get()
                 on:change=move |ev| {
                     let choice = event_target_value(&ev);
-                    shared.update(|shared_state| {
-                        let filter = shared_state
-                            .cleave
-                            .as_ref()
-                            .and_then(|cleave| cleave.filter.clone());
-                        shared_state.cleave =
-                            normalized_predicate(filter, cleave_sort_for_choice(&choice));
-                    });
+                    let filter = shared
+                        .get_untracked()
+                        .cleave
+                        .and_then(|cleave| cleave.filter);
+                    let cleave = normalized_predicate(filter, cleave_sort_for_choice(&choice));
+                    shared.apply(SharedStateChange::SetCleave(cleave), sort_origin.clone());
                 }
             >
                 <option value="">"Model order"</option>
@@ -766,7 +776,9 @@ fn CleaveBar(shared: SharedSkinStateHandle, state: SkinStateHandle<LedgerState>)
             </select>
             <button
                 type="button"
-                on:click=move |_| shared.update(|shared_state| shared_state.cleave = None)
+                on:click=move |_| {
+                    shared.apply(SharedStateChange::SetCleave(None), clear_origin.clone());
+                }
             >
                 "Clear cleave"
             </button>
@@ -795,8 +807,12 @@ fn BulkBar(
     workspace: ReadSignal<WorkspaceState>,
     dispatch: Arc<dyn Dispatcher>,
     rejection: RwSignal<Option<String>>,
+    origin: SharedStateOrigin,
 ) -> impl IntoView {
     let shared_signal = shared.signal();
+    // One owned origin per move closure — never share the original.
+    let select_all_origin = origin.clone();
+    let clear_selection_origin = origin;
     let selected_count =
         Memo::new(move |_| shared_signal.with(|shared_state| shared_state.selection_set.len()));
     let bulk_content = RwSignal::new(String::new());
@@ -827,14 +843,22 @@ fn BulkBar(
                         &workspace.get_untracked(),
                         shared.get_untracked().cleave.as_ref(),
                     );
-                    shared.update(|shared_state| shared_state.selection_set = rows);
+                    shared.apply(
+                        SharedStateChange::SetSelectionSet(rows),
+                        select_all_origin.clone(),
+                    );
                 }
             >
                 "Select all visible"
             </button>
             <button
                 type="button"
-                on:click=move |_| shared.update(|shared_state| shared_state.selection_set.clear())
+                on:click=move |_| {
+                    shared.apply(
+                        SharedStateChange::ClearSelectionSet,
+                        clear_selection_origin.clone(),
+                    );
+                }
             >
                 "Clear"
             </button>
@@ -1009,7 +1033,9 @@ const LEDGER_CSS: &str = r#"
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dnatreecalc_skin_framework::{IntentError, NodeContentKind, NodeId};
+    use dnatreecalc_skin_framework::{
+        IntentError, NodeContentKind, NodeId, SharedSkinState, SkinMountSlot,
+    };
 
     fn node(key: &str, path: &str) -> NodeView {
         NodeView {
@@ -1173,12 +1199,39 @@ mod tests {
     }
 
     #[test]
-    fn toggle_selection_key_adds_then_removes() {
-        let mut set = vec![NodeKey::new("k:a")];
-        toggle_selection_key(&mut set, &NodeKey::new("k:b"));
-        assert_eq!(set, vec![NodeKey::new("k:a"), NodeKey::new("k:b")]);
-        toggle_selection_key(&mut set, &NodeKey::new("k:a"));
-        assert_eq!(set, vec![NodeKey::new("k:b")]);
+    fn row_checkbox_toggle_is_typed_and_audited() {
+        // The row checkbox now routes through the audited chokepoint as
+        // `ToggleSelection`: add on first toggle, remove on the second,
+        // preserving insertion order for the keys that stay.
+        let shared = SharedSkinStateHandle::new(SharedSkinState::default());
+        let origin = SharedStateOrigin::lens(SkinId::new("test"), SkinMountSlot::Main);
+
+        shared.apply(
+            SharedStateChange::ToggleSelection(NodeKey::new("k:a")),
+            origin.clone(),
+        );
+        shared.apply(
+            SharedStateChange::ToggleSelection(NodeKey::new("k:b")),
+            origin.clone(),
+        );
+        assert_eq!(
+            shared.get_untracked().selection_set,
+            vec![NodeKey::new("k:a"), NodeKey::new("k:b")]
+        );
+
+        shared.apply(
+            SharedStateChange::ToggleSelection(NodeKey::new("k:a")),
+            origin.clone(),
+        );
+        assert_eq!(
+            shared.get_untracked().selection_set,
+            vec![NodeKey::new("k:b")]
+        );
+
+        // Every toggle landed in the audit ring, attributed to the lens.
+        let audit = shared.audit_log();
+        assert_eq!(audit.len(), 3);
+        assert!(audit.iter().all(|record| record.origin == origin));
     }
 
     #[test]

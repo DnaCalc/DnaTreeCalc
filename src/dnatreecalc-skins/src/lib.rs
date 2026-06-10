@@ -11,6 +11,7 @@
 
 pub mod bench;
 pub mod capture;
+pub mod companions;
 pub mod dependency_inspector;
 pub mod flow;
 pub mod formula_tree;
@@ -27,6 +28,10 @@ mod value_render;
 
 pub use bench::{BENCH_ID, Bench, BenchState};
 pub use capture::{CAPTURE_ID, CaptureLens, CaptureState};
+pub use companions::{
+    CONSOLE_COMPANION_ID, ConsoleCompanion, ConsoleCompanionState, LENS_COMPANION_ID,
+    LensCompanion, LensCompanionState,
+};
 pub use dependency_inspector::{
     DEPENDENCY_INSPECTOR_ID, DependencyInspector, DependencyInspectorState,
 };

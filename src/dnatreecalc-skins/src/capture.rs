@@ -29,10 +29,10 @@ use std::sync::Arc;
 
 use dnatreecalc_skin_framework::{
     ATLAS_SPINE_CSS, Dispatcher, InitialNodeContentProjection, IntentReceipt, KeyChord,
-    KeybindingRegistry, NodeId, NodeKey, NodeView, SharedSkinStateHandle, SkinCapabilities,
-    SkinCategory, SkinContext, SkinHandle, SkinId, SkinManifest, SkinState, SkinVerb,
-    TemplateProjection, WorkspaceIntent, WorkspaceSkin, WorkspaceState, calc_state_class,
-    provenance_tint, selection_mode_class,
+    KeybindingRegistry, NodeId, NodeKey, NodeView, SharedSkinStateHandle, SharedStateOrigin,
+    SkinCapabilities, SkinCategory, SkinContext, SkinHandle, SkinId, SkinManifest, SkinState,
+    SkinVerb, TemplateProjection, WorkspaceIntent, WorkspaceSkin, WorkspaceState,
+    calc_state_class, provenance_tint, selection_mode_class,
 };
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -96,14 +96,12 @@ impl WorkspaceSkin for CaptureLens {
             supports_meta_node_display: false,
             renders_arrays_inline: false,
             renders_table_values: false,
+            allowed_slots: None,
         }
     }
 
     fn mount(&self, cx: SkinContext<Self::State>) -> SkinHandle {
-        // Record the active lens for cross-lens chrome/continuity. Runs once.
-        cx.shared.update(|state| {
-            state.active_lens = Some(CAPTURE_ID.as_str().to_string());
-        });
+        crate::spine_widgets::stamp_active_lens(cx.shared, CAPTURE_ID, cx.slot);
         SkinHandle::new(view! { <CaptureView cx=cx /> }.into_any())
     }
 }
@@ -301,6 +299,7 @@ fn execute_capture_line(
     workspace: ReadSignal<WorkspaceState>,
     dispatch: &Arc<dyn Dispatcher>,
     shared: SharedSkinStateHandle,
+    origin: &SharedStateOrigin,
     pending_template: RwSignal<Option<ArmedTemplate>>,
 ) -> Result<(), String> {
     let ws = workspace.get_untracked();
@@ -313,7 +312,8 @@ fn execute_capture_line(
             return Err("capture line resolved to no node".to_string());
         };
         if let Some(content) = &line.content {
-            let receipt = commit_content_edit(dispatch, shared, id.clone(), content.clone());
+            let receipt =
+                commit_content_edit(dispatch, shared, origin, id.clone(), content.clone());
             if !receipt.accepted {
                 return Err(receipt_error_text(&receipt));
             }
@@ -461,6 +461,7 @@ fn CaptureView(cx: SkinContext<CaptureState>) -> impl IntoView {
     let shared = cx.shared;
     let dispatch = cx.dispatch.clone();
     let state = cx.state.clone();
+    let shared_origin = SharedStateOrigin::lens(CAPTURE_ID, cx.slot);
 
     let editing = RwSignal::new(false);
     let editor_text = RwSignal::new(String::new());
@@ -504,6 +505,7 @@ fn CaptureView(cx: SkinContext<CaptureState>) -> impl IntoView {
 
     // The one commit path, shared with every lens.
     let commit_dispatch = dispatch.clone();
+    let commit_origin = shared_origin.clone();
     let commit = move || {
         let Some(node) = selected.get_untracked() else {
             return;
@@ -511,6 +513,7 @@ fn CaptureView(cx: SkinContext<CaptureState>) -> impl IntoView {
         let receipt = commit_content_edit(
             &commit_dispatch,
             shared,
+            &commit_origin,
             node.id,
             editor_text.get_untracked(),
         );
@@ -567,6 +570,7 @@ fn CaptureView(cx: SkinContext<CaptureState>) -> impl IntoView {
 
     // Enter in the capture line: parse, plan, execute, record, prefill.
     let submit_dispatch = dispatch.clone();
+    let submit_origin = shared_origin.clone();
     let submit = move || {
         let line = capture_text.get_untracked().trim().to_string();
         if line.is_empty() {
@@ -583,6 +587,7 @@ fn CaptureView(cx: SkinContext<CaptureState>) -> impl IntoView {
                 workspace,
                 &submit_dispatch,
                 shared,
+                &submit_origin,
                 pending_template,
             )
             .map(|()| parsed),

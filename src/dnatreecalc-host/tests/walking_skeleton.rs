@@ -42,7 +42,7 @@ use leptos::prelude::*;
 #[test]
 fn default_registry_ships_triple_editor_and_outline_table() {
     let registry = build_default_registry();
-    assert_eq!(registry.len(), 12);
+    assert_eq!(registry.len(), 14);
 
     let ids = registry.ids();
     // The ATLAS suite occupies the first seven Ctrl+N slots in canonical
@@ -69,6 +69,27 @@ fn default_registry_ships_triple_editor_and_outline_table() {
         .get(FLOW_ID)
         .expect("flow lens must be registered");
     assert_eq!(flow.manifest().display_name, "Flow");
+
+    // Cockpit companions register at the end and negotiate companion slots
+    // only — never Main.
+    let lens_companion = registry
+        .get(dnatreecalc_skins::LENS_COMPANION_ID)
+        .expect("lens companion must be registered");
+    assert!(
+        lens_companion
+            .negotiate_slot(SkinMountSlot::RightInspector)
+            .is_ok()
+    );
+    assert!(lens_companion.negotiate_slot(SkinMountSlot::Main).is_err());
+    let console_companion = registry
+        .get(dnatreecalc_skins::CONSOLE_COMPANION_ID)
+        .expect("console companion must be registered");
+    assert!(
+        console_companion
+            .negotiate_slot(SkinMountSlot::BottomConsole)
+            .is_ok()
+    );
+    assert!(console_companion.negotiate_slot(SkinMountSlot::Main).is_err());
 
     let triple = registry
         .get(TRIPLE_EDITOR_ID)

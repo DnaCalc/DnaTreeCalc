@@ -27,9 +27,10 @@ use std::sync::Arc;
 use dnatreecalc_skin_framework::{
     ATLAS_SPINE_CSS, ComparativeSourceProjection, Dispatcher, IntentReceipt, KeyChord,
     KeybindingRegistry, NodeId, NodeKey, NodeValueProjection, NodeView, ScenarioProjection,
-    SelectionState, SeriesProjection, SkinCapabilities, SkinCategory, SkinContext, SkinHandle,
-    SkinId, SkinManifest, SkinState, SkinStateHandle, SkinVerb, SweepPointInput, SweepProjection,
-    WorkspaceIntent, WorkspaceSkin, WorkspaceState, calc_state_class, selection_mode_class,
+    SelectionState, SeriesProjection, SharedStateOrigin, SkinCapabilities, SkinCategory,
+    SkinContext, SkinHandle, SkinId, SkinManifest, SkinState, SkinStateHandle, SkinVerb,
+    SweepPointInput, SweepProjection, WorkspaceIntent, WorkspaceSkin, WorkspaceState,
+    calc_state_class, selection_mode_class,
 };
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -93,14 +94,12 @@ impl WorkspaceSkin for Bench {
             supports_meta_node_display: false,
             renders_arrays_inline: false,
             renders_table_values: false,
+            allowed_slots: None,
         }
     }
 
     fn mount(&self, cx: SkinContext<Self::State>) -> SkinHandle {
-        // Record the active lens for cross-lens chrome/continuity. Runs once.
-        cx.shared.update(|state| {
-            state.active_lens = Some(BENCH_ID.as_str().to_string());
-        });
+        crate::spine_widgets::stamp_active_lens(cx.shared, BENCH_ID, cx.slot);
         SkinHandle::new(view! { <BenchView cx=cx /> }.into_any())
     }
 }
@@ -370,6 +369,7 @@ fn BenchView(cx: SkinContext<BenchState>) -> impl IntoView {
     let shared = cx.shared;
     let dispatch = cx.dispatch.clone();
     let state = cx.state.clone();
+    let shared_origin = SharedStateOrigin::lens(BENCH_ID, cx.slot);
 
     let editing = RwSignal::new(false);
     let editor_text = RwSignal::new(String::new());
@@ -410,6 +410,7 @@ fn BenchView(cx: SkinContext<BenchState>) -> impl IntoView {
 
     // The one commit path, shared with every lens.
     let commit_dispatch = dispatch.clone();
+    let commit_origin = shared_origin.clone();
     let commit = move || {
         let Some(node) = selected.get_untracked() else {
             return;
@@ -417,6 +418,7 @@ fn BenchView(cx: SkinContext<BenchState>) -> impl IntoView {
         let receipt = commit_content_edit(
             &commit_dispatch,
             shared,
+            &commit_origin,
             node.id,
             editor_text.get_untracked(),
         );

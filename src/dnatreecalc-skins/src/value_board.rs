@@ -58,6 +58,7 @@ impl WorkspaceSkin for ValueBoard {
             supports_meta_node_display: true,
             renders_arrays_inline: true,
             renders_table_values: true,
+            allowed_slots: None,
         }
     }
 

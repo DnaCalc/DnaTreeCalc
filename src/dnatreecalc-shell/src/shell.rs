@@ -1,30 +1,186 @@
 use std::sync::Arc;
 
 use dnatreecalc_skin_framework::{
-    Dispatcher, ErasedSkinContext, KeyChord, KeybindingRegistry, NodeId, SelectionState,
-    SharedSkinStateHandle, SkinId, SkinMountSlot, SkinRegistry, SkinStatePersistenceStore, SkinVerb,
+    Dispatcher, ErasedSkinContext, KeyChord, KeybindingRegistry, NodeId, PersistedSkinStateRecord,
+    SelectionState, SharedSkinStateHandle, SharedStateChange, SharedStateOrigin, SkinId,
+    SkinMountSlot, SkinRegistry, SkinStatePersistenceKey, SkinStatePersistenceStore, SkinVerb,
     ThemeTokens, WorkspaceDelta, WorkspaceIntent, WorkspaceRecalcMode, WorkspaceState,
 };
 use leptos::prelude::*;
+use serde::{Deserialize, Serialize};
 use wasm_bindgen::JsCast;
 
 use crate::theme::SHELL_CSS;
 
-/// The walking-skeleton workspace shell.
+/// Which skin occupies each cockpit slot. Skins are referenced by their stable
+/// id string so the layout persists and survives registry evolution (an
+/// unregistered id simply renders the fail-loud fallback card).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CockpitLayout {
+    pub main: String,
+    pub inspector: Option<String>,
+    pub console: Option<String>,
+}
+
+impl CockpitLayout {
+    #[must_use]
+    pub fn solo(main: SkinId) -> Self {
+        Self {
+            main: main.as_str().to_string(),
+            inspector: None,
+            console: None,
+        }
+    }
+
+    /// The companion slots this layout has occupied — what lenses read to
+    /// stand their embedded copies down.
+    #[must_use]
+    pub fn companion_slots(&self) -> Vec<SkinMountSlot> {
+        let mut slots = Vec::new();
+        if self.inspector.is_some() {
+            slots.push(SkinMountSlot::RightInspector);
+        }
+        if self.console.is_some() {
+            slots.push(SkinMountSlot::BottomConsole);
+        }
+        slots
+    }
+}
+
+/// A named cockpit composition. Preset application keeps only ids that are
+/// actually registered, so a preset referencing an absent skin degrades to
+/// the slots that exist instead of failing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CockpitPreset {
+    pub name: &'static str,
+    pub main: &'static str,
+    pub inspector: Option<&'static str>,
+    pub console: Option<&'static str>,
+}
+
+/// The built-in cockpit presets (`cockpit-preset-registry`, ATLAS W5).
+#[must_use]
+pub fn builtin_presets() -> Vec<CockpitPreset> {
+    vec![
+        CockpitPreset {
+            name: "Solo",
+            main: "flow",
+            inspector: None,
+            console: None,
+        },
+        CockpitPreset {
+            name: "Modeling",
+            main: "flow",
+            inspector: Some("lens"),
+            console: Some("console"),
+        },
+        CockpitPreset {
+            name: "Author",
+            main: "tree",
+            inspector: Some("lens"),
+            console: None,
+        },
+        CockpitPreset {
+            name: "Audit",
+            main: "ledger",
+            inspector: Some("lens"),
+            console: Some("console"),
+        },
+    ]
+}
+
+/// Resolve a registered skin by its stable id string.
+fn resolve_skin<'r>(
+    registry: &'r SkinRegistry,
+    id: &str,
+) -> Option<&'r dnatreecalc_skin_framework::RegisteredSkin> {
+    registry.iter().find(|skin| skin.id().as_str() == id)
+}
+
+/// Build a layout from a preset, keeping the current main when the preset's
+/// main is unregistered and dropping unregistered companions.
+#[must_use]
+pub fn layout_from_preset(
+    registry: &SkinRegistry,
+    preset: &CockpitPreset,
+    current_main: &str,
+) -> CockpitLayout {
+    let main = if resolve_skin(registry, preset.main).is_some() {
+        preset.main.to_string()
+    } else {
+        current_main.to_string()
+    };
+    let resolve_companion = |id: Option<&'static str>| {
+        id.filter(|candidate| resolve_skin(registry, candidate).is_some())
+            .map(str::to_string)
+    };
+    CockpitLayout {
+        main,
+        inspector: resolve_companion(preset.inspector),
+        console: resolve_companion(preset.console),
+    }
+}
+
+const COCKPIT_LAYOUT_SCHEMA: u32 = 1;
+
+fn cockpit_layout_key(workspace_id: &str) -> SkinStatePersistenceKey {
+    SkinStatePersistenceKey::new(
+        SkinId::new("shell-cockpit"),
+        SkinMountSlot::Main,
+        workspace_id,
+    )
+}
+
+/// Load the persisted layout for a workspace; `None` on absence or any
+/// store/decode failure (the shell falls back to solo).
+fn load_cockpit_layout(
+    store: &dyn SkinStatePersistenceStore,
+    workspace_id: &str,
+) -> Option<CockpitLayout> {
+    let record = store.load(&cockpit_layout_key(workspace_id)).ok()??;
+    if record.schema_version != COCKPIT_LAYOUT_SCHEMA {
+        return None;
+    }
+    serde_json::from_value(record.value).ok()
+}
+
+fn save_cockpit_layout(
+    store: &dyn SkinStatePersistenceStore,
+    workspace_id: &str,
+    layout: &CockpitLayout,
+) {
+    if let Ok(value) = serde_json::to_value(layout) {
+        let record = PersistedSkinStateRecord::new(COCKPIT_LAYOUT_SCHEMA, value);
+        let _ = store.save(&cockpit_layout_key(workspace_id), &record);
+    }
+}
+
+/// Everything a slot mount needs from the shell; bundled so slot views stay
+/// prop-light.
+#[derive(Clone)]
+struct SlotParts {
+    workspace: ReadSignal<WorkspaceState>,
+    latest_delta: ReadSignal<WorkspaceDelta>,
+    selection: RwSignal<SelectionState>,
+    shared: SharedSkinStateHandle,
+    tokens: ThemeTokens,
+    skin_state_store: Arc<dyn SkinStatePersistenceStore>,
+    dispatch: Arc<dyn Dispatcher>,
+    registry: Arc<SkinRegistry>,
+}
+
+/// The cockpit workspace shell.
 ///
-/// Renders the universal chrome (context strip + status foot) and a main
-/// mount slot whose contents are the currently-active skin's view. The
-/// active skin is tracked in a local `RwSignal<SkinId>`; switching writes
-/// to that signal, which re-runs the mount closure — the slot tears down
-/// the old skin's view, calls `mount` on the new skin's registered factory,
-/// and runs the previous skin's `on_deactivate` hook (if any) through
-/// Leptos's `on_cleanup`.
+/// Phase B.1 of the ATLAS suite: a multi-slot composition over one
+/// workspace/selection/shared-state source of truth. The main slot carries a
+/// primary lens; the right-inspector and bottom-console slots carry companion
+/// skins, negotiated against each skin's capability manifest at mount. The
+/// layout persists per workspace; clicking a slot focuses it (recorded as
+/// audited shared state); companion occupancy is published so lenses stand
+/// their embedded copies down.
 ///
-/// Crucially, switching never calls calculation: the dispatch handle the
-/// new skin receives is the same `Arc<dyn Dispatcher>`, and no
-/// `WorkspaceIntent` is emitted as part of the switch itself. Tests in
-/// the host crate assert that the direct OxCalc context recalculation count
-/// is unchanged across a switch.
+/// Switching any slot's skin emits no `WorkspaceIntent` and never
+/// recalculates — host-owned signals survive across mounts.
 #[component]
 pub fn WorkspaceShell(
     workspace: ReadSignal<WorkspaceState>,
@@ -37,14 +193,38 @@ pub fn WorkspaceShell(
     initial_skin: SkinId,
     tokens: ThemeTokens,
 ) -> impl IntoView {
-    let current_skin = RwSignal::new(initial_skin);
-    let registry_for_view = registry.clone();
-    let dispatch_for_view = dispatch.clone();
-    let skin_state_store_for_view = skin_state_store.clone();
+    let initial_workspace_id = workspace.get_untracked().workspace_id;
+    let layout = RwSignal::new(
+        load_cockpit_layout(skin_state_store.as_ref(), &initial_workspace_id)
+            .unwrap_or_else(|| CockpitLayout::solo(initial_skin)),
+    );
     let shortcut_skin_ids = registry.ids();
     // The one grammar. It is a constant today; per-user remapping would later
     // thread a customized instance through context instead of reconstructing it.
     let keybindings = KeybindingRegistry::universal();
+
+    let parts = SlotParts {
+        workspace,
+        latest_delta,
+        selection,
+        shared,
+        tokens: tokens.clone(),
+        skin_state_store: skin_state_store.clone(),
+        dispatch: dispatch.clone(),
+        registry: registry.clone(),
+    };
+
+    // Keep companion occupancy + persistence in sync with the layout.
+    let sync_store = skin_state_store.clone();
+    Effect::new(move |_| {
+        let current = layout.get();
+        shared.apply(
+            SharedStateChange::SetCompanionSlots(current.companion_slots()),
+            SharedStateOrigin::Shell,
+        );
+        let workspace_id = workspace.with_untracked(|ws| ws.workspace_id.clone());
+        save_cockpit_layout(sync_store.as_ref(), &workspace_id, &current);
+    });
 
     let title = Memo::new(move |_| {
         workspace.with(|ws| {
@@ -67,8 +247,16 @@ pub fn WorkspaceShell(
     });
 
     let registry_for_tabs = registry.clone();
+    let registry_for_presets = registry.clone();
     let shortcut_dispatch = dispatch.clone();
-    let shell_css = format!("{}\n{}", tokens.css_rule(".dtc-shell"), SHELL_CSS);
+    let shell_css = format!("{}\n{}\n{}", tokens.css_rule(".dtc-shell"), SHELL_CSS, COCKPIT_CSS);
+
+    let inspector_parts = parts.clone();
+    let console_parts = parts.clone();
+    let main_parts = parts;
+
+    let has_inspector = Memo::new(move |_| layout.with(|l| l.inspector.is_some()));
+    let has_console = Memo::new(move |_| layout.with(|l| l.console.is_some()));
 
     view! {
         <style>{shell_css}</style>
@@ -80,7 +268,7 @@ pub fn WorkspaceShell(
                     ev,
                     workspace,
                     selection,
-                    current_skin,
+                    layout,
                     &shortcut_skin_ids,
                     shortcut_dispatch.clone(),
                     shared,
@@ -97,46 +285,283 @@ pub fn WorkspaceShell(
                     shared=shared
                     dispatch=dispatch.clone()
                 />
+                <PresetPicker registry=registry_for_presets layout=layout />
                 <span class="dtc-context-strip__spacer"></span>
                 <SkinSwitcher
                     registry=registry_for_tabs
-                    current=current_skin
+                    layout=layout
                 />
             </header>
             <ShortcutBar />
-            <main class="dtc-main-slot">
+            <div class="dtc-cockpit" class:dtc-cockpit--with-inspector=move || has_inspector.get()>
+                <main class="dtc-cockpit__main">
+                    <SlotView
+                        parts=main_parts
+                        layout=layout
+                        mount_slot=SkinMountSlot::Main
+                    />
+                </main>
                 {move || {
-                    let id = current_skin.get();
-                    let Some(registered) = registry_for_view.get(id) else {
-                        return ().into_any();
-                    };
-                    let cx = ErasedSkinContext {
-                        workspace,
-                        latest_delta,
-                        selection: selection.read_only(),
-                        shared,
-                        tokens: tokens.clone(),
-                        slot: SkinMountSlot::Main,
-                        skin_state_store: skin_state_store_for_view.clone(),
-                        dispatch: dispatch_for_view.clone(),
-                    };
-                    let handle = registered.mount(cx);
-                    if let Some(hook) = handle.on_deactivate {
-                        on_cleanup(hook);
-                    }
-                    handle.view
+                    has_inspector.get().then(|| {
+                        let parts = inspector_parts.clone();
+                        view! {
+                            <aside class="dtc-cockpit__inspector">
+                                <CompanionHeader
+                                    registry=parts.registry.clone()
+                                    layout=layout
+                                    mount_slot=SkinMountSlot::RightInspector
+                                />
+                                <SlotView
+                                    parts=parts
+                                    layout=layout
+                                    mount_slot=SkinMountSlot::RightInspector
+                                />
+                            </aside>
+                        }
+                        .into_any()
+                    })
                 }}
-            </main>
+            </div>
+            {move || {
+                has_console.get().then(|| {
+                    let parts = console_parts.clone();
+                    view! {
+                        <div class="dtc-cockpit__console">
+                            <CompanionHeader
+                                registry=parts.registry.clone()
+                                layout=layout
+                                mount_slot=SkinMountSlot::BottomConsole
+                            />
+                            <SlotView
+                                parts=parts
+                                layout=layout
+                                mount_slot=SkinMountSlot::BottomConsole
+                            />
+                        </div>
+                    }
+                    .into_any()
+                })
+            }}
             <footer class="dtc-status-foot">
                 <span>{move || format!("nodes: {}", node_count.get())}</span>
                 <span>{move || format!("selected: {}", selected_label.get())}</span>
                 <span class="dtc-context-strip__spacer"></span>
+                <CompanionToggles registry=registry.clone() layout=layout />
                 <RecalcModeControl
                     shared=shared
                     dispatch=dispatch.clone()
                 />
                 <span class="dtc-status-pill">"clean"</span>
             </footer>
+        </div>
+    }
+}
+
+/// The skin id string a layout assigns to a slot.
+fn layout_slot_id(layout: &CockpitLayout, slot: SkinMountSlot) -> Option<String> {
+    match slot {
+        SkinMountSlot::Main => Some(layout.main.clone()),
+        SkinMountSlot::RightInspector => layout.inspector.clone(),
+        SkinMountSlot::BottomConsole => layout.console.clone(),
+        SkinMountSlot::SplitLeft | SkinMountSlot::SplitRight => None,
+    }
+}
+
+/// Mount one slot: resolve the configured skin, negotiate the slot against its
+/// capability manifest, and render either the skin or a fail-loud fallback.
+/// Clicking anywhere in the slot records it as the focused slot (audited).
+#[component]
+fn SlotView(parts: SlotParts, layout: RwSignal<CockpitLayout>, mount_slot: SkinMountSlot) -> impl IntoView {
+    let shared = parts.shared;
+    let slot_id = Memo::new(move |_| layout.with(|l| layout_slot_id(l, mount_slot)));
+    let focused = Memo::new(move |_| {
+        shared
+            .signal()
+            .with(|s| s.focused_slot == Some(mount_slot))
+    });
+
+    view! {
+        <div
+            class="dtc-slot"
+            class:dtc-slot--focused=move || focused.get()
+            on:mousedown=move |_| {
+                if shared.get_untracked().focused_slot != Some(mount_slot) {
+                    shared.apply(
+                        SharedStateChange::SetFocusedSlot(Some(mount_slot)),
+                        SharedStateOrigin::Shell,
+                    );
+                }
+            }
+        >
+            {move || {
+                let Some(id) = slot_id.get() else {
+                    return ().into_any();
+                };
+                let Some(registered) = resolve_skin(&parts.registry, &id).cloned() else {
+                    return slot_fallback(format!("skin '{id}' is not registered")).into_any();
+                };
+                if let Err(error) = registered.negotiate_slot(mount_slot) {
+                    return slot_fallback(error.to_string()).into_any();
+                }
+                let cx = ErasedSkinContext {
+                    workspace: parts.workspace,
+                    latest_delta: parts.latest_delta,
+                    selection: parts.selection.read_only(),
+                    shared: parts.shared,
+                    tokens: parts.tokens.clone(),
+                    slot: mount_slot,
+                    skin_state_store: parts.skin_state_store.clone(),
+                    dispatch: parts.dispatch.clone(),
+                };
+                let handle = registered.mount(cx);
+                if let Some(hook) = handle.on_deactivate {
+                    on_cleanup(hook);
+                }
+                handle.view
+            }}
+        </div>
+    }
+}
+
+/// Fail-loud slot content for negotiation refusals / unknown ids.
+fn slot_fallback(message: String) -> impl IntoView {
+    view! {
+        <div class="dtc-slot-fallback" role="alert">
+            <span class="dtc-slot-fallback__title">"Slot unavailable"</span>
+            <span class="dtc-slot-fallback__detail">{message}</span>
+        </div>
+    }
+}
+
+/// Companion slot chrome: which skin is mounted + picker + close.
+#[component]
+fn CompanionHeader(
+    registry: Arc<SkinRegistry>,
+    layout: RwSignal<CockpitLayout>,
+    mount_slot: SkinMountSlot,
+) -> impl IntoView {
+    let options: Vec<(String, &'static str)> = registry
+        .iter()
+        .filter(|skin| skin.capabilities().slot_allowed(mount_slot))
+        .map(|skin| (skin.id().as_str().to_string(), skin.manifest().display_name))
+        .collect();
+    let current = Memo::new(move |_| layout.with(|l| layout_slot_id(l, mount_slot).unwrap_or_default()));
+
+    view! {
+        <div class="dtc-companion-header">
+            <select
+                class="dtc-companion-header__picker"
+                prop:value=move || current.get()
+                on:change=move |ev| {
+                    let id = event_target_value(&ev);
+                    layout.update(|l| set_layout_slot(l, mount_slot, Some(id)));
+                }
+            >
+                {options
+                    .into_iter()
+                    .map(|(id, name)| view! { <option value=id>{name}</option> })
+                    .collect::<Vec<_>>()}
+            </select>
+            <button
+                type="button"
+                class="dtc-companion-header__close"
+                title="Close this slot"
+                on:click=move |_| layout.update(|l| set_layout_slot(l, mount_slot, None))
+            >
+                "✕"
+            </button>
+        </div>
+    }
+}
+
+fn set_layout_slot(layout: &mut CockpitLayout, slot: SkinMountSlot, id: Option<String>) {
+    match slot {
+        SkinMountSlot::Main => {
+            if let Some(id) = id {
+                layout.main = id;
+            }
+        }
+        SkinMountSlot::RightInspector => layout.inspector = id,
+        SkinMountSlot::BottomConsole => layout.console = id,
+        SkinMountSlot::SplitLeft | SkinMountSlot::SplitRight => {}
+    }
+}
+
+/// Footer toggles to open/close the companion slots without a preset.
+#[component]
+fn CompanionToggles(registry: Arc<SkinRegistry>, layout: RwSignal<CockpitLayout>) -> impl IntoView {
+    let default_inspector = registry
+        .iter()
+        .find(|skin| skin.capabilities().slot_allowed(SkinMountSlot::RightInspector))
+        .map(|skin| skin.id().as_str().to_string());
+    let default_console = registry
+        .iter()
+        .find(|skin| skin.capabilities().slot_allowed(SkinMountSlot::BottomConsole))
+        .map(|skin| skin.id().as_str().to_string());
+    let inspector_open = Memo::new(move |_| layout.with(|l| l.inspector.is_some()));
+    let console_open = Memo::new(move |_| layout.with(|l| l.console.is_some()));
+    let inspector_available = default_inspector.is_some();
+    let console_available = default_console.is_some();
+
+    view! {
+        <div class="dtc-companion-toggles" aria-label="Companion slots">
+            <button
+                type="button"
+                class:dtc-companion-toggles__button--active=move || inspector_open.get()
+                disabled=!inspector_available
+                title="Toggle the Lens companion slot"
+                on:click=move |_| {
+                    let default_inspector = default_inspector.clone();
+                    layout.update(|l| {
+                        l.inspector = if l.inspector.is_some() { None } else { default_inspector };
+                    });
+                }
+            >
+                "Lens"
+            </button>
+            <button
+                type="button"
+                class:dtc-companion-toggles__button--active=move || console_open.get()
+                disabled=!console_available
+                title="Toggle the Console companion slot"
+                on:click=move |_| {
+                    let default_console = default_console.clone();
+                    layout.update(|l| {
+                        l.console = if l.console.is_some() { None } else { default_console };
+                    });
+                }
+            >
+                "Console"
+            </button>
+        </div>
+    }
+}
+
+/// Named cockpit compositions.
+#[component]
+fn PresetPicker(registry: Arc<SkinRegistry>, layout: RwSignal<CockpitLayout>) -> impl IntoView {
+    let presets = builtin_presets();
+    let preset_names: Vec<&'static str> = presets.iter().map(|preset| preset.name).collect();
+
+    view! {
+        <div class="dtc-preset-picker" aria-label="Cockpit presets">
+            <select
+                class="dtc-preset-picker__select"
+                prop:value=""
+                on:change=move |ev| {
+                    let name = event_target_value(&ev);
+                    if let Some(preset) = builtin_presets().into_iter().find(|p| p.name == name) {
+                        let current_main = layout.with_untracked(|l| l.main.clone());
+                        layout.set(layout_from_preset(&registry, &preset, &current_main));
+                    }
+                }
+            >
+                <option value="" disabled=true selected=true>"Cockpit…"</option>
+                {preset_names
+                    .into_iter()
+                    .map(|name| view! { <option value=name>{name}</option> })
+                    .collect::<Vec<_>>()}
+            </select>
         </div>
     }
 }
@@ -171,7 +596,7 @@ fn handle_shell_keydown(
     ev: web_sys::KeyboardEvent,
     workspace: ReadSignal<WorkspaceState>,
     selection: RwSignal<SelectionState>,
-    current_skin: RwSignal<SkinId>,
+    layout: RwSignal<CockpitLayout>,
     skin_ids: &[SkinId],
     dispatch: Arc<dyn Dispatcher>,
     shared: SharedSkinStateHandle,
@@ -196,9 +621,10 @@ fn handle_shell_keydown(
         SkinVerb::Recalculate => {
             ev.prevent_default();
             dispatch.dispatch(WorkspaceIntent::Recalculate);
-            shared.update(|state| {
-                state.manual_recalc_pending = false;
-            });
+            shared.apply(
+                SharedStateChange::SetManualRecalcPending(false),
+                SharedStateOrigin::Shell,
+            );
         }
         SkinVerb::NewWorkspace => {
             ev.prevent_default();
@@ -215,7 +641,7 @@ fn handle_shell_keydown(
         SkinVerb::SwitchLens(slot) => {
             if let Some(id) = skin_id_for_slot(skin_ids, slot) {
                 ev.prevent_default();
-                current_skin.set(id);
+                layout.update(|l| l.main = id.as_str().to_string());
             }
         }
         SkinVerb::NavPrev | SkinVerb::NavNext => {
@@ -399,10 +825,14 @@ fn RecalcModeControl(
                 class:dtc-recalc-mode__button--active=move || mode.get() == WorkspaceRecalcMode::Auto
                 title="Recalculate content edits immediately"
                 on:click=move |_| {
-                    auto_shared.update(|state| {
-                        state.recalc_mode = WorkspaceRecalcMode::Auto;
-                        state.manual_recalc_pending = false;
-                    });
+                    auto_shared.apply(
+                        SharedStateChange::SetRecalcMode(WorkspaceRecalcMode::Auto),
+                        SharedStateOrigin::Shell,
+                    );
+                    auto_shared.apply(
+                        SharedStateChange::SetManualRecalcPending(false),
+                        SharedStateOrigin::Shell,
+                    );
                 }
             >
                 "Auto"
@@ -412,9 +842,10 @@ fn RecalcModeControl(
                 class:dtc-recalc-mode__button--active=move || mode.get() == WorkspaceRecalcMode::Manual
                 title="Defer content-edit recalculation until Calculate"
                 on:click=move |_| {
-                    manual_shared.update(|state| {
-                        state.recalc_mode = WorkspaceRecalcMode::Manual;
-                    });
+                    manual_shared.apply(
+                        SharedStateChange::SetRecalcMode(WorkspaceRecalcMode::Manual),
+                        SharedStateOrigin::Shell,
+                    );
                 }
             >
                 "Manual"
@@ -426,9 +857,10 @@ fn RecalcModeControl(
                 title="Recalculate workspace now"
                 on:click=move |_| {
                     dispatch.dispatch(WorkspaceIntent::Recalculate);
-                    calculate_shared.update(|state| {
-                        state.manual_recalc_pending = false;
-                    });
+                    calculate_shared.apply(
+                        SharedStateChange::SetManualRecalcPending(false),
+                        SharedStateOrigin::Shell,
+                    );
                 }
             >
                 <span>{move || if pending.get() { "Calculate*" } else { "Calculate" }}</span>
@@ -439,10 +871,13 @@ fn RecalcModeControl(
 }
 
 #[component]
-fn SkinSwitcher(registry: Arc<SkinRegistry>, current: RwSignal<SkinId>) -> impl IntoView {
+fn SkinSwitcher(registry: Arc<SkinRegistry>, layout: RwSignal<CockpitLayout>) -> impl IntoView {
+    // Only Main-capable skins appear as primary tabs; companions are composed
+    // through presets and the companion toggles instead.
     let tabs: Vec<_> = registry
         .iter()
         .enumerate()
+        .filter(|(_, skin)| skin.capabilities().slot_allowed(SkinMountSlot::Main))
         .map(|(index, skin)| (skin.id(), skin.manifest().display_name, index + 1))
         .collect();
 
@@ -451,7 +886,8 @@ fn SkinSwitcher(registry: Arc<SkinRegistry>, current: RwSignal<SkinId>) -> impl 
             {tabs
                 .into_iter()
                 .map(|(id, name, shortcut)| {
-                    let is_active = Memo::new(move |_| current.get() == id);
+                    let is_active =
+                        Memo::new(move |_| layout.with(|l| l.main == id.as_str()));
                     view! {
                         <button
                             class="dtc-skin-switcher__tab"
@@ -459,15 +895,11 @@ fn SkinSwitcher(registry: Arc<SkinRegistry>, current: RwSignal<SkinId>) -> impl 
                             role="tab"
                             aria-selected=move || if is_active.get() { "true" } else { "false" }
                             on:click=move |_| {
-                                if current.get_untracked() != id {
-                                    // Switching the active skin emits no
-                                    // WorkspaceIntent and changes no host-owned
-                                    // signal beyond `current_skin`, so the
-                                    // selection signal (host-owned, not skin-
-                                    // owned) survives and calculation is never
-                                    // requested.
-                                    current.set(id);
-                                }
+                                // Switching the main lens emits no
+                                // WorkspaceIntent and changes no host-owned
+                                // signal beyond the layout, so selection
+                                // survives and calculation is never requested.
+                                layout.update(|l| l.main = id.as_str().to_string());
                             }
                         >
                             <span>{name}</span>
@@ -481,10 +913,51 @@ fn SkinSwitcher(registry: Arc<SkinRegistry>, current: RwSignal<SkinId>) -> impl 
     }
 }
 
+const COCKPIT_CSS: &str = r#"
+.dtc-cockpit { display: flex; flex: 1; min-height: 0; }
+.dtc-cockpit__main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.dtc-cockpit__main > .dtc-slot { flex: 1; min-height: 0; }
+.dtc-cockpit__inspector {
+  width: 340px; flex-shrink: 0; display: flex; flex-direction: column;
+  border-left: 1px solid var(--dtc-border-muted); background: var(--dtc-surface-panel);
+}
+.dtc-cockpit__inspector > .dtc-slot { flex: 1; min-height: 0; overflow: auto; }
+.dtc-cockpit__console { border-top: 1px solid var(--dtc-border-muted); }
+
+.dtc-slot { position: relative; height: 100%; }
+.dtc-slot--focused { box-shadow: inset 0 0 0 2px var(--dtc-accent-border); }
+
+.dtc-slot-fallback {
+  display: flex; flex-direction: column; gap: 4px; padding: 16px;
+  color: var(--dtc-danger-text); background: var(--dtc-danger-surface);
+  border: 1px dashed var(--dtc-danger-border); border-radius: 6px; margin: 12px;
+}
+.dtc-slot-fallback__title { font-weight: 700; }
+
+.dtc-companion-header {
+  display: flex; align-items: center; gap: 6px; padding: 4px 8px;
+  border-bottom: 1px solid var(--dtc-border-muted); background: var(--dtc-surface-subtle);
+}
+.dtc-companion-header__picker { flex: 1; font-size: 12px; }
+.dtc-companion-header__close {
+  border: 1px solid var(--dtc-border); border-radius: 4px; background: var(--dtc-surface-panel);
+  cursor: pointer; color: var(--dtc-text-subtle); padding: 0 6px;
+}
+
+.dtc-companion-toggles { display: inline-flex; gap: 4px; }
+.dtc-companion-toggles button {
+  border: 1px solid var(--dtc-border); border-radius: 5px; background: var(--dtc-surface-panel);
+  padding: 2px 8px; cursor: pointer; color: var(--dtc-text);
+}
+.dtc-companion-toggles__button--active { background: var(--dtc-accent-surface); border-color: var(--dtc-accent-border); }
+
+.dtc-preset-picker__select { font-size: 12px; }
+"#;
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dnatreecalc_skin_framework::WorkspaceState;
+    use dnatreecalc_skin_framework::{InMemorySkinStatePersistenceStore, WorkspaceState};
 
     #[test]
     fn function_keys_are_exempt_from_typing_suppression() {
@@ -522,5 +995,47 @@ mod tests {
             adjacent_node_selection(&workspace, &selection, 1),
             Some(NodeId::new("C"))
         );
+    }
+
+    #[test]
+    fn cockpit_layout_reports_companion_slots() {
+        let mut layout = CockpitLayout::solo(SkinId::new("flow"));
+        assert!(layout.companion_slots().is_empty());
+        layout.inspector = Some("lens".to_string());
+        layout.console = Some("console".to_string());
+        assert_eq!(
+            layout.companion_slots(),
+            vec![SkinMountSlot::RightInspector, SkinMountSlot::BottomConsole]
+        );
+    }
+
+    #[test]
+    fn cockpit_layout_persists_per_workspace() {
+        let store = InMemorySkinStatePersistenceStore::new();
+        let layout = CockpitLayout {
+            main: "flow".to_string(),
+            inspector: Some("lens".to_string()),
+            console: None,
+        };
+        save_cockpit_layout(&store, "workspace:a", &layout);
+
+        assert_eq!(load_cockpit_layout(&store, "workspace:a"), Some(layout));
+        assert_eq!(load_cockpit_layout(&store, "workspace:b"), None);
+    }
+
+    #[test]
+    fn preset_application_degrades_to_registered_skins() {
+        // An empty registry: preset main is unregistered, companions dropped.
+        let registry = SkinRegistry::new();
+        let preset = CockpitPreset {
+            name: "Modeling",
+            main: "flow",
+            inspector: Some("lens"),
+            console: Some("console"),
+        };
+        let layout = layout_from_preset(&registry, &preset, "tree");
+        assert_eq!(layout.main, "tree");
+        assert_eq!(layout.inspector, None);
+        assert_eq!(layout.console, None);
     }
 }

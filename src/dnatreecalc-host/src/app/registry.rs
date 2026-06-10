@@ -1,7 +1,7 @@
 use dnatreecalc_skin_framework::SkinRegistry;
 use dnatreecalc_skins::{
-    Bench, CaptureLens, DependencyInspector, FlowLens, FormulaTree, LedgerLens, OutlineTable,
-    SheetLens, TransportLens, TreeLens, TripleEditor, ValueBoard,
+    Bench, CaptureLens, ConsoleCompanion, DependencyInspector, FlowLens, FormulaTree, LedgerLens,
+    LensCompanion, OutlineTable, SheetLens, TransportLens, TreeLens, TripleEditor, ValueBoard,
 };
 
 /// Build the default skin registry.
@@ -29,5 +29,8 @@ pub fn build_default_registry() -> SkinRegistry {
     registry.register(OutlineTable::new());
     registry.register(ValueBoard::new());
     registry.register(DependencyInspector::new());
+    // Cockpit companions — companion slots only; never primary tabs.
+    registry.register(LensCompanion::new());
+    registry.register(ConsoleCompanion::new());
     registry
 }

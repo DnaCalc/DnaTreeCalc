@@ -61,6 +61,7 @@ impl WorkspaceSkin for FormulaTree {
             supports_meta_node_display: true,
             renders_arrays_inline: true,
             renders_table_values: false,
+            allowed_slots: None,
         }
     }
 

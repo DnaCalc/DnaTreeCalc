@@ -121,6 +121,8 @@ pub enum SkinMountSlot {
     RightInspector,
     SplitLeft,
     SplitRight,
+    /// Full-width strip under the main/split area (the Console companion).
+    BottomConsole,
 }
 
 impl SkinMountSlot {
@@ -131,6 +133,7 @@ impl SkinMountSlot {
             Self::RightInspector => "right_inspector",
             Self::SplitLeft => "split_left",
             Self::SplitRight => "split_right",
+            Self::BottomConsole => "bottom_console",
         }
     }
 }

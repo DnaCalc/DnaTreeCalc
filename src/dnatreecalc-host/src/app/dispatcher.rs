@@ -5,9 +5,9 @@ use dnatreecalc_skin_framework::{
     ClipboardNodeValueProjection, ClipboardOperationProjection, ClipboardPayloadKind,
     ClipboardPayloadProjection, ClipboardProjection, DependencyDeltaProjection, Dispatcher,
     IntentError, IntentReceipt, NodeContentKind, NodeId, NodeKey, NodeValueDeltaProjection,
-    NodeValueProjection, NodeView, SelectionState, SharedSkinStateHandle,
-    StructuralDeltaProjection, TableCellSelection, WorkspaceDelta, WorkspaceDeltaChange,
-    WorkspaceIntent, WorkspaceState,
+    NodeValueProjection, NodeView, SelectionState, SharedSkinStateHandle, SharedStateChange,
+    SharedStateOrigin, StructuralDeltaProjection, TableCellSelection, WorkspaceDelta,
+    WorkspaceDeltaChange, WorkspaceIntent, WorkspaceState,
 };
 use leptos::prelude::*;
 use oxcalc_core::consumer::TransactionRecalcPolicy;
@@ -129,10 +129,14 @@ impl HostDispatcher {
         let mut workspace_sessions = BTreeMap::new();
         workspace_sessions.insert(workspace_id.clone(), session_id);
         if let Some(shared) = shared {
-            shared.update(|state| {
-                state.workspace_ids = vec![workspace_id.clone()];
-                state.active_workspace_id = Some(workspace_id.clone());
-            });
+            shared.apply(
+                SharedStateChange::SetWorkspaceIds(vec![workspace_id.clone()]),
+                SharedStateOrigin::Host,
+            );
+            shared.apply(
+                SharedStateChange::SetActiveWorkspaceId(Some(workspace_id.clone())),
+                SharedStateOrigin::Host,
+            );
         }
         let dispatcher = Self {
             selection,
@@ -1414,10 +1418,14 @@ impl HostDispatcher {
         else {
             return;
         };
-        shared.update(|state| {
-            state.workspace_ids = workspace_ids;
-            state.active_workspace_id = Some(active_workspace_id.to_string());
-        });
+        shared.apply(
+            SharedStateChange::SetWorkspaceIds(workspace_ids),
+            SharedStateOrigin::Host,
+        );
+        shared.apply(
+            SharedStateChange::SetActiveWorkspaceId(Some(active_workspace_id.to_string())),
+            SharedStateOrigin::Host,
+        );
     }
 
     fn record_revision_undo_boundary(
@@ -1524,11 +1532,18 @@ impl HostDispatcher {
                 .keys()
                 .cloned()
                 .collect::<Vec<_>>();
-            shared.update(|state| {
-                state.workspace_ids = workspace_ids;
-                state.active_workspace_id = Some(workspace_id.to_string());
-                state.manual_recalc_pending = false;
-            });
+            shared.apply(
+                SharedStateChange::SetWorkspaceIds(workspace_ids),
+                SharedStateOrigin::Host,
+            );
+            shared.apply(
+                SharedStateChange::SetActiveWorkspaceId(Some(workspace_id.to_string())),
+                SharedStateOrigin::Host,
+            );
+            shared.apply(
+                SharedStateChange::SetManualRecalcPending(false),
+                SharedStateOrigin::Host,
+            );
         }
         Ok(PublishedWorkspaceEdit {
             result: (),

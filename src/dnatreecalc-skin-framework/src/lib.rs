@@ -36,15 +36,16 @@ pub use intent::{
     WorkspaceDeltaChange, WorkspaceIntent,
 };
 pub use keybinding::{KeyChord, KeybindingRegistry, SkinVerb};
-pub use manifest::{SkinCapabilities, SkinCategory, SkinManifest};
+pub use manifest::{CapabilityError, SkinCapabilities, SkinCategory, SkinManifest};
 pub use registry::SkinRegistry;
 pub use selection::{SelectionState, TableCellSelection};
 pub use skin::{
     ErasedSkinContext, ErasedSkinFactory, RegisteredSkin, SkinContext, SkinHandle, WorkspaceSkin,
 };
 pub use state::{
-    InMemorySkinStatePersistenceStore, MigrationError, PersistedSkinStateRecord, SharedSkinState,
-    SharedSkinStateHandle, SkinState, SkinStateHandle, SkinStatePersistenceError,
+    InMemorySkinStatePersistenceStore, MigrationError, PersistedSkinStateRecord,
+    SHARED_AUDIT_CAPACITY, SharedSkinState, SharedSkinStateHandle, SharedStateAuditRecord,
+    SharedStateChange, SharedStateOrigin, SkinState, SkinStateHandle, SkinStatePersistenceError,
     SkinStatePersistenceKey, SkinStatePersistenceStore, WorkspaceRecalcMode,
 };
 pub use style::{

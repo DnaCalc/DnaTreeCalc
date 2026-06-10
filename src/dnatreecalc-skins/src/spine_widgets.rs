@@ -19,7 +19,8 @@ use std::sync::Arc;
 
 use dnatreecalc_skin_framework::{
     Dispatcher, IntentReceipt, NodeId, NodeValueProjection, SelectionState, SharedSkinStateHandle,
-    WorkspaceIntent, WorkspaceRecalcMode, WorkspaceState, calc_state_class,
+    SharedStateChange, SharedStateOrigin, WorkspaceIntent, WorkspaceRecalcMode, WorkspaceState,
+    calc_state_class,
 };
 use leptos::prelude::*;
 use leptos::wasm_bindgen::JsCast;
@@ -57,10 +58,12 @@ pub(crate) fn event_target_is_interactive(ev: &leptos::ev::KeyboardEvent) -> boo
 }
 
 /// The one commit path for content edits: respects the shared recalc mode and
-/// maintains the `manual_recalc_pending` flag, identically in every lens.
+/// maintains the `manual_recalc_pending` flag through the audited shared-state
+/// chokepoint, identically in every lens.
 pub(crate) fn commit_content_edit(
     dispatch: &Arc<dyn Dispatcher>,
     shared: SharedSkinStateHandle,
+    origin: &SharedStateOrigin,
     node: NodeId,
     content: String,
 ) -> IntentReceipt {
@@ -68,17 +71,38 @@ pub(crate) fn commit_content_edit(
         WorkspaceRecalcMode::Auto => {
             let receipt = dispatch.dispatch(WorkspaceIntent::EditContent { node, content });
             if receipt.accepted {
-                shared.update(|state| state.manual_recalc_pending = false);
+                shared.apply(
+                    SharedStateChange::SetManualRecalcPending(false),
+                    origin.clone(),
+                );
             }
             receipt
         }
         WorkspaceRecalcMode::Manual => {
             let receipt = dispatch.dispatch(WorkspaceIntent::EditContentDeferred { node, content });
             if receipt.accepted {
-                shared.update(|state| state.manual_recalc_pending = true);
+                shared.apply(
+                    SharedStateChange::SetManualRecalcPending(true),
+                    origin.clone(),
+                );
             }
             receipt
         }
+    }
+}
+
+/// Record the active lens through the audited chokepoint. Only a Main-slot
+/// mount claims the active-lens chrome — a companion mount never does.
+pub(crate) fn stamp_active_lens(
+    shared: SharedSkinStateHandle,
+    skin_id: dnatreecalc_skin_framework::SkinId,
+    slot: dnatreecalc_skin_framework::SkinMountSlot,
+) {
+    if slot == dnatreecalc_skin_framework::SkinMountSlot::Main {
+        shared.apply(
+            SharedStateChange::SetActiveLens(skin_id.as_str().to_string()),
+            SharedStateOrigin::lens(skin_id, slot),
+        );
     }
 }
 
@@ -472,13 +496,25 @@ mod tests {
             ..Default::default()
         });
 
+        let origin = SharedStateOrigin::lens(
+            dnatreecalc_skin_framework::SkinId::new("test-lens"),
+            dnatreecalc_skin_framework::SkinMountSlot::Main,
+        );
         let receipt =
-            commit_content_edit(&dispatch, shared, NodeId::new("A"), "=1+1".to_string());
+            commit_content_edit(&dispatch, shared, &origin, NodeId::new("A"), "=1+1".to_string());
         assert!(receipt.accepted);
         assert!(shared.get_untracked().manual_recalc_pending);
         assert!(matches!(
             log.intents()[0],
             WorkspaceIntent::EditContentDeferred { .. }
+        ));
+        // The pending flag flowed through the audited chokepoint.
+        let audit = shared.audit_log();
+        assert_eq!(audit.len(), 1);
+        assert_eq!(audit[0].origin, origin);
+        assert!(matches!(
+            audit[0].change,
+            SharedStateChange::SetManualRecalcPending(true)
         ));
     }
 }

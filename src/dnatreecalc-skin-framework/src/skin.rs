@@ -27,6 +27,9 @@ pub struct SkinContext<S: SkinState> {
     pub selection: ReadSignal<SelectionState>,
     pub shared: SharedSkinStateHandle,
     pub tokens: ThemeTokens,
+    /// The slot this mount occupies — lenses use it as their audited
+    /// shared-state origin and to adapt to cockpit composition.
+    pub slot: SkinMountSlot,
     pub state: SkinStateHandle<S>,
     pub dispatch: Arc<dyn Dispatcher>,
 }
@@ -148,6 +151,7 @@ impl<K: WorkspaceSkin> ErasedSkinFactory for TypedFactory<K> {
             selection: cx.selection,
             shared: cx.shared,
             tokens: cx.tokens,
+            slot: cx.slot,
             state: typed_state,
             dispatch: cx.dispatch,
         };
@@ -199,5 +203,21 @@ impl RegisteredSkin {
     /// so callers do not need to know about the erased trait.
     pub fn mount(&self, cx: ErasedSkinContext) -> SkinHandle {
         self.factory.mount(cx)
+    }
+
+    /// Capability-manifest negotiation for a slot: refuse loudly before
+    /// mounting rather than rendering wrongly.
+    pub fn negotiate_slot(
+        &self,
+        slot: SkinMountSlot,
+    ) -> Result<(), crate::manifest::CapabilityError> {
+        if self.capabilities.slot_allowed(slot) {
+            Ok(())
+        } else {
+            Err(crate::manifest::CapabilityError::SlotNotSupported {
+                skin_id: self.id.as_str().to_string(),
+                slot,
+            })
+        }
     }
 }

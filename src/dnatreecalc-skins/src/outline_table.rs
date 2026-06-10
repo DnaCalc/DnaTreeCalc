@@ -64,6 +64,7 @@ impl WorkspaceSkin for OutlineTable {
             supports_meta_node_display: false,
             renders_arrays_inline: false,
             renders_table_values: false,
+            allowed_slots: None,
         }
     }
 

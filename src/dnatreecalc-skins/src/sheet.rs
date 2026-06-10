@@ -28,11 +28,11 @@ use std::sync::Arc;
 use dnatreecalc_skin_framework::{
     ATLAS_SPINE_CSS, ActiveSelectionDetailProjection, Dispatcher,
     FormulaReferenceInsertionProjection, FormulaReferenceInsertionTarget, KeyChord,
-    KeybindingRegistry, NodeId, NodeKey, NodeView, SkinCapabilities, SkinCategory, SkinContext,
-    SkinHandle, SkinId, SkinManifest, SkinState, SkinVerb, TableCellEditabilityProjection,
-    TableCellProjection, TableCellRegionProjection, TableCellSelection, TableProjection,
-    WorkspaceDeltaChange, WorkspaceIntent, WorkspaceSkin, WorkspaceState, calc_state_class,
-    provenance_tint, selection_mode_class,
+    KeybindingRegistry, NodeId, NodeKey, NodeView, SharedStateOrigin, SkinCapabilities,
+    SkinCategory, SkinContext, SkinHandle, SkinId, SkinManifest, SkinState, SkinVerb,
+    TableCellEditabilityProjection, TableCellProjection, TableCellRegionProjection,
+    TableCellSelection, TableProjection, WorkspaceDeltaChange, WorkspaceIntent, WorkspaceSkin,
+    WorkspaceState, calc_state_class, provenance_tint, selection_mode_class,
 };
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -90,14 +90,12 @@ impl WorkspaceSkin for SheetLens {
             supports_meta_node_display: false,
             renders_arrays_inline: true,
             renders_table_values: true,
+            allowed_slots: None,
         }
     }
 
     fn mount(&self, cx: SkinContext<Self::State>) -> SkinHandle {
-        // Record the active lens for cross-lens chrome/continuity. Runs once.
-        cx.shared.update(|state| {
-            state.active_lens = Some(SHEET_ID.as_str().to_string());
-        });
+        crate::spine_widgets::stamp_active_lens(cx.shared, SHEET_ID, cx.slot);
         SkinHandle::new(view! { <SheetView cx=cx /> }.into_any())
     }
 }
@@ -302,6 +300,7 @@ fn SheetView(cx: SkinContext<SheetState>) -> impl IntoView {
     let shared = cx.shared;
     let dispatch = cx.dispatch.clone();
     let state = cx.state.clone();
+    let shared_origin = SharedStateOrigin::lens(SHEET_ID, cx.slot);
 
     // Inspector edit buffer (shared modeless pattern).
     let editing = RwSignal::new(false);
@@ -380,6 +379,7 @@ fn SheetView(cx: SkinContext<SheetState>) -> impl IntoView {
 
     // The one commit path for node content, shared with every lens.
     let commit_dispatch = dispatch.clone();
+    let commit_origin = shared_origin.clone();
     let commit = move || {
         let Some(node) = selected.get_untracked() else {
             return;
@@ -387,6 +387,7 @@ fn SheetView(cx: SkinContext<SheetState>) -> impl IntoView {
         let receipt = commit_content_edit(
             &commit_dispatch,
             shared,
+            &commit_origin,
             node.id,
             editor_text.get_untracked(),
         );
@@ -398,13 +399,15 @@ fn SheetView(cx: SkinContext<SheetState>) -> impl IntoView {
     // Formula-bar commit: node selections route through the shared
     // recalc-mode path; table cells through their dedicated intents.
     let bar_dispatch = dispatch.clone();
+    let bar_origin = shared_origin.clone();
     let bar_commit: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
         let Some(detail_now) = detail.get_untracked() else {
             return;
         };
         let content = bar_text.get_untracked();
         if let ActiveSelectionDetailProjection::Node(node) = &detail_now {
-            let receipt = commit_content_edit(&bar_dispatch, shared, node.node.clone(), content);
+            let receipt =
+                commit_content_edit(&bar_dispatch, shared, &bar_origin, node.node.clone(), content);
             if receipt.accepted {
                 bar_editing.set(false);
                 rejection.set(None);

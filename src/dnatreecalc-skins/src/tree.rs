@@ -29,9 +29,9 @@ use std::sync::Arc;
 use dnatreecalc_skin_framework::{
     ATLAS_SPINE_CSS, AuthoringScope, ClipboardPayloadKind, Dispatcher, IntentReceipt, KeyChord,
     KeybindingRegistry, NodeCalcStateProjection, NodeId, NodeKey, NodeView, SelectionState,
-    SharedSkinStateHandle, SkinCapabilities, SkinCategory, SkinContext, SkinHandle, SkinId,
-    SkinManifest, SkinState, SkinVerb, WorkspaceIntent, WorkspaceSkin, WorkspaceState,
-    calc_state_class, selection_mode_class,
+    SharedSkinStateHandle, SharedStateChange, SharedStateOrigin, SkinCapabilities, SkinCategory,
+    SkinContext, SkinHandle, SkinId, SkinManifest, SkinState, SkinVerb, WorkspaceIntent,
+    WorkspaceSkin, WorkspaceState, calc_state_class, selection_mode_class,
 };
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -99,14 +99,12 @@ impl WorkspaceSkin for TreeLens {
             supports_meta_node_display: true,
             renders_arrays_inline: false,
             renders_table_values: false,
+            allowed_slots: None,
         }
     }
 
     fn mount(&self, cx: SkinContext<Self::State>) -> SkinHandle {
-        // Record the active lens for cross-lens chrome/continuity. Runs once.
-        cx.shared.update(|state| {
-            state.active_lens = Some(TREE_ID.as_str().to_string());
-        });
+        crate::spine_widgets::stamp_active_lens(cx.shared, TREE_ID, cx.slot);
         SkinHandle::new(view! { <TreeView cx=cx /> }.into_any())
     }
 }
@@ -186,6 +184,11 @@ fn push_visible_rows(
 
 /// Apply a fold verb to the SHARED collapse set: `fold` inserts the key,
 /// `!fold` removes it. Idempotent in both directions.
+///
+/// The UI reaches these semantics through the audited chokepoint
+/// (`SharedStateChange::Fold`/`Unfold`); this pure form documents them and is
+/// exercised by the unit tests.
+#[cfg(test)]
 fn apply_fold(collapsed: &mut HashSet<NodeKey>, key: &NodeKey, fold: bool) {
     if fold {
         collapsed.insert(key.clone());
@@ -195,6 +198,11 @@ fn apply_fold(collapsed: &mut HashSet<NodeKey>, key: &NodeKey, fold: bool) {
 }
 
 /// Chevron toggle over the SHARED collapse set.
+///
+/// The UI reaches these semantics through the audited chokepoint (read the
+/// collapsed set, then `Fold`/`Unfold`); this pure form documents them and is
+/// exercised by the unit tests.
+#[cfg(test)]
 fn toggle_fold(collapsed: &mut HashSet<NodeKey>, key: &NodeKey) {
     if !collapsed.remove(key) {
         collapsed.insert(key.clone());
@@ -247,6 +255,7 @@ fn TreeView(cx: SkinContext<TreeState>) -> impl IntoView {
     let shared = cx.shared;
     let dispatch = cx.dispatch.clone();
     let state = cx.state.clone();
+    let shared_origin = SharedStateOrigin::lens(TREE_ID, cx.slot);
 
     let editing = RwSignal::new(false);
     let editor_text = RwSignal::new(String::new());
@@ -287,6 +296,7 @@ fn TreeView(cx: SkinContext<TreeState>) -> impl IntoView {
 
     // The one commit path, shared with every lens.
     let commit_dispatch = dispatch.clone();
+    let commit_origin = shared_origin.clone();
     let commit = move || {
         let Some(node) = selected.get_untracked() else {
             return;
@@ -294,6 +304,7 @@ fn TreeView(cx: SkinContext<TreeState>) -> impl IntoView {
         let receipt = commit_content_edit(
             &commit_dispatch,
             shared,
+            &commit_origin,
             node.id,
             editor_text.get_untracked(),
         );
@@ -307,6 +318,7 @@ fn TreeView(cx: SkinContext<TreeState>) -> impl IntoView {
     // Lens-local grammar, resolved through the one registry. Global verbs
     // (F9, Ctrl+Z/Y, Ctrl+N, lens switch, arrows) bubble to the shell.
     let grammar = KeybindingRegistry::universal();
+    let grammar_origin = shared_origin.clone();
     let root_keydown = move |ev: leptos::ev::KeyboardEvent| {
         // Bare-key grammar never fires while typing — the contract.
         if event_target_is_text_entry(&ev) || editing.get_untracked() {
@@ -336,13 +348,19 @@ fn TreeView(cx: SkinContext<TreeState>) -> impl IntoView {
                     && !node.children.is_empty()
                 {
                     ev.prevent_default();
-                    shared.update(|s| apply_fold(&mut s.collapsed_keys, &node.key, true));
+                    shared.apply(
+                        SharedStateChange::Fold(node.key.clone()),
+                        grammar_origin.clone(),
+                    );
                 }
             }
             SkinVerb::Unfold => {
                 if let Some(node) = selected.get_untracked() {
                     ev.prevent_default();
-                    shared.update(|s| apply_fold(&mut s.collapsed_keys, &node.key, false));
+                    shared.apply(
+                        SharedStateChange::Unfold(node.key.clone()),
+                        grammar_origin.clone(),
+                    );
                 }
             }
             SkinVerb::NameBox => {
@@ -391,6 +409,7 @@ fn TreeView(cx: SkinContext<TreeState>) -> impl IntoView {
     let rows_selection = selection;
     let rows_state = state.clone();
     let rows_dispatch = dispatch.clone();
+    let rows_origin = shared_origin.clone();
     let rows_view = move || {
         let ws = rows_workspace.get();
         let collapsed = shared.with(|s| s.collapsed_keys.clone());
@@ -420,6 +439,7 @@ fn TreeView(cx: SkinContext<TreeState>) -> impl IntoView {
                     is_selected,
                     editing_now && is_selected,
                     shared,
+                    &rows_origin,
                     rows_dispatch.clone(),
                     last_error,
                     stage_ref,
@@ -475,11 +495,13 @@ fn TreeView(cx: SkinContext<TreeState>) -> impl IntoView {
 /// One outline row: chevron (shared fold continuity), calc-state dot, label,
 /// and the dependents badge. Rows never take keyboard focus — focus stays on
 /// the stage so the grammar keeps working (the Flow chip pattern).
+#[allow(clippy::too_many_arguments)]
 fn tree_row_view(
     row: TreeRow,
     is_selected: bool,
     is_editing: bool,
     shared: SharedSkinStateHandle,
+    origin: &SharedStateOrigin,
     dispatch: Arc<dyn Dispatcher>,
     last_error: RwSignal<Option<String>>,
     stage_ref: NodeRef<leptos::html::Section>,
@@ -503,6 +525,7 @@ fn tree_row_view(
     let chevron = if row.has_children {
         let glyph = if row.collapsed { "▸" } else { "▾" };
         let label = if row.collapsed { "Expand" } else { "Collapse" };
+        let toggle_origin = origin.clone();
         view! {
             <button
                 type="button"
@@ -511,7 +534,18 @@ fn tree_row_view(
                 aria-label=label
                 on:mousedown=move |ev| ev.prevent_default()
                 on:click=move |_| {
-                    shared.update(|s| toggle_fold(&mut s.collapsed_keys, &key_for_toggle));
+                    // Chevron toggle: read the shared collapse set, then fold
+                    // or unfold through the audited chokepoint.
+                    let folded = shared
+                        .get_untracked()
+                        .collapsed_keys
+                        .contains(&key_for_toggle);
+                    let change = if folded {
+                        SharedStateChange::Unfold(key_for_toggle.clone())
+                    } else {
+                        SharedStateChange::Fold(key_for_toggle.clone())
+                    };
+                    shared.apply(change, toggle_origin.clone());
                     if let Some(section) = stage_ref.get_untracked() {
                         let _ = section.focus();
                     }

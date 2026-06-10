@@ -37,4 +37,30 @@ pub struct SkinCapabilities {
     pub supports_meta_node_display: bool,
     pub renders_arrays_inline: bool,
     pub renders_table_values: bool,
+    /// Slots this skin may mount in. `None` (the default) means Main only —
+    /// existing primary lenses need no change. Companions declare their
+    /// companion slots explicitly. Checked by the shell's mount negotiation.
+    pub allowed_slots: Option<&'static [crate::identity::SkinMountSlot]>,
+}
+
+impl SkinCapabilities {
+    /// Whether this skin may mount in `slot` (the negotiation predicate).
+    #[must_use]
+    pub fn slot_allowed(&self, slot: crate::identity::SkinMountSlot) -> bool {
+        match self.allowed_slots {
+            None => slot == crate::identity::SkinMountSlot::Main,
+            Some(slots) => slots.contains(&slot),
+        }
+    }
+}
+
+/// Why a mount negotiation refused. Mismatches fail loudly at mount time
+/// instead of rendering wrongly.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum CapabilityError {
+    #[error("skin {skin_id} does not support slot {slot}")]
+    SlotNotSupported {
+        skin_id: String,
+        slot: crate::identity::SkinMountSlot,
+    },
 }

@@ -832,6 +832,81 @@ fn verb_command_kind_joins_the_catalog() {
 }
 
 #[test]
+fn shared_store_applies_typed_changes_and_records_audit() {
+    use crate::state::{SharedStateChange, SharedStateOrigin};
+
+    let handle = SharedSkinStateHandle::new(SharedSkinState::default());
+    let lens_origin = SharedStateOrigin::lens(SkinId::new("ledger"), SkinMountSlot::Main);
+
+    handle.apply(
+        SharedStateChange::ToggleSelection(NodeKey::new("k:a")),
+        lens_origin.clone(),
+    );
+    handle.apply(
+        SharedStateChange::Fold(NodeKey::new("k:b")),
+        lens_origin.clone(),
+    );
+    handle.apply(
+        SharedStateChange::SetFocusedSlot(Some(SkinMountSlot::RightInspector)),
+        SharedStateOrigin::Shell,
+    );
+    // Toggle removes on the second application.
+    handle.apply(
+        SharedStateChange::ToggleSelection(NodeKey::new("k:a")),
+        lens_origin.clone(),
+    );
+
+    let state = handle.get_untracked();
+    assert!(state.selection_set.is_empty());
+    assert!(state.collapsed_keys.contains(&NodeKey::new("k:b")));
+    assert_eq!(state.focused_slot, Some(SkinMountSlot::RightInspector));
+
+    let audit = handle.audit_log();
+    assert_eq!(audit.len(), 4);
+    assert_eq!(audit[0].seq, 0);
+    assert_eq!(audit[3].seq, 3);
+    assert_eq!(audit[2].origin, SharedStateOrigin::Shell);
+    assert!(matches!(
+        &audit[1].change,
+        SharedStateChange::Fold(key) if key == &NodeKey::new("k:b")
+    ));
+}
+
+#[test]
+fn shared_store_audit_ring_is_bounded() {
+    use crate::state::{SHARED_AUDIT_CAPACITY, SharedStateChange, SharedStateOrigin};
+
+    let handle = SharedSkinStateHandle::new(SharedSkinState::default());
+    for index in 0..(SHARED_AUDIT_CAPACITY + 10) {
+        handle.apply(
+            SharedStateChange::SetManualRecalcPending(index % 2 == 0),
+            SharedStateOrigin::Host,
+        );
+    }
+    let audit = handle.audit_log();
+    assert_eq!(audit.len(), SHARED_AUDIT_CAPACITY);
+    // Oldest entries dropped; sequence numbers stay monotonic.
+    assert_eq!(audit.first().map(|record| record.seq), Some(10));
+    assert_eq!(
+        audit.last().map(|record| record.seq),
+        Some((SHARED_AUDIT_CAPACITY + 9) as u64)
+    );
+}
+
+#[test]
+fn slot_negotiation_defaults_to_main_only() {
+    let mut registry = SkinRegistry::new();
+    let id = registry.register(InertSkin::new("main-only"));
+    let registered = registry.get(id).expect("registered");
+
+    assert!(registered.negotiate_slot(SkinMountSlot::Main).is_ok());
+    let refused = registered
+        .negotiate_slot(SkinMountSlot::RightInspector)
+        .expect_err("companion slot must be refused for a Main-only skin");
+    assert!(refused.to_string().contains("right_inspector"));
+}
+
+#[test]
 fn shared_continuity_round_trips_and_gcs() {
     let mut state = SharedSkinState {
         selection_set: vec![NodeKey::new("k:a"), NodeKey::new("k:b")],

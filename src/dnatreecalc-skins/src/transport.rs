@@ -28,9 +28,9 @@ use std::sync::Arc;
 use dnatreecalc_skin_framework::{
     ATLAS_SPINE_CSS, CandidateProjection, CommandIntentKindProjection, Dispatcher, KeyChord,
     KeybindingRegistry, RevisionHistoryProjection, RevisionInvalidationSummaryEntryProjection,
-    RevisionTransactionSummaryProjection, SelectionState, SkinCapabilities, SkinCategory,
-    SkinContext, SkinHandle, SkinId, SkinManifest, SkinState, SkinStateHandle, SkinVerb,
-    WorkspaceDelta, WorkspaceDeltaChange, WorkspaceIntent, WorkspaceSkin, WorkspaceState,
+    RevisionTransactionSummaryProjection, SelectionState, SharedStateOrigin, SkinCapabilities,
+    SkinCategory, SkinContext, SkinHandle, SkinId, SkinManifest, SkinState, SkinStateHandle,
+    SkinVerb, WorkspaceDelta, WorkspaceDeltaChange, WorkspaceIntent, WorkspaceSkin, WorkspaceState,
 };
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -94,14 +94,12 @@ impl WorkspaceSkin for TransportLens {
             supports_meta_node_display: true,
             renders_arrays_inline: false,
             renders_table_values: false,
+            allowed_slots: None,
         }
     }
 
     fn mount(&self, cx: SkinContext<Self::State>) -> SkinHandle {
-        // Record the active lens for cross-lens chrome/continuity. Runs once.
-        cx.shared.update(|state| {
-            state.active_lens = Some(TRANSPORT_ID.as_str().to_string());
-        });
+        crate::spine_widgets::stamp_active_lens(cx.shared, TRANSPORT_ID, cx.slot);
         SkinHandle::new(view! { <TransportView cx=cx /> }.into_any())
     }
 }
@@ -282,6 +280,7 @@ fn TransportView(cx: SkinContext<TransportState>) -> impl IntoView {
     let shared = cx.shared;
     let dispatch = cx.dispatch.clone();
     let state = cx.state.clone();
+    let shared_origin = SharedStateOrigin::lens(TRANSPORT_ID, cx.slot);
 
     let editing = RwSignal::new(false);
     let editor_text = RwSignal::new(String::new());
@@ -322,6 +321,7 @@ fn TransportView(cx: SkinContext<TransportState>) -> impl IntoView {
 
     // The one commit path, shared with every lens.
     let commit_dispatch = dispatch.clone();
+    let commit_origin = shared_origin.clone();
     let commit = move || {
         let Some(node) = selected.get_untracked() else {
             return;
@@ -329,6 +329,7 @@ fn TransportView(cx: SkinContext<TransportState>) -> impl IntoView {
         let receipt = commit_content_edit(
             &commit_dispatch,
             shared,
+            &commit_origin,
             node.id,
             editor_text.get_untracked(),
         );

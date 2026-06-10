@@ -26,9 +26,9 @@ use std::sync::Arc;
 
 use dnatreecalc_skin_framework::{
     ATLAS_SPINE_CSS, DerivationInvocationProjection, Dispatcher, KeyChord, KeybindingRegistry,
-    NodeId, NodeKey, NodeView, SkinCapabilities, SkinCategory, SkinContext, SkinHandle, SkinId,
-    SkinManifest, SkinState, SkinVerb, WorkspaceIntent, WorkspaceSkin, WorkspaceState,
-    calc_state_class, provenance_tint, selection_mode_class,
+    NodeId, NodeKey, NodeView, SharedStateOrigin, SkinCapabilities, SkinCategory, SkinContext,
+    SkinHandle, SkinId, SkinManifest, SkinMountSlot, SkinState, SkinVerb, WorkspaceIntent,
+    WorkspaceSkin, WorkspaceState, calc_state_class, provenance_tint, selection_mode_class,
 };
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -112,14 +112,12 @@ impl WorkspaceSkin for FlowLens {
             supports_meta_node_display: false,
             renders_arrays_inline: true,
             renders_table_values: false,
+            allowed_slots: None,
         }
     }
 
     fn mount(&self, cx: SkinContext<Self::State>) -> SkinHandle {
-        // Record the active lens for cross-lens chrome/continuity. Runs once.
-        cx.shared.update(|state| {
-            state.active_lens = Some(FLOW_ID.as_str().to_string());
-        });
+        crate::spine_widgets::stamp_active_lens(cx.shared, FLOW_ID, cx.slot);
         SkinHandle::new(view! { <FlowView cx=cx /> }.into_any())
     }
 }
@@ -318,6 +316,7 @@ fn FlowView(cx: SkinContext<FlowState>) -> impl IntoView {
     let shared = cx.shared;
     let dispatch = cx.dispatch.clone();
     let state = cx.state.clone();
+    let shared_origin = SharedStateOrigin::lens(FLOW_ID, cx.slot);
 
     let editing = RwSignal::new(false);
     let editor_text = RwSignal::new(String::new());
@@ -358,6 +357,7 @@ fn FlowView(cx: SkinContext<FlowState>) -> impl IntoView {
 
     // The one commit path, shared with every lens.
     let commit_dispatch = dispatch.clone();
+    let commit_origin = shared_origin.clone();
     let commit = move || {
         let Some(node) = selected.get_untracked() else {
             return;
@@ -365,6 +365,7 @@ fn FlowView(cx: SkinContext<FlowState>) -> impl IntoView {
         let receipt = commit_content_edit(
             &commit_dispatch,
             shared,
+            &commit_origin,
             node.id,
             editor_text.get_untracked(),
         );
@@ -501,6 +502,22 @@ fn FlowView(cx: SkinContext<FlowState>) -> impl IntoView {
     let explain_state = state.clone();
     let console_dispatch = dispatch.clone();
 
+    // Cockpit re-projection: when a Lens/Console companion slot is mounted,
+    // the embedded copies stand down — same truth, one rendering.
+    let shared_signal = shared.signal();
+    let lens_companion_active = Memo::new(move |_| {
+        shared_signal.with(|s| {
+            s.companion_slots_active
+                .contains(&SkinMountSlot::RightInspector)
+        })
+    });
+    let console_companion_active = Memo::new(move |_| {
+        shared_signal.with(|s| {
+            s.companion_slots_active
+                .contains(&SkinMountSlot::BottomConsole)
+        })
+    });
+
     // The explain stack renders as the lens-specific extra inside the shared
     // inspector.
     let explain_detail = Memo::new(move |_| {
@@ -531,6 +548,8 @@ fn FlowView(cx: SkinContext<FlowState>) -> impl IntoView {
         Memo::new(move |_| explain_state.with(|s| s.explain_open))
     };
 
+    let commit_arc: Arc<dyn Fn() + Send + Sync> = Arc::new(commit);
+
     view! {
         <style>{css}</style>
         <section class="dtc-flow" tabindex="0" node_ref=stage_ref on:keydown=root_keydown>
@@ -540,46 +559,60 @@ fn FlowView(cx: SkinContext<FlowState>) -> impl IntoView {
                     <TraceBar state=state.clone() reading_head=reading_head workspace=workspace dispatch=dispatch.clone() />
                     {stage}
                 </div>
-                <NodeInspector
-                    workspace=workspace
-                    selection=selection
-                    editing=editing
-                    editor_text=editor_text
-                    edit_ref=edit_ref
-                    commit=Arc::new(commit)
-                >
-                    {move || {
-                        view! {
-                            <div class="dtc-flow-explain-block">
-                                <div class="dtc-section-label">"Explain (E)"</div>
-                                {move || explain_open.get().then(|| {
-                                    let traces = traces.get();
-                                    if traces.is_empty() {
-                                        view! { <p class="dtc-inspector__empty">"No derivation trace for this node yet — recalculate."</p> }.into_any()
-                                    } else {
-                                        view! {
-                                            <div class="dtc-flow-explain">
-                                                {traces.into_iter().map(|trace| view! {
-                                                    <div class="dtc-flow-explain__trace">
-                                                        <div class="dtc-flow-explain__result">
-                                                            "= "{trace.kernel_returned_value.clone()}
-                                                        </div>
-                                                        <ul class="dtc-flow-explain__tree">
-                                                            {trace.sub_invocation_tree.iter().map(render_invocation).collect::<Vec<_>>()}
-                                                        </ul>
+                {move || {
+                    if lens_companion_active.get() {
+                        return ().into_any();
+                    }
+                    let commit_arc = commit_arc.clone();
+                    view! {
+                        <NodeInspector
+                            workspace=workspace
+                            selection=selection
+                            editing=editing
+                            editor_text=editor_text
+                            edit_ref=edit_ref
+                            commit=commit_arc
+                        >
+                            {move || {
+                                view! {
+                                    <div class="dtc-flow-explain-block">
+                                        <div class="dtc-section-label">"Explain (E)"</div>
+                                        {move || explain_open.get().then(|| {
+                                            let traces = traces.get();
+                                            if traces.is_empty() {
+                                                view! { <p class="dtc-inspector__empty">"No derivation trace for this node yet — recalculate."</p> }.into_any()
+                                            } else {
+                                                view! {
+                                                    <div class="dtc-flow-explain">
+                                                        {traces.into_iter().map(|trace| view! {
+                                                            <div class="dtc-flow-explain__trace">
+                                                                <div class="dtc-flow-explain__result">
+                                                                    "= "{trace.kernel_returned_value.clone()}
+                                                                </div>
+                                                                <ul class="dtc-flow-explain__tree">
+                                                                    {trace.sub_invocation_tree.iter().map(render_invocation).collect::<Vec<_>>()}
+                                                                </ul>
+                                                            </div>
+                                                        }).collect::<Vec<_>>()}
                                                     </div>
-                                                }).collect::<Vec<_>>()}
-                                            </div>
-                                        }.into_any()
-                                    }
-                                })}
-                            </div>
-                        }
-                        .into_any()
-                    }}
-                </NodeInspector>
+                                                }.into_any()
+                                            }
+                                        })}
+                                    </div>
+                                }
+                                .into_any()
+                            }}
+                        </NodeInspector>
+                    }
+                    .into_any()
+                }}
             </div>
-            <ConsoleBar workspace=workspace dispatch=console_dispatch />
+            {move || {
+                (!console_companion_active.get()).then(|| {
+                    view! { <ConsoleBar workspace=workspace dispatch=console_dispatch.clone() /> }
+                        .into_any()
+                })
+            }}
         </section>
     }
 }
