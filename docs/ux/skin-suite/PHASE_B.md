@@ -58,15 +58,12 @@ release; warm strictly cheaper than cold; incremental cost proportional to the
 dirty set, not N. *DnaTreeCalc's role: re-run the harness as the gate check;
 raise observations via the handover convention.*
 
-### B.2.1 — Serializable IR seam *(host; no engine work; can start now)*
-`Serialize`/`Deserialize` across the whole Skin-IR surface so intents,
-projections, and deltas can cross a `postMessage` boundary:
-- `WorkspaceIntent` (+ payload types), `WorkspaceState` and every projection
-  struct, `WorkspaceDelta`/changes, `IntentReceipt`/`IntentError`.
-- Known wrinkles: `WorkspaceState.profile: &'static str` (→ `Cow`/`String`),
-  `SkinManifest`'s `&'static str`s stay UI-side (not transported).
-- Format decision: `serde_json` first (debuggable), `postcard`/binary later if
-  profiling demands. Property-test round-trips for the big enums.
+### B.2.1 — Serializable IR seam ✅ *(shipped 2026-06-11)*
+`Serialize`/`Deserialize` across the whole Skin-IR surface (~100 projection
+types + every intent/receipt/delta type). `profile` became `String`;
+`PhaseKeyProjection` serializes as its stable-id string (manual impls — JSON
+map keys cannot carry `Other(String)`); 11 round-trip tests pin the wire
+shapes. Format remains `serde_json` first; `postcard` if profiling demands.
 
 ### B.2.2 — Worker session *(host; gated on B.2.0)*
 - The wasm web worker **owns** the `TreeWorkspaceSession`; the main thread
@@ -106,16 +103,20 @@ budget; the spike harness numbers meet the B.2.0 acceptance.
 
 In rough priority order:
 
-1. **Preview seam on `SkinContext`** *(suite follow-up #1; the biggest UX
-   payoff in the phase)* — expose the host session's existing `preview_*`
-   legality/impact methods (dry-bind, recalc plan, mutation impact) through a
-   read-side handle. Unlocks the live legality nets Tree/Capture/Sheet ship
-   without today (typed post-attempt rejections). The result types already
-   live in the framework.
-2. **`readonly-reviewer-persona`** — `SkinContext.permissions { persona,
-   can_mutate, allowed_intents }`; the dispatcher rejects disallowed intents
-   per **origin** with `Forbidden{persona}`. Builds directly on B.1's
-   attributed origins.
+1. **Preview seam on `SkinContext`** ✅ *(shipped 2026-06-11)* —
+   `PreviewService` (dry-bind + mutation impact) carried optionally on
+   `SkinContext`; the live dispatcher forwards to the session's `preview_*`
+   methods under the session mutex; the shared `NodeInspector` shows live
+   per-keystroke legality. *Remaining:* pass the service through the other six
+   lenses' inspector call sites (optional prop — they degrade gracefully) and
+   adopt impact previews in Tree/Capture/Sheet affordances.
+2. **`readonly-reviewer-persona`** ✅ *(first slice shipped 2026-06-11)* —
+   `Persona { Author, Reviewer, ReadOnly }` with a closed policy over the
+   closed intent enum; the dispatcher gates every intent and rejects with
+   typed `Forbidden{persona}`; switching travels as the audited `SetPersona`
+   intent (shell selector + Console chip). *Remaining:* per-origin policies
+   (remote peers), `allowed_intents` surfacing in the command catalog so
+   lenses pre-disable affordances.
 3. **`intent-log-replay`** — `IntentRecorder` at the dispatcher chokepoint
    (`seq, intent, receipt, delta, value_epoch, persona, origin`) +
    `replay(log, fresh_workspace)`; the SharedStore audit ring is the
