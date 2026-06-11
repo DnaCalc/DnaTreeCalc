@@ -33,9 +33,9 @@ pub use identity::{NodeId, NodeKey, SkinId, SkinMountSlot};
 pub use intent::{
     AuthoringScope, ClipboardPayloadKind, DependencyDeltaProjection, Dispatcher,
     FormulaReferenceInsertionProjection, FormulaReferenceInsertionTarget, InMemoryDispatcher,
-    IntentError, IntentReceipt, NodeAttributePatch, NodeValueDeltaProjection,
-    StructuralDeltaProjection, SweepPointInput, TableCellInput, TableRowInput, WorkspaceDelta,
-    WorkspaceDeltaChange, WorkspaceIntent,
+    IntentError, IntentReceipt, IntentRecord, NodeAttributePatch, NodeValueDeltaProjection,
+    ReplayOutcome, StructuralDeltaProjection, SweepPointInput, TableCellInput, TableRowInput,
+    WorkspaceDelta, WorkspaceDeltaChange, WorkspaceIntent, replay,
 };
 pub use keybinding::{KeyChord, KeybindingRegistry, SkinVerb};
 pub use manifest::{CapabilityError, SkinCapabilities, SkinCategory, SkinManifest};

@@ -102,6 +102,14 @@ impl NodeAttributePatch {
 pub enum WorkspaceIntent {
     /// Replace the host-wide primary selection. `None` clears.
     SelectNode(Option<NodeId>),
+    /// Replace the host-wide multi-selection set (and its anchor) — the
+    /// population subject for bulk verbs. Dispatched (not raw view-state) so
+    /// population selection is audited like everything else; the single
+    /// `SelectNode` primary remains independent.
+    SelectNodes {
+        keys: Vec<NodeKey>,
+        anchor: Option<NodeKey>,
+    },
     /// Focus a table cell without changing calculation state.
     SelectTableCell {
         table: NodeId,
@@ -668,6 +676,54 @@ pub enum IntentError {
     HostFailure(String),
 }
 
+/// One audited entry in the dispatcher's intent log (tenet 9): the intent,
+/// its outcome, and the governance/projection context it executed under.
+/// Serializable so a session's log can be exported and replayed elsewhere.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct IntentRecord {
+    pub seq: u64,
+    pub intent: WorkspaceIntent,
+    pub accepted: bool,
+    pub error: Option<IntentError>,
+    pub transaction_id: Option<String>,
+    pub produced_revision: Option<String>,
+    /// The published value epoch AFTER this intent executed.
+    pub value_epoch: u64,
+    /// The persona that governed this dispatch.
+    pub persona: crate::permissions::Persona,
+}
+
+/// Outcome of replaying a recorded log against a dispatcher.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ReplayOutcome {
+    pub dispatched: usize,
+    pub accepted: usize,
+    /// Sequence numbers whose acceptance differed from the recording — a
+    /// non-empty list means the replay target diverged from the original
+    /// session (different fixture, engine version, or non-determinism).
+    pub mismatches: Vec<u64>,
+}
+
+/// Replay a recorded intent log, in order, against a dispatcher.
+///
+/// Every record is re-dispatched — including originally-rejected ones, which
+/// must reject again for the replay to be faithful. Determinism is the
+/// engine's published contract; this function only measures it.
+pub fn replay(records: &[IntentRecord], dispatcher: &dyn Dispatcher) -> ReplayOutcome {
+    let mut outcome = ReplayOutcome::default();
+    for record in records {
+        let receipt = dispatcher.dispatch(record.intent.clone());
+        outcome.dispatched += 1;
+        if receipt.accepted {
+            outcome.accepted += 1;
+        }
+        if receipt.accepted != record.accepted {
+            outcome.mismatches.push(record.seq);
+        }
+    }
+    outcome
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorkspaceDelta {
     pub from_seq: u64,
@@ -795,7 +851,8 @@ impl Dispatcher for InMemoryDispatcher {
                 // verify only the routing, not the calculation effect.
                 IntentReceipt::accepted()
             }
-            WorkspaceIntent::Recalculate
+            WorkspaceIntent::SelectNodes { .. }
+            | WorkspaceIntent::Recalculate
             | WorkspaceIntent::EditContent { .. }
             | WorkspaceIntent::EditContentDeferred { .. }
             | WorkspaceIntent::EditScopedContent { .. }

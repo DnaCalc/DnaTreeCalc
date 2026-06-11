@@ -679,6 +679,7 @@ fn SheetView(cx: SkinContext<SheetState>) -> impl IntoView {
                     edit_ref=edit_ref
                     commit=Arc::new(commit)
                     shared=shared
+                    preview=cx.preview.clone()
                 />
             </div>
             <ConsoleBar workspace=workspace dispatch=console_dispatch shared=shared />

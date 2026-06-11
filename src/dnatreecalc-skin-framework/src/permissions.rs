@@ -54,6 +54,7 @@ impl Persona {
                 intent,
                 // Read/navigate.
                 I::SelectNode(_)
+                    | I::SelectNodes { .. }
                     | I::SelectTableCell { .. }
                     | I::SwitchWorkspace { .. }
                     | I::Recalculate
@@ -76,7 +77,10 @@ impl Persona {
             ),
             Self::ReadOnly => matches!(
                 intent,
-                I::SelectNode(_) | I::SelectTableCell { .. } | I::SwitchWorkspace { .. }
+                I::SelectNode(_)
+                    | I::SelectNodes { .. }
+                    | I::SelectTableCell { .. }
+                    | I::SwitchWorkspace { .. }
             ),
         }
     }

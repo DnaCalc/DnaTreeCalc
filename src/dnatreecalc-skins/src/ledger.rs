@@ -535,6 +535,7 @@ fn LedgerView(cx: SkinContext<LedgerState>) -> impl IntoView {
                     edit_ref=edit_ref
                     commit=Arc::new(commit)
                     shared=shared
+                    preview=cx.preview.clone()
                 />
             </div>
             <ConsoleBar workspace=workspace dispatch=console_dispatch shared=shared />
@@ -595,7 +596,7 @@ fn ledger_row_view(
     let content = node.content_text.clone();
 
     let key_for_toggle = node.key.clone();
-    let toggle_origin = origin.clone();
+    let toggle_dispatch = dispatch.clone();
     let id_for_click = node.id.clone();
     let id_for_edit = node.id.clone();
     let edit_dispatch = dispatch.clone();
@@ -619,10 +620,21 @@ fn ledger_row_view(
                     on:click=|ev| ev.stop_propagation()
                     on:keydown=|ev: leptos::ev::KeyboardEvent| ev.stop_propagation()
                     on:change=move |_| {
-                        shared.apply(
-                            SharedStateChange::ToggleSelection(key_for_toggle.clone()),
-                            toggle_origin.clone(),
-                        );
+                        // Population selection is a dispatched, audited intent
+                        // (B.3.4); the lens computes the resulting set and the
+                        // host validates + mirrors it into shared state.
+                        let mut keys = shared.get_untracked().selection_set;
+                        if let Some(index) =
+                            keys.iter().position(|key| key == &key_for_toggle)
+                        {
+                            keys.remove(index);
+                        } else {
+                            keys.push(key_for_toggle.clone());
+                        }
+                        toggle_dispatch.dispatch(WorkspaceIntent::SelectNodes {
+                            keys,
+                            anchor: Some(key_for_toggle.clone()),
+                        });
                     }
                 />
             </td>
@@ -826,8 +838,9 @@ fn BulkBar(
 ) -> impl IntoView {
     let shared_signal = shared.signal();
     // One owned origin per move closure — never share the original.
-    let select_all_origin = origin.clone();
-    let clear_selection_origin = origin;
+    let select_all_dispatch = dispatch.clone();
+    let clear_selection_dispatch = dispatch.clone();
+    let _ = origin;
     let selected_count =
         Memo::new(move |_| shared_signal.with(|shared_state| shared_state.selection_set.len()));
     let bulk_content = RwSignal::new(String::new());
@@ -858,10 +871,10 @@ fn BulkBar(
                         &workspace.get_untracked(),
                         shared.get_untracked().cleave.as_ref(),
                     );
-                    shared.apply(
-                        SharedStateChange::SetSelectionSet(rows),
-                        select_all_origin.clone(),
-                    );
+                    select_all_dispatch.dispatch(WorkspaceIntent::SelectNodes {
+                        keys: rows,
+                        anchor: None,
+                    });
                 }
             >
                 "Select all visible"
@@ -869,10 +882,10 @@ fn BulkBar(
             <button
                 type="button"
                 on:click=move |_| {
-                    shared.apply(
-                        SharedStateChange::ClearSelectionSet,
-                        clear_selection_origin.clone(),
-                    );
+                    clear_selection_dispatch.dispatch(WorkspaceIntent::SelectNodes {
+                        keys: Vec::new(),
+                        anchor: None,
+                    });
                 }
             >
                 "Clear"

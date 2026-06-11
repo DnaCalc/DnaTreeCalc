@@ -5,7 +5,8 @@ use dnatreecalc_skin_framework::{
     ClipboardNodeValueProjection, ClipboardOperationProjection, ClipboardPayloadKind,
     ClipboardPayloadProjection, ClipboardProjection, DependencyDeltaProjection, Dispatcher,
     FormulaBindPreviewProjection, IntentError, IntentReceipt, MutationImpactIntentProjection,
-    MutationImpactProjection, NodeContentKind, NodeId, NodeKey, NodeValueDeltaProjection, Persona,
+    IntentRecord, MutationImpactProjection, NodeContentKind, NodeId, NodeKey,
+    NodeValueDeltaProjection, Persona,
     NodeValueProjection, NodeView, PreviewError, PreviewService, SelectionState,
     SharedSkinStateHandle, SharedStateChange, SharedStateOrigin, StructuralDeltaProjection,
     TableCellSelection, WorkspaceDelta, WorkspaceDeltaChange, WorkspaceIntent, WorkspaceState,
@@ -52,7 +53,7 @@ pub struct HostDispatcher {
     next_projection_seq: AtomicU64,
     undo_stack: Mutex<Vec<RevisionCursorEntry>>,
     redo_stack: Mutex<Vec<RevisionCursorEntry>>,
-    log: Mutex<Vec<WorkspaceIntent>>,
+    records: Mutex<Vec<IntentRecord>>,
     persona: Mutex<Persona>,
 }
 
@@ -77,7 +78,7 @@ impl HostDispatcher {
             next_projection_seq: AtomicU64::new(1),
             undo_stack: Mutex::new(Vec::new()),
             redo_stack: Mutex::new(Vec::new()),
-            log: Mutex::new(Vec::new()),
+            records: Mutex::new(Vec::new()),
             persona: Mutex::new(Persona::default()),
         }
     }
@@ -153,7 +154,7 @@ impl HostDispatcher {
             next_projection_seq: AtomicU64::new(1),
             undo_stack: Mutex::new(Vec::new()),
             redo_stack: Mutex::new(Vec::new()),
-            log: Mutex::new(Vec::new()),
+            records: Mutex::new(Vec::new()),
             persona: Mutex::new(Persona::default()),
         };
         dispatcher.hydrate_workspace_sessions_from_document_store(&workspace_id);
@@ -164,20 +165,62 @@ impl HostDispatcher {
     /// to assert routing behavior without observing reactive state from
     /// the outside.
     pub fn intents(&self) -> Vec<WorkspaceIntent> {
-        self.log.lock().expect("dispatcher log poisoned").clone()
+        self.records
+            .lock()
+            .expect("dispatcher record log poisoned")
+            .iter()
+            .map(|record| record.intent.clone())
+            .collect()
+    }
+
+    /// The full audited intent log (tenet 9): every dispatch with its
+    /// outcome, persona, and the value epoch it left behind. Exportable
+    /// (serde) and replayable via `dnatreecalc_skin_framework::replay`.
+    pub fn intent_records(&self) -> Vec<IntentRecord> {
+        self.records
+            .lock()
+            .expect("dispatcher record log poisoned")
+            .clone()
     }
 
     pub fn clear_log(&self) {
-        self.log.lock().expect("dispatcher log poisoned").clear();
+        self.records
+            .lock()
+            .expect("dispatcher record log poisoned")
+            .clear();
     }
 }
 
 impl Dispatcher for HostDispatcher {
     fn dispatch(&self, intent: WorkspaceIntent) -> IntentReceipt {
-        self.log
-            .lock()
-            .expect("dispatcher log poisoned")
-            .push(intent.clone());
+        let recorded_intent = intent.clone();
+        let persona = *self.persona.lock().expect("persona mutex poisoned");
+        let receipt = self.dispatch_inner(intent);
+        // Record AFTER execution so the record carries the true outcome and
+        // the value epoch the intent left behind — every return path of
+        // dispatch_inner is captured here.
+        let value_epoch = self
+            .workspace
+            .map(|workspace| workspace.get_untracked().revision.value_epoch)
+            .unwrap_or(0);
+        let mut records = self.records.lock().expect("dispatcher record log poisoned");
+        let seq = records.len() as u64;
+        records.push(IntentRecord {
+            seq,
+            intent: recorded_intent,
+            accepted: receipt.accepted,
+            error: receipt.error.clone(),
+            transaction_id: receipt.transaction_id.clone(),
+            produced_revision: receipt.produced_revision.clone(),
+            value_epoch,
+            persona,
+        });
+        receipt
+    }
+}
+
+impl HostDispatcher {
+    fn dispatch_inner(&self, intent: WorkspaceIntent) -> IntentReceipt {
         // Governance chokepoint (tenet 9): the persona policy gates every
         // intent BEFORE any host or engine work. Persona switching itself is
         // always dispatchable in this first slice (audited via the log, the
@@ -203,6 +246,34 @@ impl Dispatcher for HostDispatcher {
             }
             WorkspaceIntent::SelectNode(target) => {
                 self.selection.set(SelectionState::with_primary(target));
+                IntentReceipt::accepted().with_delta(self.publish_unchanged_delta())
+            }
+            WorkspaceIntent::SelectNodes { keys, anchor } => {
+                // Validate the population against the live projection before
+                // accepting — a stale key is a typed rejection, not a silent
+                // filter.
+                if let Some(workspace) = self.workspace {
+                    let state = workspace.get_untracked();
+                    if let Some(unknown) = keys
+                        .iter()
+                        .chain(anchor.iter())
+                        .find(|key| state.node_by_key(key).is_none())
+                    {
+                        return self.reject_current(IntentError::UnknownNode {
+                            node: unknown.to_string(),
+                        });
+                    }
+                }
+                if let Some(shared) = self.shared {
+                    shared.apply(
+                        SharedStateChange::SetSelectionSet(keys),
+                        SharedStateOrigin::Host,
+                    );
+                    shared.apply(
+                        SharedStateChange::SetSelectionAnchor(anchor),
+                        SharedStateOrigin::Host,
+                    );
+                }
                 IntentReceipt::accepted().with_delta(self.publish_unchanged_delta())
             }
             WorkspaceIntent::SelectTableCell {
