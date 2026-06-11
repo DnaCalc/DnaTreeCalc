@@ -156,6 +156,7 @@ fn LensCompanionView(cx: SkinContext<LensCompanionState>) -> impl IntoView {
                 edit_ref=edit_ref
                 commit=commit
                 shared=shared
+                preview=cx.preview.clone()
                 standalone=true
             />
         </section>
@@ -227,6 +228,7 @@ fn ConsoleCompanionView(cx: SkinContext<ConsoleCompanionState>) -> impl IntoView
                 .to_string()
         })
     });
+    let persona = Memo::new(move |_| shared_signal.with(|s| s.persona.stable_id().to_string()));
     let workspace_label = Memo::new(move |_| workspace.with(|ws| ws.workspace_id.clone()));
 
     let css = format!("{ATLAS_SPINE_CSS}\n{SPINE_WIDGETS_CSS}\n{COMPANION_CSS}");
@@ -240,6 +242,9 @@ fn ConsoleCompanionView(cx: SkinContext<ConsoleCompanionState>) -> impl IntoView
                 </span>
                 <span class="dtc-companion-console__chip" title="Focused slot">
                     "focus: " {move || focused_slot.get()}
+                </span>
+                <span class="dtc-companion-console__chip" title="Governing persona">
+                    "persona: " {move || persona.get()}
                 </span>
                 <span class="dtc-companion-console__chip" title="Workspace">
                     {move || workspace_label.get()}

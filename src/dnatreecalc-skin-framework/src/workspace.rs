@@ -15,10 +15,10 @@ use serde::{Deserialize, Serialize};
 /// persistence format. Mirrors the spec shape in `docs/ux/SKINS.md` §2.7,
 /// narrowed for the walking skeleton — meta-namespaces, templates, formats,
 /// and cross-workspace aliases land as later worksets extend the projection.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorkspaceState {
     pub workspace_id: String,
-    pub profile: &'static str,
+    pub profile: String,
     pub projection_seq: u64,
     pub revision: WorkspaceRevisionProjection,
     pub revision_history: RevisionHistoryProjection,
@@ -43,7 +43,7 @@ pub struct WorkspaceState {
     pub diagnostics: Vec<String>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SpeculationPressureProjection {
     pub retained_candidate_count: usize,
     pub child_protected_candidate_count: usize,
@@ -53,13 +53,13 @@ pub struct SpeculationPressureProjection {
     pub over_budget_candidate_count: usize,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ScenarioManifestProjection {
     pub active: Option<String>,
     pub entries: Vec<ScenarioProjection>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ScenarioProjection {
     pub id: String,
     pub name: String,
@@ -71,18 +71,18 @@ pub struct ScenarioProjection {
     pub is_active: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ScenarioSourceProjection {
     Candidate { handle: String },
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SweepManifestProjection {
     pub active: Option<String>,
     pub entries: Vec<SweepProjection>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SweepProjection {
     pub id: String,
     pub name: String,
@@ -93,7 +93,7 @@ pub struct SweepProjection {
     pub is_active: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SweepPointProjection {
     pub id: String,
     pub label: String,
@@ -102,13 +102,13 @@ pub struct SweepPointProjection {
     pub value_epoch: Option<u64>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ComparativeProjection {
     pub basis: ComparativeColumnProjection,
     pub columns: Vec<ComparativeColumnProjection>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ComparativeColumnProjection {
     pub label: String,
     pub source: ComparativeSourceProjection,
@@ -116,7 +116,7 @@ pub struct ComparativeColumnProjection {
     pub values: BTreeMap<NodeKey, NodeValueProjection>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ComparativeSourceProjection {
     #[default]
     Published,
@@ -133,12 +133,12 @@ pub enum ComparativeSourceProjection {
     },
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SeriesManifestProjection {
     pub entries: Vec<SeriesProjection>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SeriesProjection {
     pub id: String,
     pub label: String,
@@ -147,19 +147,19 @@ pub struct SeriesProjection {
     pub points: Vec<SeriesPointProjection>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SeriesPointProjection {
     pub key: NodeKey,
     pub label: String,
     pub value: NodeValueProjection,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TemplateManifestProjection {
     pub entries: Vec<TemplateProjection>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TemplateProjection {
     pub template_id: String,
     pub name: String,
@@ -520,7 +520,7 @@ fn common_series_unit(
     common
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
 pub enum AuthoringScopeExpansionError {
     #[error("unknown authoring-scope node {node}")]
     UnknownNode { node: NodeKey },
@@ -546,7 +546,7 @@ fn dedupe_preserving_order(nodes: Vec<NodeKey>) -> Vec<NodeKey> {
         .collect()
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ActiveNodeDetailProjection {
     pub node: NodeId,
     pub node_key: NodeKey,
@@ -564,7 +564,7 @@ pub struct ActiveNodeDetailProjection {
     pub incoming_reference_handles: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ClipboardProjection {
     pub operation: ClipboardOperationProjection,
     pub payload: ClipboardPayloadProjection,
@@ -574,7 +574,7 @@ pub struct ClipboardProjection {
     pub plain_text: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ClipboardOperationProjection {
     Copy,
     Cut,
@@ -590,7 +590,7 @@ impl ClipboardOperationProjection {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ClipboardPayloadProjection {
     Values {
         nodes: Vec<ClipboardNodeValueProjection>,
@@ -610,7 +610,7 @@ pub enum ClipboardPayloadProjection {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ClipboardNodeValueProjection {
     pub node: NodeKey,
     pub path: NodeId,
@@ -625,14 +625,14 @@ pub struct ClipboardNodeValueProjection {
     pub value: NodeValueProjection,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ClipboardNodeFormatProjection {
     pub node: NodeKey,
     pub path: NodeId,
     pub effective_format: Option<EffectiveFormatProjection>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ActiveSelectionDetailProjection {
     Node(ActiveNodeDetailProjection),
     TableCell(ActiveTableCellDetailProjection),
@@ -648,7 +648,7 @@ impl ActiveSelectionDetailProjection {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ActiveTableCellDetailProjection {
     pub table: NodeId,
     pub table_id: String,
@@ -667,7 +667,7 @@ pub struct ActiveTableCellDetailProjection {
     pub incoming_reference_handles: Vec<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TableCellRegionProjection {
     Body,
     Totals,
@@ -689,7 +689,7 @@ impl fmt::Display for TableCellRegionProjection {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TableCellEditabilityProjection {
     DirectInput,
     FormulaBacked,
@@ -747,7 +747,7 @@ fn active_table_cell_editability(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NodeView {
     pub key: NodeKey,
     pub id: NodeId,
@@ -770,31 +770,31 @@ pub struct NodeView {
     pub table: Option<TableProjection>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NodeNoteProjection {
     pub text: String,
     pub source: NoteSourceProjection,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NoteSourceProjection {
     pub node: NodeId,
     pub node_key: NodeKey,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EffectiveFormatProjection {
     pub number_format_code: Option<String>,
     pub inherited_from: Option<FormatSourceProjection>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FormatSourceProjection {
     pub node: NodeId,
     pub node_key: NodeKey,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BindingDiagnosticProjection {
     pub node: NodeId,
     pub node_key: NodeKey,
@@ -802,7 +802,7 @@ pub struct BindingDiagnosticProjection {
     pub span: SourceSpanProjection,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum NodeContentKind {
     Empty,
     Constant,
@@ -902,7 +902,7 @@ impl NodeValueProjection {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorkspaceRevisionProjection {
     pub structural_snapshot_id: Option<String>,
     pub workspace_revision_id: Option<String>,
@@ -915,13 +915,13 @@ pub struct WorkspaceRevisionProjection {
     pub value_epoch: u64,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RevisionHistoryProjection {
     pub current_revision_id: Option<String>,
     pub entries: Vec<RevisionHistoryEntryProjection>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RevisionHistoryEntryProjection {
     pub revision_id: String,
     pub parent_revision_id: Option<String>,
@@ -933,7 +933,7 @@ pub struct RevisionHistoryEntryProjection {
     pub is_current: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RevisionTransactionSummaryProjection {
     pub transaction_id: String,
     pub invalidated_nodes: Vec<RevisionInvalidationSummaryEntryProjection>,
@@ -941,14 +941,14 @@ pub struct RevisionTransactionSummaryProjection {
     pub estimated_node_count: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RevisionInvalidationSummaryEntryProjection {
     pub node: NodeKey,
     pub requires_rebind: bool,
     pub reasons: Vec<InvalidationReasonProjection>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CandidateProjection {
     pub handle: String,
     pub basis_revision_id: String,
@@ -961,7 +961,7 @@ pub struct CandidateProjection {
     pub run: Option<CalcRunProjection>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CandidateNodeProjection {
     pub key: NodeKey,
     pub id: NodeId,
@@ -974,14 +974,14 @@ pub struct CandidateNodeProjection {
     pub is_meta: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CalcRunStateProjection {
     Published,
     VerifiedClean,
     Rejected,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CalcRunProjection {
     pub run_state: CalcRunStateProjection,
     pub evaluation_order: Vec<NodeId>,
@@ -997,7 +997,7 @@ pub struct CalcRunProjection {
     pub diagnostics: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RecalcPlanMutation {
     SetNodeInput {
         node: NodeId,
@@ -1073,7 +1073,7 @@ pub enum RecalcPlanMutation {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum InitialNodeContentProjection {
     Empty,
     Literal { content: String },
@@ -1102,7 +1102,7 @@ impl InitialNodeContentProjection {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RecalcPlanInvalidationProjection {
     pub node: NodeId,
     pub node_key: NodeKey,
@@ -1110,7 +1110,7 @@ pub struct RecalcPlanInvalidationProjection {
     pub reasons: Vec<InvalidationReasonProjection>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RecalcPlanProjection {
     pub invalidated_nodes: Vec<RecalcPlanInvalidationProjection>,
     pub evaluation_order: Vec<NodeId>,
@@ -1119,7 +1119,7 @@ pub struct RecalcPlanProjection {
     pub cycle_risk: Vec<Vec<NodeId>>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FormulaBindPreviewInputKind {
     Literal,
     Formula,
@@ -1141,7 +1141,7 @@ impl fmt::Display for FormulaBindPreviewInputKind {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FormulaBindPreviewDiagnosticStage {
     Syntax,
     Bind,
@@ -1163,14 +1163,14 @@ impl fmt::Display for FormulaBindPreviewDiagnosticStage {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FormulaBindPreviewDiagnosticProjection {
     pub stage: FormulaBindPreviewDiagnosticStage,
     pub message: String,
     pub span: SourceSpanProjection,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FormulaBindPreviewProfileViolationKindProjection {
     FunctionUnavailable {
         function_id: String,
@@ -1179,7 +1179,7 @@ pub enum FormulaBindPreviewProfileViolationKindProjection {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FormulaBindPreviewProfileViolationProjection {
     pub kind: FormulaBindPreviewProfileViolationKindProjection,
     pub feature: String,
@@ -1187,7 +1187,7 @@ pub struct FormulaBindPreviewProfileViolationProjection {
     pub span: SourceSpanProjection,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FormulaBindPreviewProjection {
     pub node: NodeId,
     pub node_key: NodeKey,
@@ -1197,7 +1197,7 @@ pub struct FormulaBindPreviewProjection {
     pub profile_violations: Vec<FormulaBindPreviewProfileViolationProjection>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TableFormulaBindPreviewProjection {
     pub table: NodeId,
     pub table_key: NodeKey,
@@ -1210,7 +1210,7 @@ pub struct TableFormulaBindPreviewProjection {
     pub profile_violations: Vec<FormulaBindPreviewProfileViolationProjection>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MutationImpactIntentProjection {
     AddNode {
         parent: Option<NodeId>,
@@ -1308,7 +1308,7 @@ impl MutationImpactIntentProjection {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MutationImpactBlockedReasonProjection {
     SyntaxDiagnostics,
     BindDiagnostics,
@@ -1342,14 +1342,14 @@ impl fmt::Display for MutationImpactBlockedReasonProjection {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NameCollisionProjection {
     pub attempted: String,
     pub existing: NodeId,
     pub existing_key: NodeKey,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MutationImpactProjection {
     pub intent: MutationImpactIntentProjection,
     pub legal: bool,
@@ -1363,14 +1363,14 @@ pub struct MutationImpactProjection {
     pub collisions: Vec<NameCollisionProjection>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RuntimeEffectProjection {
     pub kind: String,
     pub family: RuntimeEffectFamilyProjection,
     pub detail: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum RuntimeEffectFamilyProjection {
     DynamicDependency,
     ExecutionRestriction,
@@ -1396,7 +1396,7 @@ impl fmt::Display for RuntimeEffectFamilyProjection {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RuntimeOverlayProjection {
     pub owner: NodeId,
     pub owner_key: NodeKey,
@@ -1409,7 +1409,7 @@ pub struct RuntimeOverlayProjection {
     pub detail: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum RuntimeOverlayKindProjection {
     InvalidationExecutionState,
     DynamicDependency,
@@ -1439,7 +1439,7 @@ impl fmt::Display for RuntimeOverlayKindProjection {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DerivationTraceProjection {
     pub trace_schema_id: String,
     pub owner: NodeId,
@@ -1456,7 +1456,7 @@ pub struct DerivationTraceProjection {
     pub oxfml_trace_events: Vec<DerivationOxfmlTraceEventProjection>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DerivationTemplateSelectionProjection {
     pub prepared_formula_key: String,
     pub shape_key: String,
@@ -1465,7 +1465,7 @@ pub struct DerivationTemplateSelectionProjection {
     pub template_holes: Vec<DerivationTemplateHoleProjection>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DerivationTemplateHoleProjection {
     pub hole_id: String,
     pub ordinal: usize,
@@ -1473,13 +1473,13 @@ pub struct DerivationTemplateHoleProjection {
     pub kind: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DerivationHoleBindingProjection {
     pub hole_id: String,
     pub payload: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DerivationInvocationProjection {
     pub invocation_ordinal: usize,
     pub invocation_kind: String,
@@ -1492,7 +1492,7 @@ pub struct DerivationInvocationProjection {
     pub children: Vec<DerivationInvocationProjection>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DerivationPreparedArgumentProjection {
     pub ordinal: usize,
     pub structure_class: String,
@@ -1506,7 +1506,7 @@ pub struct DerivationPreparedArgumentProjection {
     pub resolved_value_typed: Option<NodeValueProjection>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DerivationOxfmlTraceEventProjection {
     pub trace_schema_id: String,
     pub event_kind: String,
@@ -1603,6 +1603,58 @@ impl PhaseKeyProjection {
             Self::Other(value) => value.as_str(),
         }
     }
+
+    /// Inverse of [`PhaseKeyProjection::stable_id`]; unknown ids project as
+    /// [`PhaseKeyProjection::Other`] so newer engines stay readable.
+    #[must_use]
+    pub fn from_stable_id(value: String) -> Self {
+        match value.as_str() {
+            "oxfml_prepare_formulas" => Self::OxfmlPrepareFormulas,
+            "dependency_descriptor_lowering" => Self::DependencyDescriptorLowering,
+            "dependency_descriptor_owner_index" => Self::DependencyDescriptorOwnerIndex,
+            "dependency_graph_build_and_cycle_scan" => Self::DependencyGraphBuildAndCycleScan,
+            "invalidation_closure_derivation" => Self::InvalidationClosureDerivation,
+            "runtime_setup" => Self::RuntimeSetup,
+            "diagnostic_seed_collection" => Self::DiagnosticSeedCollection,
+            "recalc_tracker_mark_dirty_needed" => Self::RecalcTrackerMarkDirtyNeeded,
+            "topological_formula_order" => Self::TopologicalFormulaOrder,
+            "rebind_gate_scan" => Self::RebindGateScan,
+            "dependency_diagnostic_reject_scan" => Self::DependencyDiagnosticRejectScan,
+            "edge_value_cache_lookup" => Self::EdgeValueCacheLookup,
+            "oxfml_formula_evaluation" => Self::OxfmlFormulaEvaluation,
+            "derivation_trace_record" => Self::DerivationTraceRecord,
+            "edge_value_cache_store" => Self::EdgeValueCacheStore,
+            "evaluation_loop_total" => Self::EvaluationLoopTotal,
+            "verified_clean_finalize" => Self::VerifiedCleanFinalize,
+            "candidate_publication" => Self::CandidatePublication,
+            "rejection_recording" => Self::RejectionRecording,
+            "total_engine_execute" => Self::TotalEngineExecute,
+            _ => Self::Other(value),
+        }
+    }
+}
+
+/// Manual serde impls: `PhaseKeyProjection` keys `phase_timings_micros`, and
+/// JSON map keys must be plain strings, which rules out the derived enum
+/// representation (the `Other(String)` variant would serialize as a
+/// single-entry object). The stable-id string is the wire form instead.
+impl Serialize for PhaseKeyProjection {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(self.stable_id())
+    }
+}
+
+impl<'de> Deserialize<'de> for PhaseKeyProjection {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        Ok(Self::from_stable_id(value))
+    }
 }
 
 impl fmt::Display for PhaseKeyProjection {
@@ -1611,7 +1663,7 @@ impl fmt::Display for PhaseKeyProjection {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NodeInvalidationProjection {
     pub node: NodeId,
     pub node_key: NodeKey,
@@ -1620,7 +1672,7 @@ pub struct NodeInvalidationProjection {
     pub reasons: Vec<InvalidationReasonProjection>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DependencyGraphProjection {
     pub descriptors_by_owner_key: BTreeMap<NodeKey, Vec<DependencyDescriptorProjection>>,
     pub edges_by_owner_key: BTreeMap<NodeKey, Vec<DependencyEdgeProjection>>,
@@ -1657,7 +1709,7 @@ impl DependencyGraphProjection {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DependencyDescriptorProjection {
     pub descriptor_id: String,
     pub source_reference_handle: Option<String>,
@@ -1670,7 +1722,7 @@ pub struct DependencyDescriptorProjection {
     pub requires_rebind_on_structural_change: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReferenceResolutionProjection {
     pub source_reference_handle: String,
     pub owner: NodeId,
@@ -1682,13 +1734,13 @@ pub struct ReferenceResolutionProjection {
     pub requires_rebind_on_structural_change: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SourceSpanProjection {
     pub start_utf8: usize,
     pub end_utf8: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ReferenceTargetProjection {
     Node {
         node: NodeId,
@@ -1704,7 +1756,7 @@ pub enum ReferenceTargetProjection {
     Unresolved,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DependencyEdgeProjection {
     pub edge_id: String,
     pub descriptor_id: String,
@@ -1715,7 +1767,7 @@ pub struct DependencyEdgeProjection {
     pub kind: DependencyKindProjection,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TreeReferenceCollectionProjection {
     pub family: TreeReferenceCollectionFamilyProjection,
     pub source_reference_handle: String,
@@ -1783,7 +1835,7 @@ impl fmt::Display for DependencyKindProjection {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum InvalidationReasonProjection {
     StructuralRebindRequired,
     StructuralRecalcOnly,
@@ -1837,7 +1889,7 @@ impl fmt::Display for InvalidationReasonProjection {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum TreeReferenceCollectionFamilyProjection {
     Children,
     ReferenceLiteralArray,
@@ -1869,7 +1921,7 @@ impl fmt::Display for TreeReferenceCollectionFamilyProjection {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TableProjection {
     pub table_id: String,
     pub table_name: String,
@@ -1890,7 +1942,7 @@ pub struct TableProjection {
     pub dependency_inventory: Vec<TableDependencyFactProjection>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TableAnchorProjection {
     pub workbook_scope_ref: String,
     pub sheet_scope_ref: String,
@@ -1898,7 +1950,7 @@ pub struct TableAnchorProjection {
     pub start_col: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TableDependencyFactProjection {
     pub fact_id: String,
     pub kind: TableDependencyFactKindProjection,
@@ -1910,7 +1962,7 @@ pub struct TableDependencyFactProjection {
     pub detail: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum TableDependencyFactKindProjection {
     TableIdentity,
     RowMembership,
@@ -1931,13 +1983,13 @@ pub enum TableDependencyFactKindProjection {
     FunctionRegistrySnapshot,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TableDependencyFactStatusProjection {
     Lowered,
     Blocked,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum TableDependencyFactBlockerProjection {
     MissingTableCatalogEntry,
     MissingEnclosingTableContext,
@@ -1954,13 +2006,13 @@ pub enum TableDependencyFactBlockerProjection {
     OmittedTableEnclosingMismatch,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TableCellsProjection {
     pub body_rows: Vec<Vec<Option<TableCellProjection>>>,
     pub totals_row: Vec<Option<TableCellProjection>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TableCellProjection {
     pub row_id: Option<String>,
     pub column_id: String,
@@ -1968,13 +2020,13 @@ pub struct TableCellProjection {
     pub value: NodeValueProjection,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TableRowProjection {
     pub row_id: String,
     pub ordinal: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TableColumnProjection {
     pub column_id: String,
     pub name: String,
@@ -1983,13 +2035,13 @@ pub struct TableColumnProjection {
     pub totals_formula: Option<TableFormulaMetadataProjection>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TableColumnBodyProjection {
     ConstantCells,
     Formula(TableFormulaMetadataProjection),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TableFormulaMetadataProjection {
     pub formula_artifact_id: String,
     pub bind_artifact_id: Option<String>,
@@ -2179,5 +2231,198 @@ fn cleave_number(node: Option<&NodeView>) -> Option<f64> {
     match node.map(|n| &n.computed_value) {
         Some(NodeValueProjection::Number { raw, .. }) => raw.parse::<f64>().ok(),
         _ => None,
+    }
+}
+
+/// Serializable-IR seam tests (stack requirement B.2.1): every projection that
+/// crosses the future worker `postMessage` boundary must survive
+/// serialize → deserialize unchanged, through `serde_json` specifically
+/// (the structured-clone fallback wire format).
+#[cfg(test)]
+mod serde_round_trip_tests {
+    use super::*;
+
+    fn round_trip<T>(value: &T) -> T
+    where
+        T: Serialize + serde::de::DeserializeOwned,
+    {
+        let json = serde_json::to_string(value).expect("serialize");
+        serde_json::from_str(&json).expect("deserialize")
+    }
+
+    #[test]
+    fn node_value_projection_nested_array_round_trips() {
+        let value = NodeValueProjection::Array {
+            rows: 2,
+            cols: 2,
+            cells: vec![
+                vec![
+                    NodeValueProjection::Number {
+                        raw: "1.5".to_string(),
+                        display: "1.50".to_string(),
+                    },
+                    NodeValueProjection::Array {
+                        rows: 1,
+                        cols: 2,
+                        cells: vec![vec![
+                            NodeValueProjection::Logical {
+                                value: true,
+                                display: "TRUE".to_string(),
+                            },
+                            NodeValueProjection::Reference {
+                                target: "model-path:Accounts.Income".to_string(),
+                            },
+                        ]],
+                    },
+                ],
+                vec![
+                    NodeValueProjection::Missing,
+                    NodeValueProjection::Error("#REF!".to_string()),
+                ],
+            ],
+        };
+        assert_eq!(round_trip(&value), value);
+    }
+
+    #[test]
+    fn workspace_state_default_round_trips() {
+        let state = WorkspaceState::default();
+        assert_eq!(round_trip(&state), state);
+    }
+
+    #[test]
+    fn calc_run_projection_with_phase_timings_round_trips() {
+        let mut phase_timings_micros = BTreeMap::new();
+        phase_timings_micros.insert(PhaseKeyProjection::TotalEngineExecute, 1_234_u128);
+        phase_timings_micros.insert(
+            PhaseKeyProjection::Other("custom_phase".to_string()),
+            56_789_u128,
+        );
+        let run = CalcRunProjection {
+            run_state: CalcRunStateProjection::VerifiedClean,
+            evaluation_order: vec![NodeId::new("Accounts.Income")],
+            runtime_effect_count: 1,
+            runtime_effects: vec![RuntimeEffectProjection {
+                kind: "volatile".to_string(),
+                family: RuntimeEffectFamilyProjection::DynamicDependency,
+                detail: "detail".to_string(),
+            }],
+            runtime_overlay_count: 0,
+            runtime_overlays: Vec::new(),
+            derivation_trace_count: 0,
+            derivation_traces: Vec::new(),
+            invalidated_nodes: vec![NodeInvalidationProjection {
+                node: NodeId::new("Accounts.Income"),
+                node_key: NodeKey::new("key:income"),
+                calc_state: NodeCalcStateProjection::DirtyPending,
+                requires_rebind: true,
+                reasons: vec![
+                    InvalidationReasonProjection::StructuralRebindRequired,
+                    InvalidationReasonProjection::DependencyAdded,
+                ],
+            }],
+            binding_diagnostics: Vec::new(),
+            phase_timings_micros,
+            diagnostics: vec!["diag".to_string()],
+        };
+        assert_eq!(round_trip(&run), run);
+
+        // The phase-timing map must key by stable id on the wire — JSON map
+        // keys are strings, so the manual impls are load-bearing here.
+        let json = serde_json::to_value(&run).expect("serialize");
+        assert_eq!(
+            json["phase_timings_micros"]["total_engine_execute"],
+            serde_json::json!(1_234)
+        );
+        assert_eq!(
+            json["phase_timings_micros"]["custom_phase"],
+            serde_json::json!(56_789)
+        );
+    }
+
+    #[test]
+    fn phase_key_round_trips_as_stable_id_including_unknown() {
+        let known: PhaseKeyProjection =
+            serde_json::from_str("\"oxfml_formula_evaluation\"").expect("deserialize");
+        assert_eq!(known, PhaseKeyProjection::OxfmlFormulaEvaluation);
+        let unknown: PhaseKeyProjection =
+            serde_json::from_str("\"some_future_phase\"").expect("deserialize");
+        assert_eq!(
+            unknown,
+            PhaseKeyProjection::Other("some_future_phase".to_string())
+        );
+        assert_eq!(
+            serde_json::to_string(&unknown).expect("serialize"),
+            "\"some_future_phase\""
+        );
+    }
+
+    #[test]
+    fn derivation_trace_projection_round_trips() {
+        let trace = DerivationTraceProjection {
+            trace_schema_id: "trace-v1".to_string(),
+            owner: NodeId::new("Accounts.Total"),
+            owner_key: NodeKey::new("key:total"),
+            formula_artifact_id: "formula:1".to_string(),
+            bind_artifact_id: None,
+            formula_stable_id: "stable:1".to_string(),
+            trace_mode: "full".to_string(),
+            template_selection: DerivationTemplateSelectionProjection {
+                prepared_formula_key: "pf:1".to_string(),
+                shape_key: "shape:1".to_string(),
+                dispatch_skeleton_key: "skeleton:1".to_string(),
+                plan_template_key: "plan:1".to_string(),
+                template_holes: Vec::new(),
+            },
+            hole_bindings: vec![DerivationHoleBindingProjection {
+                hole_id: "hole:0".to_string(),
+                payload: "payload".to_string(),
+            }],
+            sub_invocation_tree: vec![DerivationInvocationProjection {
+                invocation_ordinal: 0,
+                invocation_kind: "function".to_string(),
+                function_name: "SUM".to_string(),
+                function_id: "fn:sum".to_string(),
+                arg_preparation_profile: None,
+                prepared_arguments: Vec::new(),
+                kernel_returned_value: Some("3".to_string()),
+                kernel_returned_value_typed: Some(NodeValueProjection::Number {
+                    raw: "3".to_string(),
+                    display: "3".to_string(),
+                }),
+                children: Vec::new(),
+            }],
+            kernel_returned_value: "3".to_string(),
+            kernel_returned_value_typed: None,
+            oxfml_trace_events: Vec::new(),
+        };
+        assert_eq!(round_trip(&trace), trace);
+    }
+
+    #[test]
+    fn revision_history_projection_round_trips() {
+        let history = RevisionHistoryProjection {
+            current_revision_id: Some("rev:2".to_string()),
+            entries: vec![RevisionHistoryEntryProjection {
+                revision_id: "rev:2".to_string(),
+                parent_revision_id: Some("rev:1".to_string()),
+                structural_snapshot_id: "structural:2".to_string(),
+                node_input_snapshot_id: "input:2".to_string(),
+                namespace_snapshot_id: "namespace:2".to_string(),
+                transaction_id: Some("txn:9".to_string()),
+                transaction_summary: Some(RevisionTransactionSummaryProjection {
+                    transaction_id: "txn:9".to_string(),
+                    invalidated_nodes: vec![RevisionInvalidationSummaryEntryProjection {
+                        node: NodeKey::new("key:income"),
+                        requires_rebind: true,
+                        reasons: vec![InvalidationReasonProjection::TreeReferenceMembershipChanged],
+                    }],
+                    requires_rebind: vec![NodeKey::new("key:income")],
+                    estimated_node_count: 3,
+                }),
+                is_current: true,
+            }],
+        };
+        assert_eq!(round_trip(&history), history);
     }
 }

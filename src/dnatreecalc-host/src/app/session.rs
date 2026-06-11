@@ -5271,7 +5271,7 @@ impl TreeWorkspaceSession {
 
         let mut state = WorkspaceState {
             workspace_id: self.workspace_id.as_str().to_string(),
-            profile: self.profile,
+            profile: self.profile.to_string(),
             projection_seq: 0,
             revision,
             revision_history,

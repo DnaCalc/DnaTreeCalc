@@ -2,9 +2,10 @@ use std::sync::Arc;
 
 use dnatreecalc_skin_framework::{
     Dispatcher, ErasedSkinContext, KeyChord, KeybindingRegistry, NodeId, PersistedSkinStateRecord,
-    SelectionState, SharedSkinStateHandle, SharedStateChange, SharedStateOrigin, SkinId,
-    SkinMountSlot, SkinRegistry, SkinStatePersistenceKey, SkinStatePersistenceStore, SkinVerb,
-    ThemeTokens, WorkspaceDelta, WorkspaceIntent, WorkspaceRecalcMode, WorkspaceState,
+    Persona, PreviewService, SelectionState, SharedSkinStateHandle, SharedStateChange,
+    SharedStateOrigin,
+    SkinId, SkinMountSlot, SkinRegistry, SkinStatePersistenceKey, SkinStatePersistenceStore,
+    SkinVerb, ThemeTokens, WorkspaceDelta, WorkspaceIntent, WorkspaceRecalcMode, WorkspaceState,
 };
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -191,6 +192,7 @@ struct SlotParts {
     skin_state_store: Arc<dyn SkinStatePersistenceStore>,
     dispatch: Arc<dyn Dispatcher>,
     registry: Arc<SkinRegistry>,
+    preview: Option<Arc<dyn PreviewService>>,
 }
 
 /// The cockpit workspace shell.
@@ -216,6 +218,7 @@ pub fn WorkspaceShell(
     registry: Arc<SkinRegistry>,
     initial_skin: SkinId,
     tokens: ThemeTokens,
+    #[prop(optional)] preview: Option<Arc<dyn PreviewService>>,
 ) -> impl IntoView {
     let initial_workspace_id = workspace.get_untracked().workspace_id;
     let layout = RwSignal::new(
@@ -236,6 +239,7 @@ pub fn WorkspaceShell(
         skin_state_store: skin_state_store.clone(),
         dispatch: dispatch.clone(),
         registry: registry.clone(),
+        preview,
     };
 
     // The workspace the current layout belongs to — saves are keyed by this,
@@ -292,7 +296,7 @@ pub fn WorkspaceShell(
             }
         })
     });
-    let profile = Memo::new(move |_| workspace.with(|ws| ws.profile));
+    let profile = Memo::new(move |_| workspace.with(|ws| ws.profile.clone()));
     let node_count = Memo::new(move |_| workspace.with(WorkspaceState::len));
     let selected_label = Memo::new(move |_| {
         selection.with(|s| {
@@ -404,6 +408,7 @@ pub fn WorkspaceShell(
                 <span>{move || format!("selected: {}", selected_label.get())}</span>
                 <span class="dtc-context-strip__spacer"></span>
                 <CompanionToggles registry=registry.clone() layout=layout />
+                <PersonaControl shared=shared dispatch=dispatch.clone() />
                 <RecalcModeControl
                     shared=shared
                     dispatch=dispatch.clone()
@@ -469,6 +474,7 @@ fn SlotView(parts: SlotParts, layout: RwSignal<CockpitLayout>, mount_slot: SkinM
                     slot: mount_slot,
                     skin_state_store: parts.skin_state_store.clone(),
                     dispatch: parts.dispatch.clone(),
+                    preview: parts.preview.clone(),
                 };
                 let handle = registered.mount(cx);
                 if let Some(hook) = handle.on_deactivate {
@@ -933,6 +939,37 @@ fn RecalcModeControl(
                 <kbd>"Ctrl Enter"</kbd>
             </button>
         </div>
+    }
+}
+
+/// Governing-persona selector. Persona switching travels as an intent so it
+/// is logged, receipted, and reflected into audited shared state by the host.
+#[component]
+fn PersonaControl(shared: SharedSkinStateHandle, dispatch: Arc<dyn Dispatcher>) -> impl IntoView {
+    let shared_signal = shared.signal();
+    let current = Memo::new(move |_| shared_signal.with(|s| s.persona.stable_id().to_string()));
+    let personas = [Persona::Author, Persona::Reviewer, Persona::ReadOnly];
+
+    view! {
+        <select
+            class="dtc-persona-control"
+            aria-label="Governing persona"
+            prop:value=move || current.get()
+            on:change=move |ev| {
+                let id = event_target_value(&ev);
+                if let Some(persona) = [Persona::Author, Persona::Reviewer, Persona::ReadOnly]
+                    .into_iter()
+                    .find(|p| p.stable_id() == id)
+                {
+                    dispatch.dispatch(WorkspaceIntent::SetPersona { persona });
+                }
+            }
+        >
+            {personas
+                .into_iter()
+                .map(|p| view! { <option value=p.stable_id()>{p.stable_id()}</option> })
+                .collect::<Vec<_>>()}
+        </select>
     }
 }
 

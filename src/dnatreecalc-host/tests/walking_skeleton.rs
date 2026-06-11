@@ -206,6 +206,7 @@ fn mounting_and_switching_skins_never_recalculates_the_oxcalc_context() {
         slot: SkinMountSlot::Main,
         skin_state_store: skin_state_store.clone(),
         dispatch: dispatch.clone(),
+        preview: None,
     };
     let handle_a = registry
         .get(TRIPLE_EDITOR_ID)
@@ -226,6 +227,7 @@ fn mounting_and_switching_skins_never_recalculates_the_oxcalc_context() {
         slot: SkinMountSlot::Main,
         skin_state_store,
         dispatch: dispatch.clone(),
+        preview: None,
     };
     let handle_b = registry
         .get(OUTLINE_TABLE_ID)
@@ -278,6 +280,7 @@ fn selection_signal_visible_to_both_skins_via_their_contexts() {
         slot: SkinMountSlot::Main,
         skin_state_store: skin_state_store.clone(),
         dispatch: dispatch.clone(),
+        preview: None,
     };
     let cx_for_second = ErasedSkinContext {
         workspace: workspace.read_only(),
@@ -288,6 +291,7 @@ fn selection_signal_visible_to_both_skins_via_their_contexts() {
         slot: SkinMountSlot::Main,
         skin_state_store,
         dispatch,
+        preview: None,
     };
 
     dispatcher.dispatch(WorkspaceIntent::SelectNode(Some(NodeId::new(
@@ -762,6 +766,7 @@ fn walking_skeleton_click_through_harness_edits_switches_saves_and_reopens() {
             slot: SkinMountSlot::Main,
             skin_state_store: skin_state_store.clone(),
             dispatch: dispatch.clone(),
+            preview: None,
         };
         let handle = registry
             .get(skin_id)

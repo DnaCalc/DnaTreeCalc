@@ -14,6 +14,8 @@ pub mod identity;
 pub mod intent;
 pub mod keybinding;
 pub mod manifest;
+pub mod permissions;
+pub mod preview;
 pub mod registry;
 pub mod selection;
 pub mod skin;
@@ -37,6 +39,8 @@ pub use intent::{
 };
 pub use keybinding::{KeyChord, KeybindingRegistry, SkinVerb};
 pub use manifest::{CapabilityError, SkinCapabilities, SkinCategory, SkinManifest};
+pub use permissions::Persona;
+pub use preview::{PreviewError, PreviewService};
 pub use registry::SkinRegistry;
 pub use selection::{SelectionState, TableCellSelection};
 pub use skin::{

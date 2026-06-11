@@ -231,6 +231,7 @@ fn registry_mount_invokes_typed_skin_with_default_state() {
         slot: SkinMountSlot::Main,
         skin_state_store,
         dispatch: dispatcher,
+        preview: None,
     };
 
     let skin = registry.get(id).expect("registered skin must resolve");
@@ -662,6 +663,7 @@ fn mount_persisted_skin(
         slot,
         skin_state_store: store,
         dispatch: dispatcher,
+        preview: None,
     });
     drop(handle);
 }
@@ -669,7 +671,7 @@ fn mount_persisted_skin(
 fn workspace_with_nodes(nodes: Vec<NodeView>) -> WorkspaceState {
     let mut workspace = WorkspaceState {
         workspace_id: "workspace:test".to_string(),
-        profile: "test",
+        profile: "test".to_string(),
         revision: WorkspaceRevisionProjection {
             workspace_revision_id: Some("rev:1".to_string()),
             ..WorkspaceRevisionProjection::default()

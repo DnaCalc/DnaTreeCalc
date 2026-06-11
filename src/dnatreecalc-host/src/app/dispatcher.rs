@@ -4,10 +4,11 @@ use dnatreecalc_skin_framework::{
     AuthoringScope, CandidateProjection, ClipboardNodeFormatProjection,
     ClipboardNodeValueProjection, ClipboardOperationProjection, ClipboardPayloadKind,
     ClipboardPayloadProjection, ClipboardProjection, DependencyDeltaProjection, Dispatcher,
-    IntentError, IntentReceipt, NodeContentKind, NodeId, NodeKey, NodeValueDeltaProjection,
-    NodeValueProjection, NodeView, SelectionState, SharedSkinStateHandle, SharedStateChange,
-    SharedStateOrigin, StructuralDeltaProjection, TableCellSelection, WorkspaceDelta,
-    WorkspaceDeltaChange, WorkspaceIntent, WorkspaceState,
+    FormulaBindPreviewProjection, IntentError, IntentReceipt, MutationImpactIntentProjection,
+    MutationImpactProjection, NodeContentKind, NodeId, NodeKey, NodeValueDeltaProjection, Persona,
+    NodeValueProjection, NodeView, PreviewError, PreviewService, SelectionState,
+    SharedSkinStateHandle, SharedStateChange, SharedStateOrigin, StructuralDeltaProjection,
+    TableCellSelection, WorkspaceDelta, WorkspaceDeltaChange, WorkspaceIntent, WorkspaceState,
 };
 use leptos::prelude::*;
 use oxcalc_core::consumer::TransactionRecalcPolicy;
@@ -52,6 +53,7 @@ pub struct HostDispatcher {
     undo_stack: Mutex<Vec<RevisionCursorEntry>>,
     redo_stack: Mutex<Vec<RevisionCursorEntry>>,
     log: Mutex<Vec<WorkspaceIntent>>,
+    persona: Mutex<Persona>,
 }
 
 #[derive(Debug, Clone)]
@@ -76,6 +78,7 @@ impl HostDispatcher {
             undo_stack: Mutex::new(Vec::new()),
             redo_stack: Mutex::new(Vec::new()),
             log: Mutex::new(Vec::new()),
+            persona: Mutex::new(Persona::default()),
         }
     }
 
@@ -151,6 +154,7 @@ impl HostDispatcher {
             undo_stack: Mutex::new(Vec::new()),
             redo_stack: Mutex::new(Vec::new()),
             log: Mutex::new(Vec::new()),
+            persona: Mutex::new(Persona::default()),
         };
         dispatcher.hydrate_workspace_sessions_from_document_store(&workspace_id);
         dispatcher
@@ -174,7 +178,29 @@ impl Dispatcher for HostDispatcher {
             .lock()
             .expect("dispatcher log poisoned")
             .push(intent.clone());
+        // Governance chokepoint (tenet 9): the persona policy gates every
+        // intent BEFORE any host or engine work. Persona switching itself is
+        // always dispatchable in this first slice (audited via the log, the
+        // receipt, and the shared-state audit ring).
+        if !matches!(intent, WorkspaceIntent::SetPersona { .. }) {
+            let persona = *self.persona.lock().expect("persona mutex poisoned");
+            if !persona.allows(&intent) {
+                return self.reject_current(IntentError::Forbidden {
+                    persona: persona.stable_id().to_string(),
+                });
+            }
+        }
         let receipt = match intent {
+            WorkspaceIntent::SetPersona { persona } => {
+                *self.persona.lock().expect("persona mutex poisoned") = persona;
+                if let Some(shared) = self.shared {
+                    shared.apply(
+                        SharedStateChange::SetPersona(persona),
+                        SharedStateOrigin::Host,
+                    );
+                }
+                IntentReceipt::accepted().with_delta(self.publish_unchanged_delta())
+            }
             WorkspaceIntent::SelectNode(target) => {
                 self.selection.set(SelectionState::with_primary(target));
                 IntentReceipt::accepted().with_delta(self.publish_unchanged_delta())
@@ -1550,6 +1576,116 @@ impl HostDispatcher {
             delta,
             produced_revision,
             transaction_id: None,
+        })
+    }
+
+    /// Read-only access to the active session for non-mutating previews.
+    /// Takes the same session mutex as edits, so a preview can never observe
+    /// a half-applied transaction.
+    fn with_active_session_read<R>(
+        &self,
+        f: impl FnOnce(&TreeWorkspaceSession) -> Result<R, TreeWorkspaceSessionError>,
+    ) -> Result<R, PreviewError> {
+        let session_id = self
+            .active_session_id()
+            .map_err(|error| PreviewError::Host(error.to_string()))?;
+        HOST_SESSIONS.with(|sessions| {
+            let session = sessions
+                .borrow()
+                .get(&session_id)
+                .cloned()
+                .ok_or_else(|| PreviewError::Host("workspace session is not available".into()))?;
+            let session = session
+                .lock()
+                .map_err(|_| PreviewError::Host("workspace session mutex poisoned".into()))?;
+            f(&session).map_err(|error| PreviewError::Host(error.to_string()))
+        })
+    }
+}
+
+/// The live host answers previews from the same session that executes intents
+/// (tenet 7: the dispatcher that mutates can also report, without mutating,
+/// what an intent would do). Every arm forwards to a session `preview_*`
+/// method; nothing here computes legality host-side.
+impl PreviewService for HostDispatcher {
+    fn preview_formula_bind(
+        &self,
+        node: &NodeId,
+        content: &str,
+    ) -> Result<FormulaBindPreviewProjection, PreviewError> {
+        self.with_active_session_read(|session| session.preview_formula_bind(node, content))
+    }
+
+    fn preview_mutation_impact(
+        &self,
+        intent: &MutationImpactIntentProjection,
+    ) -> Result<MutationImpactProjection, PreviewError> {
+        use MutationImpactIntentProjection as P;
+        self.with_active_session_read(|session| match intent {
+            P::AddNode {
+                parent,
+                symbol,
+                initial,
+                is_meta,
+            } => session.preview_add_node_impact(parent.as_ref(), symbol, initial.clone(), *is_meta),
+            P::EditContent { node, content } => {
+                session.preview_content_edit_impact(node, content)
+            }
+            P::EditScopedContent { scope, content } => {
+                session.preview_scoped_content_edit_impact(scope.clone(), content)
+            }
+            P::RenameNode { node, new_symbol } => {
+                session.preview_rename_node_impact(node, new_symbol)
+            }
+            P::MoveNode {
+                node,
+                new_parent,
+                new_index,
+            } => session.preview_move_node_impact(node, new_parent.as_ref(), *new_index),
+            P::DeleteNode { node } => session.preview_delete_node_impact(node),
+            P::AddTableFormulaColumn {
+                table,
+                column_id,
+                name,
+                formula_text,
+            } => session.preview_new_table_column_formula_impact(table, column_id, name, formula_text),
+            P::AddTableRow {
+                table,
+                row_id,
+                values,
+            } => session.preview_add_table_row_impact(table, row_id, values.clone()),
+            P::DeleteTableRow { table, row_id } => {
+                session.preview_delete_table_row_impact(table, row_id)
+            }
+            P::RenameTableRow {
+                table,
+                row_id,
+                new_row_id,
+            } => session.preview_rename_table_row_impact(table, row_id, new_row_id),
+            P::ReorderTableRow {
+                table,
+                row_id,
+                new_index,
+            } => session.preview_reorder_table_row_impact(table, row_id, *new_index),
+            P::AddTableColumn {
+                table,
+                column_id,
+                name,
+                values,
+            } => session.preview_add_table_column_impact(table, column_id, name, values.clone()),
+            P::DeleteTableColumn { table, column_id } => {
+                session.preview_delete_table_column_impact(table, column_id)
+            }
+            P::RenameTableColumn {
+                table,
+                column_id,
+                name,
+            } => session.preview_rename_table_column_impact(table, column_id, name),
+            P::ReorderTableColumn {
+                table,
+                column_id,
+                new_index,
+            } => session.preview_reorder_table_column_impact(table, column_id, *new_index),
         })
     }
 }

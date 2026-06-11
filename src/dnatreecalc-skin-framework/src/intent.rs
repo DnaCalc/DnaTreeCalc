@@ -8,13 +8,14 @@ use crate::workspace::{
     InitialNodeContentProjection, NodeValueProjection, ScenarioProjection, SweepProjection,
 };
 use leptos::prelude::*;
+use serde::{Deserialize, Serialize};
 
 /// Typed subject for authoring verbs.
 ///
 /// Skins may carry this value through commands, palettes, previews, and future
 /// mutating intents, but scope expansion is host-owned because subtree
 /// membership and reference-collection membership are projection/engine truth.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AuthoringScope {
     Node(NodeKey),
     Nodes(Vec<NodeKey>),
@@ -29,13 +30,13 @@ pub enum AuthoringScope {
 ///
 /// Attributes are model metadata, not formula-visible values. The host owns the
 /// attribute storage policy and persists patches through revisioned model edits.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NodeAttributePatch {
     pub set: BTreeMap<String, String>,
     pub clear: BTreeSet<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FormulaReferenceInsertionTarget {
     Node(NodeKey),
     HostReferenceCollection {
@@ -48,7 +49,7 @@ pub enum FormulaReferenceInsertionTarget {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FormulaReferenceInsertionProjection {
     pub node: NodeKey,
     pub target: FormulaReferenceInsertionTarget,
@@ -58,7 +59,7 @@ pub struct FormulaReferenceInsertionProjection {
     pub applied_len: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SweepPointInput {
     pub point_id: String,
     pub label: String,
@@ -96,7 +97,7 @@ impl NodeAttributePatch {
 /// structural edits land with W003, format/template ops with W007.
 /// Adding a variant later is a deliberate extension — skins compile
 /// against the closed set so each addition is reviewed.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum WorkspaceIntent {
     /// Replace the host-wide primary selection. `None` clears.
@@ -461,21 +462,27 @@ pub enum WorkspaceIntent {
     Undo,
     /// Navigate forward after undo using OxCalc-retained revisions.
     Redo,
+    /// Switch the governing persona. Travels as an intent so persona changes
+    /// are audited like everything else; the dispatcher enforces the policy
+    /// per intent origin (tenet 9). First slice: any persona may switch.
+    SetPersona {
+        persona: crate::permissions::Persona,
+    },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TableCellInput {
     pub column_id: String,
     pub content: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TableRowInput {
     pub row_id: String,
     pub content: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ClipboardPayloadKind {
     Values,
     Formula,
@@ -502,7 +509,7 @@ impl ClipboardPayloadKind {
 /// for asynchronous intents (e.g., long template sync); the skeleton
 /// uses only synchronous selection + formula edits, so that field
 /// is omitted until W007.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IntentReceipt {
     pub accepted: bool,
     pub error: Option<IntentError>,
@@ -553,7 +560,7 @@ impl IntentReceipt {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error, Serialize, Deserialize)]
 pub enum IntentError {
     #[error("intent variant not yet supported by this dispatcher")]
     Unsupported,
@@ -655,11 +662,13 @@ pub enum IntentError {
     EmptySweep { sweep_id: String },
     #[error("engine rejected the intent: {0}")]
     EngineRejected(String),
+    #[error("intent is forbidden for the {persona} persona")]
+    Forbidden { persona: String },
     #[error("host failed to dispatch the intent: {0}")]
     HostFailure(String),
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorkspaceDelta {
     pub from_seq: u64,
     pub to_seq: u64,
@@ -677,7 +686,7 @@ impl WorkspaceDelta {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum WorkspaceDeltaChange {
     FullReset,
     Structural(StructuralDeltaProjection),
@@ -695,20 +704,20 @@ pub enum WorkspaceDeltaChange {
     SweepRemoved(String),
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StructuralDeltaProjection {
     pub added: Vec<NodeKey>,
     pub removed: Vec<NodeKey>,
     pub changed: Vec<NodeKey>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NodeValueDeltaProjection {
     pub node: NodeKey,
     pub value: NodeValueProjection,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DependencyDeltaProjection {
     pub owner: NodeKey,
     pub kinds: Vec<DependencyKindProjection>,
@@ -849,7 +858,134 @@ impl Dispatcher for InMemoryDispatcher {
             | WorkspaceIntent::SwitchWorkspace { .. }
             | WorkspaceIntent::NavigateRevision { .. }
             | WorkspaceIntent::Undo
-            | WorkspaceIntent::Redo => IntentReceipt::accepted(),
+            | WorkspaceIntent::Redo
+            | WorkspaceIntent::SetPersona { .. } => IntentReceipt::accepted(),
         }
+    }
+}
+
+#[cfg(test)]
+mod serde_round_trip_tests {
+    use super::*;
+
+    fn round_trip<T>(value: &T) -> T
+    where
+        T: Serialize + serde::de::DeserializeOwned,
+    {
+        let json = serde_json::to_string(value).expect("serialize");
+        serde_json::from_str(&json).expect("deserialize")
+    }
+
+    #[test]
+    fn structural_move_node_intent_round_trips() {
+        let intent = WorkspaceIntent::MoveNode {
+            node: NodeId::new("Accounts.2005.Q1.Margin"),
+            new_parent: Some(NodeId::new("Accounts.2006")),
+            new_index: Some(2),
+        };
+        assert_eq!(round_trip(&intent), intent);
+    }
+
+    #[test]
+    fn add_candidate_node_intent_round_trips() {
+        let intent = WorkspaceIntent::AddCandidateNode {
+            handle: "cand-7".to_string(),
+            parent: Some(NodeKey::new("tree-node:42")),
+            symbol: "Margin".to_string(),
+            initial: InitialNodeContentProjection::Literal {
+                content: "=Revenue - Costs".to_string(),
+            },
+            is_meta: false,
+        };
+        assert_eq!(round_trip(&intent), intent);
+    }
+
+    #[test]
+    fn create_scenario_sweep_intent_round_trips() {
+        let intent = WorkspaceIntent::CreateScenarioSweep {
+            sweep_id: "sweep-1".to_string(),
+            name: "Discount rate".to_string(),
+            base_scenario_id: Some("scenario-base".to_string()),
+            input_node: NodeKey::new("tree-node:9"),
+            points: vec![
+                SweepPointInput {
+                    point_id: "p1".to_string(),
+                    label: "Low".to_string(),
+                    value: NodeValueProjection::Number {
+                        raw: "0.05".to_string(),
+                        display: "5%".to_string(),
+                    },
+                },
+                SweepPointInput {
+                    point_id: "p2".to_string(),
+                    label: "High".to_string(),
+                    value: NodeValueProjection::Number {
+                        raw: "0.12".to_string(),
+                        display: "12%".to_string(),
+                    },
+                },
+            ],
+        };
+        assert_eq!(round_trip(&intent), intent);
+    }
+
+    #[test]
+    fn candidate_rebase_conflict_error_round_trips() {
+        let error = IntentError::CandidateRebaseConflict {
+            handle: "cand-7".to_string(),
+            basis_revision_id: "rev-10".to_string(),
+            current_revision_id: "rev-12".to_string(),
+            overlapping_nodes: vec![NodeKey::new("tree-node:3"), NodeKey::new("tree-node:8")],
+        };
+        assert_eq!(round_trip(&error), error);
+    }
+
+    #[test]
+    fn workspace_delta_with_mixed_changes_round_trips() {
+        let delta = WorkspaceDelta {
+            from_seq: 41,
+            to_seq: 42,
+            changes: vec![
+                WorkspaceDeltaChange::FullReset,
+                WorkspaceDeltaChange::Structural(StructuralDeltaProjection {
+                    added: vec![NodeKey::new("tree-node:1")],
+                    removed: vec![NodeKey::new("tree-node:2")],
+                    changed: vec![NodeKey::new("tree-node:3")],
+                }),
+                WorkspaceDeltaChange::NodesChanged(vec![NodeKey::new("tree-node:4")]),
+                WorkspaceDeltaChange::ValuesChanged(vec![NodeValueDeltaProjection {
+                    node: NodeKey::new("tree-node:5"),
+                    value: NodeValueProjection::Logical {
+                        value: true,
+                        display: "TRUE".to_string(),
+                    },
+                }]),
+                WorkspaceDeltaChange::DepsChanged(vec![DependencyDeltaProjection {
+                    owner: NodeKey::new("tree-node:6"),
+                    kinds: vec![
+                        DependencyKindProjection::StaticDirect,
+                        DependencyKindProjection::ShapeTopology,
+                    ],
+                }]),
+                WorkspaceDeltaChange::ClipboardChanged(None),
+                WorkspaceDeltaChange::FormulaReferenceInserted(
+                    FormulaReferenceInsertionProjection {
+                        node: NodeKey::new("tree-node:7"),
+                        target: FormulaReferenceInsertionTarget::HostReferenceCollection {
+                            base: Some(NodeKey::new("tree-node:8")),
+                            collection_family: "children".to_string(),
+                        },
+                        inserted_text: "@CHILDREN".to_string(),
+                        updated_formula_text: "=SUM(@CHILDREN)".to_string(),
+                        applied_start: 5,
+                        applied_len: 9,
+                    },
+                ),
+                WorkspaceDeltaChange::CandidateRemoved("cand-7".to_string()),
+                WorkspaceDeltaChange::ScenarioRemoved("scenario-1".to_string()),
+                WorkspaceDeltaChange::SweepRemoved("sweep-1".to_string()),
+            ],
+        };
+        assert_eq!(round_trip(&delta), delta);
     }
 }

@@ -229,7 +229,9 @@ pub fn mount_dnatreecalc(element_id: &str) -> Result<(), JsValue> {
         Some(shared),
         Some(workspace_document_store),
     ));
-    let dispatch: Arc<dyn Dispatcher> = dispatcher;
+    let dispatch: Arc<dyn Dispatcher> = dispatcher.clone();
+    // The live dispatcher also answers non-mutating previews (tenet 7).
+    let preview: Arc<dyn dnatreecalc_skin_framework::PreviewService> = dispatcher;
 
     let registry = Arc::new(build_default_registry());
 
@@ -245,6 +247,7 @@ pub fn mount_dnatreecalc(element_id: &str) -> Result<(), JsValue> {
                 registry=registry.clone()
                 initial_skin=FLOW_ID
                 tokens=ThemeTokens::light()
+                preview=preview.clone()
             />
         }
     });

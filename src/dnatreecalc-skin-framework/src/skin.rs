@@ -5,6 +5,7 @@ use leptos::prelude::*;
 use crate::identity::{NodeKey, SkinId, SkinMountSlot};
 use crate::intent::{Dispatcher, WorkspaceDelta};
 use crate::manifest::{SkinCapabilities, SkinManifest};
+use crate::preview::PreviewService;
 use crate::selection::SelectionState;
 use crate::state::{
     SharedSkinStateHandle, SkinState, SkinStateHandle, SkinStatePersistenceKey,
@@ -32,6 +33,9 @@ pub struct SkinContext<S: SkinState> {
     pub slot: SkinMountSlot,
     pub state: SkinStateHandle<S>,
     pub dispatch: Arc<dyn Dispatcher>,
+    /// Non-mutating foresight (tenet 7). `None` in minimal hosts/tests;
+    /// lenses degrade to post-attempt receipt feedback.
+    pub preview: Option<Arc<dyn PreviewService>>,
 }
 
 /// Type-erased context the registry hands to an [`ErasedSkinFactory`].
@@ -49,6 +53,7 @@ pub struct ErasedSkinContext {
     pub slot: SkinMountSlot,
     pub skin_state_store: Arc<dyn SkinStatePersistenceStore>,
     pub dispatch: Arc<dyn Dispatcher>,
+    pub preview: Option<Arc<dyn PreviewService>>,
 }
 
 /// What a mounted skin returns to the host: a renderable view and an
@@ -154,6 +159,7 @@ impl<K: WorkspaceSkin> ErasedSkinFactory for TypedFactory<K> {
             slot: cx.slot,
             state: typed_state,
             dispatch: cx.dispatch,
+            preview: cx.preview,
         };
         self.skin.mount(typed_cx)
     }

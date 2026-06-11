@@ -18,9 +18,9 @@
 use std::sync::Arc;
 
 use dnatreecalc_skin_framework::{
-    Dispatcher, IntentReceipt, NodeId, NodeValueProjection, SelectionState, SharedSkinStateHandle,
-    SharedStateChange, SharedStateOrigin, WorkspaceIntent, WorkspaceRecalcMode, WorkspaceState,
-    calc_state_class,
+    Dispatcher, FormulaBindPreviewProjection, IntentReceipt, NodeId, NodeValueProjection,
+    PreviewService, SelectionState, SharedSkinStateHandle, SharedStateChange, SharedStateOrigin,
+    WorkspaceIntent, WorkspaceRecalcMode, WorkspaceState, calc_state_class,
 };
 use leptos::prelude::*;
 use leptos::wasm_bindgen::JsCast;
@@ -237,7 +237,7 @@ pub(crate) fn ConsoleBar(
             })
     });
     let health = Memo::new(move |_| workspace.with(health_tallies));
-    let profile = Memo::new(move |_| workspace.with(|ws| ws.profile));
+    let profile = Memo::new(move |_| workspace.with(|ws| ws.profile.clone()));
 
     view! {
         {move || {
@@ -294,6 +294,7 @@ pub(crate) fn NodeInspector(
     edit_ref: NodeRef<leptos::html::Textarea>,
     commit: Arc<dyn Fn() + Send + Sync>,
     shared: SharedSkinStateHandle,
+    #[prop(optional_no_strip)] preview: Option<Arc<dyn PreviewService>>,
     #[prop(optional)] standalone: bool,
     #[prop(optional)] children: Option<ChildrenFn>,
 ) -> impl IntoView {
@@ -309,6 +310,27 @@ pub(crate) fn NodeInspector(
         Memo::new(move |_| selection.with(|sel| workspace.with(|ws| ws.active_node_detail(sel))));
     let commit_for_button = commit.clone();
     let commit_for_keys = commit;
+
+    // Live legality (tenet 7): while the buffer is being edited and the host
+    // offers foresight, dry-bind the prospective content through the engine
+    // and surface the typed verdict — never computed lens-side. Synchronous
+    // per keystroke; cheap at interactive model sizes (OxFml parse+bind only).
+    let live_verdict = RwSignal::new(Option::<FormulaBindPreviewProjection>::None);
+    if let Some(service) = preview.clone() {
+        Effect::new(move |_| {
+            if !editing.get() {
+                live_verdict.set(None);
+                return;
+            }
+            let content = editor_text.get();
+            let node = selection.with_untracked(|sel| sel.primary.clone());
+            let Some(node) = node else {
+                live_verdict.set(None);
+                return;
+            };
+            live_verdict.set(service.preview_formula_bind(&node, &content).ok());
+        });
+    }
 
     view! {
         <aside
@@ -373,6 +395,35 @@ pub(crate) fn NodeInspector(
                                 }
                             }
                         />
+                        {move || {
+                            if !editing.get() {
+                                return ().into_any();
+                            }
+                            match live_verdict.get() {
+                                None => ().into_any(),
+                                Some(verdict) if verdict.legal => view! {
+                                    <div class="dtc-inspector__legality dtc-inspector__legality--ok">
+                                        "✓ binds clean"
+                                    </div>
+                                }
+                                .into_any(),
+                                Some(verdict) => view! {
+                                    <ul class="dtc-inspector__legality dtc-inspector__legality--blocked">
+                                        {verdict
+                                            .diagnostics
+                                            .iter()
+                                            .map(|diag| view! { <li>{format!("{}: {}", diag.stage, diag.message)}</li> })
+                                            .collect::<Vec<_>>()}
+                                        {verdict
+                                            .profile_violations
+                                            .iter()
+                                            .map(|violation| view! { <li>{violation.message.clone()}</li> })
+                                            .collect::<Vec<_>>()}
+                                    </ul>
+                                }
+                                .into_any(),
+                            }
+                        }}
                         <button
                             type="button"
                             class="dtc-inspector__commit"
@@ -452,6 +503,12 @@ pub(crate) const SPINE_WIDGETS_CSS: &str = r#"
   border-radius: 5px; padding: 2px 8px; cursor: pointer; color: var(--dtc-text);
 }
 .dtc-inspector__diagnostics { margin: 4px 0; padding-left: 16px; color: var(--dtc-danger-text); }
+.dtc-inspector__legality { margin: 4px 0; font-size: 12px; }
+.dtc-inspector__legality--ok { color: var(--dtc-success-text); }
+.dtc-inspector__legality--blocked {
+  color: var(--dtc-danger-text); padding: 4px 8px 4px 20px;
+  background: var(--dtc-danger-surface); border: 1px solid var(--dtc-danger-border); border-radius: 5px;
+}
 
 .dtc-section-label { margin: 10px 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--dtc-text-subtle); }
 .dtc-value-display { padding: 4px 0; font-variant-numeric: tabular-nums; }

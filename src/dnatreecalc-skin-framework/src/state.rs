@@ -414,6 +414,11 @@ pub struct SharedSkinState {
     /// (e.g. collapse its embedded inspector when a Lens companion is open).
     #[serde(default)]
     pub companion_slots_active: Vec<SkinMountSlot>,
+    /// The governing persona (tenet 9). Written by the HOST when a
+    /// `SetPersona` intent is accepted — lenses read it to disable mutating
+    /// affordances, but enforcement lives at the dispatcher, never here.
+    #[serde(default)]
+    pub persona: crate::permissions::Persona,
 
     // --- ATLAS suite continuity (NodeKey-keyed; survives lens switch) ---
     /// Multi-select set; the dispatcher-routed `SelectionState.primary` remains
@@ -498,6 +503,7 @@ pub enum SharedStateChange {
     SetActiveWorkspaceId(Option<String>),
     SetFocusedSlot(Option<SkinMountSlot>),
     SetCompanionSlots(Vec<SkinMountSlot>),
+    SetPersona(crate::permissions::Persona),
 }
 
 /// Who asked for a shared-state change. Lenses identify by skin id + slot so
@@ -582,6 +588,7 @@ impl SharedSkinState {
             SharedStateChange::SetCompanionSlots(slots) => {
                 self.companion_slots_active = slots.clone();
             }
+            SharedStateChange::SetPersona(persona) => self.persona = *persona,
         }
     }
 }

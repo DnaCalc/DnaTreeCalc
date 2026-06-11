@@ -1217,6 +1217,7 @@ impl Harness {
             slot: SkinMountSlot::Main,
             skin_state_store,
             dispatch,
+            preview: None,
         });
         drop(handle);
         let driver = mounted

@@ -565,6 +565,7 @@ fn FlowView(cx: SkinContext<FlowState>) -> impl IntoView {
                     edit_ref=edit_ref
                     commit=commit_arc
                     shared=shared
+                    preview=cx.preview.clone()
                 >
                     {move || {
                         view! {

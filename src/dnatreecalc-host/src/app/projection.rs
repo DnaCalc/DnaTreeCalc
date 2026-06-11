@@ -79,7 +79,7 @@ pub fn workspace_state_from_model(model: &WorkspaceModel) -> WorkspaceState {
 
     WorkspaceState {
         workspace_id: model.workspace_id.clone(),
-        profile: model.profile.as_str(),
+        profile: model.profile.as_str().to_string(),
         projection_seq: 0,
         revision: WorkspaceRevisionProjection::default(),
         revision_history: Default::default(),
