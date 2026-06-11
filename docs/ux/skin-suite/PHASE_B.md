@@ -107,9 +107,9 @@ In rough priority order:
    `PreviewService` (dry-bind + mutation impact) carried optionally on
    `SkinContext`; the live dispatcher forwards to the session's `preview_*`
    methods under the session mutex; the shared `NodeInspector` shows live
-   per-keystroke legality. *Remaining:* pass the service through the other six
-   lenses' inspector call sites (optional prop — they degrade gracefully) and
-   adopt impact previews in Tree/Capture/Sheet affordances.
+   per-keystroke legality — now threaded through ALL seven lens inspectors.
+   *Remaining:* adopt mutation-impact previews in Tree/Capture/Sheet
+   affordances (pre-commit collision/orphan warnings).
 2. **`readonly-reviewer-persona`** ✅ *(first slice shipped 2026-06-11)* —
    `Persona { Author, Reviewer, ReadOnly }` with a closed policy over the
    closed intent enum; the dispatcher gates every intent and rejects with
@@ -117,13 +117,16 @@ In rough priority order:
    intent (shell selector + Console chip). *Remaining:* per-origin policies
    (remote peers), `allowed_intents` surfacing in the command catalog so
    lenses pre-disable affordances.
-3. **`intent-log-replay`** — `IntentRecorder` at the dispatcher chokepoint
-   (`seq, intent, receipt, delta, value_epoch, persona, origin`) +
-   `replay(log, fresh_workspace)`; the SharedStore audit ring is the
-   view-state half, already shipped. Deterministic replayable UI tests follow.
-4. **Multi-select promotion** *(follow-up #3)* — selection-set changes become
-   a dispatched intent so population selection is auditable like everything
-   else; `AuthoringScope::Nodes` consumers unchanged.
+3. **`intent-log-replay`** ✅ *(shipped 2026-06-11)* — every dispatch recorded
+   as a typed `IntentRecord` (outcome, transaction id, revision, value epoch,
+   persona); serde-exportable; `replay()` re-dispatches with divergence
+   tracking. Proven: a recorded session replays onto a fresh fixture with zero
+   mismatches and identical published values. *Remaining:* per-slot intent
+   origins once slot-scoped dispatch proxies exist (B.2.2 territory).
+4. **Multi-select promotion** ✅ *(shipped 2026-06-11)* —
+   `WorkspaceIntent::SelectNodes { keys, anchor }`: host-validated (stale key
+   = typed rejection), mirrored into shared state, allowed for all personas;
+   Ledger dispatches instead of writing view-state.
 5. **Keybinding registry v2** — per-user remapping persisted in audited shared
    state, per-slot overrides, surfaced in the command catalog (the registry
    API was built for this).
