@@ -51,20 +51,29 @@ cache-basis + snapshot-id digesting, a per-run name-resolution index,
 prepared-formula retention across runs, and Arc-shared revision retention.
 All four original targets below were addressed; the warm-recalc OOM is gone.
 
-**Acceptance against the criteria: 1 of 3 — the gate stays closed.**
-- ✅ Warm strictly cheaper than cold (was 10–80× *slower*; now 12.5× cheaper
-  at n=1000).
-- ❌ chain n=5k cold ≤ ~1 s: cold remains ~quadratic (n=1000: 69.9 s wall).
-  Residual: per-formula `OxfmlFormulaEvaluation` growth, consistent with the
-  w056 O(n²) `host_name_bind_results` diagnostics — changing their shape
-  needs explicit sign-off.
-- ❌ Incremental ∝ dirty set: re-evaluation is proportional (55 ms @ n=1000)
-  but `CandidatePublication` is full-N and worse than quadratic, plus
-  consumer overhead outside the engine timer.
+**Round 2 landed on OxCalc main 2026-06-12** (merge `009a157`): the w056
+`host_name_bind_results` O(N²) cartesian was bounded (owner-signed-off
+diagnostic-content change — each formula now carries bind results only for
+names present in its source text) plus byte-identical identity-string
+streaming. 10–30× on every harness leg; n=5000 — unmeasurable in round 1 —
+now runs (cold 64.6 s, warm 8.2 s, incremental 7.1 s; n=1000: 2.80 s /
+0.54 s / **0.48 s incremental**).
 
-Round-2 targets: w056 diagnostics shape (decision pending), full-N
-`CandidatePublication`, warm-path `DiagnosticSeedCollection` /
-`OxfmlPrepareFormulas` superlinearity.
+**Acceptance against the criteria: still 1 of 3 — the gate stays closed,
+but the margins collapsed.**
+- ✅ Warm strictly cheaper than cold (5.2× at n=1000, 7.9× at n=5000).
+- ❌ chain n=5k cold ≤ ~1 s: 64.6 s, ~60× over (down from ~3 orders).
+  Residual: per-formula `OxfmlFormulaEvaluation` cost still grows ~linearly
+  with N (1.8 → 8.8 ms/formula from n=1000 to n=5000).
+- ❌ Incremental ∝ dirty set: re-evaluation itself is proportional (3 ms @
+  n=1000) but total wall scales ~N^1.7 on untimed per-node overhead inside
+  `EvaluationLoopTotal`.
+
+Round-3 targets: the cold-path per-formula evaluation quadratic, phase-timer
+coverage for the untimed evaluation-loop overhead, build-session wall
+(per-add snapshot clones). Note for the host: at n≤1000 the engine is now in
+interactive territory (sub-second warm/incremental) — B.2.2's payoff case is
+models above that.
 
 Original targets (for the record): `EdgeValueCacheLookup` warm cost,
 `DiagnosticSeedCollection` scaling, per-run `OxfmlPrepareFormulas`
