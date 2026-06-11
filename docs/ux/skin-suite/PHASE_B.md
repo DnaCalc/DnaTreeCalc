@@ -44,19 +44,37 @@ thousands of nodes. **Gate:** the OxCalc performance workstream (bead
 off-thread.
 
 ### B.2.0 — Engine performance workstream *(OxCalc lane; gates the rest)*
-Targets, in expected-payoff order (evidence in the spike doc):
-1. `EdgeValueCacheLookup` per-edge cost on warm/verify runs (88.7 s @ n=200).
-2. `DiagnosticSeedCollection` scaling (29.5 s @ n=200 warm).
-3. Per-run `OxfmlPrepareFormulas` re-preparation — retain prepared formulas
-   across runs keyed by the binding snapshot.
-4. Consumer `recalculate` prelude/postlude cloning (23 s outside the engine
-   timer @ n=100 incremental).
+
+**Round 1 landed on OxCalc main 2026-06-11** (bead `calc-ekq3`, merge
+`ab86126`, results in the spike doc's "Performance workstream round 1"):
+cache-basis + snapshot-id digesting, a per-run name-resolution index,
+prepared-formula retention across runs, and Arc-shared revision retention.
+All four original targets below were addressed; the warm-recalc OOM is gone.
+
+**Acceptance against the criteria: 1 of 3 — the gate stays closed.**
+- ✅ Warm strictly cheaper than cold (was 10–80× *slower*; now 12.5× cheaper
+  at n=1000).
+- ❌ chain n=5k cold ≤ ~1 s: cold remains ~quadratic (n=1000: 69.9 s wall).
+  Residual: per-formula `OxfmlFormulaEvaluation` growth, consistent with the
+  w056 O(n²) `host_name_bind_results` diagnostics — changing their shape
+  needs explicit sign-off.
+- ❌ Incremental ∝ dirty set: re-evaluation is proportional (55 ms @ n=1000)
+  but `CandidatePublication` is full-N and worse than quadratic, plus
+  consumer overhead outside the engine timer.
+
+Round-2 targets: w056 diagnostics shape (decision pending), full-N
+`CandidatePublication`, warm-path `DiagnosticSeedCollection` /
+`OxfmlPrepareFormulas` superlinearity.
+
+Original targets (for the record): `EdgeValueCacheLookup` warm cost,
+`DiagnosticSeedCollection` scaling, per-run `OxfmlPrepareFormulas`
+re-preparation, consumer `recalculate` prelude/postlude cloning.
 
 **Acceptance (re-run the retained harness,
-`OxCalc tests/host_worker_passivity_spike.rs`):** chain n=5k cold ≤ ~1 s
-release; warm strictly cheaper than cold; incremental cost proportional to the
-dirty set, not N. *DnaTreeCalc's role: re-run the harness as the gate check;
-raise observations via the handover convention.*
+`OxCalc tests/host_worker_passivity_spike.rs`, now sized n=[1000, 2000]):**
+chain n=5k cold ≤ ~1 s release; warm strictly cheaper than cold; incremental
+cost proportional to the dirty set, not N. *DnaTreeCalc's role: re-run the
+harness as the gate check; raise observations via the handover convention.*
 
 ### B.2.1 — Serializable IR seam ✅ *(shipped 2026-06-11)*
 `Serialize`/`Deserialize` across the whole Skin-IR surface (~100 projection
