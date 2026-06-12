@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use crate::permissions::Persona;
 use crate::selection::SelectionState;
 use crate::workspace::{
     ClipboardPayloadProjection, NodeContentKind, RevisionHistoryEntryProjection, WorkspaceState,
@@ -29,6 +30,26 @@ impl CommandCatalogProjection {
             .iter()
             .map(|entry| (entry.intent_kind, entry.clone()))
             .collect()
+    }
+
+    /// Overlay a persona's governance on top of the context-driven catalog:
+    /// any command the persona may not dispatch is disabled with a persona
+    /// reason, regardless of whether the selection/clipboard context would
+    /// otherwise enable it. This mirrors the dispatcher's persona gate
+    /// ([`Persona::allows_intent_kind`]) so a lens pre-disables forbidden
+    /// affordances rather than letting the user discover the typed `Forbidden`
+    /// rejection after the fact. Governance is the stronger constraint, so a
+    /// persona block replaces any context disabled-reason.
+    #[must_use]
+    pub fn governed_by(mut self, persona: Persona) -> Self {
+        for entry in &mut self.entries {
+            if !persona.allows_intent_kind(entry.intent_kind) {
+                entry.enabled = false;
+                entry.disabled_reason =
+                    Some(format!("the {persona} persona cannot run this command"));
+            }
+        }
+        self
     }
 }
 
@@ -503,5 +524,69 @@ fn table_cell_reason(selected_table_cell: bool) -> Option<String> {
         None
     } else {
         Some("no table cell is selected".to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn enabled_entry(intent_kind: CommandIntentKindProjection) -> CommandMetaProjection {
+        CommandMetaProjection {
+            intent_kind,
+            title: "Command",
+            shortcut: None,
+            effective_binding: None,
+            enabled: true,
+            disabled_reason: None,
+        }
+    }
+
+    #[test]
+    fn governed_by_disables_forbidden_commands_with_a_persona_reason() {
+        let catalog = CommandCatalogProjection {
+            entries: vec![
+                enabled_entry(CommandIntentKindProjection::Recalculate),
+                enabled_entry(CommandIntentKindProjection::CommitCandidate),
+                enabled_entry(CommandIntentKindProjection::DeleteNode),
+            ],
+        };
+
+        // Author governs nothing — every command stays as the context left it.
+        assert!(
+            catalog
+                .clone()
+                .governed_by(Persona::Author)
+                .entries
+                .iter()
+                .all(|entry| entry.enabled)
+        );
+
+        // Reviewer keeps recalc but loses the publishing/mutating verbs, with
+        // the persona reason replacing any context reason.
+        let reviewer = catalog.clone().governed_by(Persona::Reviewer);
+        assert!(
+            reviewer
+                .get(CommandIntentKindProjection::Recalculate)
+                .unwrap()
+                .enabled
+        );
+        let commit = reviewer
+            .get(CommandIntentKindProjection::CommitCandidate)
+            .unwrap();
+        assert!(!commit.enabled);
+        assert_eq!(
+            commit.disabled_reason.as_deref(),
+            Some("the reviewer persona cannot run this command")
+        );
+
+        // ReadOnly forbids every command in the catalog.
+        assert!(
+            catalog
+                .governed_by(Persona::ReadOnly)
+                .entries
+                .iter()
+                .all(|entry| !entry.enabled)
+        );
     }
 }

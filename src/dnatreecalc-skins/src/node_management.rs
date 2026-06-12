@@ -3,8 +3,8 @@ use std::sync::Arc;
 use dnatreecalc_skin_framework::{
     CommandCatalogProjection, CommandIntentKindProjection, Dispatcher,
     InitialNodeContentProjection, MutationImpactBlockedReasonProjection,
-    MutationImpactIntentProjection, MutationImpactProjection, NodeId, PreviewService,
-    SelectionState, WorkspaceIntent, WorkspaceState,
+    MutationImpactIntentProjection, MutationImpactProjection, NodeId, Persona, PreviewService,
+    SelectionState, SharedSkinStateHandle, WorkspaceIntent, WorkspaceState,
 };
 use leptos::prelude::*;
 
@@ -14,7 +14,16 @@ pub(crate) fn NodeManagementPanel(
     selection: ReadSignal<SelectionState>,
     dispatch: Arc<dyn Dispatcher>,
     #[prop(optional_no_strip)] preview: Option<Arc<dyn PreviewService>>,
+    #[prop(optional_no_strip)] shared: Option<SharedSkinStateHandle>,
 ) -> impl IntoView {
+    // The active persona governs which structural verbs are dispatchable. An
+    // absent shared handle (the legacy editors) reads as Author — full rights,
+    // unchanged behaviour. Reactive so a SetPersona re-disables in place.
+    let shared_signal = shared.map(|handle| handle.signal());
+    let active_persona = Memo::new(move |_| {
+        shared_signal.map_or(Persona::Author, |signal| signal.with(|state| state.persona))
+    });
+    let allows = move |kind: CommandIntentKindProjection| active_persona.get().allows_intent_kind(kind);
     let new_symbol = RwSignal::new(String::new());
     let new_content = RwSignal::new(String::new());
     let selected_template = RwSignal::new(String::new());
@@ -120,7 +129,9 @@ pub(crate) fn NodeManagementPanel(
     let move_down_dispatch = dispatch.clone();
     let delete_dispatch = dispatch.clone();
     let command_catalog = Memo::new(move |_| {
-        workspace.with(|workspace| selection.with(|selection| workspace.command_catalog(selection)))
+        workspace
+            .with(|workspace| selection.with(|selection| workspace.command_catalog(selection)))
+            .governed_by(active_persona.get())
     });
 
     view! {
@@ -181,7 +192,10 @@ pub(crate) fn NodeManagementPanel(
                 <button
                     type="button"
                     title="Add root node"
-                    prop:disabled=move || add_root_impact.get().is_some_and(|impact| !impact.legal)
+                    prop:disabled=move || {
+                        !allows(CommandIntentKindProjection::AddNode)
+                            || add_root_impact.get().is_some_and(|impact| !impact.legal)
+                    }
                     on:click=move |_| {
                         let symbol = new_symbol.get_untracked();
                         if !symbol.trim().is_empty() {
@@ -205,7 +219,10 @@ pub(crate) fn NodeManagementPanel(
                 <button
                     type="button"
                     title="Add child under the selected node"
-                    prop:disabled=move || add_child_impact.get().is_some_and(|impact| !impact.legal)
+                    prop:disabled=move || {
+                        !allows(CommandIntentKindProjection::AddNode)
+                            || add_child_impact.get().is_some_and(|impact| !impact.legal)
+                    }
                     on:click=move |_| {
                         let symbol = new_symbol.get_untracked();
                         let Some(parent) = selection.get_untracked().primary else {
@@ -250,7 +267,10 @@ pub(crate) fn NodeManagementPanel(
                 <button
                     type="button"
                     title="Rename selected node"
-                    prop:disabled=move || rename_impact.get().is_some_and(|impact| !impact.legal)
+                    prop:disabled=move || {
+                        !allows(CommandIntentKindProjection::RenameNode)
+                            || rename_impact.get().is_some_and(|impact| !impact.legal)
+                    }
                     on:click=move |_| {
                         let Some(node) = selection.get_untracked().primary else {
                             return;
@@ -321,7 +341,10 @@ pub(crate) fn NodeManagementPanel(
                 <button
                     type="button"
                     title="Delete selected node"
-                    prop:disabled=move || delete_impact.get().is_some_and(|impact| !impact.legal)
+                    prop:disabled=move || {
+                        !allows(CommandIntentKindProjection::DeleteNode)
+                            || delete_impact.get().is_some_and(|impact| !impact.legal)
+                    }
                     on:click=move |_| {
                         if let Some(node) = selection.get_untracked().primary {
                             delete_dispatch.dispatch(WorkspaceIntent::DeleteNode { node });

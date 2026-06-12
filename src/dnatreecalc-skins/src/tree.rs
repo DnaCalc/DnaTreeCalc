@@ -491,6 +491,7 @@ fn TreeView(cx: SkinContext<TreeState>) -> impl IntoView {
                         selection=selection
                         dispatch=panel_dispatch
                         preview=cx.preview.clone()
+                        shared=Some(shared)
                     />
                     <NodeInspector
                         workspace=workspace
