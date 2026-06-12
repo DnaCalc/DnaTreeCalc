@@ -37,7 +37,9 @@ pub use intent::{
     ReplayOutcome, StructuralDeltaProjection, SweepPointInput, TableCellInput, TableRowInput,
     WorkspaceDelta, WorkspaceDeltaChange, WorkspaceIntent, replay,
 };
-pub use keybinding::{KeyChord, KeybindingRegistry, SkinVerb};
+pub use keybinding::{
+    KeyChord, KeybindingError, KeybindingOverrideMap, KeybindingRegistry, SkinVerb,
+};
 pub use manifest::{CapabilityError, SkinCapabilities, SkinCategory, SkinManifest};
 pub use permissions::Persona;
 pub use preview::{PreviewError, PreviewService};

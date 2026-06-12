@@ -419,6 +419,13 @@ pub struct SharedSkinState {
     /// affordances, but enforcement lives at the dispatcher, never here.
     #[serde(default)]
     pub persona: crate::permissions::Persona,
+    /// Per-user keybinding remap layered over the universal grammar. Persisted
+    /// and audited like everything else; the shell builds the active
+    /// [`KeybindingRegistry`](crate::KeybindingRegistry) from it via
+    /// `with_overrides`, falling back to the universal table if a persisted
+    /// map fails validation.
+    #[serde(default)]
+    pub keybinding_overrides: crate::keybinding::KeybindingOverrideMap,
 
     // --- ATLAS suite continuity (NodeKey-keyed; survives lens switch) ---
     /// Multi-select set; the dispatcher-routed `SelectionState.primary` remains
@@ -504,6 +511,7 @@ pub enum SharedStateChange {
     SetFocusedSlot(Option<SkinMountSlot>),
     SetCompanionSlots(Vec<SkinMountSlot>),
     SetPersona(crate::permissions::Persona),
+    SetKeybindingOverrides(crate::keybinding::KeybindingOverrideMap),
 }
 
 /// Who asked for a shared-state change. Lenses identify by skin id + slot so
@@ -589,6 +597,9 @@ impl SharedSkinState {
                 self.companion_slots_active = slots.clone();
             }
             SharedStateChange::SetPersona(persona) => self.persona = *persona,
+            SharedStateChange::SetKeybindingOverrides(overrides) => {
+                self.keybinding_overrides = overrides.clone();
+            }
         }
     }
 }

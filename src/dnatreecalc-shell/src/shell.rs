@@ -226,9 +226,6 @@ pub fn WorkspaceShell(
             .unwrap_or_else(|| CockpitLayout::solo(initial_skin)),
     );
     let shortcut_skin_ids = registry.ids();
-    // The one grammar. It is a constant today; per-user remapping would later
-    // thread a customized instance through context instead of reconstructing it.
-    let keybindings = KeybindingRegistry::universal();
 
     let parts = SlotParts {
         workspace,
@@ -325,6 +322,16 @@ pub fn WorkspaceShell(
             class="dtc-shell"
             tabindex="0"
             on:keydown=move |ev| {
+                // Build the active grammar from the user's persisted overrides
+                // each keydown (cheap; ~28 entries). A persisted map that fails
+                // validation — e.g. a stale verb from another build — falls back
+                // to the universal table rather than dropping the keystroke.
+                let keybindings = shared
+                    .signal()
+                    .with_untracked(|state| {
+                        KeybindingRegistry::with_overrides(&state.keybinding_overrides)
+                    })
+                    .unwrap_or_else(|_| KeybindingRegistry::universal());
                 handle_shell_keydown(
                     ev,
                     workspace,
