@@ -896,15 +896,19 @@ fn shared_store_audit_ring_is_bounded() {
 }
 
 #[test]
-fn slot_negotiation_defaults_to_main_only() {
+fn slot_negotiation_defaults_to_main_class() {
     let mut registry = SkinRegistry::new();
-    let id = registry.register(InertSkin::new("main-only"));
+    let id = registry.register(InertSkin::new("main-class"));
     let registered = registry.get(id).expect("registered");
 
+    // Main-class: the primary pane and the side-by-side split panes.
     assert!(registered.negotiate_slot(SkinMountSlot::Main).is_ok());
+    assert!(registered.negotiate_slot(SkinMountSlot::SplitLeft).is_ok());
+    assert!(registered.negotiate_slot(SkinMountSlot::SplitRight).is_ok());
+    // Companion slots stay refused for a default skin.
     let refused = registered
         .negotiate_slot(SkinMountSlot::RightInspector)
-        .expect_err("companion slot must be refused for a Main-only skin");
+        .expect_err("companion slot must be refused for a main-class skin");
     assert!(refused.to_string().contains("right_inspector"));
 }
 

@@ -21,6 +21,13 @@ pub struct CockpitLayout {
     pub main: String,
     pub inspector: Option<String>,
     pub console: Option<String>,
+    /// Side-by-side main-class panes for running two lenses at once. Default
+    /// (and `#[serde(default)]`) so a v1 persisted layout without these fields
+    /// loads as the single-main composition it was.
+    #[serde(default)]
+    pub split_left: Option<String>,
+    #[serde(default)]
+    pub split_right: Option<String>,
 }
 
 impl CockpitLayout {
@@ -30,11 +37,15 @@ impl CockpitLayout {
             main: main.as_str().to_string(),
             inspector: None,
             console: None,
+            split_left: None,
+            split_right: None,
         }
     }
 
     /// The companion slots this layout has occupied — what lenses read to
-    /// stand their embedded copies down.
+    /// stand their embedded copies down. Split panes are main-class lenses, so
+    /// they are *not* reported here (a split lens runs standalone, it never
+    /// stands another lens's embedded widgets down).
     #[must_use]
     pub fn companion_slots(&self) -> Vec<SkinMountSlot> {
         let mut slots = Vec::new();
@@ -119,6 +130,8 @@ pub fn validated_companion_slots(
     };
     check(SkinMountSlot::RightInspector, &layout.inspector);
     check(SkinMountSlot::BottomConsole, &layout.console);
+    check(SkinMountSlot::SplitLeft, &layout.split_left);
+    check(SkinMountSlot::SplitRight, &layout.split_right);
     slots
 }
 
@@ -143,6 +156,10 @@ pub fn layout_from_preset(
         main,
         inspector: resolve_companion(preset.inspector),
         console: resolve_companion(preset.console),
+        // Built-in presets do not open split panes; the user opens those
+        // through the companion toggles or a saved user preset.
+        split_left: None,
+        split_right: None,
     }
 }
 
@@ -178,6 +195,60 @@ fn save_cockpit_layout(
         let record = PersistedSkinStateRecord::new(COCKPIT_LAYOUT_SCHEMA, value);
         let _ = store.save(&cockpit_layout_key(workspace_id), &record);
     }
+}
+
+/// A user-named cockpit composition saved on top of the built-ins. Unlike a
+/// [`CockpitPreset`] (a `&'static` built-in) this owns a full
+/// [`CockpitLayout`], so it round-trips the user's exact slot assignments.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UserPreset {
+    pub name: String,
+    pub layout: CockpitLayout,
+}
+
+const USER_PRESETS_SCHEMA: u32 = 1;
+
+fn user_presets_key(workspace_id: &str) -> SkinStatePersistenceKey {
+    SkinStatePersistenceKey::new(
+        SkinId::new("shell-presets-user"),
+        SkinMountSlot::Main,
+        workspace_id,
+    )
+}
+
+/// The user's saved presets for a workspace; empty on absence or any
+/// store/decode failure (user presets are additive — a missing entry is "none
+/// saved yet", never an error the shell surfaces).
+fn load_user_presets(store: &dyn SkinStatePersistenceStore, workspace_id: &str) -> Vec<UserPreset> {
+    let Ok(Some(record)) = store.load(&user_presets_key(workspace_id)) else {
+        return Vec::new();
+    };
+    if record.schema_version != USER_PRESETS_SCHEMA {
+        return Vec::new();
+    }
+    serde_json::from_value(record.value).unwrap_or_default()
+}
+
+fn save_user_presets(
+    store: &dyn SkinStatePersistenceStore,
+    workspace_id: &str,
+    presets: &[UserPreset],
+) {
+    if let Ok(value) = serde_json::to_value(presets) {
+        let record = PersistedSkinStateRecord::new(USER_PRESETS_SCHEMA, value);
+        let _ = store.save(&user_presets_key(workspace_id), &record);
+    }
+}
+
+/// Insert or replace a preset by name (case-sensitive), returning the updated
+/// list. Replacing keeps the list position; a new name appends.
+fn upsert_user_preset(mut presets: Vec<UserPreset>, preset: UserPreset) -> Vec<UserPreset> {
+    if let Some(existing) = presets.iter_mut().find(|p| p.name == preset.name) {
+        existing.layout = preset.layout;
+    } else {
+        presets.push(preset);
+    }
+    presets
 }
 
 /// Everything a slot mount needs from the shell; bundled so slot views stay
@@ -225,6 +296,10 @@ pub fn WorkspaceShell(
         load_cockpit_layout(skin_state_store.as_ref(), &initial_workspace_id)
             .unwrap_or_else(|| CockpitLayout::solo(initial_skin)),
     );
+    let user_presets = RwSignal::new(load_user_presets(
+        skin_state_store.as_ref(),
+        &initial_workspace_id,
+    ));
     let shortcut_skin_ids = registry.ids();
 
     let parts = SlotParts {
@@ -254,6 +329,7 @@ pub fn WorkspaceShell(
         if layout_owner.get_value() != id {
             let next = load_cockpit_layout(reload_store.as_ref(), &id)
                 .unwrap_or_else(|| layout.get_untracked());
+            user_presets.set(load_user_presets(reload_store.as_ref(), &id));
             layout_owner.set_value(id);
             layout.set(next);
         }
@@ -306,13 +382,18 @@ pub fn WorkspaceShell(
 
     let registry_for_tabs = registry.clone();
     let registry_for_presets = registry.clone();
+    let presets_store = skin_state_store.clone();
     let shortcut_dispatch = dispatch.clone();
     let shell_css = format!("{}\n{}\n{}", tokens.css_rule(".dtc-shell"), SHELL_CSS, COCKPIT_CSS);
 
+    let split_left_parts = parts.clone();
+    let split_right_parts = parts.clone();
     let inspector_parts = parts.clone();
     let console_parts = parts.clone();
     let main_parts = parts;
 
+    let has_split_left = Memo::new(move |_| layout.with(|l| l.split_left.is_some()));
+    let has_split_right = Memo::new(move |_| layout.with(|l| l.split_right.is_some()));
     let has_inspector = Memo::new(move |_| layout.with(|l| l.inspector.is_some()));
     let has_console = Memo::new(move |_| layout.with(|l| l.console.is_some()));
 
@@ -353,7 +434,13 @@ pub fn WorkspaceShell(
                     shared=shared
                     dispatch=dispatch.clone()
                 />
-                <PresetPicker registry=registry_for_presets layout=layout />
+                <PresetPicker
+                    registry=registry_for_presets
+                    layout=layout
+                    store=presets_store
+                    workspace_id=workspace_id
+                    user_presets=user_presets
+                />
                 <span class="dtc-context-strip__spacer"></span>
                 <SkinSwitcher
                     registry=registry_for_tabs
@@ -362,6 +449,26 @@ pub fn WorkspaceShell(
             </header>
             <ShortcutBar />
             <div class="dtc-cockpit" class:dtc-cockpit--with-inspector=move || has_inspector.get()>
+                {move || {
+                    has_split_left.get().then(|| {
+                        let parts = split_left_parts.clone();
+                        view! {
+                            <aside class="dtc-cockpit__split dtc-cockpit__split--left">
+                                <CompanionHeader
+                                    registry=parts.registry.clone()
+                                    layout=layout
+                                    mount_slot=SkinMountSlot::SplitLeft
+                                />
+                                <SlotView
+                                    parts=parts
+                                    layout=layout
+                                    mount_slot=SkinMountSlot::SplitLeft
+                                />
+                            </aside>
+                        }
+                        .into_any()
+                    })
+                }}
                 <main class="dtc-cockpit__main">
                     <SlotView
                         parts=main_parts
@@ -369,6 +476,26 @@ pub fn WorkspaceShell(
                         mount_slot=SkinMountSlot::Main
                     />
                 </main>
+                {move || {
+                    has_split_right.get().then(|| {
+                        let parts = split_right_parts.clone();
+                        view! {
+                            <aside class="dtc-cockpit__split dtc-cockpit__split--right">
+                                <CompanionHeader
+                                    registry=parts.registry.clone()
+                                    layout=layout
+                                    mount_slot=SkinMountSlot::SplitRight
+                                />
+                                <SlotView
+                                    parts=parts
+                                    layout=layout
+                                    mount_slot=SkinMountSlot::SplitRight
+                                />
+                            </aside>
+                        }
+                        .into_any()
+                    })
+                }}
                 {move || {
                     has_inspector.get().then(|| {
                         let parts = inspector_parts.clone();
@@ -432,7 +559,8 @@ fn layout_slot_id(layout: &CockpitLayout, slot: SkinMountSlot) -> Option<String>
         SkinMountSlot::Main => Some(layout.main.clone()),
         SkinMountSlot::RightInspector => layout.inspector.clone(),
         SkinMountSlot::BottomConsole => layout.console.clone(),
-        SkinMountSlot::SplitLeft | SkinMountSlot::SplitRight => None,
+        SkinMountSlot::SplitLeft => layout.split_left.clone(),
+        SkinMountSlot::SplitRight => layout.split_right.clone(),
     }
 }
 
@@ -553,7 +681,8 @@ fn set_layout_slot(layout: &mut CockpitLayout, slot: SkinMountSlot, id: Option<S
         }
         SkinMountSlot::RightInspector => layout.inspector = id,
         SkinMountSlot::BottomConsole => layout.console = id,
-        SkinMountSlot::SplitLeft | SkinMountSlot::SplitRight => {}
+        SkinMountSlot::SplitLeft => layout.split_left = id,
+        SkinMountSlot::SplitRight => layout.split_right = id,
     }
 }
 
@@ -570,6 +699,8 @@ fn CompanionToggles(registry: Arc<SkinRegistry>, layout: RwSignal<CockpitLayout>
         .map(|skin| skin.id().as_str().to_string());
     let inspector_open = Memo::new(move |_| layout.with(|l| l.inspector.is_some()));
     let console_open = Memo::new(move |_| layout.with(|l| l.console.is_some()));
+    let split_left_open = Memo::new(move |_| layout.with(|l| l.split_left.is_some()));
+    let split_right_open = Memo::new(move |_| layout.with(|l| l.split_right.is_some()));
     let inspector_available = default_inspector.is_some();
     let console_available = default_console.is_some();
 
@@ -603,15 +734,52 @@ fn CompanionToggles(registry: Arc<SkinRegistry>, layout: RwSignal<CockpitLayout>
             >
                 "Console"
             </button>
+            <button
+                type="button"
+                class:dtc-companion-toggles__button--active=move || split_left_open.get()
+                title="Toggle a side-by-side lens on the left"
+                on:click=move |_| {
+                    // Open with a second copy of the main lens; the split's own
+                    // picker repoints it. Main-class skins always negotiate.
+                    layout.update(|l| {
+                        l.split_left =
+                            if l.split_left.is_some() { None } else { Some(l.main.clone()) };
+                    });
+                }
+            >
+                "Split ◧"
+            </button>
+            <button
+                type="button"
+                class:dtc-companion-toggles__button--active=move || split_right_open.get()
+                title="Toggle a side-by-side lens on the right"
+                on:click=move |_| {
+                    layout.update(|l| {
+                        l.split_right =
+                            if l.split_right.is_some() { None } else { Some(l.main.clone()) };
+                    });
+                }
+            >
+                "Split ◨"
+            </button>
         </div>
     }
 }
 
-/// Named cockpit compositions.
+/// Named cockpit compositions: the built-in presets plus the user's saved
+/// layouts, with an inline "save current as…" control. Built-ins rebuild
+/// through `layout_from_preset` (degrading absent skins); a saved preset
+/// restores the user's exact slot assignments verbatim.
 #[component]
-fn PresetPicker(registry: Arc<SkinRegistry>, layout: RwSignal<CockpitLayout>) -> impl IntoView {
-    let presets = builtin_presets();
-    let preset_names: Vec<&'static str> = presets.iter().map(|preset| preset.name).collect();
+fn PresetPicker(
+    registry: Arc<SkinRegistry>,
+    layout: RwSignal<CockpitLayout>,
+    store: Arc<dyn SkinStatePersistenceStore>,
+    workspace_id: Memo<String>,
+    user_presets: RwSignal<Vec<UserPreset>>,
+) -> impl IntoView {
+    let builtin_names: Vec<&'static str> = builtin_presets().iter().map(|p| p.name).collect();
+    let save_name = RwSignal::new(String::new());
 
     view! {
         <div class="dtc-preset-picker" aria-label="Cockpit presets">
@@ -619,8 +787,17 @@ fn PresetPicker(registry: Arc<SkinRegistry>, layout: RwSignal<CockpitLayout>) ->
                 class="dtc-preset-picker__select"
                 prop:value=""
                 on:change=move |ev| {
-                    let name = event_target_value(&ev);
-                    if let Some(preset) = builtin_presets().into_iter().find(|p| p.name == name) {
+                    let value = event_target_value(&ev);
+                    if let Some(name) = value.strip_prefix("user:") {
+                        // A saved preset owns a full layout — restore it verbatim.
+                        if let Some(preset) = user_presets
+                            .with_untracked(|presets| presets.iter().find(|p| p.name == name).cloned())
+                        {
+                            layout.set(preset.layout);
+                        }
+                    } else if let Some(preset) =
+                        builtin_presets().into_iter().find(|p| p.name == value)
+                    {
                         let current_main = layout.with_untracked(|l| l.main.clone());
                         layout.set(layout_from_preset(&registry, &preset, &current_main));
                     }
@@ -636,11 +813,57 @@ fn PresetPicker(registry: Arc<SkinRegistry>, layout: RwSignal<CockpitLayout>) ->
                 }
             >
                 <option value="" disabled=true selected=true>"Cockpit…"</option>
-                {preset_names
+                {builtin_names
                     .into_iter()
                     .map(|name| view! { <option value=name>{name}</option> })
                     .collect::<Vec<_>>()}
+                {move || {
+                    let presets = user_presets.get();
+                    (!presets.is_empty()).then(|| {
+                        view! {
+                            <optgroup label="Saved">
+                                {presets
+                                    .into_iter()
+                                    .map(|preset| {
+                                        let value = format!("user:{}", preset.name);
+                                        view! { <option value=value>{preset.name}</option> }
+                                    })
+                                    .collect::<Vec<_>>()}
+                            </optgroup>
+                        }
+                    })
+                }}
             </select>
+            <input
+                class="dtc-preset-picker__name"
+                placeholder="Save as…"
+                prop:value=move || save_name.get()
+                on:input=move |ev| save_name.set(event_target_value(&ev))
+            />
+            <button
+                type="button"
+                class="dtc-preset-picker__save"
+                title="Save the current cockpit composition as a preset"
+                prop:disabled=move || save_name.with(|name| name.trim().is_empty())
+                on:click=move |_| {
+                    let name = save_name.get_untracked().trim().to_string();
+                    if name.is_empty() {
+                        return;
+                    }
+                    let updated = upsert_user_preset(
+                        user_presets.get_untracked(),
+                        UserPreset {
+                            name,
+                            layout: layout.get_untracked(),
+                        },
+                    );
+                    save_user_presets(store.as_ref(), &workspace_id.get_untracked(), &updated);
+                    user_presets.set(updated);
+                    save_name.set(String::new());
+                }
+            >
+                "Save"
+            </button>
         </div>
     }
 }
@@ -1034,6 +1257,19 @@ const COCKPIT_CSS: &str = r#"
 .dtc-cockpit__inspector > .dtc-slot { flex: 1; min-height: 0; overflow: auto; }
 .dtc-cockpit__console { border-top: 1px solid var(--dtc-border-muted); }
 
+/* Split panes are main-class: they share width with the main lens (equal
+   thirds when both are open) rather than sitting as a narrow sidebar. */
+.dtc-cockpit__split {
+  flex: 1; min-width: 0; display: flex; flex-direction: column;
+  background: var(--dtc-surface-panel);
+}
+.dtc-cockpit__split--left { border-right: 1px solid var(--dtc-border-muted); }
+.dtc-cockpit__split--right { border-left: 1px solid var(--dtc-border-muted); }
+.dtc-cockpit__split > .dtc-slot { flex: 1; min-height: 0; overflow: auto; }
+
+.dtc-preset-picker { display: inline-flex; gap: 4px; align-items: center; }
+.dtc-preset-picker__name { width: 7rem; min-width: 0; }
+
 .dtc-slot { position: relative; height: 100%; }
 .dtc-slot--focused { box-shadow: inset 0 0 0 2px var(--dtc-accent-border); }
 
@@ -1126,6 +1362,8 @@ mod tests {
             main: "flow".to_string(),
             inspector: Some("lens".to_string()),
             console: None,
+            split_left: None,
+            split_right: None,
         };
         save_cockpit_layout(&store, "workspace:a", &layout);
 
@@ -1143,8 +1381,90 @@ mod tests {
             main: "flow".to_string(),
             inspector: Some("lens".to_string()),
             console: Some("missing".to_string()),
+            split_left: None,
+            split_right: None,
         };
         assert!(validated_companion_slots(&registry, &layout).is_empty());
+    }
+
+    #[test]
+    fn split_slots_route_through_the_layout_and_stay_main_class() {
+        let mut layout = CockpitLayout::solo(SkinId::new("flow"));
+        // Splits are main-class, not companions — opening one does not stand
+        // embedded widgets down.
+        set_layout_slot(&mut layout, SkinMountSlot::SplitLeft, Some("tree".to_string()));
+        set_layout_slot(
+            &mut layout,
+            SkinMountSlot::SplitRight,
+            Some("ledger".to_string()),
+        );
+        assert_eq!(layout.split_left.as_deref(), Some("tree"));
+        assert_eq!(
+            layout_slot_id(&layout, SkinMountSlot::SplitRight).as_deref(),
+            Some("ledger")
+        );
+        assert!(
+            layout.companion_slots().is_empty(),
+            "split panes are main-class, never companion slots"
+        );
+
+        set_layout_slot(&mut layout, SkinMountSlot::SplitLeft, None);
+        assert_eq!(layout.split_left, None);
+    }
+
+    #[test]
+    fn user_presets_round_trip_and_upsert_by_name() {
+        let store = InMemorySkinStatePersistenceStore::new();
+        assert!(load_user_presets(&store, "workspace:a").is_empty());
+
+        let modeling = UserPreset {
+            name: "My Modeling".to_string(),
+            layout: CockpitLayout {
+                main: "flow".to_string(),
+                inspector: Some("lens".to_string()),
+                console: None,
+                split_left: Some("tree".to_string()),
+                split_right: None,
+            },
+        };
+        let presets = upsert_user_preset(Vec::new(), modeling.clone());
+        save_user_presets(&store, "workspace:a", &presets);
+        assert_eq!(load_user_presets(&store, "workspace:a"), vec![modeling]);
+
+        // Same name replaces in place; a new name appends.
+        let modeling_v2 = UserPreset {
+            name: "My Modeling".to_string(),
+            layout: CockpitLayout::solo(SkinId::new("ledger")),
+        };
+        let audit = UserPreset {
+            name: "Audit".to_string(),
+            layout: CockpitLayout::solo(SkinId::new("ledger")),
+        };
+        let updated =
+            upsert_user_preset(upsert_user_preset(presets, modeling_v2.clone()), audit.clone());
+        assert_eq!(updated, vec![modeling_v2, audit]);
+
+        // Presets are scoped per workspace.
+        assert!(load_user_presets(&store, "workspace:b").is_empty());
+    }
+
+    #[test]
+    fn v1_layout_without_split_fields_loads_as_single_main() {
+        // A layout persisted before split panes existed still deserializes —
+        // the new fields default to None (the composition it was).
+        let store = InMemorySkinStatePersistenceStore::new();
+        let v1 = serde_json::json!({ "main": "flow", "inspector": null, "console": null });
+        store
+            .save(
+                &cockpit_layout_key("workspace:legacy"),
+                &PersistedSkinStateRecord::new(COCKPIT_LAYOUT_SCHEMA, v1),
+            )
+            .expect("seed legacy layout");
+
+        let loaded = load_cockpit_layout(&store, "workspace:legacy").expect("loads v1 layout");
+        assert_eq!(loaded.main, "flow");
+        assert_eq!(loaded.split_left, None);
+        assert_eq!(loaded.split_right, None);
     }
 
     #[test]

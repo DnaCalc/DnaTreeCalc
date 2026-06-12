@@ -37,18 +37,28 @@ pub struct SkinCapabilities {
     pub supports_meta_node_display: bool,
     pub renders_arrays_inline: bool,
     pub renders_table_values: bool,
-    /// Slots this skin may mount in. `None` (the default) means Main only —
-    /// existing primary lenses need no change. Companions declare their
-    /// companion slots explicitly. Checked by the shell's mount negotiation.
+    /// Slots this skin may mount in. `None` (the default) means the
+    /// **main-class** slots: the primary Main pane and the side-by-side
+    /// `SplitLeft`/`SplitRight` panes, which are just additional main-class
+    /// surfaces for running two lenses at once. Existing primary lenses need
+    /// no change to appear in a split. Companions declare their companion
+    /// slots explicitly. Checked by the shell's mount negotiation.
     pub allowed_slots: Option<&'static [crate::identity::SkinMountSlot]>,
 }
 
 impl SkinCapabilities {
     /// Whether this skin may mount in `slot` (the negotiation predicate).
+    ///
+    /// A `None` slot set is main-class: Main plus the split panes. Splitting
+    /// the cockpit is "the same lens, a second copy" — so a primary lens is
+    /// mountable side-by-side without re-declaring capabilities, while a
+    /// companion (which lists `RightInspector`/`BottomConsole` explicitly)
+    /// stays out of the main-class panes.
     #[must_use]
     pub fn slot_allowed(&self, slot: crate::identity::SkinMountSlot) -> bool {
+        use crate::identity::SkinMountSlot as Slot;
         match self.allowed_slots {
-            None => slot == crate::identity::SkinMountSlot::Main,
+            None => matches!(slot, Slot::Main | Slot::SplitLeft | Slot::SplitRight),
             Some(slots) => slots.contains(&slot),
         }
     }
