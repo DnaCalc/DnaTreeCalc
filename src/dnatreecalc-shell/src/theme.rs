@@ -308,6 +308,33 @@ pub const SHELL_CSS: &str = r#"
     background: var(--dtc-surface-muted);
 }
 
+.dtc-node-management button:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    background: var(--dtc-surface);
+}
+
+.dtc-node-management__impact {
+    margin: 0;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    line-height: 1.35;
+}
+
+.dtc-node-management__impact--blocked {
+    list-style: none;
+    color: var(--dtc-danger-text);
+    background: var(--dtc-danger-surface);
+    border: 1px solid var(--dtc-danger-border);
+}
+
+.dtc-node-management__impact--warn {
+    color: var(--dtc-warning-text);
+    background: var(--dtc-warning-surface);
+    border: 1px solid var(--dtc-warning);
+}
+
 /* outline-table minimal layout */
 .dtc-outline-table {
     width: 100%;
