@@ -308,15 +308,15 @@ pub(crate) fn NodeManagementPanel(
                     type="button"
                     title="Move selected node earlier among siblings"
                     on:click=move |_| {
-                        if let Some((node, index)) =
-                            selected_sibling_index(&workspace.get_untracked(), &selection.get_untracked())
+                        if let Some((node, index)) = selected_sibling_index(
+                            &workspace.get_untracked(),
+                            &selection.get_untracked(),
+                        ) && index > 0
                         {
-                            if index > 0 {
-                                move_up_dispatch.dispatch(WorkspaceIntent::ReorderNode {
-                                    node,
-                                    new_index: index - 1,
-                                });
-                            }
+                            move_up_dispatch.dispatch(WorkspaceIntent::ReorderNode {
+                                node,
+                                new_index: index - 1,
+                            });
                         }
                     }
                 >
