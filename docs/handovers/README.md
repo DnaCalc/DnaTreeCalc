@@ -33,6 +33,7 @@ Authored:
 - `HANDOVER_OXCALC_set_membership_write.md` — OxCalc-owned W3 authored reference-collection membership/order edit substrate for `SetCollectionMembership`.
 - `HANDOVER_OXCALC_engine_handle_and_incremental_edit.md` — the host-driven engine-handle + incremental-edit interaction contract (sans-executor / host-as-executor; pinned-version model; steppable / cancellable / executor-agnostic forward-compat for async/parallel/GPU). Underpins §6 items 8 (transactional batch) and 13 (undo).
 - `HANDOVER_OXCALC_map_lambda_node_array.md` — regression for `MAP` over a TreeCalc node-published array with an inline `LAMBDA` that captures another TreeCalc host name.
+- `HANDOVER_DNAONECALC_error_value_display.md` — request that OneCalc check the same bare `Value` error display symptom and consume OxFml visible value text for worksheet error tokens.
 
 Anticipated:
 
