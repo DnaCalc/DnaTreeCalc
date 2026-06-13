@@ -341,9 +341,8 @@ mod tests {
     struct ScriptedExecutor;
     impl SessionExecutor for ScriptedExecutor {
         fn execute(&self, envelope: IntentEnvelope) -> SessionResponse {
-            // Echo a snapshot one seq past whatever it had — the in-process
-            // transport would call deliver with this.
-            let _ = change_kind; // keep the import exercised
+            // Echo a snapshot stamped with the intent's seq — the in-process
+            // transport would hand this straight to deliver().
             snapshot_response(envelope.seq, envelope.seq)
         }
     }
