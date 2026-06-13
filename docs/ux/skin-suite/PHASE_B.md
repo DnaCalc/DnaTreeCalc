@@ -160,18 +160,26 @@ live `web_sys::Worker` transport is the remaining adapter (see below).
   for wasm32 + the host target; additive (nothing mounts it yet, so the running
   app is untouched).
 
-**Remaining for the *live* worker (one focused, browser-only step):** the
-main-thread **postMessage glue** — a `WebWorkerDispatcher` (Leptos `Dispatcher`)
-that owns the `web_sys::Worker`, routes view intents (selection/persona) locally
-and engine intents through `WorkerProxyCore` + `worker.post_message`, and on
-`worker.onmessage` runs `deliver` and applies the snapshot/delta to the mirror
-signals + the returned selection. Plus the trunk `data-type="worker"` link and
-an **opt-in** entrypoint (a `?worker=1` switch, so the default direct-dispatch
-app is never at risk). This is `!Send` web-sys glue (the `HOST_SESSIONS`
-thread-local pattern applies) whose off-thread execution is browser-only — it
-needs an in-browser smoke, not a unit test, so it is sequenced as a focused
-browser-available follow-on. **Non-urgent:** post perf-rounds-1+2, n≤1000 is
-interactive on the main thread; the worker's payoff is models above that.
+- **Live wiring** ✅ *(opt-in, built 2026-06-13)* — `WebWorkerDispatcher`
+  (`worker_client.rs`) fronts a `web_sys::Worker`: view intents
+  (selection/persona) answered on the main thread, engine intents through
+  `WorkerProxyCore` + `post_message`, and `worker.onmessage` → `deliver` →
+  applies the snapshot/delta + returned selection to the mirror signals. The
+  worker is **this crate** built `--target no-modules` (trunk 0.21
+  `data-type="worker"` ignores `data-cargo-manifest`, so the worker can't be a
+  separate crate); `start()` detects context — no `window` ⇒ run the worker
+  message loop (`worker_runtime.rs`) — and a blob bootstrap `importScripts` the
+  no-modules build. Opt-in via `?worker=1`; the default direct-dispatch app is
+  untouched. `!Send` `Worker`/`Closure`/proxy live in a thread-local (the
+  `HOST_SESSIONS` pattern). Both wasm artifacts emit via trunk.
+
+**Remaining for the *live* worker (one item):** an **in-browser smoke**. The
+preview's headless browser `chrome-error`s loading the app wasm even in the
+*default* (non-worker) mode — an environment limit, not the worker wiring — so
+the smoke must run in a real browser at `/?worker=1` (a `--release` build is
+recommended; the debug wasm is ~46 MB and the preview chokes on it).
+**Non-urgent:** post perf-rounds-1+2, n≤1000 is interactive on the main thread;
+the worker's payoff is models above that.
 
 **B.2 exit criteria (for the live wiring):** on a 5k-node model — type an edit,
 see `Pending` provenance immediately, published values arrive without
