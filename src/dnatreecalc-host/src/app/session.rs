@@ -76,7 +76,7 @@ use oxfml_core::consumer::editor::{
     EditorHostReferenceInsertionRequest, EditorHostReferenceTarget,
 };
 use oxfml_core::consumer::runtime::{RuntimeEnvironment, RuntimeValueLiteralizationResult};
-use oxfml_core::format::{oxfml_en_us_format_profile, render_with_code};
+use oxfml_core::format::{oxfml_en_us_format_profile, render_visible_value_text, render_with_code};
 use oxfml_core::syntax::token::TextSpan;
 use oxfml_core::{
     BindContext, FormulaSourceRecord, HostNameBindRecord, HostReferenceCollectionSyntax,
@@ -7564,23 +7564,20 @@ fn calc_value_projection(
                 cells,
             }
         }
-        CoreValue::Error(_) => NodeValueProjection::Error(calc_value_display_text(value)),
+        CoreValue::Error(_) => NodeValueProjection::Error(render_visible_value_text(value)),
         CoreValue::Number(number) => {
             let display = number.to_string();
             NodeValueProjection::Number {
                 raw: display.clone(),
                 display: render_number_with_effective_format(*number, effective_format)
-                    .unwrap_or(display),
+                    .unwrap_or_else(|| render_visible_value_text(value)),
             }
         }
         CoreValue::Text(text) => NodeValueProjection::Text(text.to_string_lossy()),
-        CoreValue::Logical(logical) => {
-            let display = logical.to_string();
-            NodeValueProjection::Logical {
-                value: *logical,
-                display,
-            }
-        }
+        CoreValue::Logical(logical) => NodeValueProjection::Logical {
+            value: *logical,
+            display: render_visible_value_text(value),
+        },
         CoreValue::Empty => NodeValueProjection::Empty,
         CoreValue::Missing => NodeValueProjection::Missing,
         CoreValue::Reference(reference) => NodeValueProjection::Reference {
@@ -7606,22 +7603,6 @@ fn render_number_with_effective_format(
         code,
     )
     .ok()
-}
-
-fn calc_value_display_text(value: &CalcValue) -> String {
-    match value.core() {
-        CoreValue::Number(number) => number.to_string(),
-        CoreValue::Text(text) => text.to_string_lossy(),
-        CoreValue::Logical(logical) => logical.to_string(),
-        CoreValue::Error(error) => format!("{error:?}"),
-        CoreValue::Empty => String::new(),
-        CoreValue::Missing => "missing".to_string(),
-        CoreValue::Array(array) => {
-            let shape = array.shape();
-            format!("Array({}x{})", shape.rows, shape.cols)
-        }
-        CoreValue::Reference(reference) => reference.target().to_string(),
-    }
 }
 
 fn calc_state_projection_for(calc_state: NodeCalcState) -> NodeCalcStateProjection {
@@ -9056,6 +9037,7 @@ fn reorder_root(display_order: &mut Vec<NodeId>, node: &NodeId, new_index: usize
 mod tests {
     use super::*;
     use crate::model::{WorkspaceFixture, WorkspaceNodeFixture};
+    use oxfunc_core::value::WorksheetErrorCode;
 
     #[test]
     fn session_evaluates_accounts_fixture_through_oxcalc_context() {
@@ -9079,6 +9061,42 @@ mod tests {
                 .and_then(|node| node.computed_value.scalar_display_text()),
             Some("1.6")
         );
+    }
+
+    #[test]
+    fn session_projects_value_errors_as_excel_tokens() {
+        let fixture = WorkspaceFixture {
+            schema_version: "treecalc-workspace-v1".to_string(),
+            workspace_id: "error-display".to_string(),
+            description: None,
+            profile: None,
+            nodes: vec![
+                WorkspaceNodeFixture {
+                    node_id: "Root".to_string(),
+                    formula: String::new(),
+                    is_meta: false,
+                    table: None,
+                },
+                WorkspaceNodeFixture {
+                    node_id: "Root.BadValue".to_string(),
+                    formula: "=ABS(\"abc\")".to_string(),
+                    is_meta: false,
+                    table: None,
+                },
+            ],
+        };
+        let model = WorkspaceModel::try_from(fixture).unwrap();
+        let mut session = TreeWorkspaceSession::from_model(&model).unwrap();
+
+        session.recalculate().unwrap();
+        let state = session.workspace_state().unwrap();
+        let value = &state
+            .node(&NodeId::new("Root.BadValue"))
+            .expect("error node projects")
+            .computed_value;
+
+        assert_eq!(value.display_text(), "#VALUE!");
+        assert!(matches!(value, NodeValueProjection::Error(text) if text == "#VALUE!"));
     }
 
     #[test]
@@ -9244,6 +9262,33 @@ mod tests {
                 target: "Tree!A1".to_string()
             }
         );
+    }
+
+    #[test]
+    fn calc_value_projection_uses_oxfml_visible_text_for_error_codes() {
+        let cases = [
+            (WorksheetErrorCode::Null, "#NULL!"),
+            (WorksheetErrorCode::Div0, "#DIV/0!"),
+            (WorksheetErrorCode::Value, "#VALUE!"),
+            (WorksheetErrorCode::Ref, "#REF!"),
+            (WorksheetErrorCode::Name, "#NAME?"),
+            (WorksheetErrorCode::Num, "#NUM!"),
+            (WorksheetErrorCode::NA, "#N/A"),
+            (WorksheetErrorCode::Busy, "#BUSY!"),
+            (WorksheetErrorCode::GettingData, "#GETTING_DATA"),
+            (WorksheetErrorCode::Spill, "#SPILL!"),
+            (WorksheetErrorCode::Calc, "#CALC!"),
+            (WorksheetErrorCode::Field, "#FIELD!"),
+            (WorksheetErrorCode::Blocked, "#BLOCKED!"),
+            (WorksheetErrorCode::Connect, "#CONNECT!"),
+        ];
+
+        for (code, expected) in cases {
+            assert_eq!(
+                calc_value_projection(&CalcValue::error(code), None),
+                NodeValueProjection::Error(expected.to_string())
+            );
+        }
     }
 
     #[test]
