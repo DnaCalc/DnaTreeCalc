@@ -18,6 +18,7 @@ pub mod permissions;
 pub mod preview;
 pub mod registry;
 pub mod selection;
+pub mod session_channel;
 pub mod skin;
 pub mod state;
 pub mod style;
@@ -45,6 +46,10 @@ pub use permissions::Persona;
 pub use preview::{PreviewError, PreviewService};
 pub use registry::SkinRegistry;
 pub use selection::{SelectionState, TableCellSelection};
+pub use session_channel::{
+    FrameMetric, IntentEnvelope, PendingIntentQueue, PendingRun, ResyncReason, SessionResponse,
+    apply_delta, change_kind, delta_is_fully_applicable, is_delta_applicable,
+};
 pub use skin::{
     ErasedSkinContext, ErasedSkinFactory, RegisteredSkin, SkinContext, SkinHandle, WorkspaceSkin,
 };

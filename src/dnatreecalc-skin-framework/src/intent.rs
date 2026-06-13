@@ -517,7 +517,7 @@ impl ClipboardPayloadKind {
 /// for asynchronous intents (e.g., long template sync); the skeleton
 /// uses only synchronous selection + formula edits, so that field
 /// is omitted until W007.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IntentReceipt {
     pub accepted: bool,
     pub error: Option<IntentError>,
