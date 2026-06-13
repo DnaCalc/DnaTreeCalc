@@ -5,6 +5,19 @@ the OxCalc passivity spike landed. Companion to the rollout table in
 [`README.md`](README.md), the spine contract in [`SPINE.md`](SPINE.md), and the
 stack requirements in [`../stack-requirements/`](../stack-requirements/).
 
+> **Closeout status (2026-06-13).** Shipped and verified: **B.1** (composition
+> core), **B.2.0** (engine perf rounds 1+2 — n≤1000 now interactive), **B.2.1**
+> (serializable IR seam), the **B.2.2–B.2.4 worker boundary** (wire protocol +
+> `apply_delta`/resync + coalescing/telemetry + the `WorkerProxyCore` state
+> machine, unit-tested in-process), and the **whole B.3 reach tier** (impact
+> previews, persona-governed catalog, keybinding v2, cockpit split panes + user
+> presets, on top of the earlier preview/persona/replay/multi-select slices).
+> **Two tracked follow-ons remain**, both deliberately deferred (not blocked):
+> (a) the *live* `web_sys::Worker` wiring — needs the session-executor decoupled
+> from Leptos, and is non-urgent while n≤1000 is interactive on the main thread;
+> (b) the B.3.7 hardening/polish tranche (panic isolation, locale, a11y audit,
+> virtualization). Everything else in this plan is done.
+
 > Sequencing headline: the passivity spike
 > (OxCalc `docs/spec/core-engine/CORE_ENGINE_HOST_WORKER_PASSIVITY_SPIKE.md`)
 > answered the worker question (run-to-completion, **zero engine changes**) but
@@ -102,27 +115,48 @@ shapes. Format remains `serde_json` first; `postcard` if profiling demands.
   (this is the cancellation story — no engine hook needed).
 - Trunk worker build wiring (`data-type="worker"`).
 
-### B.2.3 — Delta-only + resync *(host; pairs with the worker)*
-ROADMAP open question 8: shipping full snapshots over `postMessage` per publish
-is the real boundary cost.
-- UI side applies `WorkspaceDelta` onto a retained snapshot; `projection_seq`
-  gap or `FullReset` ⇒ request a fresh snapshot (resync-on-gap).
-- The delta channel + version stamp already exist; this adds the apply/resync
-  protocol and a delta-coverage audit (every projection field a lens reads must
-  be representable in a delta or trigger a reset).
+### B.2.2/B.2.3/B.2.4 — Worker boundary: protocol + proxy ✅ *(boundary built + tested 2026-06-13; live browser wiring tracked)*
+The transport-agnostic boundary is built and unit-tested in-process; the
+live `web_sys::Worker` transport is the remaining adapter (see below).
 
-### B.2.4 — Flow control + telemetry *(host)*
-- `backpressure-coalescing`: dispatcher queue; coalesce superseded
-  `EditContentDeferred` per `NodeKey`; drop/queue recalc while `Pending`;
-  `Coalesced{into_seq}` receipts.
-- `frame-telemetry-hooks`: `FrameMetric { intent_seq, dispatch_to_delta_us,
-  delta_apply_us, render_us, dropped }` into the replay sink — makes the
-  60fps goal falsifiable.
+- **Wire protocol** (`session_channel.rs`, framework): `IntentEnvelope{seq,
+  intent}`, `SessionResponse{seq, receipt, snapshot?}` (the executor ships a
+  snapshot exactly when the delta is not mirror-applicable), `PendingRun{token,
+  started_value_epoch}` (the cancellation/staleness key). Serializable, 6 tests.
+- **B.2.3 delta-only + resync**: `apply_delta` applies a delta onto a retained
+  mirror all-or-nothing, resyncing on a `projection_seq` gap or an
+  unrepresentable change. `is_delta_applicable` is the delta-coverage audit's
+  authority — only complete-replacement changes (`CalcRun`, `ClipboardChanged`)
+  apply; key-only/partial/collection/`FullReset` changes resync against the
+  authoritative snapshot. `delta_coverage_is_total` pins every variant to a
+  decision. *Honest limit:* the delta is a dirty-set hint for node/structural
+  changes, so a value recalc resyncs (ships the snapshot) — true delta-only for
+  recalcs needs `ValuesChanged` enriched with calc-state/epoch (tracked).
+- **B.2.4 backpressure + telemetry**: `PendingIntentQueue` coalesces deferred
+  content edits per node while a run is in flight; `FrameMetric{intent_seq,
+  dispatch_to_apply_micros, coalesced, resynced}` feeds the telemetry sink.
+- **Main-thread proxy** (`worker_proxy.rs`, host): `WorkerProxyCore` — `submit`
+  stamps a monotonic seq, sends the first intent and parks the rest behind the
+  in-flight run; `deliver` discards a superseded (lower-seq) late arrival,
+  applies a snapshot or delta, surfaces a resync, emits a `FrameMetric`, and
+  releases the next parked intent. Pure (no Leptos/web-sys), 7 tests incl. an
+  end-to-end in-process executor loop. `Pending` provenance is `PendingRun`.
 
-**B.2 exit criteria:** on a 5k-node model — type an edit, see `Pending`
-provenance immediately, published values arrive without main-thread jank;
-boundary traffic is delta-only in steady state; telemetry graphs the frame
-budget; the spike harness numbers meet the B.2.0 acceptance.
+**Remaining for the *live* worker (tracked):** the session-executor path must
+be decoupled from Leptos to run in a worker — a worker has no reactive runtime,
+so the `selection` `RwSignal` and shared-state writes stay main-thread (the
+proxy owns them) while the worker executor drives only the Leptos-free
+`TreeWorkspaceSession`. Then: a `WebWorkerTransport` (postMessage) + a worker
+entry module + trunk `data-type="worker"` wiring + swapping the web entrypoint
+to mount `WorkerProxyCore` over the transport. This is the integration the
+boundary was built to receive; it changes the central dispatch path and its
+off-thread execution is browser-only (manual smoke, not unit-tested), so it is
+sequenced as a focused follow-on. **Non-urgent:** post perf-rounds-1+2, n≤1000
+is interactive on the main thread; the worker's payoff is models above that.
+
+**B.2 exit criteria (for the live wiring):** on a 5k-node model — type an edit,
+see `Pending` provenance immediately, published values arrive without
+main-thread jank; the spike harness numbers meet the B.2.0 acceptance.
 
 ---
 
@@ -130,37 +164,44 @@ budget; the spike harness numbers meet the B.2.0 acceptance.
 
 In rough priority order:
 
-1. **Preview seam on `SkinContext`** ✅ *(shipped 2026-06-11)* —
+1. **Preview seam on `SkinContext`** ✅ *(shipped 2026-06-11; reach 2026-06-13)* —
    `PreviewService` (dry-bind + mutation impact) carried optionally on
-   `SkinContext`; the live dispatcher forwards to the session's `preview_*`
-   methods under the session mutex; the shared `NodeInspector` shows live
-   per-keystroke legality — now threaded through ALL seven lens inspectors.
-   *Remaining:* adopt mutation-impact previews in Tree/Capture/Sheet
-   affordances (pre-commit collision/orphan warnings).
-2. **`readonly-reviewer-persona`** ✅ *(first slice shipped 2026-06-11)* —
-   `Persona { Author, Reviewer, ReadOnly }` with a closed policy over the
-   closed intent enum; the dispatcher gates every intent and rejects with
-   typed `Forbidden{persona}`; switching travels as the audited `SetPersona`
-   intent (shell selector + Console chip). *Remaining:* per-origin policies
-   (remote peers), `allowed_intents` surfacing in the command catalog so
-   lenses pre-disable affordances.
+   `SkinContext`; live per-keystroke legality in all seven lens inspectors.
+   **Reach done:** `NodeManagementPanel` (Tree + the legacy editors) now
+   dry-runs the prospective add/rename/delete and disables the action on a
+   typed block (name collision) or warns on an orphaning delete. Capture
+   (`plan_scaffold` foresight) and Sheet (collision-free generated ids) keep
+   their own edit-model affordances — a single-intent impact widget mismatches
+   them.
+2. **`readonly-reviewer-persona`** ✅ *(shipped 2026-06-11; reach 2026-06-13)* —
+   `Persona { Author, Reviewer, ReadOnly }`, dispatcher gate, audited
+   `SetPersona`. **Reach done:** `Persona::allows_intent_kind` +
+   `CommandCatalogProjection::governed_by` surface the policy on the read-side
+   catalog so lenses pre-disable forbidden affordances; a consistency test pins
+   the catalog gate to the dispatch gate across all 33 kinds × 3 personas.
+   *Remaining:* per-origin policies (remote peers) — the origin tag attaches at
+   the worker/slot dispatch proxy (B.2.2 territory).
 3. **`intent-log-replay`** ✅ *(shipped 2026-06-11)* — every dispatch recorded
-   as a typed `IntentRecord` (outcome, transaction id, revision, value epoch,
-   persona); serde-exportable; `replay()` re-dispatches with divergence
-   tracking. Proven: a recorded session replays onto a fresh fixture with zero
-   mismatches and identical published values. *Remaining:* per-slot intent
-   origins once slot-scoped dispatch proxies exist (B.2.2 territory).
+   as a typed `IntentRecord`; serde-exportable; `replay()` re-dispatches with
+   divergence tracking. *Remaining:* per-slot intent origins (B.2.2 territory).
 4. **Multi-select promotion** ✅ *(shipped 2026-06-11)* —
-   `WorkspaceIntent::SelectNodes { keys, anchor }`: host-validated (stale key
-   = typed rejection), mirrored into shared state, allowed for all personas;
-   Ledger dispatches instead of writing view-state.
-5. **Keybinding registry v2** — per-user remapping persisted in audited shared
-   state, per-slot overrides, surfaced in the command catalog (the registry
-   API was built for this).
-6. **Cockpit reach** — user-defined presets (persisted, editable), split slots
-   (`SplitLeft`/`SplitRight`) chrome for side-by-side lenses, keyboard slot
-   cycling, and the remaining ATLAS W5 fields (`shared-focus-set` cross-lens
-   hover highlight is half-wired: `hovered` exists, no lens renders it yet).
+   `WorkspaceIntent::SelectNodes { keys, anchor }`: host-validated, mirrored
+   into shared state, allowed for all personas; Ledger dispatches it.
+5. **Keybinding registry v2** ✅ *(shipped 2026-06-13)* — `KeybindingOverrideMap`
+   (keyed by `SkinVerb::stable_id`, serializable) persisted on `SharedSkinState`
+   via the audited `SetKeybindingOverrides`; `KeybindingRegistry::with_overrides`
+   layers it over `universal()` collision-validated (a clash or unknown verb is
+   a typed `KeybindingError`); the shell builds the active grammar per keydown,
+   falling back to universal on a stale persisted map. *Remaining:* the
+   remap-capture UI, reflecting the chord in the catalog's `effective_binding`,
+   and per-slot overrides (B.2.2 focused-slot dispatch).
+6. **Cockpit reach** ✅ *(shipped 2026-06-13)* — `SplitLeft`/`SplitRight` are
+   real main-class panes (a default `allowed_slots` now means Main + the split
+   panes, so any lens mounts side-by-side) with chrome + footer toggles;
+   user-defined presets (`UserPreset`) persist per workspace, list in the picker
+   under "Saved", and save the current cockpit verbatim. *Remaining:* keyboard
+   slot cycling and the `shared-focus-set` cross-lens hover highlight (`hovered`
+   exists, no lens renders it yet).
 7. **Hardening + polish** — `skin-error-isolation` beyond fallback cards
    (documented wasm panic limits; defensive Result paths; per-slot remount
    affordance), `locale-presentation-layer` (chrome strings + direction only),
