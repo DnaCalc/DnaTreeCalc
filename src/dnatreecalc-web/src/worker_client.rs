@@ -33,18 +33,52 @@ use dnatreecalc_worker::{WorkerInbound, WorkerOutbound};
 use leptos::prelude::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
-use web_sys::{Blob, BlobPropertyBag, MessageEvent, Url, Worker};
+use web_sys::{Blob, BlobPropertyBag, MessageEvent, Url, Worker, WorkerOptions, WorkerType};
 
-/// The classic-worker bootstrap: load the no-modules build of this crate and
-/// initialize it. wasm-bindgen runs `start()` after init, which detects the
-/// worker context and installs the message handler. The unhashed names are
-/// trunk's stable `no-modules` output for this crate.
-const WORKER_BOOTSTRAP_JS: &str = "importScripts('/dnatreecalc-web.js');\n\
-     wasm_bindgen('/dnatreecalc-web_bg.wasm');\n";
+const WORKER_BOOTSTRAPPED: &str = "__dnatreecalc_worker_bootstrapped__";
+
+/// The module-worker bootstrap: import the same Trunk-emitted ES module that
+/// the page uses and initialize it with the matching hashed wasm URL.
+/// wasm-bindgen runs `start()` after init, which detects the worker context and
+/// installs the message handler.
+fn worker_bootstrap_js(module_url: &str, wasm_url: &str) -> String {
+    format!(
+        "try {{\n\
+           const {{ default: init }} = await import({module_url:?});\n\
+           await init({{ module_or_path: {wasm_url:?} }});\n\
+           globalThis.postMessage({WORKER_BOOTSTRAPPED:?});\n\
+         }} catch (error) {{\n\
+           console.error('dnatreecalc worker bootstrap failed', error);\n\
+           throw error;\n\
+         }}\n"
+    )
+}
+
+fn app_module_url(window: &web_sys::Window) -> Result<String, JsValue> {
+    let page_url = window.location().href()?;
+    let document = window
+        .document()
+        .ok_or_else(|| JsValue::from_str("document unavailable"))?;
+    if let Some(modulepreload) =
+        document.query_selector("link[rel=\"modulepreload\"][href$=\".js\"]")?
+        && let Some(href) = modulepreload.get_attribute("href")
+    {
+        return Ok(Url::new_with_base(&href, &page_url)?.href());
+    }
+    Ok(Url::new_with_base("dnatreecalc-web.js", &page_url)?.href())
+}
+
+fn wasm_url_for_module(module_url: &str) -> Result<String, JsValue> {
+    module_url
+        .strip_suffix(".js")
+        .map(|stem| format!("{stem}_bg.wasm"))
+        .ok_or_else(|| JsValue::from_str("worker module URL did not end in .js"))
+}
 
 struct WorkerRuntime {
     worker: Worker,
     proxy: WorkerProxyCore,
+    pending_init: Option<String>,
     // Kept alive for the worker's lifetime (dropping it detaches onmessage).
     _on_message: Closure<dyn FnMut(MessageEvent)>,
     workspace: RwSignal<WorkspaceState>,
@@ -80,30 +114,37 @@ impl WebWorkerDispatcher {
     ) -> Result<Self, JsValue> {
         let runtime_id = NEXT_RUNTIME_ID.fetch_add(1, Ordering::Relaxed);
 
-        // Spawn a classic worker from a blob bootstrap that loads the
-        // no-modules build of this crate (the worker side of `start()`).
+        // Spawn a module worker from a blob bootstrap that imports the same
+        // generated module as the page. The worker gets its own wasm instance;
+        // inside that context `start()` installs the worker message loop.
+        let window = web_sys::window().ok_or_else(|| JsValue::from_str("window unavailable"))?;
+        let module_url = app_module_url(&window)?;
+        let wasm_url = wasm_url_for_module(&module_url)?;
+        let bootstrap_js = worker_bootstrap_js(&module_url, &wasm_url);
         let parts = js_sys::Array::new();
-        parts.push(&JsValue::from_str(WORKER_BOOTSTRAP_JS));
+        parts.push(&JsValue::from_str(&bootstrap_js));
         let bag = BlobPropertyBag::new();
         bag.set_type("text/javascript");
         let blob = Blob::new_with_str_sequence_and_options(&parts, &bag)?;
         let url = Url::create_object_url_with_blob(&blob)?;
         // Not revoked: the worker may still be fetching its script from the
         // blob URL; one leaked object URL per session is negligible.
-        let worker = Worker::new(&url)?;
+        let options = WorkerOptions::new();
+        options.set_type(WorkerType::Module);
+        let worker = Worker::new_with_options(&url, &options)?;
 
         let on_message = Closure::<dyn FnMut(MessageEvent)>::new(move |event: MessageEvent| {
             on_worker_message(runtime_id, event);
         });
         worker.set_onmessage(Some(on_message.as_ref().unchecked_ref()));
 
-        // Hand the worker its initial document so it can build the session.
+        // Hand the worker its initial document after the bootstrap tells us
+        // wasm-bindgen `start()` installed the worker's `onmessage` handler.
         let init = WorkerInbound::Init {
             document: Box::new(document),
         };
-        if let Ok(json) = serde_json::to_string(&init) {
-            worker.post_message(&JsValue::from_str(&json))?;
-        }
+        let pending_init =
+            serde_json::to_string(&init).map_err(|error| JsValue::from_str(&error.to_string()))?;
 
         RUNTIMES.with(|runtimes| {
             runtimes.borrow_mut().insert(
@@ -111,6 +152,7 @@ impl WebWorkerDispatcher {
                 WorkerRuntime {
                     worker,
                     proxy: WorkerProxyCore::new(initial),
+                    pending_init: Some(pending_init),
                     _on_message: on_message,
                     workspace,
                     latest_delta,
@@ -142,16 +184,19 @@ impl Dispatcher for WebWorkerDispatcher {
                 row_id,
                 column_id,
             } => {
-                self.selection.set(SelectionState::with_table_cell(TableCellSelection {
-                    table,
-                    row_id,
-                    column_id,
-                }));
+                self.selection
+                    .set(SelectionState::with_table_cell(TableCellSelection {
+                        table,
+                        row_id,
+                        column_id,
+                    }));
                 IntentReceipt::accepted()
             }
             I::SelectNodes { keys, anchor } => {
-                self.shared
-                    .apply(SharedStateChange::SetSelectionSet(keys), SharedStateOrigin::Host);
+                self.shared.apply(
+                    SharedStateChange::SetSelectionSet(keys),
+                    SharedStateOrigin::Host,
+                );
                 self.shared.apply(
                     SharedStateChange::SetSelectionAnchor(anchor),
                     SharedStateOrigin::Host,
@@ -159,8 +204,10 @@ impl Dispatcher for WebWorkerDispatcher {
                 IntentReceipt::accepted()
             }
             I::SetPersona { persona } => {
-                self.shared
-                    .apply(SharedStateChange::SetPersona(persona), SharedStateOrigin::Host);
+                self.shared.apply(
+                    SharedStateChange::SetPersona(persona),
+                    SharedStateOrigin::Host,
+                );
                 IntentReceipt::accepted()
             }
             // Everything else runs on the engine, off-thread.
@@ -192,6 +239,18 @@ fn on_worker_message(runtime_id: u64, event: MessageEvent) {
     let Some(text) = event.data().as_string() else {
         return;
     };
+    if text == WORKER_BOOTSTRAPPED {
+        RUNTIMES.with(|runtimes| {
+            let mut runtimes = runtimes.borrow_mut();
+            let Some(runtime) = runtimes.get_mut(&runtime_id) else {
+                return;
+            };
+            if let Some(init) = runtime.pending_init.take() {
+                let _ = runtime.worker.post_message(&JsValue::from_str(&init));
+            }
+        });
+        return;
+    }
     let Ok(outbound) = serde_json::from_str::<WorkerOutbound>(&text) else {
         return;
     };

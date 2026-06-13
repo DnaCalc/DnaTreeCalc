@@ -309,8 +309,8 @@ pub fn mount_dnatreecalc(element_id: &str) -> Result<(), JsValue> {
 pub fn start() -> Result<(), JsValue> {
     install_wasm_diagnostics();
     // This crate is built twice: as the main app (`--target web`) and as the
-    // calculation worker (`--target no-modules`). A worker has no `window`, so
-    // that is how we tell which build is running.
+    // calculation worker. A worker has no `window`, so that is how we tell
+    // which context is running.
     if web_sys::window().is_some() {
         web_sys::console::log_1(&JsValue::from_str("dnatreecalc wasm start: window"));
         mount_dnatreecalc("dnatreecalc-app")

@@ -160,24 +160,26 @@ live `web_sys::Worker` transport is the remaining adapter (see below).
   for wasm32 + the host target; additive (nothing mounts it yet, so the running
   app is untouched).
 
-- **Live wiring** ✅ *(opt-in, built 2026-06-13)* — `WebWorkerDispatcher`
+- **Live wiring** ✅ *(opt-in, built 2026-06-13; browser-smoked 2026-06-13)* — `WebWorkerDispatcher`
   (`worker_client.rs`) fronts a `web_sys::Worker`: view intents
   (selection/persona) answered on the main thread, engine intents through
   `WorkerProxyCore` + `post_message`, and `worker.onmessage` → `deliver` →
   applies the snapshot/delta + returned selection to the mirror signals. The
-  worker is **this crate** built `--target no-modules` (trunk 0.21
-  `data-type="worker"` ignores `data-cargo-manifest`, so the worker can't be a
-  separate crate); `start()` detects context — no `window` ⇒ run the worker
-  message loop (`worker_runtime.rs`) — and a blob bootstrap `importScripts` the
-  no-modules build. Opt-in via `?worker=1`; the default direct-dispatch app is
-  untouched. `!Send` `Worker`/`Closure`/proxy live in a thread-local (the
-  `HOST_SESSIONS` pattern). Both wasm artifacts emit via trunk.
+  worker imports **this crate's** Trunk-emitted ES module again inside a module
+  worker, giving it a separate wasm instance; `start()` detects context — no
+  `window` ⇒ run the worker message loop (`worker_runtime.rs`). Opt-in via
+  `?worker=1`; the default direct-dispatch app is untouched. `!Send`
+  `Worker`/`Closure`/proxy live in a thread-local (the `HOST_SESSIONS`
+  pattern).
 
-**Remaining for the *live* worker (one item):** an **in-browser smoke**. The
-preview's headless browser `chrome-error`s loading the app wasm even in the
-*default* (non-worker) mode — an environment limit, not the worker wiring — so
-the smoke must run in a real browser at `/?worker=1` (a `--release` build is
-recommended; the debug wasm is ~46 MB and the preview chokes on it).
+**Browser smoke:** `/?worker=1` now runs in the in-app browser on a `--release`
+Trunk build from `src/dnatreecalc-web/index.html`. The smoke found and fixed
+the browser-only bootstrap issue: the blob bootstrap must use a module worker
+rather than `importScripts` from a blob URL, and it must pass the hashed wasm
+URL explicitly instead of relying on wasm-bindgen's stable-name default. The
+worker also sends a one-word bootstrapped handshake before the main thread
+posts `Init`, so the first document message cannot race the worker's
+`onmessage` installation.
 **Non-urgent:** post perf-rounds-1+2, n≤1000 is interactive on the main thread;
 the worker's payoff is models above that.
 

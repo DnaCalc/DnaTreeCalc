@@ -1,8 +1,9 @@
 //! The worker side of the calculation boundary.
 //!
-//! Trunk builds this crate twice: `--target web` (the main app) and
-//! `--target no-modules` (the worker). Both run [`crate::start`], which detects
-//! the context — a worker has no `window` — and on the worker side calls
+//! The browser worker imports the same generated module as the main app, giving
+//! it a separate wasm instance in a worker global. Both contexts run
+//! [`crate::start`], which detects the context — a worker has no `window` — and
+//! on the worker side calls
 //! [`start_worker`] here. The worker owns the `TreeWorkspaceSession` via a
 //! [`HostSessionExecutor`] and answers [`WorkerInbound`] messages with
 //! [`WorkerOutbound`] over `postMessage`. No DOM, no Leptos UI — just the
@@ -59,16 +60,16 @@ fn handle_message(event: MessageEvent) {
     };
     match serde_json::from_str::<WorkerInbound>(&text) {
         Ok(WorkerInbound::Init { document }) => init_session(*document),
-        Ok(WorkerInbound::Intent { envelope }) => STATE.with(|state| {
-            match state.borrow().as_ref() {
+        Ok(WorkerInbound::Intent { envelope }) => {
+            STATE.with(|state| match state.borrow().as_ref() {
                 Some(state) => post(&WorkerOutbound::Response {
                     response: Box::new(state.executor.execute(envelope)),
                 }),
                 None => post(&WorkerOutbound::Failed {
                     message: "intent arrived before the worker was initialized".to_string(),
                 }),
-            }
-        }),
+            })
+        }
         Err(error) => post(&WorkerOutbound::Failed {
             message: format!("could not decode a worker message: {error}"),
         }),

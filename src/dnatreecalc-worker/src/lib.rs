@@ -1,8 +1,8 @@
 //! The DNA TreeCalc calculation-worker **message protocol**.
 //!
-//! The worker runtime itself lives in `dnatreecalc-web` (trunk 0.21 builds the
-//! web crate in `no-modules` mode for the worker, so the worker entry must be
-//! the same crate, behind a context-detecting `start`). This crate is just the
+//! The worker runtime itself lives in `dnatreecalc-web`: the browser worker
+//! imports the same generated web module as the main app, so the worker entry
+//! must be in that crate, behind a context-detecting `start`. This crate is just the
 //! serializable message types shared by both sides of the `postMessage`
 //! boundary: the main thread sends [`WorkerInbound`], the worker replies
 //! [`WorkerOutbound`].
@@ -17,7 +17,9 @@ use serde::{Deserialize, Serialize};
 pub enum WorkerInbound {
     /// The first message: the initial document, so the worker can build the
     /// session it will own.
-    Init { document: Box<DnaTreeWorkspaceDocument> },
+    Init {
+        document: Box<DnaTreeWorkspaceDocument>,
+    },
     /// A sequence-stamped intent to run against the session.
     Intent { envelope: IntentEnvelope },
 }
