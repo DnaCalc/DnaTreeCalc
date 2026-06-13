@@ -6,6 +6,7 @@ members = [
     "src/dnatreecalc-shell",
     "src/dnatreecalc-skins",
     "src/dnatreecalc-web",
+    "src/dnatreecalc-worker",
 ]
 
 [workspace.package]
