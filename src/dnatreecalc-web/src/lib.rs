@@ -36,6 +36,11 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
 #[cfg(target_arch = "wasm32")]
+mod worker_client;
+#[cfg(target_arch = "wasm32")]
+mod worker_runtime;
+
+#[cfg(target_arch = "wasm32")]
 struct BrowserLocalStorageSkinStateStore {
     storage: web_sys::Storage,
     prefix: String,
@@ -204,6 +209,9 @@ pub fn mount_dnatreecalc(element_id: &str) -> Result<(), JsValue> {
     let (session, restored_selection) =
         workspace_session_from_document_store_or_default(workspace_document_store.as_ref())
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
+    // The real restored selection (before the dev fallback below) is what the
+    // worker should reopen with.
+    let selected_for_document = restored_selection.clone();
     let session = Arc::new(std::sync::Mutex::new(session));
     let workspace_state = session
         .lock()
@@ -221,17 +229,49 @@ pub fn mount_dnatreecalc(element_id: &str) -> Result<(), JsValue> {
     let skin_state_store: Arc<dyn SkinStatePersistenceStore> =
         Arc::new(BrowserLocalStorageSkinStateStore::new(local_storage));
 
-    let dispatcher = Arc::new(HostDispatcher::with_session_shared_and_workspace_store(
-        selection,
-        workspace,
-        latest_delta,
-        session,
-        Some(shared),
-        Some(workspace_document_store),
-    ));
-    let dispatch: Arc<dyn Dispatcher> = dispatcher.clone();
-    // The live dispatcher also answers non-mutating previews (tenet 7).
-    let preview: Arc<dyn dnatreecalc_skin_framework::PreviewService> = dispatcher;
+    // Opt-in (`?worker=1`): run the session in a web worker. The default path
+    // keeps the synchronous in-process dispatcher (and its live preview).
+    let worker_mode = window
+        .location()
+        .search()
+        .map(|search| search.contains("worker=1"))
+        .unwrap_or(false);
+
+    let (dispatch, preview): (
+        Arc<dyn Dispatcher>,
+        Option<Arc<dyn dnatreecalc_skin_framework::PreviewService>>,
+    ) = if worker_mode {
+        let document = session
+            .lock()
+            .map_err(|_| JsValue::from_str("workspace session mutex poisoned"))?
+            .export_dnatree_document(selected_for_document.as_ref())
+            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        let initial = workspace.get_untracked();
+        let dispatcher = worker_client::WebWorkerDispatcher::new(
+            initial,
+            document,
+            workspace,
+            latest_delta,
+            selection,
+            shared,
+        )?;
+        // Preview reaches the session synchronously; off-thread it is
+        // unavailable, so lenses fall back to post-attempt receipts.
+        (Arc::new(dispatcher), None)
+    } else {
+        let dispatcher = Arc::new(HostDispatcher::with_session_shared_and_workspace_store(
+            selection,
+            workspace,
+            latest_delta,
+            session,
+            Some(shared),
+            Some(workspace_document_store),
+        ));
+        let dispatch: Arc<dyn Dispatcher> = dispatcher.clone();
+        // The live dispatcher also answers non-mutating previews (tenet 7).
+        let preview: Arc<dyn dnatreecalc_skin_framework::PreviewService> = dispatcher;
+        (dispatch, Some(preview))
+    };
 
     let registry = Arc::new(build_default_registry());
 
@@ -258,5 +298,13 @@ pub fn mount_dnatreecalc(element_id: &str) -> Result<(), JsValue> {
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen(start)]
 pub fn start() -> Result<(), JsValue> {
-    mount_dnatreecalc("dnatreecalc-app")
+    // This crate is built twice: as the main app (`--target web`) and as the
+    // calculation worker (`--target no-modules`). A worker has no `window`, so
+    // that is how we tell which build is running.
+    if web_sys::window().is_some() {
+        mount_dnatreecalc("dnatreecalc-app")
+    } else {
+        worker_runtime::start_worker();
+        Ok(())
+    }
 }

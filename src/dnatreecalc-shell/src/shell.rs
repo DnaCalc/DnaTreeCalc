@@ -289,7 +289,7 @@ pub fn WorkspaceShell(
     registry: Arc<SkinRegistry>,
     initial_skin: SkinId,
     tokens: ThemeTokens,
-    #[prop(optional)] preview: Option<Arc<dyn PreviewService>>,
+    #[prop(optional_no_strip)] preview: Option<Arc<dyn PreviewService>>,
 ) -> impl IntoView {
     let initial_workspace_id = workspace.get_untracked().workspace_id;
     let layout = RwSignal::new(

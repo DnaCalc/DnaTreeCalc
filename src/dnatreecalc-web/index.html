@@ -4,7 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>DNA TreeCalc</title>
-  <link data-trunk rel="rust">
+  <link data-trunk rel="rust" data-cargo-manifest="Cargo.toml">
+  <!-- Trunk 0.21 builds the SAME crate in no-modules mode for a worker
+       (data-cargo-manifest is ignored), emitting the unhashed
+       dnatreecalc-web.js + _bg.wasm the worker bootstrap importScripts. -->
+  <link data-trunk rel="rust" data-cargo-manifest="Cargo.toml" data-type="worker">
 </head>
 <body>
   <div id="dnatreecalc-app"></div>

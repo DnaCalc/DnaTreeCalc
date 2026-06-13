@@ -13,6 +13,7 @@ dnatreecalc-host = { path = "../dnatreecalc-host" }
 dnatreecalc-shell = { path = "../dnatreecalc-shell" }
 dnatreecalc-skin-framework = { path = "../dnatreecalc-skin-framework" }
 dnatreecalc-skins = { path = "../dnatreecalc-skins" }
+dnatreecalc-worker = { path = "../dnatreecalc-worker" }
 serde_json = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
@@ -21,7 +22,24 @@ leptos = { version = "0.8.17", default-features = false, features = ["ssr"] }
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 leptos = { version = "0.8.17", default-features = false, features = ["csr"] }
 wasm-bindgen = "=0.2.117"
-web-sys = { version = "0.3", features = ["Window", "Document", "Element", "HtmlElement", "Storage"] }
+js-sys = "0.3"
+web-sys = { version = "0.3", features = [
+    "Window",
+    "Document",
+    "Element",
+    "HtmlElement",
+    "Storage",
+    "Location",
+    "Worker",
+    "WorkerType",
+    "WorkerOptions",
+    "MessageEvent",
+    "DedicatedWorkerGlobalScope",
+    "Blob",
+    "BlobPropertyBag",
+    "Url",
+    "console",
+] }
 
 [lints]
 workspace = true

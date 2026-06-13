@@ -367,10 +367,21 @@ dependencies = [
  "dnatreecalc-shell",
  "dnatreecalc-skin-framework",
  "dnatreecalc-skins",
+ "dnatreecalc-worker",
+ "js-sys",
  "leptos",
  "serde_json",
  "wasm-bindgen",
  "web-sys",
+]
+
+[[package]]
+name = "dnatreecalc-worker"
+version = "0.1.0"
+dependencies = [
+ "dnatreecalc-host",
+ "dnatreecalc-skin-framework",
+ "serde",
 ]
 
 [[package]]
