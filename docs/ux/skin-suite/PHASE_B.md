@@ -141,18 +141,37 @@ live `web_sys::Worker` transport is the remaining adapter (see below).
   applies a snapshot or delta, surfaces a resync, emits a `FrameMetric`, and
   releases the next parked intent. Pure (no Leptos/web-sys), 7 tests incl. an
   end-to-end in-process executor loop. `Pending` provenance is `PendingRun`.
+- **Real-session executor** (`worker_proxy.rs`, host): `HostSessionExecutor`
+  runs a `HostDispatcher` in *executor mode* (throwaway workspace/delta/
+  selection signals, no shared handle → the main-thread-only writes are
+  skipped), dispatches the intent, and reports the snapshot + the changed
+  selection. `SessionResponse` now carries that selection (the MIXED structural
+  intents select the affected node, which only the executor knows). Proven
+  against the **real engine**: `real_session_flows_through_the_proxy_and_executor`
+  drives an accounts session through the proxy + executor — AddNode advances
+  the mirror, adds the node, reports the new selection; Recalculate round-trips.
+  The pivotal finding (leptos signals run headless in a worker) means this is
+  the *exact* code the worker runs — no Leptos-free rewrite needed.
+- **Worker artifact** (`dnatreecalc-worker` crate): the wasm cdylib that owns
+  the session off-thread. `WorkerInbound::Init{document}` builds the session
+  (`export_dnatree_document` → `from_dnatree_document`) under a reactive owner
+  and replies `Ready{snapshot}`; `WorkerInbound::Intent{envelope}` runs through
+  `HostSessionExecutor` and replies `Response{SessionResponse}`. Builds clean
+  for wasm32 + the host target; additive (nothing mounts it yet, so the running
+  app is untouched).
 
-**Remaining for the *live* worker (tracked):** the session-executor path must
-be decoupled from Leptos to run in a worker — a worker has no reactive runtime,
-so the `selection` `RwSignal` and shared-state writes stay main-thread (the
-proxy owns them) while the worker executor drives only the Leptos-free
-`TreeWorkspaceSession`. Then: a `WebWorkerTransport` (postMessage) + a worker
-entry module + trunk `data-type="worker"` wiring + swapping the web entrypoint
-to mount `WorkerProxyCore` over the transport. This is the integration the
-boundary was built to receive; it changes the central dispatch path and its
-off-thread execution is browser-only (manual smoke, not unit-tested), so it is
-sequenced as a focused follow-on. **Non-urgent:** post perf-rounds-1+2, n≤1000
-is interactive on the main thread; the worker's payoff is models above that.
+**Remaining for the *live* worker (one focused, browser-only step):** the
+main-thread **postMessage glue** — a `WebWorkerDispatcher` (Leptos `Dispatcher`)
+that owns the `web_sys::Worker`, routes view intents (selection/persona) locally
+and engine intents through `WorkerProxyCore` + `worker.post_message`, and on
+`worker.onmessage` runs `deliver` and applies the snapshot/delta to the mirror
+signals + the returned selection. Plus the trunk `data-type="worker"` link and
+an **opt-in** entrypoint (a `?worker=1` switch, so the default direct-dispatch
+app is never at risk). This is `!Send` web-sys glue (the `HOST_SESSIONS`
+thread-local pattern applies) whose off-thread execution is browser-only — it
+needs an in-browser smoke, not a unit test, so it is sequenced as a focused
+browser-available follow-on. **Non-urgent:** post perf-rounds-1+2, n≤1000 is
+interactive on the main thread; the worker's payoff is models above that.
 
 **B.2 exit criteria (for the live wiring):** on a 5k-node model — type an edit,
 see `Pending` provenance immediately, published values arrive without
