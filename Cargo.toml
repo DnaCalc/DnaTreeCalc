@@ -22,6 +22,23 @@ oxcalc_core = { package = "oxcalc-core", path = "../OxCalc/src/oxcalc-core" }
 oxfml_core = { path = "../OxFml/crates/oxfml_core" }
 oxfunc_core = { path = "../OxFunc/crates/oxfunc_core" }
 
+# Keep local/browser debug artifacts small enough to compile and instantiate.
+# The skin suite's Leptos view types produce very large debuginfo on Windows;
+# full-symbol debug builds have already hit OS paging limits in this repo.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = 0
+
+[profile.release]
+debug = 0
+lto = "thin"
+codegen-units = 1
+opt-level = "z"
+panic = "abort"
+strip = "debuginfo"
+
 [workspace.lints.rust]
 unsafe_code = "forbid"
 

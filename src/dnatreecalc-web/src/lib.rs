@@ -41,6 +41,15 @@ mod worker_client;
 mod worker_runtime;
 
 #[cfg(target_arch = "wasm32")]
+fn install_wasm_diagnostics() {
+    std::panic::set_hook(Box::new(|info| {
+        web_sys::console::error_1(&JsValue::from_str(&format!(
+            "dnatreecalc wasm panic: {info}"
+        )));
+    }));
+}
+
+#[cfg(target_arch = "wasm32")]
 struct BrowserLocalStorageSkinStateStore {
     storage: web_sys::Storage,
     prefix: String,
@@ -298,12 +307,15 @@ pub fn mount_dnatreecalc(element_id: &str) -> Result<(), JsValue> {
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen(start)]
 pub fn start() -> Result<(), JsValue> {
+    install_wasm_diagnostics();
     // This crate is built twice: as the main app (`--target web`) and as the
     // calculation worker (`--target no-modules`). A worker has no `window`, so
     // that is how we tell which build is running.
     if web_sys::window().is_some() {
+        web_sys::console::log_1(&JsValue::from_str("dnatreecalc wasm start: window"));
         mount_dnatreecalc("dnatreecalc-app")
     } else {
+        web_sys::console::log_1(&JsValue::from_str("dnatreecalc wasm start: worker"));
         worker_runtime::start_worker();
         Ok(())
     }
