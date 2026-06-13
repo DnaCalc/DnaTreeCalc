@@ -6034,6 +6034,61 @@ fn programmable_skin_projects_sequence_5_by_5() {
 }
 
 #[test]
+fn programmable_skin_maps_inline_sequence_with_local_lambda() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    skin.add_node(Some("Root"), "Mapped", "=MAP(SEQUENCE(3),LAMBDA(v,v+1))");
+
+    let state = skin.state();
+    let mapped = state
+        .node(&NodeId::new("Root.Mapped"))
+        .expect("MAP node projects");
+    let NodeValueProjection::Array { rows, cols, cells } = &mapped.computed_value else {
+        panic!(
+            "MAP over inline SEQUENCE should project as an array, got {:?}",
+            mapped.computed_value
+        );
+    };
+    assert_eq!((*rows, *cols), (3, 1));
+    assert_eq!(cells[0][0].display_text(), "2");
+    assert_eq!(cells[1][0].display_text(), "3");
+    assert_eq!(cells[2][0].display_text(), "4");
+}
+
+#[test]
+#[ignore = "upstream OxCalc/OxFml bridge gap: TreeCalc node-array MAP lambda currently returns a 1x1 Value error"]
+fn programmable_skin_maps_node_array_with_lambda_host_capture() {
+    let harness = Harness::empty();
+    let skin = harness.driver.clone();
+
+    skin.add_node(None, "Root", "");
+    skin.add_node(Some("Root"), "x", "1");
+    skin.add_node(Some("Root"), "a", "=SEQUENCE(5,5)");
+    skin.add_node(Some("Root"), "m", "=MAP(a,LAMBDA(v,v+x))");
+
+    let state = skin.state();
+    let mapped = state
+        .node(&NodeId::new("Root.m"))
+        .expect("mapped node projects");
+    let NodeValueProjection::Array { rows, cols, cells } = &mapped.computed_value else {
+        panic!(
+            "MAP over TreeCalc node array should project as an array, got {:?}",
+            mapped.computed_value
+        );
+    };
+    assert_eq!(
+        (*rows, *cols),
+        (5, 5),
+        "expected a 5x5 mapped array, got {:?}",
+        mapped.computed_value
+    );
+    assert_eq!(cells[0][0].display_text(), "2");
+    assert_eq!(cells[4][4].display_text(), "26");
+}
+
+#[test]
 fn programmable_skin_projects_randarray_with_oxcalc_host_random_provider() {
     let harness = Harness::empty();
     let skin = harness.driver.clone();
