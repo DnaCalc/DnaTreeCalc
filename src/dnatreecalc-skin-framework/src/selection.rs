@@ -1,3 +1,5 @@
+use serde::{Deserialize, Serialize};
+
 use crate::identity::NodeId;
 
 /// Host-wide selection shared across all mounted skins.
@@ -9,7 +11,7 @@ use crate::identity::NodeId;
 /// auditable in tests. Table-cell focus is still selection state rather
 /// than engine state; multi-select / anchor / navigation history arrive
 /// with later work.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SelectionState {
     pub primary: Option<NodeId>,
     pub table_cell: Option<TableCellSelection>,
@@ -33,7 +35,7 @@ impl SelectionState {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TableCellSelection {
     pub table: NodeId,
     pub row_id: Option<String>,

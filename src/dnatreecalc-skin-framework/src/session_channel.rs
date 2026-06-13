@@ -17,6 +17,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::intent::{IntentReceipt, WorkspaceDelta, WorkspaceDeltaChange, WorkspaceIntent};
+use crate::selection::SelectionState;
 use crate::workspace::WorkspaceState;
 
 /// A sequence-stamped intent submitted to the session executor.
@@ -44,25 +45,39 @@ impl IntentEnvelope {
 /// [`is_delta_applicable`]) — and then holds the authoritative full state.
 /// When the delta is fully applicable, `snapshot` is `None` and only the
 /// delta crosses the boundary.
+///
+/// `selection` is `Some` exactly when the intent changed the host selection —
+/// the MIXED structural intents (`AddNode`/`RenameNode`/`MoveNode`/`DeleteNode`
+/// select the affected node, which only the executor knows). Selection is
+/// otherwise main-thread view-state the proxy owns, so a `None` here means
+/// "leave the selection alone."
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SessionResponse {
     pub seq: u64,
     pub receipt: IntentReceipt,
     pub snapshot: Option<WorkspaceState>,
+    pub selection: Option<SelectionState>,
 }
 
 impl SessionResponse {
     /// Build the response an executor should send for `receipt`: the receipt
     /// plus a snapshot whenever the receipt's delta is not fully applicable to
-    /// a retained mirror. This is the executor's side of the delta-vs-snapshot
-    /// decision; the proxy never has to guess.
+    /// a retained mirror, and the resulting selection when the intent changed
+    /// it. This is the executor's side of the delta-vs-snapshot decision; the
+    /// proxy never has to guess.
     #[must_use]
-    pub fn for_receipt(seq: u64, receipt: IntentReceipt, state: &WorkspaceState) -> Self {
+    pub fn for_receipt(
+        seq: u64,
+        receipt: IntentReceipt,
+        state: &WorkspaceState,
+        selection: Option<SelectionState>,
+    ) -> Self {
         let snapshot = (!delta_is_fully_applicable(&receipt.delta)).then(|| state.clone());
         Self {
             seq,
             receipt,
             snapshot,
+            selection,
         }
     }
 }
@@ -409,11 +424,19 @@ mod tests {
         let state = mirror_at(2);
         let applicable = IntentReceipt::accepted()
             .with_delta(delta(1, 2, vec![WorkspaceDeltaChange::ClipboardChanged(None)]));
-        assert!(SessionResponse::for_receipt(1, applicable, &state).snapshot.is_none());
+        assert!(
+            SessionResponse::for_receipt(1, applicable, &state, None)
+                .snapshot
+                .is_none()
+        );
 
         let needs_snapshot = IntentReceipt::accepted()
             .with_delta(delta(1, 2, vec![WorkspaceDeltaChange::ValuesChanged(Vec::new())]));
-        assert!(SessionResponse::for_receipt(2, needs_snapshot, &state).snapshot.is_some());
+        assert!(
+            SessionResponse::for_receipt(2, needs_snapshot, &state, None)
+                .snapshot
+                .is_some()
+        );
     }
 
     #[test]

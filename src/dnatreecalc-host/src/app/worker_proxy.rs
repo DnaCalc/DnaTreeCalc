@@ -21,10 +21,17 @@
 //! scripted executor; the live host wraps it with the Leptos signals and an
 //! in-process or `postMessage` transport.
 
+use std::sync::{Arc, Mutex};
+
 use dnatreecalc_skin_framework::{
-    FrameMetric, IntentEnvelope, IntentReceipt, PendingIntentQueue, PendingRun, ResyncReason,
-    SessionResponse, WorkspaceState, WorkspaceIntent, apply_delta,
+    Dispatcher, FrameMetric, IntentEnvelope, IntentReceipt, PendingIntentQueue, PendingRun,
+    ResyncReason, SelectionState, SessionResponse, WorkspaceDelta, WorkspaceState, WorkspaceIntent,
+    apply_delta,
 };
+use leptos::prelude::*;
+
+use super::dispatcher::HostDispatcher;
+use super::session::TreeWorkspaceSession;
 
 /// The session, behind whatever transport carries an envelope to it: an
 /// in-process call (native / tests) or a `postMessage` round-trip (wasm
@@ -57,6 +64,10 @@ pub struct DeliverOutcome {
     /// Set when a delta could not be applied and the proxy needs the executor
     /// to send a fresh snapshot (the caller re-requests via a recalculation).
     pub resync_reason: Option<ResyncReason>,
+    /// The selection the intent produced (MIXED structural intents), for the
+    /// host wrapper to mirror into the main-thread selection signal. `None`
+    /// means the intent did not change selection — leave it alone.
+    pub selection: Option<SelectionState>,
 }
 
 /// The transport-agnostic proxy state machine.
@@ -135,24 +146,31 @@ impl WorkerProxyCore {
                 metric: None,
                 next: self.dispatch_next(),
                 resync_reason: None,
+                selection: None,
             };
         }
-        self.highest_delivered_seq = response.seq;
+        let SessionResponse {
+            seq,
+            receipt,
+            snapshot,
+            selection,
+        } = response;
+        self.highest_delivered_seq = seq;
         self.pending = None;
 
         let mut resynced = false;
         let mut resync_reason = None;
-        if let Some(snapshot) = response.snapshot {
+        if let Some(snapshot) = snapshot {
             self.mirror = snapshot;
             resynced = true;
-        } else if let Err(reason) = apply_delta(&mut self.mirror, &response.receipt.delta) {
+        } else if let Err(reason) = apply_delta(&mut self.mirror, &receipt.delta) {
             // The executor judged the delta applicable but our mirror has
             // gapped — surface it so the caller re-requests a snapshot.
             resync_reason = Some(reason);
         }
 
         let metric = FrameMetric {
-            intent_seq: response.seq,
+            intent_seq: seq,
             dispatch_to_apply_micros: elapsed_micros,
             coalesced: self.queue.coalesced_count(),
             resynced,
@@ -165,6 +183,7 @@ impl WorkerProxyCore {
             metric: Some(metric),
             next: self.dispatch_next(),
             resync_reason,
+            selection,
         }
     }
 
@@ -197,10 +216,74 @@ impl WorkerProxyCore {
     }
 }
 
+/// A [`SessionExecutor`] backed by a real [`HostDispatcher`] running in
+/// **executor mode**: it owns the session and the engine, runs the intent, and
+/// reports the resulting snapshot/delta plus the selection the intent produced.
+///
+/// This is exactly the code the wasm worker entry runs — the worker constructs
+/// one of these over the session it owns and calls [`Self::execute`] for each
+/// envelope. The Leptos signals it holds are **throwaway**: the dispatcher
+/// writes them (so `publish_projection_state` computes the delta and the
+/// MIXED-intent selection lands), but the main-thread proxy owns the *real* UI
+/// signals. Shared state, undo/redo, persistence, the persona gate, and intent
+/// recording all stay on the main thread (the dispatcher here has no shared
+/// handle), so the executor is pure engine.
+pub struct HostSessionExecutor {
+    dispatcher: HostDispatcher,
+    workspace: RwSignal<WorkspaceState>,
+    selection: RwSignal<SelectionState>,
+}
+
+impl HostSessionExecutor {
+    /// Build an executor over `session`. Must be called within a Leptos
+    /// reactive owner (the worker establishes one at startup; tests use
+    /// `Owner::new`).
+    #[must_use]
+    pub fn new(session: Arc<Mutex<TreeWorkspaceSession>>) -> Self {
+        let initial = session
+            .lock()
+            .expect("workspace session mutex poisoned")
+            .workspace_state()
+            .expect("workspace session must project");
+        let selection = RwSignal::new(SelectionState::default());
+        let workspace = RwSignal::new(initial.clone());
+        let latest_delta = RwSignal::new(WorkspaceDelta::unchanged(initial.projection_seq));
+        let dispatcher = HostDispatcher::with_session(selection, workspace, latest_delta, session);
+        Self {
+            dispatcher,
+            workspace,
+            selection,
+        }
+    }
+
+    /// The session's current projection — the proxy's initial mirror.
+    #[must_use]
+    pub fn snapshot(&self) -> WorkspaceState {
+        self.workspace.get_untracked()
+    }
+}
+
+impl SessionExecutor for HostSessionExecutor {
+    fn execute(&self, envelope: IntentEnvelope) -> SessionResponse {
+        let selection_before = self.selection.get_untracked();
+        let receipt = self.dispatcher.dispatch(envelope.intent);
+        let state = self.workspace.get_untracked();
+        let selection_after = self.selection.get_untracked();
+        // Report the selection only when the intent actually changed it — that
+        // captures exactly the MIXED structural intents; everything else
+        // leaves the main-thread selection untouched.
+        let selection = (selection_before != selection_after).then_some(selection_after);
+        SessionResponse::for_receipt(envelope.seq, receipt, &state, selection)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dnatreecalc_skin_framework::{NodeId, WorkspaceDelta, WorkspaceDeltaChange};
+    use crate::model::{WorkspaceFixture, WorkspaceModel};
+    use dnatreecalc_skin_framework::{
+        InitialNodeContentProjection, NodeId, WorkspaceDelta, WorkspaceDeltaChange,
+    };
 
     fn snapshot_at(seq: u64) -> WorkspaceState {
         WorkspaceState {
@@ -215,6 +298,7 @@ mod tests {
             receipt: IntentReceipt::accepted()
                 .with_delta(WorkspaceDelta::unchanged(projection_seq)),
             snapshot: Some(snapshot_at(projection_seq)),
+            selection: None,
         }
     }
 
@@ -303,6 +387,7 @@ mod tests {
             seq: first.seq,
             receipt: IntentReceipt::accepted().with_delta(delta),
             snapshot: None,
+            selection: None,
         };
         let outcome = core.deliver(response, 0);
         assert!(outcome.applied);
@@ -326,6 +411,7 @@ mod tests {
             seq: first.seq,
             receipt: IntentReceipt::accepted().with_delta(delta),
             snapshot: None,
+            selection: None,
         };
         let outcome = core.deliver(response, 0);
         assert!(outcome.applied);
@@ -359,5 +445,57 @@ mod tests {
         assert!(outcome.applied);
         assert_eq!(core.mirror().projection_seq, 1);
         assert!(core.pending().is_none(), "run cleared, nothing parked");
+    }
+
+    /// The real session, driven through the proxy + HostSessionExecutor exactly
+    /// as the wasm worker will — just synchronous instead of postMessage. Proves
+    /// the boundary carries the real engine's output (snapshot/delta + the
+    /// MIXED-intent selection) end to end.
+    #[test]
+    fn real_session_flows_through_the_proxy_and_executor() {
+        let _owner = Owner::new();
+        let fixture = WorkspaceFixture::from_repo_fixture("accounts").expect("fixture loads");
+        let model = WorkspaceModel::try_from(fixture).expect("model builds");
+        let session = Arc::new(Mutex::new(
+            TreeWorkspaceSession::from_model(&model).expect("session builds"),
+        ));
+        let executor = HostSessionExecutor::new(session);
+        let mut core = WorkerProxyCore::new(executor.snapshot());
+        let start_seq = core.mirror().projection_seq;
+        let start_nodes = core.mirror().nodes_by_key.len();
+
+        // AddNode is a MIXED intent: the engine adds + selects the new node, so
+        // the response carries the new selection and a structural snapshot.
+        let add = core.submit(WorkspaceIntent::AddNode {
+            parent: None,
+            symbol: "Zeta".to_string(),
+            initial: InitialNodeContentProjection::Empty,
+            is_meta: false,
+        });
+        let response = executor.execute(add.to_send.expect("add is sent"));
+        let outcome = core.deliver(response, 0);
+        assert!(outcome.applied);
+        assert!(
+            core.mirror().projection_seq > start_seq,
+            "the real engine ran and the mirror advanced"
+        );
+        assert!(
+            core.mirror().nodes_by_key.len() > start_nodes,
+            "the new node is in the mirrored projection"
+        );
+        assert!(
+            outcome.selection.is_some(),
+            "AddNode is MIXED — the produced selection flows back for the proxy to mirror"
+        );
+
+        // Recalculate round-trips too and does not touch selection.
+        let recalc = core.submit(WorkspaceIntent::Recalculate);
+        let response = executor.execute(recalc.to_send.expect("recalc is sent"));
+        let outcome = core.deliver(response, 0);
+        assert!(outcome.applied);
+        assert!(
+            outcome.selection.is_none(),
+            "Recalculate leaves the main-thread selection alone"
+        );
     }
 }

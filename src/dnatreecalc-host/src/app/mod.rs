@@ -12,7 +12,9 @@ mod templates;
 mod worker_proxy;
 
 pub use dispatcher::HostDispatcher;
-pub use worker_proxy::{DeliverOutcome, SessionExecutor, SubmitDecision, WorkerProxyCore};
+pub use worker_proxy::{
+    DeliverOutcome, HostSessionExecutor, SessionExecutor, SubmitDecision, WorkerProxyCore,
+};
 #[cfg(not(target_arch = "wasm32"))]
 pub use persistence::LocalFileWorkspaceDocumentStore;
 pub use persistence::{
