@@ -819,6 +819,10 @@ impl HostDispatcher {
             WorkspaceIntent::SwitchWorkspace { workspace_id } => self
                 .switch_workspace(&workspace_id)
                 .map_or_else(|error| self.reject_current(error), receipt_for_publication),
+            WorkspaceIntent::RenameWorkspace {
+                workspace_id,
+                new_name,
+            } => self.rename_workspace(&workspace_id, &new_name),
             // The framework's WorkspaceIntent is intentionally
             // `#[non_exhaustive]` so adding a variant in a future bead is
             // an additive change. A variant that reaches this branch is
@@ -1460,13 +1464,27 @@ impl HostDispatcher {
             })
             .ok_or_else(|| host_failure("active workspace is missing from workspace catalog"))?;
         let selected = self.selection.get_untracked().primary;
-        persist_workspace_sessions(
+        let workspace_names = self
+            .shared
+            .map(|shared| shared.with(|state| state.workspace_names.clone()))
+            .unwrap_or_default();
+        let outcome = persist_workspace_sessions(
             store,
             &workspace_sessions,
             &active_workspace_id,
             selected.as_ref(),
-        )
-        .map_err(|error| IntentError::HostFailure(error.to_string()))
+            &workspace_names,
+        );
+        // Surface the autosave result so the shell footer can show it. Honest
+        // about the synchronous reality: this is the most-recent attempt, not a
+        // full accounting of every mutation.
+        if let Some(shared) = self.shared {
+            shared.apply(
+                SharedStateChange::SetLastSaveSuccess(Some(outcome.is_ok())),
+                SharedStateOrigin::Host,
+            );
+        }
+        outcome.map_err(|error| IntentError::HostFailure(error.to_string()))
     }
 
     fn hydrate_workspace_sessions_from_document_store(&self, active_workspace_id: &str) {
@@ -1477,6 +1495,12 @@ impl HostDispatcher {
             self.refresh_shared_workspace_catalog(active_workspace_id);
             return;
         };
+        if let Some(shared) = self.shared {
+            shared.apply(
+                SharedStateChange::SetWorkspaceNames(catalog.workspace_names.clone()),
+                SharedStateOrigin::Host,
+            );
+        }
         for workspace_id in catalog.workspace_ids {
             let known = self
                 .workspace_sessions
@@ -1569,6 +1593,41 @@ impl HostDispatcher {
             .insert(workspace_id.clone(), session_id);
         let publication = self.activate_session(&workspace_id, session_id, &session)?;
         Ok(publication.with_result(workspace_id))
+    }
+
+    /// Rename a workspace's display label. The `workspace_id` is the immutable
+    /// key; only the catalog/shared display name changes, so there is no model
+    /// mutation and no revision. An unchanged delta keeps the projection
+    /// channel monotonic, and the generic post-dispatch persist (which reads
+    /// names from shared) writes the new label to the catalog.
+    fn rename_workspace(&self, workspace_id: &str, new_name: &str) -> IntentReceipt {
+        let Some(shared) = self.shared else {
+            return self.reject_current(host_failure("workspace rename requires shared state"));
+        };
+        let known = self
+            .workspace_sessions
+            .lock()
+            .map(|sessions| sessions.contains_key(workspace_id))
+            .unwrap_or(false);
+        if !known {
+            return self.reject_current(IntentError::HostFailure(format!(
+                "unknown workspace '{workspace_id}'"
+            )));
+        }
+        let mut names = shared.with(|state| state.workspace_names.clone());
+        let trimmed = new_name.trim();
+        if trimmed.is_empty() {
+            // An empty name falls back to the id — drop the entry rather than
+            // store a blank label.
+            names.remove(workspace_id);
+        } else {
+            names.insert(workspace_id.to_string(), trimmed.to_string());
+        }
+        shared.apply(
+            SharedStateChange::SetWorkspaceNames(names),
+            SharedStateOrigin::Host,
+        );
+        IntentReceipt::accepted().with_delta(self.publish_unchanged_delta())
     }
 
     fn switch_workspace(

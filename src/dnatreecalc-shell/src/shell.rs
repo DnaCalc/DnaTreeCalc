@@ -365,10 +365,15 @@ pub fn WorkspaceShell(
             if ws.workspace_id.is_empty() {
                 "Untitled workspace".to_string()
             } else {
-                ws.workspace_id.clone()
+                // The renamable display label, falling back to the immutable id.
+                shared
+                    .with(|state| state.workspace_names.get(&ws.workspace_id).cloned())
+                    .unwrap_or_else(|| ws.workspace_id.clone())
             }
         })
     });
+    // Most-recent autosave outcome, surfaced as the footer pill.
+    let save_status = Memo::new(move |_| shared.with(|state| state.last_save_success));
     let profile = Memo::new(move |_| workspace.with(|ws| ws.profile.clone()));
     let node_count = Memo::new(move |_| workspace.with(WorkspaceState::len));
     let selected_label = Memo::new(move |_| {
@@ -547,7 +552,17 @@ pub fn WorkspaceShell(
                     shared=shared
                     dispatch=dispatch.clone()
                 />
-                <span class="dtc-status-pill">"clean"</span>
+                {move || match save_status.get() {
+                    Some(true) => view! {
+                        <span class="dtc-status-pill dtc-status-pill--saved">"Saved"</span>
+                    }
+                    .into_any(),
+                    Some(false) => view! {
+                        <span class="dtc-status-pill dtc-status-pill--error">"Save failed"</span>
+                    }
+                    .into_any(),
+                    None => view! { <span class="dtc-status-pill">"clean"</span> }.into_any(),
+                }}
             </footer>
         </div>
     }
@@ -1062,37 +1077,123 @@ fn WorkspaceManagementControl(
 ) -> impl IntoView {
     let shared_signal = shared.signal();
     let workspaces = Memo::new(move |_| shared_signal.with(|state| state.workspace_ids.clone()));
+    let names = Memo::new(move |_| shared_signal.with(|state| state.workspace_names.clone()));
     let active_workspace = Memo::new(move |_| {
         shared_signal.with(|state| state.active_workspace_id.clone().unwrap_or_default())
     });
+    // The active workspace's display label — the renamable name, else its id.
+    let active_name = Memo::new(move |_| {
+        let id = active_workspace.get();
+        names.with(|map| map.get(&id).cloned()).unwrap_or(id)
+    });
+
+    let renaming = RwSignal::new(false);
+    let rename_text = RwSignal::new(String::new());
+    let rename_ref = NodeRef::<leptos::html::Input>::new();
+
     let switch_dispatch = dispatch.clone();
+    let rename_dispatch = dispatch.clone();
     let new_dispatch = dispatch;
+
+    // Focus the rename field once it mounts.
+    Effect::new(move |_| {
+        if renaming.get()
+            && let Some(input) = rename_ref.get()
+        {
+            let _ = input.focus();
+        }
+    });
+
+    // Begin an inline rename: seed the buffer with the current label.
+    let start_rename = move || {
+        rename_text.set(active_name.get_untracked());
+        renaming.set(true);
+    };
+    // Commit (Enter / blur). A blank name tells the dispatcher to fall back to
+    // the id; an unknown/empty workspace id is a no-op.
+    let commit_rename = move || {
+        if !renaming.get_untracked() {
+            return;
+        }
+        renaming.set(false);
+        let workspace_id = active_workspace.get_untracked();
+        if workspace_id.is_empty() {
+            return;
+        }
+        rename_dispatch.dispatch(WorkspaceIntent::RenameWorkspace {
+            workspace_id,
+            new_name: rename_text.get_untracked(),
+        });
+    };
+    let commit_on_enter = commit_rename.clone();
+    let commit_on_blur = commit_rename;
 
     view! {
         <div class="dtc-workspace-control" aria-label="Workspace management">
-            <select
-                class="dtc-workspace-control__select"
-                prop:value=move || active_workspace.get()
-                on:change=move |ev| {
-                    let workspace_id = event_target_value(&ev);
-                    if !workspace_id.is_empty() {
-                        switch_dispatch.dispatch(WorkspaceIntent::SwitchWorkspace {
-                            workspace_id,
-                        });
-                    }
-                }
-            >
-                {move || workspaces.get()
-                    .into_iter()
-                    .map(|workspace_id| {
-                        let label = workspace_id.clone();
-                        view! {
-                            <option value=workspace_id>{label}</option>
+            {move || if renaming.get() {
+                let commit_enter = commit_on_enter.clone();
+                let commit_blur = commit_on_blur.clone();
+                view! {
+                    <input
+                        class="dtc-workspace-control__rename"
+                        node_ref=rename_ref
+                        aria-label="Workspace name"
+                        prop:value=move || rename_text.get()
+                        on:input=move |ev| rename_text.set(event_target_value(&ev))
+                        on:blur=move |_| commit_blur()
+                        on:keydown=move |ev: leptos::ev::KeyboardEvent| {
+                            ev.stop_propagation();
+                            match ev.key().as_str() {
+                                "Enter" => { ev.prevent_default(); commit_enter(); }
+                                "Escape" => { ev.prevent_default(); renaming.set(false); }
+                                _ => {}
+                            }
                         }
-                    })
-                    .collect::<Vec<_>>()
+                    />
                 }
-            </select>
+                .into_any()
+            } else {
+                let switch_dispatch = switch_dispatch.clone();
+                view! {
+                    <select
+                        class="dtc-workspace-control__select"
+                        prop:value=move || active_workspace.get()
+                        on:change=move |ev| {
+                            let workspace_id = event_target_value(&ev);
+                            if !workspace_id.is_empty() {
+                                switch_dispatch.dispatch(WorkspaceIntent::SwitchWorkspace {
+                                    workspace_id,
+                                });
+                            }
+                        }
+                    >
+                        {move || {
+                            let labels = names.get();
+                            workspaces.get()
+                                .into_iter()
+                                .map(|workspace_id| {
+                                    let label = labels
+                                        .get(&workspace_id)
+                                        .cloned()
+                                        .unwrap_or_else(|| workspace_id.clone());
+                                    view! {
+                                        <option value=workspace_id>{label}</option>
+                                    }
+                                })
+                                .collect::<Vec<_>>()
+                        }}
+                    </select>
+                }
+                .into_any()
+            }}
+            <button
+                type="button"
+                class="dtc-workspace-control__rename-button"
+                title="Rename this workspace"
+                on:click=move |_| start_rename()
+            >
+                "Rename"
+            </button>
             <button
                 type="button"
                 class="dtc-workspace-control__new"

@@ -875,6 +875,39 @@ fn shared_store_applies_typed_changes_and_records_audit() {
 }
 
 #[test]
+fn shared_store_tracks_workspace_names_and_save_status() {
+    use crate::state::{SharedStateChange, SharedStateOrigin};
+
+    let handle = SharedSkinStateHandle::new(SharedSkinState::default());
+    let mut names = std::collections::BTreeMap::new();
+    names.insert("ws-1".to_string(), "Quarterly model".to_string());
+    handle.apply(
+        SharedStateChange::SetWorkspaceNames(names.clone()),
+        SharedStateOrigin::Host,
+    );
+    handle.apply(
+        SharedStateChange::SetLastSaveSuccess(Some(true)),
+        SharedStateOrigin::Host,
+    );
+
+    let state = handle.get_untracked();
+    assert_eq!(
+        state.workspace_names.get("ws-1").map(String::as_str),
+        Some("Quarterly model")
+    );
+    assert_eq!(state.last_save_success, Some(true));
+
+    // A failed save flips the indicator without disturbing the names.
+    handle.apply(
+        SharedStateChange::SetLastSaveSuccess(Some(false)),
+        SharedStateOrigin::Host,
+    );
+    let state = handle.get_untracked();
+    assert_eq!(state.last_save_success, Some(false));
+    assert_eq!(state.workspace_names, names);
+}
+
+#[test]
 fn shared_store_audit_ring_is_bounded() {
     use crate::state::{SHARED_AUDIT_CAPACITY, SharedStateChange, SharedStateOrigin};
 

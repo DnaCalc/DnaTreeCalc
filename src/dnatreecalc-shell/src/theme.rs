@@ -73,6 +73,31 @@ pub const SHELL_CSS: &str = r#"
     background: var(--dtc-surface-muted);
 }
 
+.dtc-workspace-control__rename {
+    min-width: 10rem;
+    max-width: 16rem;
+    border: 1px solid var(--dtc-border-strong);
+    border-radius: 4px;
+    background: var(--dtc-surface);
+    padding: 0.25rem 0.5rem;
+    color: inherit;
+    font: inherit;
+}
+
+.dtc-workspace-control__rename-button {
+    border: 1px solid var(--dtc-border-strong);
+    border-radius: 4px;
+    background: var(--dtc-surface);
+    padding: 0.25rem 0.625rem;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+}
+
+.dtc-workspace-control__rename-button:hover {
+    background: var(--dtc-surface-muted);
+}
+
 .dtc-skin-switcher {
     display: inline-flex;
     gap: 0.25rem;
@@ -1045,6 +1070,18 @@ pub const SHELL_CSS: &str = r#"
     border-radius: 999px;
     background: var(--dtc-success-surface);
     color: var(--dtc-success-text);
+}
+
+.dtc-status-pill--saved {
+    border-color: var(--dtc-success-border);
+    background: var(--dtc-success-surface);
+    color: var(--dtc-success-text);
+}
+
+.dtc-status-pill--error {
+    border-color: var(--dtc-danger, currentColor);
+    background: transparent;
+    color: var(--dtc-danger-text, var(--dtc-danger));
 }
 
 .dtc-recalc-mode__button--active {

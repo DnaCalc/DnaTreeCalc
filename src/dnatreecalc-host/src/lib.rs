@@ -128,4 +128,33 @@ mod tests {
         assert_eq!(table.display_path.as_deref(), Some("Root.Section.Sales"));
         assert_eq!(table.canonical_path.as_deref(), Some("Root.Section.Sales"));
     }
+
+    #[test]
+    fn catalog_workspace_names_filter_to_live_ids_and_default_when_absent() {
+        use crate::app::WorkspaceDocumentCatalog;
+
+        // A pre-rename `v1` catalog (no workspace_names field) loads with an
+        // empty map — adding the field stays backward compatible.
+        let legacy = r#"{"schema_version":"dnatreecalc-workspace-catalog-v1","workspace_ids":["ws-1"],"active_workspace_id":"ws-1"}"#;
+        let parsed: WorkspaceDocumentCatalog = serde_json::from_str(legacy).unwrap();
+        assert!(parsed.workspace_names.is_empty());
+
+        // with_workspace_names keeps only entries for ids still present.
+        let mut names = std::collections::BTreeMap::new();
+        names.insert("ws-1".to_string(), "Quarterly model".to_string());
+        names.insert("ws-gone".to_string(), "Deleted".to_string());
+        let catalog =
+            WorkspaceDocumentCatalog::new(vec!["ws-1".to_string()], Some("ws-1".to_string()))
+                .with_workspace_names(&names);
+        assert_eq!(catalog.workspace_names.len(), 1);
+        assert_eq!(
+            catalog.workspace_names.get("ws-1").map(String::as_str),
+            Some("Quarterly model")
+        );
+
+        // Round-trips through JSON.
+        let json = serde_json::to_string(&catalog).unwrap();
+        let reparsed: WorkspaceDocumentCatalog = serde_json::from_str(&json).unwrap();
+        assert_eq!(reparsed, catalog);
+    }
 }

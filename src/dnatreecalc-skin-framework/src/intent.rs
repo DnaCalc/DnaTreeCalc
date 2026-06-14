@@ -460,6 +460,13 @@ pub enum WorkspaceIntent {
     SwitchWorkspace {
         workspace_id: String,
     },
+    /// Rename a workspace's human display label. The `workspace_id` stays the
+    /// immutable key; only the catalog's display name changes. Author-only
+    /// (the `Persona::allows` Reviewer/ReadOnly allow-lists omit it).
+    RenameWorkspace {
+        workspace_id: String,
+        new_name: String,
+    },
     /// Navigate the active workspace to an OxCalc-retained revision. This is
     /// not inverse replay; OxCalc owns the actual restoration semantics.
     NavigateRevision {
@@ -913,6 +920,7 @@ impl Dispatcher for InMemoryDispatcher {
             | WorkspaceIntent::DeleteTableColumn { .. }
             | WorkspaceIntent::NewWorkspace
             | WorkspaceIntent::SwitchWorkspace { .. }
+            | WorkspaceIntent::RenameWorkspace { .. }
             | WorkspaceIntent::NavigateRevision { .. }
             | WorkspaceIntent::Undo
             | WorkspaceIntent::Redo

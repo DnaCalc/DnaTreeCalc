@@ -16,6 +16,11 @@ pub struct WorkspaceDocumentCatalog {
     pub schema_version: String,
     pub workspace_ids: Vec<String>,
     pub active_workspace_id: Option<String>,
+    /// Human display names per `workspace_id`. Optional and serde-defaulted, so
+    /// `v1` catalogs written before rename existed load as an empty map; new
+    /// code falls back to the `workspace_id` when an entry is absent.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub workspace_names: std::collections::BTreeMap<String, String>,
 }
 
 impl WorkspaceDocumentCatalog {
@@ -25,7 +30,23 @@ impl WorkspaceDocumentCatalog {
             schema_version: WORKSPACE_DOCUMENT_CATALOG_SCHEMA_VERSION.to_string(),
             workspace_ids,
             active_workspace_id,
+            workspace_names: std::collections::BTreeMap::new(),
         }
+    }
+
+    /// Attach display names, keeping only entries for workspaces still present
+    /// in `workspace_ids` so renames of deleted workspaces don't accumulate.
+    #[must_use]
+    pub fn with_workspace_names(
+        mut self,
+        workspace_names: &std::collections::BTreeMap<String, String>,
+    ) -> Self {
+        self.workspace_names = workspace_names
+            .iter()
+            .filter(|(workspace_id, _)| self.workspace_ids.contains(workspace_id))
+            .map(|(workspace_id, name)| (workspace_id.clone(), name.clone()))
+            .collect();
+        self
     }
 }
 
@@ -304,12 +325,13 @@ pub(crate) fn persist_workspace_sessions(
     sessions: &std::collections::BTreeMap<String, u64>,
     active_workspace_id: &str,
     selected_node: Option<&NodeId>,
+    workspace_names: &std::collections::BTreeMap<String, String>,
 ) -> Result<(), WorkspaceDocumentStoreError> {
     let workspace_ids = sessions.keys().cloned().collect::<Vec<_>>();
-    store.save_catalog(&WorkspaceDocumentCatalog::new(
-        workspace_ids,
-        Some(active_workspace_id.to_string()),
-    ))?;
+    store.save_catalog(
+        &WorkspaceDocumentCatalog::new(workspace_ids, Some(active_workspace_id.to_string()))
+            .with_workspace_names(workspace_names),
+    )?;
     super::dispatcher::with_host_sessions(|host_sessions| {
         for (workspace_id, session_id) in sessions {
             let Some(session) = host_sessions.get(session_id).cloned() else {

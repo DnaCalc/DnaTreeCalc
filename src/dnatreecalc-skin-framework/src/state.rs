@@ -402,6 +402,15 @@ pub struct SharedSkinState {
     pub manual_recalc_pending: bool,
     pub workspace_ids: Vec<String>,
     pub active_workspace_id: Option<String>,
+    /// Human display names per `workspace_id` (`workspace_id` → name). The id
+    /// stays the immutable key; this is the renamable label the title and
+    /// switcher show, falling back to the id when a workspace has no entry.
+    #[serde(default)]
+    pub workspace_names: std::collections::BTreeMap<String, String>,
+    /// Outcome of the most recent autosave: `Some(true)` saved, `Some(false)`
+    /// failed, `None` nothing saved yet. Surfaced as the footer save pill.
+    #[serde(default)]
+    pub last_save_success: Option<bool>,
 
     // --- Cockpit composition (Phase B) ---
     /// The slot that currently owns keyboard focus in the cockpit.
@@ -508,6 +517,8 @@ pub enum SharedStateChange {
     SetManualRecalcPending(bool),
     SetWorkspaceIds(Vec<String>),
     SetActiveWorkspaceId(Option<String>),
+    SetWorkspaceNames(std::collections::BTreeMap<String, String>),
+    SetLastSaveSuccess(Option<bool>),
     SetFocusedSlot(Option<SkinMountSlot>),
     SetCompanionSlots(Vec<SkinMountSlot>),
     SetPersona(crate::permissions::Persona),
@@ -591,6 +602,12 @@ impl SharedSkinState {
             SharedStateChange::SetWorkspaceIds(ids) => self.workspace_ids = ids.clone(),
             SharedStateChange::SetActiveWorkspaceId(id) => {
                 self.active_workspace_id = id.clone();
+            }
+            SharedStateChange::SetWorkspaceNames(names) => {
+                self.workspace_names = names.clone();
+            }
+            SharedStateChange::SetLastSaveSuccess(success) => {
+                self.last_save_success = *success;
             }
             SharedStateChange::SetFocusedSlot(slot) => self.focused_slot = *slot,
             SharedStateChange::SetCompanionSlots(slots) => {
