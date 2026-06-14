@@ -873,16 +873,11 @@ impl NodeValueProjection {
             Self::Empty => String::new(),
             Self::Missing => "missing".to_string(),
             Self::Reference { target } => target.clone(),
-            Self::Array { cells, .. } => cells
-                .iter()
-                .map(|row| {
-                    row.iter()
-                        .map(Self::display_text)
-                        .collect::<Vec<_>>()
-                        .join(" | ")
-                })
-                .collect::<Vec<_>>()
-                .join("\n"),
+            // A compact summary, never the unrolled cells — inline value cells
+            // must stay narrow (a large array otherwise blows out the layout).
+            // The 2D grid view (skin `render_value`) shows the actual cells,
+            // truncated and width-bounded.
+            Self::Array { rows, cols, .. } => format!("{rows}x{cols} array"),
         }
     }
 
@@ -2282,6 +2277,18 @@ mod serde_round_trip_tests {
             ],
         };
         assert_eq!(round_trip(&value), value);
+    }
+
+    #[test]
+    fn array_display_text_is_a_compact_summary() {
+        // Inline value cells must never render the unrolled array (it blows out
+        // the layout); display_text is a compact shape summary.
+        let value = NodeValueProjection::Array {
+            rows: 5,
+            cols: 8,
+            cells: Vec::new(),
+        };
+        assert_eq!(value.display_text(), "5x8 array");
     }
 
     #[test]

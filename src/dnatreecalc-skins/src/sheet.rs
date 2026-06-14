@@ -1003,7 +1003,7 @@ const SHEET_CSS: &str = r#"
 .dtc-sheet-row__head { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .dtc-sheet-row__title { display: flex; align-items: center; gap: 6px; font-weight: 600; }
 .dtc-sheet-row__formula { font-family: ui-monospace, monospace; font-size: 11px; color: var(--dtc-text-muted); }
-.dtc-sheet-row__value { font-size: 15px; font-variant-numeric: tabular-nums; text-align: right; }
+.dtc-sheet-row__value { font-size: 15px; font-variant-numeric: tabular-nums; text-align: right; min-width: 0; overflow-x: auto; }
 
 .dtc-sheet-table { margin: 0 0 14px; }
 .dtc-sheet-table__name { display: flex; align-items: baseline; gap: 8px; font-weight: 700; margin-bottom: 4px; }

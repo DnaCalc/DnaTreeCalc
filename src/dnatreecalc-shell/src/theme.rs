@@ -473,6 +473,8 @@ pub const SHELL_CSS: &str = r#"
     border: 1px solid var(--dtc-border-strong);
     background: var(--dtc-border-strong);
     max-width: 100%;
+    min-width: 0;
+    max-height: 18rem;
     overflow: auto;
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
@@ -481,6 +483,7 @@ pub const SHELL_CSS: &str = r#"
     display: grid;
     gap: 0.5rem;
     max-width: 100%;
+    min-width: 0;
 }
 
 .dtc-array-value-shell__summary {
