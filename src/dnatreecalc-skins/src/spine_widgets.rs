@@ -18,9 +18,9 @@
 use std::sync::Arc;
 
 use dnatreecalc_skin_framework::{
-    Dispatcher, FormulaBindPreviewProjection, IntentReceipt, NodeId, NodeValueProjection,
-    PreviewService, SelectionState, SharedSkinStateHandle, SharedStateChange, SharedStateOrigin,
-    WorkspaceIntent, WorkspaceRecalcMode, WorkspaceState, calc_state_class,
+    Dispatcher, FormulaBindPreviewProjection, IntentReceipt, MutationImpactProjection, NodeId,
+    NodeValueProjection, PreviewService, SelectionState, SharedSkinStateHandle, SharedStateChange,
+    SharedStateOrigin, WorkspaceIntent, WorkspaceRecalcMode, WorkspaceState, calc_state_class,
 };
 use leptos::prelude::*;
 use leptos::wasm_bindgen::JsCast;
@@ -89,6 +89,64 @@ pub(crate) fn commit_content_edit(
             receipt
         }
     }
+}
+
+/// Clear a node's contents (the Excel `Delete` key): set it Empty,
+/// non-structurally, through the one recalc-mode-aware commit path.
+pub(crate) fn clear_content_edit(
+    dispatch: &Arc<dyn Dispatcher>,
+    shared: SharedSkinStateHandle,
+    origin: &SharedStateOrigin,
+    node: NodeId,
+) -> IntentReceipt {
+    commit_content_edit(dispatch, shared, origin, node, String::new())
+}
+
+/// Clear a table cell's value (Excel `Delete`). Valid only for direct-input
+/// cells; the host rejects a formula-backed cell, so the caller gates on
+/// editability before calling.
+pub(crate) fn clear_table_cell_edit(
+    dispatch: &Arc<dyn Dispatcher>,
+    table: NodeId,
+    row_id: String,
+    column_id: String,
+) -> IntentReceipt {
+    dispatch.dispatch(WorkspaceIntent::EditTableCell {
+        table,
+        row_id,
+        column_id,
+        content: String::new(),
+    })
+}
+
+/// Whether deleting a node needs confirmation, and the message to show.
+/// `None` = a clean leaf with no external dependents (delete directly);
+/// `Some(message)` = destructive (has child nodes or breaks references) — show
+/// a [`ConfirmBar`] first. Pure over the projection so it is unit-testable.
+pub(crate) fn delete_confirm_message(
+    impact: Option<&MutationImpactProjection>,
+    child_count: usize,
+) -> Option<String> {
+    let breaks = impact.map_or(0, |impact| impact.orphaned_dependents.len());
+    if child_count == 0 && breaks == 0 {
+        return None;
+    }
+    let mut clauses = Vec::new();
+    if child_count > 0 {
+        clauses.push(if child_count == 1 {
+            "removes 1 child".to_string()
+        } else {
+            format!("removes {child_count} children")
+        });
+    }
+    if breaks > 0 {
+        clauses.push(if breaks == 1 {
+            "breaks 1 reference".to_string()
+        } else {
+            format!("breaks {breaks} references")
+        });
+    }
+    Some(format!("Delete this node? It {}.", clauses.join(" and ")))
 }
 
 /// Record the active lens through the audited chokepoint. Only a Main-slot
@@ -458,6 +516,131 @@ pub(crate) fn focus_edit_buffer(edit_ref: NodeRef<leptos::html::Textarea>) {
     }
 }
 
+/// A pending destructive action awaiting confirmation — surfaced by [`ConfirmBar`].
+#[derive(Clone)]
+pub(crate) struct PendingConfirm {
+    pub message: String,
+    pub on_confirm: Arc<dyn Fn() + Send + Sync>,
+}
+
+/// An inline confirm strip (no native dialogs) for guarded destructive actions.
+/// Renders only while `pending` is `Some`; Confirm runs the action then clears,
+/// Cancel just clears. A lens wires `Escape` to `pending.set(None)`.
+#[component]
+pub(crate) fn ConfirmBar(pending: RwSignal<Option<PendingConfirm>>) -> impl IntoView {
+    view! {
+        {move || {
+            let Some(confirm) = pending.get() else {
+                return ().into_any();
+            };
+            let on_confirm = confirm.on_confirm.clone();
+            view! {
+                <div class="dtc-confirm" role="alertdialog" aria-live="assertive">
+                    <span class="dtc-confirm__message">{confirm.message.clone()}</span>
+                    <button
+                        type="button"
+                        class="dtc-confirm__go"
+                        on:click=move |_| {
+                            (on_confirm)();
+                            pending.set(None);
+                        }
+                    >
+                        "Delete"
+                    </button>
+                    <button
+                        type="button"
+                        class="dtc-confirm__cancel"
+                        on:click=move |_| pending.set(None)
+                    >
+                        "Cancel"
+                    </button>
+                </div>
+            }
+            .into_any()
+        }}
+    }
+}
+
+/// A label that becomes an input on double-click for in-place renaming. Enter
+/// or blur commit via `on_commit`; Escape cancels. Stops propagation of its
+/// keydowns (the grammar contract). Commit fires once — the blur that follows
+/// an Enter/Escape sees `editing` already cleared and is skipped.
+#[component]
+pub(crate) fn InlineLabelEdit(
+    value: String,
+    on_commit: Arc<dyn Fn(String) + Send + Sync>,
+    #[prop(optional)] label_class: &'static str,
+) -> impl IntoView {
+    let editing = RwSignal::new(false);
+    let text = RwSignal::new(value.clone());
+    let input_ref = NodeRef::<leptos::html::Input>::new();
+    Effect::new(move |_| {
+        if editing.get()
+            && let Some(input) = input_ref.get()
+        {
+            let _ = input.focus();
+        }
+    });
+    let label = value.clone();
+    let seed = value;
+    let commit_enter = on_commit.clone();
+    let commit_blur = on_commit;
+    view! {
+        {move || {
+            if editing.get() {
+                let commit_enter = commit_enter.clone();
+                let commit_blur = commit_blur.clone();
+                view! {
+                    <input
+                        class="dtc-inline-edit"
+                        node_ref=input_ref
+                        prop:value=move || text.get()
+                        on:input=move |ev| text.set(event_target_value(&ev))
+                        on:blur=move |_| {
+                            if editing.get_untracked() {
+                                (commit_blur)(text.get_untracked());
+                                editing.set(false);
+                            }
+                        }
+                        on:keydown=move |ev: leptos::ev::KeyboardEvent| {
+                            ev.stop_propagation();
+                            match ev.key().as_str() {
+                                "Enter" => {
+                                    ev.prevent_default();
+                                    (commit_enter)(text.get_untracked());
+                                    editing.set(false);
+                                }
+                                "Escape" => {
+                                    ev.prevent_default();
+                                    editing.set(false);
+                                }
+                                _ => {}
+                            }
+                        }
+                    />
+                }
+                .into_any()
+            } else {
+                let label = label.clone();
+                let seed = seed.clone();
+                view! {
+                    <span
+                        class=label_class
+                        title="Double-click to rename"
+                        on:dblclick=move |_| {
+                            text.set(seed.clone());
+                            editing.set(true);
+                        }
+                    >
+                        {label}
+                    </span>
+                }
+                .into_any()
+            }
+        }}
+    }
+}
+
 /// Shared CSS for the spine widgets. Include once per lens, after
 /// [`dnatreecalc_skin_framework::ATLAS_SPINE_CSS`].
 pub(crate) const SPINE_WIDGETS_CSS: &str = r#"
@@ -513,6 +696,25 @@ pub(crate) const SPINE_WIDGETS_CSS: &str = r#"
 .dtc-section-label { margin: 10px 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--dtc-text-subtle); }
 .dtc-value-display { padding: 4px 0; font-variant-numeric: tabular-nums; }
 .dtc-value-display--error { color: var(--dtc-danger-text); }
+
+.dtc-confirm {
+  display: flex; align-items: center; gap: 8px; margin: 6px 0; padding: 6px 10px;
+  background: var(--dtc-danger-surface); border: 1px solid var(--dtc-danger-border);
+  border-radius: 6px; color: var(--dtc-danger-text);
+}
+.dtc-confirm__message { flex: 1; }
+.dtc-confirm__go {
+  background: var(--dtc-danger, #c0392b); color: #fff; border: none; border-radius: 5px;
+  padding: 2px 10px; cursor: pointer; font-weight: 600;
+}
+.dtc-confirm__cancel {
+  background: var(--dtc-surface); border: 1px solid var(--dtc-border); border-radius: 5px;
+  padding: 2px 10px; cursor: pointer; color: var(--dtc-text);
+}
+.dtc-inline-edit {
+  width: 100%; box-sizing: border-box; padding: 2px 6px; border: 1px solid var(--dtc-warning);
+  border-radius: 4px; background: var(--dtc-surface-input); color: var(--dtc-text); font: inherit;
+}
 "#;
 
 #[cfg(test)]
@@ -617,5 +819,43 @@ mod tests {
             audit[0].change,
             SharedStateChange::SetManualRecalcPending(true)
         ));
+    }
+
+    #[test]
+    fn delete_confirm_message_only_warns_when_destructive() {
+        use dnatreecalc_skin_framework::{
+            MutationImpactIntentProjection, RecalcPlanProjection,
+        };
+        // Clean leaf, no dependents → delete directly (no confirm).
+        assert_eq!(delete_confirm_message(None, 0), None);
+        // Has children → confirm.
+        assert_eq!(
+            delete_confirm_message(None, 2).as_deref(),
+            Some("Delete this node? It removes 2 children.")
+        );
+        // Breaks references → confirm (impact-driven).
+        let impact = MutationImpactProjection {
+            intent: MutationImpactIntentProjection::DeleteNode {
+                node: NodeId::new("A"),
+            },
+            legal: true,
+            blocked_reason: None,
+            profile_violations: Vec::new(),
+            bind_diagnostics: Vec::new(),
+            invalidation_plan: RecalcPlanProjection::default(),
+            requires_rebind: Vec::new(),
+            affected_refs: Vec::new(),
+            orphaned_dependents: vec![NodeId::new("B")],
+            collisions: Vec::new(),
+        };
+        assert_eq!(
+            delete_confirm_message(Some(&impact), 0).as_deref(),
+            Some("Delete this node? It breaks 1 reference.")
+        );
+        // Both clauses.
+        assert_eq!(
+            delete_confirm_message(Some(&impact), 1).as_deref(),
+            Some("Delete this node? It removes 1 child and breaks 1 reference.")
+        );
     }
 }

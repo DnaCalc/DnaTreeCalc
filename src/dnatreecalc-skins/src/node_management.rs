@@ -8,6 +8,8 @@ use dnatreecalc_skin_framework::{
 };
 use leptos::prelude::*;
 
+use crate::spine_widgets::{ConfirmBar, PendingConfirm, delete_confirm_message};
+
 #[component]
 pub(crate) fn NodeManagementPanel(
     workspace: ReadSignal<WorkspaceState>,
@@ -28,6 +30,7 @@ pub(crate) fn NodeManagementPanel(
     let new_content = RwSignal::new(String::new());
     let selected_template = RwSignal::new(String::new());
     let rename_symbol = RwSignal::new(String::new());
+    let delete_confirm = RwSignal::new(Option::<PendingConfirm>::None);
 
     let selected = Memo::new(move |_| {
         let selected = selection.with(|state| state.primary.clone());
@@ -346,8 +349,35 @@ pub(crate) fn NodeManagementPanel(
                             || delete_impact.get().is_some_and(|impact| !impact.legal)
                     }
                     on:click=move |_| {
-                        if let Some(node) = selection.get_untracked().primary {
-                            delete_dispatch.dispatch(WorkspaceIntent::DeleteNode { node });
+                        let Some(node) = selection.get_untracked().primary else {
+                            return;
+                        };
+                        // Excel-like guard: a clean leaf deletes directly; a node
+                        // with children or dependents requires confirmation that
+                        // surfaces the impact first.
+                        let child_count = selected
+                            .get_untracked()
+                            .map(|node| node.children.len())
+                            .unwrap_or(0);
+                        match delete_confirm_message(
+                            delete_impact.get_untracked().as_ref(),
+                            child_count,
+                        ) {
+                            None => {
+                                delete_dispatch
+                                    .dispatch(WorkspaceIntent::DeleteNode { node });
+                            }
+                            Some(message) => {
+                                let dispatch = delete_dispatch.clone();
+                                delete_confirm.set(Some(PendingConfirm {
+                                    message,
+                                    on_confirm: Arc::new(move || {
+                                        dispatch.dispatch(WorkspaceIntent::DeleteNode {
+                                            node: node.clone(),
+                                        });
+                                    }),
+                                }));
+                            }
                         }
                     }
                 >
@@ -355,6 +385,7 @@ pub(crate) fn NodeManagementPanel(
                 </button>
             </div>
             {move || impact_view(delete_impact.get())}
+            <ConfirmBar pending=delete_confirm />
         </section>
     }
 }

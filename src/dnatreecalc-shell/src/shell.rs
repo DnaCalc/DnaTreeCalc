@@ -1000,6 +1000,8 @@ fn handle_shell_keydown(
         | SkinVerb::NameBox
         | SkinVerb::Leader
         | SkinVerb::Explain
+        | SkinVerb::ClearContents
+        | SkinVerb::EditInPlace
         | SkinVerb::Escape => {}
     }
 }

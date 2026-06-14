@@ -34,8 +34,9 @@ use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::spine_widgets::{
-    ConsoleBar, NameBoxBar, NodeInspector, SPINE_WIDGETS_CSS, commit_content_edit,
-    event_target_is_interactive, event_target_is_text_entry, focus_edit_buffer,
+    ConsoleBar, NameBoxBar, NodeInspector, SPINE_WIDGETS_CSS, clear_content_edit,
+    commit_content_edit, event_target_is_interactive, event_target_is_text_entry,
+    focus_edit_buffer,
 };
 
 pub const FLOW_ID: SkinId = SkinId::new("flow");
@@ -378,6 +379,8 @@ fn FlowView(cx: SkinContext<FlowState>) -> impl IntoView {
     // (F9, Ctrl+Z/Y, Ctrl+N, lens switch, arrows) bubble to the shell.
     let grammar = KeybindingRegistry::universal();
     let grammar_state = state.clone();
+    let clear_dispatch = dispatch.clone();
+    let clear_origin = shared_origin.clone();
     let root_keydown = move |ev: leptos::ev::KeyboardEvent| {
         // Bare-key grammar never fires while typing — the contract. (The
         // editing flag deliberately does NOT gate here: while the buffer has
@@ -393,7 +396,7 @@ fn FlowView(cx: SkinContext<FlowState>) -> impl IntoView {
             return;
         };
         match verb {
-            SkinVerb::Commit => {
+            SkinVerb::Commit | SkinVerb::EditInPlace => {
                 // Enter on a focused button must activate the button.
                 if event_target_is_interactive(&ev) {
                     return;
@@ -412,6 +415,17 @@ fn FlowView(cx: SkinContext<FlowState>) -> impl IntoView {
                     ev.prevent_default();
                     editing.set(true);
                     focus_edit_buffer(edit_ref);
+                }
+            }
+            SkinVerb::ClearContents => {
+                // Excel's Delete: clear the selected node's contents (safe,
+                // non-structural — never a node removal).
+                if event_target_is_interactive(&ev) {
+                    return;
+                }
+                if let Some(node) = selected.get_untracked() {
+                    ev.prevent_default();
+                    clear_content_edit(&clear_dispatch, shared, &clear_origin, node.id.clone());
                 }
             }
             SkinVerb::Explain => {

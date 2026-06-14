@@ -38,8 +38,9 @@ use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::spine_widgets::{
-    ConsoleBar, NameBoxBar, NodeInspector, SPINE_WIDGETS_CSS, commit_content_edit,
-    event_target_is_interactive, event_target_is_text_entry,
+    ConsoleBar, InlineLabelEdit, NameBoxBar, NodeInspector, SPINE_WIDGETS_CSS, clear_content_edit,
+    clear_table_cell_edit, commit_content_edit, event_target_is_interactive,
+    event_target_is_text_entry,
 };
 use crate::value_render::{render_value, value_text};
 
@@ -542,6 +543,8 @@ fn SheetView(cx: SkinContext<SheetState>) -> impl IntoView {
     // Lens-local grammar, resolved through the one registry. Global verbs
     // (F9, Ctrl+Z/Y, Ctrl+N, lens switch, arrows) bubble to the shell.
     let grammar = KeybindingRegistry::universal();
+    let clear_dispatch = dispatch.clone();
+    let clear_origin = shared_origin.clone();
     let root_keydown = move |ev: leptos::ev::KeyboardEvent| {
         // Bare-key grammar never fires while typing — the contract. (The
         // editing flag deliberately does NOT gate here: while the buffer has
@@ -557,7 +560,7 @@ fn SheetView(cx: SkinContext<SheetState>) -> impl IntoView {
             return;
         };
         match verb {
-            SkinVerb::Commit => {
+            SkinVerb::Commit | SkinVerb::EditInPlace => {
                 // Enter on a focused button must activate the button.
                 if event_target_is_interactive(&ev) {
                     return;
@@ -565,6 +568,39 @@ fn SheetView(cx: SkinContext<SheetState>) -> impl IntoView {
                 if detail.get_untracked().is_some() {
                     ev.prevent_default();
                     focus_formula_bar(bar_ref);
+                }
+            }
+            SkinVerb::ClearContents => {
+                // Excel's Delete: clear the selected cell/node contents (safe).
+                if event_target_is_interactive(&ev) {
+                    return;
+                }
+                ev.prevent_default();
+                match detail.get_untracked() {
+                    Some(ActiveSelectionDetailProjection::TableCell(cell)) => {
+                        // Only a direct-input body cell is clearable — a formula
+                        // or totals cell's value is computed (Del is a no-op).
+                        if matches!(
+                            (cell.region, cell.editability),
+                            (
+                                TableCellRegionProjection::Body,
+                                TableCellEditabilityProjection::DirectInput
+                            )
+                        ) && let Some(row_id) = cell.row_id.clone()
+                        {
+                            clear_table_cell_edit(
+                                &clear_dispatch,
+                                cell.table.clone(),
+                                row_id,
+                                cell.column_id.clone(),
+                            );
+                        }
+                    }
+                    _ => {
+                        if let Some(node) = selection.get_untracked().primary {
+                            clear_content_edit(&clear_dispatch, shared, &clear_origin, node);
+                        }
+                    }
                 }
             }
             SkinVerb::NameBox => {
@@ -632,6 +668,8 @@ fn SheetView(cx: SkinContext<SheetState>) -> impl IntoView {
                     sel.table_cell.as_ref(),
                     body_dispatch.clone(),
                     rejection,
+                    bar_ref,
+                    bar_editing,
                 )
             })
             .collect::<Vec<_>>();
@@ -797,14 +835,69 @@ fn table_view(
     active_cell: Option<&TableCellSelection>,
     dispatch: Arc<dyn Dispatcher>,
     rejection: RwSignal<Option<String>>,
+    bar_ref: NodeRef<leptos::html::Input>,
+    bar_editing: RwSignal<bool>,
 ) -> AnyView {
     let header = table.header_row_present.then(|| {
+        let header_dispatch = dispatch.clone();
+        let header_table = table_id.clone();
         let heads = table
             .columns
             .iter()
-            .map(|column| view! { <th>{column.name.clone()}</th> }.into_any())
+            .map(|column| {
+                let column_id = column.column_id.clone();
+                let rename_dispatch = header_dispatch.clone();
+                let rename_table = header_table.clone();
+                let rename_col = column_id.clone();
+                let on_rename: Arc<dyn Fn(String) + Send + Sync> = Arc::new(move |name| {
+                    rename_dispatch.dispatch(WorkspaceIntent::RenameTableColumn {
+                        table: rename_table.clone(),
+                        column_id: rename_col.clone(),
+                        name,
+                    });
+                });
+                let del_dispatch = header_dispatch.clone();
+                let del_table = header_table.clone();
+                let del_col = column_id;
+                view! {
+                    <th>
+                        <div class="dtc-sheet-th">
+                            <InlineLabelEdit
+                                value=column.name.clone()
+                                on_commit=on_rename
+                                label_class="dtc-sheet-th__name"
+                            />
+                            <button
+                                type="button"
+                                class="dtc-sheet-th__del"
+                                title="Delete column"
+                                on:click=move |_| {
+                                    let receipt = del_dispatch.dispatch(
+                                        WorkspaceIntent::DeleteTableColumn {
+                                            table: del_table.clone(),
+                                            column_id: del_col.clone(),
+                                        },
+                                    );
+                                    if !receipt.accepted {
+                                        rejection.set(receipt.error.map(|error| error.to_string()));
+                                    }
+                                }
+                            >
+                                "×"
+                            </button>
+                        </div>
+                    </th>
+                }
+                .into_any()
+            })
             .collect::<Vec<_>>();
-        view! { <tr class="dtc-sheet-table__head">{heads}</tr> }.into_any()
+        view! {
+            <tr class="dtc-sheet-table__head">
+                <th class="dtc-sheet-gutter"></th>
+                {heads}
+            </tr>
+        }
+        .into_any()
     });
 
     let body_rows = table
@@ -815,13 +908,55 @@ fn table_view(
                 .body_rows
                 .iter()
                 .map(|row| {
+                    let row_id = row
+                        .iter()
+                        .find_map(|cell| cell.as_ref().and_then(|cell| cell.row_id.clone()));
                     let row_cells = row
                         .iter()
                         .map(|cell| {
-                            table_cell_view(&table_id, cell.as_ref(), active_cell, dispatch.clone())
+                            table_cell_view(
+                                &table_id,
+                                cell.as_ref(),
+                                active_cell,
+                                dispatch.clone(),
+                                bar_ref,
+                                bar_editing,
+                            )
                         })
                         .collect::<Vec<_>>();
-                    view! { <tr>{row_cells}</tr> }.into_any()
+                    let gutter = match row_id {
+                        Some(row_id) => {
+                            let del_dispatch = dispatch.clone();
+                            let del_table = table_id.clone();
+                            view! {
+                                <td class="dtc-sheet-gutter">
+                                    <button
+                                        type="button"
+                                        class="dtc-sheet-gutter__del"
+                                        title="Delete row"
+                                        on:click=move |_| {
+                                            let receipt = del_dispatch.dispatch(
+                                                WorkspaceIntent::DeleteTableRow {
+                                                    table: del_table.clone(),
+                                                    row_id: row_id.clone(),
+                                                },
+                                            );
+                                            if !receipt.accepted {
+                                                rejection.set(
+                                                    receipt.error.map(|error| error.to_string()),
+                                                );
+                                            }
+                                        }
+                                    >
+                                        "×"
+                                    </button>
+                                </td>
+                            }
+                            .into_any()
+                        }
+                        None => view! { <td class="dtc-sheet-gutter"></td> }.into_any(),
+                    };
+                    view! { <tr>{gutter}{row_cells}</tr> }.into_any()
                 })
                 .collect::<Vec<_>>()
         })
@@ -832,9 +967,24 @@ fn table_view(
             let row_cells = cells
                 .totals_row
                 .iter()
-                .map(|cell| table_cell_view(&table_id, cell.as_ref(), active_cell, dispatch.clone()))
+                .map(|cell| {
+                    table_cell_view(
+                        &table_id,
+                        cell.as_ref(),
+                        active_cell,
+                        dispatch.clone(),
+                        bar_ref,
+                        bar_editing,
+                    )
+                })
                 .collect::<Vec<_>>();
-            view! { <tr class="dtc-sheet-table__totals">{row_cells}</tr> }.into_any()
+            view! {
+                <tr class="dtc-sheet-table__totals">
+                    <td class="dtc-sheet-gutter"></td>
+                    {row_cells}
+                </tr>
+            }
+            .into_any()
         })
     } else {
         None
@@ -899,6 +1049,8 @@ fn table_cell_view(
     cell: Option<&TableCellProjection>,
     active_cell: Option<&TableCellSelection>,
     dispatch: Arc<dyn Dispatcher>,
+    bar_ref: NodeRef<leptos::html::Input>,
+    bar_editing: RwSignal<bool>,
 ) -> AnyView {
     let Some(cell) = cell else {
         return view! { <td class="dtc-sheet-cell dtc-sheet-cell--blank"></td> }.into_any();
@@ -914,12 +1066,22 @@ fn table_cell_view(
     }
     let text = value_text(&cell.value);
     let intent = select_cell_intent(table_id, cell);
+    let edit_intent = intent.clone();
+    let click_dispatch = dispatch.clone();
+    let edit_dispatch = dispatch;
 
     view! {
         <td
             class=class
+            title="Double-click to edit"
             on:click=move |_| {
-                dispatch.dispatch(intent.clone());
+                click_dispatch.dispatch(intent.clone());
+            }
+            on:dblclick=move |_| {
+                // Select the cell, then drop into the formula bar to edit it.
+                edit_dispatch.dispatch(edit_intent.clone());
+                bar_editing.set(true);
+                focus_formula_bar(bar_ref);
             }
         >
             {text}
@@ -1006,6 +1168,19 @@ const SHEET_CSS: &str = r#"
 .dtc-sheet-row__value { font-size: 15px; font-variant-numeric: tabular-nums; text-align: right; min-width: 0; overflow-x: auto; }
 
 .dtc-sheet-table { margin: 0 0 14px; }
+.dtc-sheet-th { display: flex; align-items: center; gap: 4px; }
+.dtc-sheet-th__name { flex: 1; cursor: text; }
+.dtc-sheet-th__del, .dtc-sheet-gutter__del {
+  border: none; background: none; color: var(--dtc-text-subtle); cursor: pointer;
+  padding: 0 4px; border-radius: 4px; line-height: 1; font-size: 14px;
+}
+.dtc-sheet-th__del:hover, .dtc-sheet-gutter__del:hover {
+  background: var(--dtc-danger-surface); color: var(--dtc-danger-text);
+}
+.dtc-sheet-gutter { width: 1.6rem; text-align: center; color: var(--dtc-text-subtle); }
+.dtc-sheet-gutter__del { visibility: hidden; }
+tr:hover > .dtc-sheet-gutter > .dtc-sheet-gutter__del { visibility: visible; }
+.dtc-sheet-cell { cursor: cell; }
 .dtc-sheet-table__name { display: flex; align-items: baseline; gap: 8px; font-weight: 700; margin-bottom: 4px; }
 .dtc-sheet-table__path { font-size: 11px; color: var(--dtc-text-subtle); font-weight: 400; }
 .dtc-sheet-table table { border-collapse: collapse; }

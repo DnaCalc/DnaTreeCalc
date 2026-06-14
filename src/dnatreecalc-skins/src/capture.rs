@@ -41,8 +41,9 @@ use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::spine_widgets::{
-    ConsoleBar, NameBoxBar, NodeInspector, SPINE_WIDGETS_CSS, commit_content_edit,
-    event_target_is_interactive, event_target_is_text_entry,
+    ConsoleBar, NameBoxBar, NodeInspector, SPINE_WIDGETS_CSS, clear_content_edit,
+    commit_content_edit, event_target_is_interactive, event_target_is_text_entry,
+    focus_edit_buffer,
 };
 use crate::value_render::value_text;
 
@@ -561,6 +562,8 @@ fn CaptureView(cx: SkinContext<CaptureState>) -> impl IntoView {
     // Lens-local grammar, resolved through the one registry. Global verbs
     // (F9, Ctrl+Z/Y, Ctrl+N, lens switch, arrows) bubble to the shell.
     let grammar = KeybindingRegistry::universal();
+    let clear_dispatch = dispatch.clone();
+    let clear_origin = shared_origin.clone();
     let root_keydown = move |ev: leptos::ev::KeyboardEvent| {
         // Bare-key grammar never fires while typing — the contract. (The
         // editing flag deliberately does NOT gate here: while the buffer has
@@ -586,6 +589,27 @@ fn CaptureView(cx: SkinContext<CaptureState>) -> impl IntoView {
                 ev.prevent_default();
                 if let Some(input) = line_ref.get_untracked() {
                     let _ = input.focus();
+                }
+            }
+            SkinVerb::EditInPlace => {
+                // F2 edits the selected node's content in the inspector buffer.
+                if event_target_is_interactive(&ev) {
+                    return;
+                }
+                if selected.get_untracked().is_some() {
+                    ev.prevent_default();
+                    editing.set(true);
+                    focus_edit_buffer(edit_ref);
+                }
+            }
+            SkinVerb::ClearContents => {
+                // Excel's Delete: clear the selected node's contents (safe).
+                if event_target_is_interactive(&ev) {
+                    return;
+                }
+                if let Some(node) = selected.get_untracked() {
+                    ev.prevent_default();
+                    clear_content_edit(&clear_dispatch, shared, &clear_origin, node.id.clone());
                 }
             }
             SkinVerb::NameBox => {

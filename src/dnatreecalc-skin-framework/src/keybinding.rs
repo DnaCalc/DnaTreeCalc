@@ -114,6 +114,12 @@ pub enum SkinVerb {
     NewWorkspace,
     /// The canonical escape ladder step (Escape).
     Escape,
+    /// Clear the selected node/cell contents — Excel's `Delete`/`Backspace`.
+    /// Safe and non-structural: maps to an empty content edit, never a node
+    /// removal.
+    ClearContents,
+    /// Begin editing the selection in place — Excel's `F2`.
+    EditInPlace,
 }
 
 impl SkinVerb {
@@ -140,6 +146,8 @@ impl SkinVerb {
             Self::SwitchLens(_) => "switch_lens",
             Self::NewWorkspace => "new_workspace",
             Self::Escape => "escape",
+            Self::ClearContents => "clear_contents",
+            Self::EditInPlace => "edit_in_place",
         }
     }
 
@@ -170,6 +178,8 @@ impl SkinVerb {
             "to_child" => Self::ToChild,
             "new_workspace" => Self::NewWorkspace,
             "escape" => Self::Escape,
+            "clear_contents" => Self::ClearContents,
+            "edit_in_place" => Self::EditInPlace,
             _ => return None,
         })
     }
@@ -295,6 +305,10 @@ impl KeybindingRegistry {
             (KeyChord::bare("ArrowLeft"), SkinVerb::ToParent),
             (KeyChord::bare("ArrowRight"), SkinVerb::ToChild),
             (KeyChord::ctrl("n"), SkinVerb::NewWorkspace),
+            // Excel-like content ops: Delete/Backspace clear, F2 edits in place.
+            (KeyChord::bare("Delete"), SkinVerb::ClearContents),
+            (KeyChord::bare("Backspace"), SkinVerb::ClearContents),
+            (KeyChord::bare("F2"), SkinVerb::EditInPlace),
             (KeyChord::bare("Escape"), SkinVerb::Escape),
         ];
         for slot in 1u8..=9 {
@@ -379,7 +393,7 @@ impl KeybindingRegistry {
 mod tests {
     use super::*;
 
-    const REBINDABLE: [SkinVerb; 18] = [
+    const REBINDABLE: [SkinVerb; 20] = [
         SkinVerb::Commit,
         SkinVerb::Recalculate,
         SkinVerb::Fill,
@@ -398,6 +412,8 @@ mod tests {
         SkinVerb::ToChild,
         SkinVerb::NewWorkspace,
         SkinVerb::Escape,
+        SkinVerb::ClearContents,
+        SkinVerb::EditInPlace,
     ];
 
     #[test]
