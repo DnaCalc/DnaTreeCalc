@@ -683,6 +683,18 @@ impl HostDispatcher {
                     session.edit_table_cell_transaction(&table, &row_id, &column_id, content)
                 })
                 .map_or_else(|error| self.reject_current(error), receipt_for_publication),
+            WorkspaceIntent::CreateTable { parent, symbol } => match self
+                .apply_workspace_transaction_edit(|session| {
+                    session.create_table_transaction(parent.as_ref(), symbol)
+                }) {
+                Ok(publication) => {
+                    let created = publication.result.clone();
+                    self.selection
+                        .set(SelectionState::with_primary(Some(created)));
+                    receipt_for_publication(publication.with_result(()))
+                }
+                Err(error) => self.reject_current(error),
+            },
             WorkspaceIntent::AddTableRow {
                 table,
                 row_id,

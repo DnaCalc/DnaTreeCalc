@@ -3846,6 +3846,73 @@ impl TreeWorkspaceSession {
         Ok(())
     }
 
+    /// Create a table anchored on a new node under `parent` (root when `None`),
+    /// pre-populated as a 2×1 starter grid (two constant columns, one empty
+    /// row) so the user has cells to type into immediately. The anchor is a
+    /// regular node; the engine already supports runtime table structure, so we
+    /// register the column shape via `set_node_table` and then reuse
+    /// [`Self::add_table_row_transaction`] to generate the row's body cells.
+    pub fn create_table_transaction(
+        &mut self,
+        parent: Option<&NodeId>,
+        symbol: impl Into<String>,
+    ) -> Result<TreeWorkspaceTransactionEdit<NodeId>, TreeWorkspaceSessionError> {
+        let symbol = symbol.into();
+        // 1. Create the anchor node (regular, empty content).
+        let anchor_id = self
+            .add_node_transaction_with_meta(parent, symbol.as_str(), "", false)?
+            .result;
+        let table_node_id = self.tree_node_id(anchor_id.as_str())?;
+
+        // 2. Register the table shape: two constant columns, a header row, no
+        //    body rows yet.
+        let path = anchor_id.as_str().to_string();
+        let snapshot = TreeCalcTableNodeSnapshot {
+            table_node_id,
+            table_id: format!("dnatreecalc.table:{path}"),
+            table_name: symbol,
+            display_path: path.clone(),
+            canonical_path: path.clone(),
+            virtual_anchor: TreeCalcTableVirtualAnchor {
+                workbook_scope_ref: self.workspace_id.to_string(),
+                sheet_scope_ref: path,
+                start_row: 1,
+                start_col: 1,
+            },
+            rows: Vec::new(),
+            columns: vec![
+                starter_table_column("col_1", "Column 1", 1),
+                starter_table_column("col_2", "Column 2", 2),
+            ],
+            body_cell_nodes: Vec::new(),
+            totals_cell_nodes: Vec::new(),
+            header_row_present: true,
+            totals_row_present: false,
+            table_namespace_version: "table-namespace-v1-created".to_string(),
+            row_membership_version: "row-membership-v1-created".to_string(),
+            row_order_version: "row-order-v1-created".to_string(),
+            column_identity_version: "column-identity-v1-created".to_string(),
+        };
+        let transaction = OxCalcTreeEditTransaction::new(self.workspace_id.clone())
+            .with_edit(OxCalcTreeEdit::SetNodeTable {
+                node_id: table_node_id,
+                snapshot,
+            })
+            .with_recalc_policy(TransactionRecalcPolicy::ApplyOnly);
+        let outcome = self.context.apply_edit_transaction(transaction)?;
+        self.last_outcome = None;
+
+        // 3. Seed one empty row, reusing the runtime row-add machinery to
+        //    generate the body-cell nodes for both columns (it refreshes the
+        //    projection and recalculates).
+        self.add_table_row_transaction(&anchor_id, "row_1", Vec::new())?;
+
+        Ok(TreeWorkspaceTransactionEdit {
+            result: anchor_id,
+            transaction_id: outcome.transaction_id.to_string(),
+        })
+    }
+
     pub fn add_table_row_transaction(
         &mut self,
         table: &NodeId,
@@ -7234,6 +7301,21 @@ fn table_snapshot_from_fixture(
     }
 }
 
+/// A blank constant-cells column for a freshly created table.
+fn starter_table_column(
+    column_id: &str,
+    column_name: &str,
+    ordinal: u32,
+) -> TreeCalcTableColumnSnapshot {
+    TreeCalcTableColumnSnapshot {
+        column_id: column_id.to_string(),
+        column_name: column_name.to_string(),
+        ordinal,
+        body_metadata: TreeCalcTableColumnBodyMetadata::ConstantCells,
+        totals_metadata: None,
+    }
+}
+
 fn table_column_snapshot_from_fixture(column: &TableColumnFixture) -> TreeCalcTableColumnSnapshot {
     TreeCalcTableColumnSnapshot {
         column_id: column.column_id.clone(),
@@ -9306,6 +9388,47 @@ mod tests {
         let table_node = state.node(&NodeId::new("SalesTable")).unwrap();
         assert_eq!(table_node.content_kind, FrameworkContentKind::Empty);
         assert_eq!(table_node.computed_value, NodeValueProjection::Unevaluated);
+    }
+
+    #[test]
+    fn create_table_transaction_builds_a_two_by_one_starter_grid() {
+        let fixture = WorkspaceFixture {
+            schema_version: "treecalc-workspace-v1".to_string(),
+            workspace_id: "create-table".to_string(),
+            description: None,
+            profile: None,
+            nodes: vec![WorkspaceNodeFixture {
+                node_id: "Root".to_string(),
+                formula: String::new(),
+                is_meta: false,
+                table: None,
+            }],
+        };
+        let model = WorkspaceModel::try_from(fixture).unwrap();
+        let mut session = TreeWorkspaceSession::from_model(&model).unwrap();
+
+        let created = session
+            .create_table_transaction(Some(&NodeId::new("Root")), "Budget")
+            .unwrap()
+            .result;
+        assert_eq!(created.as_str(), "Root.Budget");
+
+        let state = session.workspace_state().unwrap();
+        let table = state
+            .tables
+            .get(&NodeId::new("Root.Budget"))
+            .expect("created table projects into WorkspaceState.tables");
+        assert_eq!(table.columns.len(), 2, "starter grid has two columns");
+        assert_eq!(table.rows.len(), 1, "starter grid has one row");
+        assert_eq!(table.row_count, 1);
+        // Both starter columns are constant-cell, so their cells are directly
+        // editable (not formula-bound).
+        for column in &table.columns {
+            assert!(matches!(
+                column.body,
+                TableColumnBodyProjection::ConstantCells
+            ));
+        }
     }
 
     #[test]

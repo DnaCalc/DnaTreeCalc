@@ -456,6 +456,13 @@ pub enum WorkspaceIntent {
         table: NodeId,
         column_id: String,
     },
+    /// Create a new table anchored on a fresh node under `parent` (root when
+    /// `None`), pre-populated as a 2×1 starter grid. Author-only (the
+    /// `Persona::allows` Reviewer/ReadOnly allow-lists omit it).
+    CreateTable {
+        parent: Option<NodeId>,
+        symbol: String,
+    },
     NewWorkspace,
     SwitchWorkspace {
         workspace_id: String,
@@ -918,6 +925,7 @@ impl Dispatcher for InMemoryDispatcher {
             | WorkspaceIntent::RenameTableColumn { .. }
             | WorkspaceIntent::ReorderTableColumn { .. }
             | WorkspaceIntent::DeleteTableColumn { .. }
+            | WorkspaceIntent::CreateTable { .. }
             | WorkspaceIntent::NewWorkspace
             | WorkspaceIntent::SwitchWorkspace { .. }
             | WorkspaceIntent::RenameWorkspace { .. }

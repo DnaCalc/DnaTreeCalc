@@ -271,6 +271,40 @@ fn add_column_intent(table: &NodeId, projection: &TableProjection) -> WorkspaceI
     }
 }
 
+/// Build the intent for the "New table" toolbar action: a 2×1 starter grid
+/// anchored under the selected plain node (a meta node or an existing table
+/// anchor is skipped, falling back to the root), with a collision-free `Table`
+/// / `TableN` symbol so repeated clicks never reject.
+fn new_table_intent(workspace: &WorkspaceState, selected: Option<&NodeId>) -> WorkspaceIntent {
+    let parent = selected.and_then(|id| {
+        workspace.node(id).and_then(|node| {
+            let is_plain =
+                !node.is_meta && node.table.is_none() && !workspace.tables.contains_key(id);
+            is_plain.then(|| id.clone())
+        })
+    });
+    let prefix = parent
+        .as_ref()
+        .map(|parent| format!("{}.", parent.as_str()))
+        .unwrap_or_default();
+    let mut ordinal = 1usize;
+    let symbol = loop {
+        let candidate = if ordinal == 1 {
+            "Table".to_string()
+        } else {
+            format!("Table{ordinal}")
+        };
+        if workspace
+            .node(&NodeId::new(format!("{prefix}{candidate}")))
+            .is_none()
+        {
+            break candidate;
+        }
+        ordinal += 1;
+    };
+    WorkspaceIntent::CreateTable { parent, symbol }
+}
+
 /// The value-first row population: every node that is not effectively meta
 /// and is not a table anchor (tables render as in-place grids instead).
 fn sheet_row_keys(workspace: &WorkspaceState) -> Vec<NodeKey> {
@@ -299,6 +333,7 @@ fn SheetView(cx: SkinContext<SheetState>) -> impl IntoView {
     let selection = cx.selection;
     let shared = cx.shared;
     let dispatch = cx.dispatch.clone();
+    let create_table_dispatch = dispatch.clone();
     let state = cx.state.clone();
     let shared_origin = SharedStateOrigin::lens(SHEET_ID, cx.slot);
 
@@ -658,6 +693,18 @@ fn SheetView(cx: SkinContext<SheetState>) -> impl IntoView {
                     on:click=move |_| toggle_state.update(|s| s.show_formulas = !s.show_formulas)
                 >
                     {move || if show_formulas.get() { "Hide formulas" } else { "Show formulas" }}
+                </button>
+                <button
+                    type="button"
+                    title="Create a new 2×1 table under the selection (or at the root)"
+                    on:click=move |_| {
+                        let workspace_now = workspace.get_untracked();
+                        let primary = selection.get_untracked().primary;
+                        create_table_dispatch
+                            .dispatch(new_table_intent(&workspace_now, primary.as_ref()));
+                    }
+                >
+                    "New table"
                 </button>
             </div>
             {move || rejection.get().map(|message| view! {
@@ -1254,6 +1301,20 @@ mod tests {
         // Char offsets, not bytes: multibyte buffers clamp to the char count.
         assert_eq!(caret_char_offset(Some(99), "né☃"), 3);
         assert_eq!(caret_char_offset(None, ""), 0);
+    }
+
+    #[test]
+    fn new_table_intent_anchors_at_root_with_default_name() {
+        // With nothing selected and an empty workspace, the starter table
+        // lands at the root with the first free `Table` name.
+        let workspace = WorkspaceState::default();
+        assert_eq!(
+            new_table_intent(&workspace, None),
+            WorkspaceIntent::CreateTable {
+                parent: None,
+                symbol: "Table".to_string(),
+            }
+        );
     }
 
     #[test]
