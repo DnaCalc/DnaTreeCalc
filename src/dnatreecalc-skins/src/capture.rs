@@ -1,10 +1,13 @@
 //! CAPTURE — structure-by-typing (ATLAS Phase A).
 //!
-//! Capture's signature is one large input line: type a dotted path and the
-//! tree scaffolds itself. `Accounts.Q1.Sales = 5` creates every missing
-//! segment on the way down and hands the content after the first `=` to the
-//! host **verbatim** — `Margin = =Net/Sales` authors a formula, `Margin = 5`
-//! a constant; classification of content is host truth, never lens truth.
+//! Capture's signature is two fields: a **path** box where a dotted path
+//! scaffolds the tree as you type it, and a **content** box for the value or
+//! formula. `Tab` moves between them, `Enter` commits. Path
+//! `Accounts.Q1.Sales` with content `5` creates every missing segment on the
+//! way down and hands `5` to the host **verbatim**; a leading `=` in the
+//! content box (`=Net/Sales`) authors a formula. Classification of content is
+//! host truth, never lens truth — and because the path box never carries an
+//! `=`, the formula sigil is unambiguous.
 //!
 //! Doctrine, identical to the Flow reference lens:
 //! - **one grammar** — `/` Name-Box, Enter/Esc modeless edit, resolved through
@@ -20,8 +23,8 @@
 //! `CommitCandidate`) so the whole scaffold publishes as ONE revision — one
 //! undo. Any rejection discards the candidate: nothing publishes, true
 //! atomicity. Capture reads only the published projection and writes only
-//! closed `WorkspaceIntent`s; it never parses formula text (its dotted-path
-//! line syntax is lens-local, the `=` split hands content through untouched),
+//! closed `WorkspaceIntent`s; it never parses formula text (the path box is
+//! split on `.` into segments, the content box is handed through untouched),
 //! never computes a value, and never uses grid coordinates.
 
 use std::collections::BTreeSet;
@@ -110,42 +113,73 @@ impl WorkspaceSkin for CaptureLens {
 // Pure helpers (lens-local line syntax + scaffold planning — unit tested)
 // ---------------------------------------------------------------------------
 
-/// One parsed capture line. The split at the FIRST `=` is lens-local *line*
-/// syntax, not formula parsing: everything after it is handed to the host
-/// verbatim, so a leading `=` in the content authors a formula there.
+/// One planned capture entry: a dotted path plus optional content. Built from
+/// the two fields (path box + content box), never from an `=`-delimited line,
+/// so a leading `=` in the content is unambiguously the formula sigil.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct CaptureLine {
     path_segments: Vec<String>,
     content: Option<String>,
 }
 
-/// Parse `Dotted.Path.Leaf` or `Dotted.Path.Leaf = content`. Rejects an empty
-/// path and empty segment names; segment names are trimmed.
-fn parse_capture_line(line: &str) -> Option<CaptureLine> {
-    let trimmed = line.trim();
+/// Split a dotted path into trimmed, non-empty segments. `NodeId` IS the dotted
+/// path (projection truth), so this is the only place the path string is taken
+/// apart. Rejects an empty path and empty/blank segment names.
+fn parse_path_segments(path: &str) -> Option<Vec<String>> {
+    let trimmed = path.trim();
     if trimmed.is_empty() {
         return None;
     }
-    let (path_part, content) = match trimmed.split_once('=') {
-        Some((path, rest)) => (path, Some(rest.trim().to_string())),
-        None => (trimmed, None),
-    };
-    let path_part = path_part.trim();
-    if path_part.is_empty() {
-        return None;
-    }
-    let mut path_segments = Vec::new();
-    for raw_segment in path_part.split('.') {
+    let mut segments = Vec::new();
+    for raw_segment in trimmed.split('.') {
         let segment = raw_segment.trim();
         if segment.is_empty() {
             return None;
         }
-        path_segments.push(segment.to_string());
+        segments.push(segment.to_string());
     }
-    Some(CaptureLine {
+    Some(segments)
+}
+
+/// Build a capture entry from the two fields. The path box must be a clean
+/// dotted path: an `=` there is the old single-line habit, so we guide the user
+/// to the content box rather than silently re-introducing the ambiguous split.
+/// Empty content means structure-only (an `Empty` leaf, or an armed template).
+fn build_capture_line(path: &str, content: &str) -> Result<CaptureLine, String> {
+    let path = path.trim();
+    if path.is_empty() {
+        return Err("type a node path, e.g. Accounts.Q1.Sales".to_string());
+    }
+    if path.contains('=') {
+        return Err(
+            "the path box is the node path — put the value or =formula in the content box"
+                .to_string(),
+        );
+    }
+    let path_segments = parse_path_segments(path).ok_or_else(|| {
+        "invalid path — use Dotted.Path.Leaf with non-empty segments".to_string()
+    })?;
+    let content = content.trim();
+    let content = if content.is_empty() {
+        None
+    } else {
+        Some(content.to_string())
+    };
+    Ok(CaptureLine {
         path_segments,
         content,
     })
+}
+
+/// The compact echo shown on the history strip: `path` or `path = content`.
+fn display_capture_line(path: &str, content: &str) -> String {
+    let path = path.trim();
+    let content = content.trim();
+    if content.is_empty() {
+        path.to_string()
+    } else {
+        format!("{path} = {content}")
+    }
 }
 
 /// Where an entered path lands against the published projection.
@@ -466,12 +500,14 @@ fn CaptureView(cx: SkinContext<CaptureState>) -> impl IntoView {
     let editing = RwSignal::new(false);
     let editor_text = RwSignal::new(String::new());
     let name_box = RwSignal::new(Option::<String>::None);
-    let capture_text = RwSignal::new(String::new());
+    let capture_path = RwSignal::new(String::new());
+    let capture_content = RwSignal::new(String::new());
     let pending_template = RwSignal::new(Option::<ArmedTemplate>::None);
     let history = RwSignal::new(Vec::<CaptureEntry>::new());
     let edit_ref = NodeRef::<leptos::html::Textarea>::new();
     let root_ref = NodeRef::<leptos::html::Section>::new();
     let line_ref = NodeRef::<leptos::html::Input>::new();
+    let content_ref = NodeRef::<leptos::html::Input>::new();
 
     let selected = Memo::new(move |_| {
         let primary = selection.with(|s| s.primary.clone());
@@ -572,21 +608,21 @@ fn CaptureView(cx: SkinContext<CaptureState>) -> impl IntoView {
         }
     });
 
-    // Enter in the capture line: parse, plan, execute, record, prefill.
+    // Commit the two fields: build, plan, execute, record, prefill. Cloned
+    // because both inputs (path + content) fire it on Enter.
     let submit_dispatch = dispatch.clone();
     let submit_origin = shared_origin.clone();
     let submit = move || {
-        let line = capture_text.get_untracked().trim().to_string();
-        if line.is_empty() {
+        let path = capture_path.get_untracked();
+        let content = capture_content.get_untracked();
+        if path.trim().is_empty() {
             return;
         }
         let limit = state.get_untracked().history_limit;
-        let outcome = match parse_capture_line(&line) {
-            None => Err(
-                "unrecognized capture line — type Dotted.Path or Dotted.Path = content"
-                    .to_string(),
-            ),
-            Some(parsed) => execute_capture_line(
+        let display = display_capture_line(&path, &content);
+        let outcome = match build_capture_line(&path, &content) {
+            Err(message) => Err(message),
+            Ok(parsed) => execute_capture_line(
                 &parsed,
                 workspace,
                 &submit_dispatch,
@@ -602,21 +638,27 @@ fn CaptureView(cx: SkinContext<CaptureState>) -> impl IntoView {
                     push_capture_history(
                         entries,
                         CaptureEntry {
-                            line,
+                            line: display,
                             accepted: true,
                             message: None,
                         },
                         limit,
                     );
                 });
-                capture_text.set(sibling_prefill(&parsed.path_segments));
+                // Keep the parent path open for the next sibling, clear the
+                // content box, and land the caret back on the path box.
+                capture_path.set(sibling_prefill(&parsed.path_segments));
+                capture_content.set(String::new());
+                if let Some(input) = line_ref.get_untracked() {
+                    let _ = input.focus();
+                }
             }
             Err(message) => {
                 history.update(|entries| {
                     push_capture_history(
                         entries,
                         CaptureEntry {
-                            line,
+                            line: display,
                             accepted: false,
                             message: Some(message),
                         },
@@ -626,6 +668,8 @@ fn CaptureView(cx: SkinContext<CaptureState>) -> impl IntoView {
             }
         }
     };
+    let submit_path_enter = submit.clone();
+    let submit_content_enter = submit;
 
     // Template starter chips: projected initials, cloned verbatim when armed.
     let template_chips = move || {
@@ -712,23 +756,63 @@ fn CaptureView(cx: SkinContext<CaptureState>) -> impl IntoView {
                     <div class="dtc-capture-line">
                         <span class="dtc-capture-line__sigil">"»"</span>
                         <input
-                            class="dtc-capture-line__input"
+                            class="dtc-capture-line__input dtc-capture-line__input--path"
                             node_ref=line_ref
-                            aria-label="Capture line"
-                            placeholder="Dotted.Path.Leaf = content"
-                            prop:value=move || capture_text.get()
-                            on:input=move |ev| capture_text.set(event_target_value(&ev))
+                            aria-label="Node path"
+                            placeholder="Dotted.Path.Leaf"
+                            prop:value=move || capture_path.get()
+                            on:input=move |ev| capture_path.set(event_target_value(&ev))
                             on:keydown=move |ev: leptos::ev::KeyboardEvent| {
-                                // Typed characters belong to the capture line alone.
+                                // Typed characters belong to the path box alone.
                                 ev.stop_propagation();
                                 match ev.key().as_str() {
                                     "Enter" => {
                                         ev.prevent_default();
-                                        submit();
+                                        submit_path_enter();
+                                    }
+                                    "Tab" => {
+                                        // Tab moves to the content box.
+                                        ev.prevent_default();
+                                        if let Some(input) = content_ref.get_untracked() {
+                                            let _ = input.focus();
+                                        }
                                     }
                                     "Escape" => {
                                         ev.prevent_default();
-                                        capture_text.set(String::new());
+                                        capture_path.set(String::new());
+                                        capture_content.set(String::new());
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        />
+                        <span class="dtc-capture-line__eq" aria-hidden="true">"="</span>
+                        <input
+                            class="dtc-capture-line__input dtc-capture-line__input--content"
+                            node_ref=content_ref
+                            aria-label="Content — value or =formula"
+                            placeholder="value or =formula"
+                            prop:value=move || capture_content.get()
+                            on:input=move |ev| capture_content.set(event_target_value(&ev))
+                            on:keydown=move |ev: leptos::ev::KeyboardEvent| {
+                                // Typed characters belong to the content box alone.
+                                ev.stop_propagation();
+                                match ev.key().as_str() {
+                                    "Enter" => {
+                                        ev.prevent_default();
+                                        submit_content_enter();
+                                    }
+                                    "Tab" => {
+                                        // Tab moves back to the path box.
+                                        ev.prevent_default();
+                                        if let Some(input) = line_ref.get_untracked() {
+                                            let _ = input.focus();
+                                        }
+                                    }
+                                    "Escape" => {
+                                        ev.prevent_default();
+                                        capture_path.set(String::new());
+                                        capture_content.set(String::new());
                                     }
                                     _ => {}
                                 }
@@ -874,9 +958,14 @@ const CAPTURE_CSS: &str = r#"
 }
 .dtc-capture-line__sigil { font-weight: 700; font-size: 16px; color: var(--dtc-accent); }
 .dtc-capture-line__input {
-  flex: 1; padding: 6px 10px; font: 16px/1.4 ui-monospace, monospace;
+  flex: 1; min-width: 0; padding: 6px 10px; font: 16px/1.4 ui-monospace, monospace;
   border: 1px solid var(--dtc-border); border-radius: 6px;
   background: var(--dtc-surface-input); color: var(--dtc-text);
+}
+.dtc-capture-line__input--path { flex: 2 1 0; }
+.dtc-capture-line__input--content { flex: 3 1 0; }
+.dtc-capture-line__eq {
+  font: 700 16px/1 ui-monospace, monospace; color: var(--dtc-text-subtle);
 }
 
 .dtc-capture-templates__row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
@@ -989,39 +1078,74 @@ mod tests {
         parts.iter().map(|part| (*part).to_string()).collect()
     }
 
-    // -- parse_capture_line --------------------------------------------------
+    // -- parse_path_segments -------------------------------------------------
 
     #[test]
-    fn parse_capture_line_accepts_plain_path() {
-        let line = parse_capture_line("  Accounts.Q1.Sales  ").unwrap();
-        assert_eq!(line.path_segments, vec!["Accounts", "Q1", "Sales"]);
-        assert_eq!(line.content, None);
+    fn parse_path_segments_accepts_dotted_path() {
+        assert_eq!(
+            parse_path_segments("  Accounts.Q1.Sales  ").unwrap(),
+            vec!["Accounts", "Q1", "Sales"]
+        );
+        assert_eq!(parse_path_segments("Margin").unwrap(), vec!["Margin"]);
     }
 
     #[test]
-    fn parse_capture_line_splits_constant_content_at_first_equals() {
-        let line = parse_capture_line("Accounts.Q1.Sales = 5").unwrap();
+    fn parse_path_segments_rejects_blank_and_empty_segments() {
+        assert_eq!(parse_path_segments(""), None);
+        assert_eq!(parse_path_segments("   "), None);
+        assert_eq!(parse_path_segments("A..B"), None);
+        assert_eq!(parse_path_segments(".Lead"), None);
+        assert_eq!(parse_path_segments("Trail."), None);
+    }
+
+    // -- build_capture_line --------------------------------------------------
+
+    #[test]
+    fn build_capture_line_pairs_path_and_content() {
+        let line = build_capture_line("Accounts.Q1.Sales", "5").unwrap();
         assert_eq!(line.path_segments, vec!["Accounts", "Q1", "Sales"]);
         assert_eq!(line.content, Some("5".to_string()));
     }
 
     #[test]
-    fn parse_capture_line_hands_formula_content_through_verbatim() {
-        // The split happens at the FIRST `=`; the leading `=` of the content
-        // survives untouched so the HOST classifies it as a formula.
-        let line = parse_capture_line("Margin = =Net/Sales").unwrap();
+    fn build_capture_line_formula_content_keeps_leading_equals() {
+        // The content box holds the formula verbatim — the leading `=` is the
+        // unambiguous sigil now that the path box never carries one.
+        let line = build_capture_line("Margin", "=Net/Sales").unwrap();
         assert_eq!(line.path_segments, vec!["Margin"]);
         assert_eq!(line.content, Some("=Net/Sales".to_string()));
     }
 
     #[test]
-    fn parse_capture_line_rejects_junk() {
-        assert_eq!(parse_capture_line(""), None);
-        assert_eq!(parse_capture_line("   "), None);
-        assert_eq!(parse_capture_line("= 5"), None);
-        assert_eq!(parse_capture_line("A..B"), None);
-        assert_eq!(parse_capture_line(".Lead"), None);
-        assert_eq!(parse_capture_line("Trail. = 1"), None);
+    fn build_capture_line_empty_content_is_structure_only() {
+        let line = build_capture_line("Accounts.Q1", "   ").unwrap();
+        assert_eq!(line.path_segments, vec!["Accounts", "Q1"]);
+        assert_eq!(line.content, None);
+    }
+
+    #[test]
+    fn build_capture_line_rejects_empty_path() {
+        assert!(build_capture_line("   ", "5").is_err());
+    }
+
+    #[test]
+    fn build_capture_line_guides_equals_in_path_box_to_content_box() {
+        // The old single-line `Path = content` habit is caught and redirected.
+        let error = build_capture_line("Margin = 5", "").unwrap_err();
+        assert!(error.contains("content box"), "{error}");
+    }
+
+    #[test]
+    fn build_capture_line_rejects_invalid_path() {
+        assert!(build_capture_line("A..B", "5").is_err());
+    }
+
+    // -- display_capture_line ------------------------------------------------
+
+    #[test]
+    fn display_capture_line_renders_path_and_optional_content() {
+        assert_eq!(display_capture_line("A.B", "5"), "A.B = 5");
+        assert_eq!(display_capture_line("A.B", "  "), "A.B");
     }
 
     // -- plan_scaffold -------------------------------------------------------
