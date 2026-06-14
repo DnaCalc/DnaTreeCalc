@@ -9,6 +9,42 @@ conforms to, so it is the canonical realization of [the spine](../SPINE.md).
 > registered as `Ctrl+5` (the canonical suite order) and the web entrypoint's
 > default lens. Prototype: [`../../prototypes/09_flow.html`](../../prototypes/09_flow.html).
 
+## Intent
+
+> **Audit yardstick.** What Flow is *for* — the design intent. A later audit
+> scores the built lens against the **Audit checklist**; a gap there is a
+> finding, not a doc error.
+
+**Perspective — how you look at the model here.** Flow puts you *inside the
+computation* — causality flows left→right as topological columns, dependency
+wires are the syntax, and calc-state pips are the signal. `F9` sweeps a reading
+head through the engine's *real* evaluation order, rolling only the values that
+changed. As the reference lens, it is the canonical reading of the spine. The
+question it answers: *"Why did this value become this, and what depends on it
+changing?"*
+
+**What you can do here**
+- `F9` **reading-head sweep** across chips in true `evaluation_order`, igniting wires and rolling changed values — causal theater, never a re-sorted layout order.
+- `]` / `[` **trace-as-layout**: grow the dependent / precedent trace from the selection; off-trace chips dim.
+- `E` **explain**: unfold a recursive derivation stack (precedent values, call sites) for the focus node.
+- Edit a chip's content modelessly (`Enter` to edit/commit, `Esc` to cancel); jump by `/` Name-Box.
+- Navigate by arrows (↑↓ siblings, ←→ toward inputs/results); read the inspector (value, format, diagnostics, precedent/dependent counts) and the console health tallies.
+
+**What it deliberately leaves to other lenses**
+- Never parses formula text or fabricates a value — every number and provenance mark is engine-published.
+- No grid/A1 coordinates — references are node-addressed and survive rename/move.
+- **Structure-stable** layout: value changes never reshuffle columns; the sweep axis (evaluation order) is distinct from the layout axis (precedent rank).
+- No spatial-coordinate persistence (Canvas); single-select today.
+
+**Audit checklist — does the build realize the intent?**
+1. `F9` advances the head over `last_run.evaluation_order` (true causal order), not a values- or layout-sorted order.
+2. `]` / `[` highlight the dependent / precedent subgraph from the focus and dim the rest; the lit set grows on repeats.
+3. Layout recomputes only on topology change (`dependency_shape_snapshot_id`), never on value change.
+4. `E` reads `derivation_traces` filtered to the focus owner and renders recursively.
+5. `/` jumps via `SelectNode` with **no recalc**, and excludes effectively-meta nodes.
+6. Modeless edit: `Enter` edits, every key is verbatim, `Esc` cancels, `Enter` commits-and-advances; bare-key verbs never fire while typing.
+7. Selection, `focus_key`, and trace context live in shared continuity and survive a lens switch.
+
 ## What it reads (published projection only)
 
 - `nodes_by_key` / `key_order` — chips (meta nodes excluded from the flow stage).

@@ -28,6 +28,10 @@ composition** — built on the [upgraded stack](../stack-requirements/) and usin
   graph) is fully landed and projected — the rollout table below originally gated them on spikes
   that have since been answered. The cockpit / multi-slot platform (Phase B) is not built yet;
   the spine is built so it drops in without rework.
+- **Intent yardstick:** each lens doc opens with an **Intent** section — its *perspective* (how you
+  look at the model from there), *what you can do*, *what it leaves to other lenses*, and an
+  **audit checklist** of checkable claims — so a follow-up audit run can score whether each built
+  view realizes its intent (a gap is a finding, not a doc error).
 
 This README is the durable summary. (The fuller per-lens / spine / journey breakout can be expanded
 into a doc set on request; the raw synthesis holds every field today.)
