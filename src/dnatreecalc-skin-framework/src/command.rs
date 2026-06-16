@@ -203,7 +203,10 @@ impl WorkspaceState {
             command(
                 CommandIntentKindProjection::RenameNode,
                 "Rename Node",
-                Some("F2"),
+                // F2 edits content in place (SkinVerb::EditInPlace), not rename;
+                // renaming is via the inspector field / inline label edit, so this
+                // command advertises no universal shortcut rather than a stale F2.
+                None,
                 selected_node_exists,
                 selected_node_reason(selected_node_exists),
             ),
@@ -224,7 +227,10 @@ impl WorkspaceState {
             command(
                 CommandIntentKindProjection::DeleteNode,
                 "Delete Node",
-                Some("Delete"),
+                // Structural removal is button-only and confirmed: the bare
+                // Delete/Backspace keys clear contents (SkinVerb::ClearContents),
+                // so this command must not advertise them as its shortcut.
+                None,
                 selected_node_exists,
                 selected_node_reason(selected_node_exists),
             ),

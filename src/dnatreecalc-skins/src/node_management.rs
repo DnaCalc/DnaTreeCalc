@@ -618,8 +618,10 @@ mod tests {
                 CommandMetaProjection {
                     intent_kind: CommandIntentKindProjection::DeleteNode,
                     title: "Delete Node",
-                    shortcut: Some("Delete"),
-                    effective_binding: Some("Delete"),
+                    // Structural delete advertises no universal shortcut; the hint
+                    // renders the title with no <kbd>.
+                    shortcut: None,
+                    effective_binding: None,
                     enabled: false,
                     disabled_reason: Some("no node is selected".to_string()),
                 },
@@ -637,7 +639,7 @@ mod tests {
                 },
                 CommandHint {
                     title: "Delete Node",
-                    binding: Some("Delete"),
+                    binding: None,
                     enabled: false,
                 },
             ]

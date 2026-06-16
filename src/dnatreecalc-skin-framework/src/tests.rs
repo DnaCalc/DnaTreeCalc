@@ -833,6 +833,60 @@ fn verb_command_kind_joins_the_catalog() {
     assert_eq!(SkinVerb::Explain.command_kind(), None);
 }
 
+/// The command catalog's advertised shortcuts must agree with the universal
+/// keybinding registry: a command may not advertise a key the registry binds to
+/// a *different* verb, or the hint tells the user a key does X when it actually
+/// does Y. Regression guard for the "Delete Node [Delete]" confusion —
+/// Delete/Backspace clear contents and F2 edits in place, so the structural
+/// Delete/Rename commands must no longer advertise those keys.
+#[test]
+fn catalog_shortcuts_agree_with_the_keybinding_registry() {
+    fn parse_shortcut(label: &str) -> Option<KeyChord> {
+        let (mut ctrl, mut alt, mut shift) = (false, false, false);
+        let mut key = None;
+        for part in label.split('+') {
+            match part {
+                "Ctrl" => ctrl = true,
+                "Alt" => alt = true,
+                "Shift" => shift = true,
+                other => key = Some(other.to_string()),
+            }
+        }
+        Some(KeyChord::from_parts(key?, ctrl, alt, shift))
+    }
+
+    let registry = KeybindingRegistry::universal();
+    let workspace = workspace_with_nodes(vec![node("node:a", "A", NodeContentKind::Formula)]);
+    let selection = SelectionState::with_primary(Some(NodeId::new("A")));
+    let catalog = workspace.command_catalog(&selection);
+
+    for entry in &catalog.entries {
+        let Some(shortcut) = entry.effective_binding else {
+            continue;
+        };
+        let Some(chord) = parse_shortcut(shortcut) else {
+            continue;
+        };
+        let Some(verb) = registry.resolve(&chord) else {
+            // A shortcut the universal registry does not bind (e.g. a lens-local
+            // or browser-level chord like Ctrl+C) cannot contradict it.
+            continue;
+        };
+        // Enter is the universal Commit key; every edit/commit command rides on
+        // it legitimately, so it is the one verb allowed to back several kinds.
+        if verb == SkinVerb::Commit {
+            continue;
+        }
+        assert_eq!(
+            verb.command_kind(),
+            Some(entry.intent_kind),
+            "command {:?} advertises shortcut {shortcut:?}, but the registry binds \
+             that chord to {verb:?} — the hint would lie",
+            entry.intent_kind,
+        );
+    }
+}
+
 #[test]
 fn shared_store_applies_typed_changes_and_records_audit() {
     use crate::state::{SharedStateChange, SharedStateOrigin};
