@@ -96,7 +96,9 @@ const ENGINE_ROOT_SYMBOL: &str = "__dnatreecalc_workspace__";
 const DEFAULT_SPECULATION_REAP_BUDGET: usize = 2;
 const DNATREE_DOCUMENT_SCHEMA_VERSION: &str = "dnatreecalc-workspace-document-v1";
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+// Not `Eq`: the embedded OxCalc snapshot now carries structured computed
+// values whose float payloads are only `PartialEq`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DnaTreeWorkspaceDocument {
     pub schema_version: String,
     pub profile: String,
@@ -9429,6 +9431,88 @@ mod tests {
                 TableColumnBodyProjection::ConstantCells
             ));
         }
+    }
+
+    // Regression for an OxCalc snapshot bug: computed values are serialized as
+    // DISPLAY STRINGS (export_workspace_snapshot -> calc_value_display_map), so a
+    // 10x10 array round-trips as the text "Array(10x10)" and is re-imported
+    // (authored_input_text_to_calc_value) as a 1x1 text literal. After reload,
+    // `arr` is the text "Array(10x10)" and `squares = MAP(arr, LAMBDA(v,(v+x)^2))`
+    // runs over that 1x1 text scalar, collapsing to a 1x1 #VALUE!. This is the
+    // stuck `arr.squares = Array(1x1)` seen in the live app — a snapshot
+    // value-fidelity bug, not a lambda/binding bug (a fresh node with the same
+    // formula computes 10x10). FAILS until the round-trip preserves computed
+    // array values (faithful CalcValue serialization, or recompute-on-import).
+    #[test]
+    fn map_lambda_result_survives_persist_reload() {
+        let fixture = WorkspaceFixture {
+            schema_version: "treecalc-workspace-v1".to_string(),
+            workspace_id: "leak-repro".to_string(),
+            description: None,
+            profile: None,
+            nodes: vec![
+                WorkspaceNodeFixture {
+                    node_id: "x".to_string(),
+                    formula: "1000".to_string(),
+                    is_meta: false,
+                    table: None,
+                },
+                WorkspaceNodeFixture {
+                    node_id: "arr".to_string(),
+                    formula: "=SEQUENCE(10,10)".to_string(),
+                    is_meta: false,
+                    table: None,
+                },
+                WorkspaceNodeFixture {
+                    node_id: "arr.squares".to_string(),
+                    formula: String::new(),
+                    is_meta: false,
+                    table: None,
+                },
+            ],
+        };
+        let model = WorkspaceModel::try_from(fixture).unwrap();
+        let mut session = TreeWorkspaceSession::from_model(&model).unwrap();
+        session.recalculate().unwrap();
+
+        // Commit the user's LAMBDA formula directly (binds v correctly).
+        session
+            .edit_formula_transaction(
+                &NodeId::new("arr.squares"),
+                "=MAP(arr, LAMBDA(v, (v+x)^2))",
+                TransactionRecalcPolicy::RecalculateAndPublishOnce,
+            )
+            .unwrap();
+        session.recalculate().unwrap();
+        let before = session
+            .workspace_state()
+            .unwrap()
+            .node(&NodeId::new("arr.squares"))
+            .unwrap()
+            .computed_value
+            .display_text();
+        assert_eq!(
+            before, "10x10 array",
+            "a fresh bind of the lambda must be correct"
+        );
+
+        // Persist → reload (what the running app does on autosave + open).
+        let doc = session.export_dnatree_document(None).unwrap();
+        let json = serde_json::to_string(&doc).unwrap();
+        let reparsed: DnaTreeWorkspaceDocument = serde_json::from_str(&json).unwrap();
+        let (mut reopened, _) = TreeWorkspaceSession::from_dnatree_document(reparsed).unwrap();
+        reopened.recalculate().unwrap();
+        let after = reopened
+            .workspace_state()
+            .unwrap()
+            .node(&NodeId::new("arr.squares"))
+            .unwrap()
+            .computed_value
+            .display_text();
+        assert_eq!(
+            after, "10x10 array",
+            "the lambda binding must survive the persist/reload round-trip"
+        );
     }
 
     #[test]
