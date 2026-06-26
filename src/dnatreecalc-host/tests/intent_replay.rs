@@ -95,7 +95,11 @@ fn recorded_session_replays_deterministically_onto_a_fresh_fixture() {
     let original_state = original_ws.get_untracked();
     let fresh_state = fresh_ws.get_untracked();
     assert_eq!(original_state.len(), fresh_state.len());
-    for path in ["Accounts.2005.Q1.Income.Sales", "Accounts.2005.Q3", "Accounts.2005.Total"] {
+    for path in [
+        "Accounts.2005.Q1.Income.Sales",
+        "Accounts.2005.Q3",
+        "Accounts.2005.Total",
+    ] {
         let id = NodeId::new(path);
         assert_eq!(
             original_state.node(&id).map(|n| n.computed_value.clone()),

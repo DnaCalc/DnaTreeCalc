@@ -12,9 +12,6 @@ mod templates;
 mod worker_proxy;
 
 pub use dispatcher::HostDispatcher;
-pub use worker_proxy::{
-    DeliverOutcome, HostSessionExecutor, SessionExecutor, SubmitDecision, WorkerProxyCore,
-};
 #[cfg(not(target_arch = "wasm32"))]
 pub use persistence::LocalFileWorkspaceDocumentStore;
 pub use persistence::{
@@ -27,4 +24,7 @@ pub use registry::build_default_registry;
 pub use session::{
     DnaTreeWorkspaceDocument, TreeWorkspaceCollectionDependencyProjection, TreeWorkspaceSession,
     TreeWorkspaceSessionError,
+};
+pub use worker_proxy::{
+    DeliverOutcome, HostSessionExecutor, SessionExecutor, SubmitDecision, WorkerProxyCore,
 };

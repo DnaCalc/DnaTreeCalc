@@ -12,7 +12,10 @@ use dnatreecalc_skin_framework::{
 };
 use leptos::prelude::*;
 
-fn live_preview_service() -> (Arc<dyn PreviewService>, RwSignal<dnatreecalc_skin_framework::WorkspaceState>) {
+fn live_preview_service() -> (
+    Arc<dyn PreviewService>,
+    RwSignal<dnatreecalc_skin_framework::WorkspaceState>,
+) {
     let fixture = WorkspaceFixture::from_repo_fixture("accounts").unwrap();
     let model = WorkspaceModel::try_from(fixture).unwrap();
     let session = Arc::new(std::sync::Mutex::new(
@@ -91,7 +94,11 @@ fn mutation_impact_preview_reports_collisions_and_invalidation_without_mutating(
             content: "=Income*Margin*2".to_string(),
         })
         .expect("preview must answer");
-    assert!(impact.legal, "edit should be legal: {:?}", impact.bind_diagnostics);
+    assert!(
+        impact.legal,
+        "edit should be legal: {:?}",
+        impact.bind_diagnostics
+    );
     assert!(
         !impact.invalidation_plan.invalidated_nodes.is_empty(),
         "editing Q1.Net must show downstream invalidation (Total depends on it)"

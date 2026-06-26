@@ -47,12 +47,10 @@ fn reviewer_persona_blocks_mutation_but_allows_notes_and_speculation() {
     assert!(switched.accepted);
     assert_eq!(shared.get_untracked().persona, Persona::Reviewer);
     // The persona change is reflected through the audited chokepoint.
-    assert!(
-        shared
-            .audit_log()
-            .iter()
-            .any(|record| matches!(record.change, SharedStateChange::SetPersona(Persona::Reviewer)))
-    );
+    assert!(shared.audit_log().iter().any(|record| matches!(
+        record.change,
+        SharedStateChange::SetPersona(Persona::Reviewer)
+    )));
 
     // A content edit is forbidden, typed, and touches nothing.
     let edit = dispatcher.dispatch(WorkspaceIntent::EditContent {
@@ -74,15 +72,16 @@ fn reviewer_persona_blocks_mutation_but_allows_notes_and_speculation() {
     });
     assert!(note.accepted, "reviewer note: {:?}", note.error);
     let candidate = dispatcher.dispatch(WorkspaceIntent::OpenCandidate { parent: None });
-    assert!(candidate.accepted, "reviewer candidate: {:?}", candidate.error);
+    assert!(
+        candidate.accepted,
+        "reviewer candidate: {:?}",
+        candidate.error
+    );
     // But committing the candidate would publish — forbidden.
     let commit = dispatcher.dispatch(WorkspaceIntent::CommitCandidate {
         handle: "candidate:any".to_string(),
     });
-    assert!(matches!(
-        commit.error,
-        Some(IntentError::Forbidden { .. })
-    ));
+    assert!(matches!(commit.error, Some(IntentError::Forbidden { .. })));
 }
 
 #[test]

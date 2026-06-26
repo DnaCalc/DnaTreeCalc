@@ -4,12 +4,12 @@ use dnatreecalc_skin_framework::{
     AuthoringScope, CandidateProjection, ClipboardNodeFormatProjection,
     ClipboardNodeValueProjection, ClipboardOperationProjection, ClipboardPayloadKind,
     ClipboardPayloadProjection, ClipboardProjection, DependencyDeltaProjection, Dispatcher,
-    FormulaBindPreviewProjection, IntentError, IntentReceipt, MutationImpactIntentProjection,
-    IntentRecord, MutationImpactProjection, NodeContentKind, NodeId, NodeKey,
-    NodeValueDeltaProjection, Persona,
-    NodeValueProjection, NodeView, PreviewError, PreviewService, SelectionState,
-    SharedSkinStateHandle, SharedStateChange, SharedStateOrigin, StructuralDeltaProjection,
-    TableCellSelection, WorkspaceDelta, WorkspaceDeltaChange, WorkspaceIntent, WorkspaceState,
+    FormulaBindPreviewProjection, IntentError, IntentReceipt, IntentRecord,
+    MutationImpactIntentProjection, MutationImpactProjection, NodeContentKind, NodeId, NodeKey,
+    NodeValueDeltaProjection, NodeValueProjection, NodeView, Persona, PreviewError, PreviewService,
+    SelectionState, SharedSkinStateHandle, SharedStateChange, SharedStateOrigin,
+    StructuralDeltaProjection, TableCellSelection, WorkspaceDelta, WorkspaceDeltaChange,
+    WorkspaceIntent, WorkspaceState,
 };
 use leptos::prelude::*;
 use oxcalc_core::consumer::TransactionRecalcPolicy;
@@ -1732,11 +1732,10 @@ impl HostDispatcher {
             .active_session_id()
             .map_err(|error| PreviewError::Host(error.to_string()))?;
         HOST_SESSIONS.with(|sessions| {
-            let session = sessions
-                .borrow()
-                .get(&session_id)
-                .cloned()
-                .ok_or_else(|| PreviewError::Host("workspace session is not available".into()))?;
+            let session =
+                sessions.borrow().get(&session_id).cloned().ok_or_else(|| {
+                    PreviewError::Host("workspace session is not available".into())
+                })?;
             let session = session
                 .lock()
                 .map_err(|_| PreviewError::Host("workspace session mutex poisoned".into()))?;
@@ -1769,10 +1768,10 @@ impl PreviewService for HostDispatcher {
                 symbol,
                 initial,
                 is_meta,
-            } => session.preview_add_node_impact(parent.as_ref(), symbol, initial.clone(), *is_meta),
-            P::EditContent { node, content } => {
-                session.preview_content_edit_impact(node, content)
+            } => {
+                session.preview_add_node_impact(parent.as_ref(), symbol, initial.clone(), *is_meta)
             }
+            P::EditContent { node, content } => session.preview_content_edit_impact(node, content),
             P::EditScopedContent { scope, content } => {
                 session.preview_scoped_content_edit_impact(scope.clone(), content)
             }
@@ -1790,7 +1789,12 @@ impl PreviewService for HostDispatcher {
                 column_id,
                 name,
                 formula_text,
-            } => session.preview_new_table_column_formula_impact(table, column_id, name, formula_text),
+            } => session.preview_new_table_column_formula_impact(
+                table,
+                column_id,
+                name,
+                formula_text,
+            ),
             P::AddTableRow {
                 table,
                 row_id,

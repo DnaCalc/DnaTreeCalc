@@ -65,9 +65,7 @@ fn default_registry_ships_triple_editor_and_outline_table() {
     assert!(ids.contains(&VALUE_BOARD_ID));
     assert!(ids.contains(&DEPENDENCY_INSPECTOR_ID));
 
-    let flow = registry
-        .get(FLOW_ID)
-        .expect("flow lens must be registered");
+    let flow = registry.get(FLOW_ID).expect("flow lens must be registered");
     assert_eq!(flow.manifest().display_name, "Flow");
 
     // Cockpit companions register at the end and negotiate companion slots
@@ -89,7 +87,11 @@ fn default_registry_ships_triple_editor_and_outline_table() {
             .negotiate_slot(SkinMountSlot::BottomConsole)
             .is_ok()
     );
-    assert!(console_companion.negotiate_slot(SkinMountSlot::Main).is_err());
+    assert!(
+        console_companion
+            .negotiate_slot(SkinMountSlot::Main)
+            .is_err()
+    );
 
     let triple = registry
         .get(TRIPLE_EDITOR_ID)

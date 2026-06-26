@@ -25,7 +25,7 @@ use std::sync::{Arc, Mutex};
 
 use dnatreecalc_skin_framework::{
     Dispatcher, FrameMetric, IntentEnvelope, IntentReceipt, PendingIntentQueue, PendingRun,
-    ResyncReason, SelectionState, SessionResponse, WorkspaceDelta, WorkspaceState, WorkspaceIntent,
+    ResyncReason, SelectionState, SessionResponse, WorkspaceDelta, WorkspaceIntent, WorkspaceState,
     apply_delta,
 };
 use leptos::prelude::*;
@@ -348,7 +348,11 @@ mod tests {
         // ...then a stale, lower-seq response arrives late and is dropped.
         let stale = core.deliver(snapshot_response(first.seq.saturating_sub(1).max(0), 2), 10);
         assert!(!stale.applied, "superseded response must not apply");
-        assert_eq!(core.mirror().projection_seq, 5, "mirror keeps the fresher state");
+        assert_eq!(
+            core.mirror().projection_seq,
+            5,
+            "mirror keeps the fresher state"
+        );
     }
 
     #[test]
@@ -366,7 +370,10 @@ mod tests {
         // is released next.
         assert_eq!(outcome.metric.unwrap().coalesced, 2);
         let next = outcome.next.expect("the coalesced edit is released");
-        assert!(matches!(next.intent, WorkspaceIntent::EditContentDeferred { .. }));
+        assert!(matches!(
+            next.intent,
+            WorkspaceIntent::EditContentDeferred { .. }
+        ));
         // Nothing else is parked.
         let drained = core.deliver(snapshot_response(next.seq, 2), 0);
         assert!(drained.next.is_none());
@@ -417,7 +424,10 @@ mod tests {
         assert!(outcome.applied);
         assert!(matches!(
             outcome.resync_reason,
-            Some(ResyncReason::SequenceGap { expected: 3, got: 9 })
+            Some(ResyncReason::SequenceGap {
+                expected: 3,
+                got: 9
+            })
         ));
         assert_eq!(core.mirror().projection_seq, 3, "mirror untouched on a gap");
     }
