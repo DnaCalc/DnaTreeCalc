@@ -70,6 +70,7 @@ use oxcalc_core::treecalc::{
 };
 use oxcalc_core::workspace_revision::WorkspaceRevisionGraphEntry;
 use oxcalc_core::workspace_revision::WorkspaceRevisionId;
+use oxfml_core::binding::HostNameBindRecord;
 use oxfml_core::binding::NameKind;
 use oxfml_core::consumer::editor::{
     EditorAnalysisStage, EditorEditService, EditorEnvironment, EditorHostReferenceInsertionError,
@@ -78,10 +79,7 @@ use oxfml_core::consumer::editor::{
 use oxfml_core::consumer::runtime::{RuntimeEnvironment, RuntimeValueLiteralizationResult};
 use oxfml_core::format::{oxfml_en_us_format_profile, render_visible_value_text, render_with_code};
 use oxfml_core::syntax::token::TextSpan;
-use oxfml_core::{
-    BindContext, FormulaSourceRecord, HostNameBindRecord, HostReferenceCollectionSyntax,
-    HostReferenceStructuralSelectorSyntax, HostReferenceSyntaxProfile,
-};
+use oxfml_core::{BindContext, FormulaSourceRecord, ReferenceBindProfile, ReferenceSelectorSyntax};
 use oxfunc_core::locale_format::WorkbookDateSystem;
 use oxfunc_core::value::{CalcArray, CalcValue, CoreValue, ExcelText};
 use serde::{Deserialize, Serialize};
@@ -2312,7 +2310,11 @@ impl TreeWorkspaceSession {
         let edited_node_id = edited_node.id.clone();
         let oxfml_target = oxfml_reference_target_from_projection(&state, &target)?;
         let bind_context = oxfml_editor_bind_context_from_projection(&state);
-        let service = EditorEditService::new(EditorEnvironment::new(bind_context));
+        let editor_reference_profile = DnaTreeCalcEditorReferenceProfile;
+        let service = EditorEditService::new(
+            EditorEnvironment::new(bind_context)
+                .with_reference_bind_profile(&editor_reference_profile),
+        );
         let document = service.open_document(
             FormulaSourceRecord::new(
                 format!("dnatreecalc:{}:reference-insert", edited_node_id.as_str()),
@@ -7884,10 +7886,7 @@ fn oxfml_reference_target_from_projection(
 }
 
 fn oxfml_editor_bind_context_from_projection(state: &WorkspaceState) -> BindContext {
-    let mut context = BindContext {
-        host_reference_syntax: treecalc_oxfml_host_reference_syntax(),
-        ..BindContext::default()
-    };
+    let mut context = BindContext::default();
     for node in state.nodes_by_key.values().filter(|node| !node.is_meta) {
         context
             .names
@@ -7901,19 +7900,28 @@ fn oxfml_editor_bind_context_from_projection(state: &WorkspaceState) -> BindCont
     context
 }
 
-fn treecalc_oxfml_host_reference_syntax() -> HostReferenceSyntaxProfile {
-    HostReferenceSyntaxProfile::with_members_and_structural_selectors(
-        [
-            HostReferenceCollectionSyntax::new("CHILDREN", "children"),
-            HostReferenceCollectionSyntax::new("*", "children"),
-        ],
-        [
-            HostReferenceStructuralSelectorSyntax::new("PARENT", "parent"),
-            HostReferenceStructuralSelectorSyntax::new("SELF", "self"),
-            HostReferenceStructuralSelectorSyntax::new("PREV", "previous"),
-            HostReferenceStructuralSelectorSyntax::new("NEXT", "next"),
-        ],
-    )
+/// The DnaTreeCalc editor reference profile: it conveys the tree reference
+/// selector syntax (member collections `CHILDREN`/`*` and structural selectors
+/// `PARENT`/`SELF`/`PREV`/`NEXT`) to the OxFml editor. This replaces the removed
+/// `BindContext.host_reference_syntax` field — the editor now reads selector
+/// syntax from the `ReferenceBindProfile` seam (`selector_syntax`).
+struct DnaTreeCalcEditorReferenceProfile;
+
+impl ReferenceBindProfile for DnaTreeCalcEditorReferenceProfile {
+    fn profile_id(&self) -> &str {
+        "dnatreecalc.editor.v1"
+    }
+
+    fn selector_syntax(&self) -> Vec<ReferenceSelectorSyntax> {
+        vec![
+            ReferenceSelectorSyntax::collection("CHILDREN", "children"),
+            ReferenceSelectorSyntax::collection("*", "children"),
+            ReferenceSelectorSyntax::structural_selector("PARENT", "parent"),
+            ReferenceSelectorSyntax::structural_selector("SELF", "self"),
+            ReferenceSelectorSyntax::structural_selector("PREV", "previous"),
+            ReferenceSelectorSyntax::structural_selector("NEXT", "next"),
+        ]
+    }
 }
 
 fn oxfml_host_name_bind_record(node: &NodeView) -> HostNameBindRecord {

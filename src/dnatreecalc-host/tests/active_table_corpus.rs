@@ -1916,9 +1916,6 @@ fn bind_treecalc_table_structured_references(
             caller_table_region,
             ..BindContext::default()
         },
-        host_name_resolver: None,
-        // Pre-existing engine drift: BindRequest gained this field upstream; this
-        // corpus test predates it. None preserves the prior (no-profile) behavior.
         reference_bind_profile: None,
     });
 
