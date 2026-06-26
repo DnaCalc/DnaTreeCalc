@@ -111,12 +111,12 @@
                 "present": true
               },
               "table_context_identity": {
-                "digest": "fnv1a64:e8eac4455dfeebc9",
+                "digest": "fnv1a64:64e7f86ac44747ac",
                 "prefix": "treecalc.table_context.v1;table_id=31:tree-table:empty-headers-totals;namespace_token=58:treecal",
                 "present": true
               },
               "table_invalidation_identity": {
-                "digest": "fnv1a64:9b8fad812e958675",
+                "digest": "fnv1a64:dd8828dff66da920",
                 "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=31:tree-table:empty-headers-total",
                 "present": true
               },
@@ -269,12 +269,12 @@
                 "present": true
               },
               "table_context_identity": {
-                "digest": "fnv1a64:ef5aae26fa3079b1",
+                "digest": "fnv1a64:56da943d8713f82d",
                 "prefix": "treecalc.table_context.v1;table_id=26:tree-table:last-row-delete;namespace_token=58:treecalc.tab",
                 "present": true
               },
               "table_invalidation_identity": {
-                "digest": "fnv1a64:8ecdfe4b55d5843c",
+                "digest": "fnv1a64:3868480fb9a26ab5",
                 "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=26:tree-table:last-row-delete;nam",
                 "present": true
               },
@@ -590,7 +590,7 @@
                 "present": true
               },
               "snapshot_identity": {
-                "digest": "fnv1a64:385f1deeb7ed3204",
+                "digest": "fnv1a64:f87911bffeff0868",
                 "prefix": "treecalc.table_sparse_snapshot.v1;context=1957:treecalc.table_context.v1;table_id=31:tree-table:",
                 "present": true
               },
@@ -676,7 +676,7 @@
                 "present": true
               },
               "snapshot_identity": {
-                "digest": "fnv1a64:46b15eeaa377c89c",
+                "digest": "fnv1a64:8eaa45840d5e7943",
                 "prefix": "treecalc.table_sparse_snapshot.v1;context=1901:treecalc.table_context.v1;table_id=26:tree-table:",
                 "present": true
               },
@@ -982,7 +982,7 @@
             "after": {
               "row_count": 0,
               "table_context_identity": {
-                "digest": "fnv1a64:e8eac4455dfeebc9",
+                "digest": "fnv1a64:64e7f86ac44747ac",
                 "prefix": "treecalc.table_context.v1;table_id=31:tree-table:empty-headers-totals;namespace_token=58:treecal",
                 "present": true
               },
@@ -991,7 +991,7 @@
             "before": {
               "row_count": 1,
               "table_context_identity": {
-                "digest": "fnv1a64:a62658857c846a51",
+                "digest": "fnv1a64:76cf9fe741f1a782",
                 "prefix": "treecalc.table_context.v1;table_id=31:tree-table:empty-headers-totals;namespace_token=58:treecal",
                 "present": true
               },

@@ -97,7 +97,7 @@ fn active_structural_edit_corpus_executes_rebinds_through_direct_oxcalc_context(
                     result
                         .diagnostics
                         .iter()
-                        .any(|diagnostic| diagnostic.contains("unresolved_host_name")),
+                        .any(|diagnostic| diagnostic.contains("unresolved identifier")),
                     "{} should report unresolved host name, got {:?}",
                     case.id,
                     result.diagnostics

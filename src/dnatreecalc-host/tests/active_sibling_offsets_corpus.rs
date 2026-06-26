@@ -110,12 +110,14 @@ fn active_sibling_offset_corpus_executes_through_direct_oxcalc_context() {
                     .values()
                     .flatten()
                     .any(|descriptor| {
-                        descriptor.kind == DependencyDescriptorKind::RelativeBound
+                        descriptor.kind == DependencyDescriptorKind::Unresolved
                             && descriptor.target_node_id.is_none()
-                            && descriptor.carrier_detail == "sibling_offset:1:"
+                            && descriptor
+                                .carrier_detail
+                                .starts_with("bound_formula_profile_selector_unresolved:")
                             && descriptor.requires_rebind_on_structural_change
                     }),
-                "{} should record an unresolved relative-bound sibling descriptor, got {:?}",
+                "{} should record an unresolved profile-selector sibling descriptor, got {:?}",
                 case.id,
                 result.dependency_graph.descriptors_by_owner
             );

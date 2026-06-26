@@ -142,14 +142,14 @@
         "data_body_range_ref": "B4:D6",
         "display_path": "SalesTable",
         "engine_identity_refs": {
-          "body_metadata_token": "treecalc.table_body.token.v1;fnv1a64=9fdc78eb8c43ca66",
+          "body_metadata_token": "treecalc.table_body.token.v1;fnv1a64=923a5150a2f2df89",
           "column_identity": "treecalc.table_columns.identity_token.v1;table=16:tree-table:sales;version=22:table-columns:sales:v1;column_count=1:3",
           "row_membership_identity": "treecalc.table_rows.membership_token.v1;table=16:tree-table:sales;version=30:table-rows:sales:membership:v1;row_count=1:3",
           "row_order_identity": "treecalc.table_rows.order_token.v1;table=16:tree-table:sales;version=25:table-rows:sales:order:v1;row_count=1:3",
           "table_context_identity_present": true,
           "table_invalidation_identity_present": true,
           "table_namespace_token": "treecalc.table_namespace.token.v1;fnv1a64=2572d2401459e8a8",
-          "totals_metadata_token": "treecalc.table_totals.token.v1;fnv1a64=230cbd2de17561c6",
+          "totals_metadata_token": "treecalc.table_totals.token.v1;fnv1a64=bc576b1ae8cc156f",
           "virtual_anchor_token": "treecalc.table_anchor.token.v1;fnv1a64=b17f2c9cf3b8fa50"
         },
         "header_region_ref": "B3:D3",

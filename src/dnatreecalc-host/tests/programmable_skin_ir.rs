@@ -5890,13 +5890,15 @@ fn programmable_skin_projects_full_derivation_trace_payload() {
             Some(NodeValueProjection::Number { display, .. }) if display == "7"
         )
     }));
+    // Name references now project as preserved references (reference_target set,
+    // resolved_value_typed None) rather than eagerly-resolved scalars, since the
+    // host installs a reference-system provider (OxFml reference-meaning
+    // migration). Assert the argument is captured as a preserved reference.
     assert!(root_call.children.iter().any(|child| {
-        child.prepared_arguments.iter().any(|argument| {
-            matches!(
-                &argument.resolved_value_typed,
-                Some(NodeValueProjection::Number { display, .. }) if display == "3"
-            )
-        })
+        child
+            .prepared_arguments
+            .iter()
+            .any(|argument| argument.reference_target.is_some())
     }));
 }
 
@@ -6005,7 +6007,7 @@ fn programmable_skin_projects_scalar_values_as_typed_variants() {
     ));
     assert!(matches!(
         &state.node(&NodeId::new("Root.Logical")).unwrap().computed_value,
-        NodeValueProjection::Logical { value: true, display } if display == "true"
+        NodeValueProjection::Logical { value: true, display } if display == "TRUE"
     ));
 }
 

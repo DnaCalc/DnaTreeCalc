@@ -61,8 +61,8 @@
         "scenario_id": "w056_treecalc_table_lifecycle_001",
         "typed_rejection_evidence": {
           "callback_identity": {
-            "digest": "fnv1a64:0ce33637e0c75bd9",
-            "prefix": "treecalc.table_lifecycle.callback.v1;event=12:table_rename;before=6069:treecalc.table_lifecycle.",
+            "digest": "fnv1a64:c29d96c1e98f1b8e",
+            "prefix": "treecalc.table_lifecycle.callback.v1;event=12:table_rename;before=6143:treecalc.table_lifecycle.",
             "present": true
           },
           "diagnostics": [
@@ -123,13 +123,13 @@
               "row_order_version": "table-rows:sales:order:v1",
               "sheet_scope_ref": "sheet:default",
               "table_context_identity": {
-                "digest": "fnv1a64:814faee49b13ee7f",
+                "digest": "fnv1a64:6ffd6ba990ae4073",
                 "prefix": "treecalc.table_context.v1;table_id=16:tree-table:sales;namespace_token=58:treecalc.table_namespa",
                 "present": true
               },
               "table_id": "tree-table:sales",
               "table_invalidation_identity": {
-                "digest": "fnv1a64:74c673718ddf362e",
+                "digest": "fnv1a64:a5bd0a93773ff486",
                 "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=16:tree-table:sales;namespace=138",
                 "present": true
               },
@@ -167,8 +167,8 @@
             },
             "before_state": null,
             "callback_identity": {
-              "digest": "fnv1a64:529d6977e6c0740d",
-              "prefix": "treecalc.table_lifecycle.callback.v1;event=12:table_create;before=4:none;after=6069:treecalc.tab",
+              "digest": "fnv1a64:13fabc7b64df5fde",
+              "prefix": "treecalc.table_lifecycle.callback.v1;event=12:table_create;before=4:none;after=6143:treecalc.tab",
               "present": true
             },
             "case_id": "tbl-life-table-create",
@@ -304,13 +304,13 @@
               "row_order_version": "table-rows:sales:order:v1",
               "sheet_scope_ref": "sheet:default",
               "table_context_identity": {
-                "digest": "fnv1a64:814faee49b13ee7f",
+                "digest": "fnv1a64:6ffd6ba990ae4073",
                 "prefix": "treecalc.table_context.v1;table_id=16:tree-table:sales;namespace_token=58:treecalc.table_namespa",
                 "present": true
               },
               "table_id": "tree-table:sales",
               "table_invalidation_identity": {
-                "digest": "fnv1a64:74c673718ddf362e",
+                "digest": "fnv1a64:a5bd0a93773ff486",
                 "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=16:tree-table:sales;namespace=138",
                 "present": true
               },
@@ -385,13 +385,13 @@
               "row_order_version": "table-rows:sales:order:v1",
               "sheet_scope_ref": "sheet:default",
               "table_context_identity": {
-                "digest": "fnv1a64:814faee49b13ee7f",
+                "digest": "fnv1a64:6ffd6ba990ae4073",
                 "prefix": "treecalc.table_context.v1;table_id=16:tree-table:sales;namespace_token=58:treecalc.table_namespa",
                 "present": true
               },
               "table_id": "tree-table:sales",
               "table_invalidation_identity": {
-                "digest": "fnv1a64:74c673718ddf362e",
+                "digest": "fnv1a64:a5bd0a93773ff486",
                 "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=16:tree-table:sales;namespace=138",
                 "present": true
               },
@@ -428,8 +428,8 @@
               }
             },
             "callback_identity": {
-              "digest": "fnv1a64:b751100e074f40da",
-              "prefix": "treecalc.table_lifecycle.callback.v1;event=14:body_cell_edit;before=6069:treecalc.table_lifecycl",
+              "digest": "fnv1a64:e68355b6e9e753c4",
+              "prefix": "treecalc.table_lifecycle.callback.v1;event=14:body_cell_edit;before=6143:treecalc.table_lifecycl",
               "present": true
             },
             "case_id": "tbl-life-body-cell-edit",
@@ -520,13 +520,13 @@
               "row_order_version": "table-rows:sales:order:v1",
               "sheet_scope_ref": "sheet:default",
               "table_context_identity": {
-                "digest": "fnv1a64:c7d60a7037f2a8d6",
+                "digest": "fnv1a64:f92387be54f862d6",
                 "prefix": "treecalc.table_context.v1;table_id=16:tree-table:sales;namespace_token=58:treecalc.table_namespa",
                 "present": true
               },
               "table_id": "tree-table:sales",
               "table_invalidation_identity": {
-                "digest": "fnv1a64:4a454262e6ef432b",
+                "digest": "fnv1a64:5288fa93a6bdb11a",
                 "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=16:tree-table:sales;namespace=138",
                 "present": true
               },
@@ -601,13 +601,13 @@
               "row_order_version": "table-rows:sales:order:v1",
               "sheet_scope_ref": "sheet:default",
               "table_context_identity": {
-                "digest": "fnv1a64:814faee49b13ee7f",
+                "digest": "fnv1a64:6ffd6ba990ae4073",
                 "prefix": "treecalc.table_context.v1;table_id=16:tree-table:sales;namespace_token=58:treecalc.table_namespa",
                 "present": true
               },
               "table_id": "tree-table:sales",
               "table_invalidation_identity": {
-                "digest": "fnv1a64:74c673718ddf362e",
+                "digest": "fnv1a64:a5bd0a93773ff486",
                 "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=16:tree-table:sales;namespace=138",
                 "present": true
               },
@@ -644,8 +644,8 @@
               }
             },
             "callback_identity": {
-              "digest": "fnv1a64:5fc3071d5ce7a2f6",
-              "prefix": "treecalc.table_lifecycle.callback.v1;event=17:body_formula_edit;before=6069:treecalc.table_lifec",
+              "digest": "fnv1a64:9e4b50a25d8db0ac",
+              "prefix": "treecalc.table_lifecycle.callback.v1;event=17:body_formula_edit;before=6143:treecalc.table_lifec",
               "present": true
             },
             "case_id": "tbl-life-body-formula-edit",
@@ -748,13 +748,13 @@
               "row_order_version": "table-rows:sales:order:v2",
               "sheet_scope_ref": "sheet:default",
               "table_context_identity": {
-                "digest": "fnv1a64:1f66ea3faff46569",
+                "digest": "fnv1a64:27ed4f727a5dad45",
                 "prefix": "treecalc.table_context.v1;table_id=16:tree-table:sales;namespace_token=58:treecalc.table_namespa",
                 "present": true
               },
               "table_id": "tree-table:sales",
               "table_invalidation_identity": {
-                "digest": "fnv1a64:f43a52656555b90e",
+                "digest": "fnv1a64:2fdd38f4f6a8c6e6",
                 "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=16:tree-table:sales;namespace=138",
                 "present": true
               },
@@ -829,13 +829,13 @@
               "row_order_version": "table-rows:sales:order:v1",
               "sheet_scope_ref": "sheet:default",
               "table_context_identity": {
-                "digest": "fnv1a64:814faee49b13ee7f",
+                "digest": "fnv1a64:6ffd6ba990ae4073",
                 "prefix": "treecalc.table_context.v1;table_id=16:tree-table:sales;namespace_token=58:treecalc.table_namespa",
                 "present": true
               },
               "table_id": "tree-table:sales",
               "table_invalidation_identity": {
-                "digest": "fnv1a64:74c673718ddf362e",
+                "digest": "fnv1a64:a5bd0a93773ff486",
                 "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=16:tree-table:sales;namespace=138",
                 "present": true
               },
@@ -872,8 +872,8 @@
               }
             },
             "callback_identity": {
-              "digest": "fnv1a64:5b4434a712a16009",
-              "prefix": "treecalc.table_lifecycle.callback.v1;event=10:row_insert;before=6069:treecalc.table_lifecycle.ve",
+              "digest": "fnv1a64:4147a809a8dd3def",
+              "prefix": "treecalc.table_lifecycle.callback.v1;event=10:row_insert;before=6143:treecalc.table_lifecycle.ve",
               "present": true
             },
             "case_id": "tbl-life-row-insert",
@@ -989,13 +989,13 @@
               "row_order_version": "table-rows:sales:order:v3",
               "sheet_scope_ref": "sheet:default",
               "table_context_identity": {
-                "digest": "fnv1a64:7d7c4d489232759b",
+                "digest": "fnv1a64:599807a3600c36af",
                 "prefix": "treecalc.table_context.v1;table_id=16:tree-table:sales;namespace_token=58:treecalc.table_namespa",
                 "present": true
               },
               "table_id": "tree-table:sales",
               "table_invalidation_identity": {
-                "digest": "fnv1a64:f4dc14a1ce3a63a2",
+                "digest": "fnv1a64:f6e50c571d18ed82",
                 "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=16:tree-table:sales;namespace=138",
                 "present": true
               },
@@ -1070,13 +1070,13 @@
               "row_order_version": "table-rows:sales:order:v1",
               "sheet_scope_ref": "sheet:default",
               "table_context_identity": {
-                "digest": "fnv1a64:814faee49b13ee7f",
+                "digest": "fnv1a64:6ffd6ba990ae4073",
                 "prefix": "treecalc.table_context.v1;table_id=16:tree-table:sales;namespace_token=58:treecalc.table_namespa",
                 "present": true
               },
               "table_id": "tree-table:sales",
               "table_invalidation_identity": {
-                "digest": "fnv1a64:74c673718ddf362e",
+                "digest": "fnv1a64:a5bd0a93773ff486",
                 "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=16:tree-table:sales;namespace=138",
                 "present": true
               },
@@ -1113,8 +1113,8 @@
               }
             },
             "callback_identity": {
-              "digest": "fnv1a64:081bfc163d4c1188",
-              "prefix": "treecalc.table_lifecycle.callback.v1;event=10:row_delete;before=6069:treecalc.table_lifecycle.ve",
+              "digest": "fnv1a64:54ac32238e820730",
+              "prefix": "treecalc.table_lifecycle.callback.v1;event=10:row_delete;before=6143:treecalc.table_lifecycle.ve",
               "present": true
             },
             "case_id": "tbl-life-row-delete",
@@ -1231,13 +1231,13 @@
               "row_order_version": "table-rows:sales:order:v4",
               "sheet_scope_ref": "sheet:default",
               "table_context_identity": {
-                "digest": "fnv1a64:80aed6376a31792b",
+                "digest": "fnv1a64:c17035b34ce5dc0f",
                 "prefix": "treecalc.table_context.v1;table_id=16:tree-table:sales;namespace_token=58:treecalc.table_namespa",
                 "present": true
               },
               "table_id": "tree-table:sales",
               "table_invalidation_identity": {
-                "digest": "fnv1a64:0eb815907f0b27c9",
+                "digest": "fnv1a64:0ccbc0015b280339",
                 "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=16:tree-table:sales;namespace=138",
                 "present": true
               },
@@ -1312,13 +1312,13 @@
               "row_order_version": "table-rows:sales:order:v1",
               "sheet_scope_ref": "sheet:default",
               "table_context_identity": {
-                "digest": "fnv1a64:814faee49b13ee7f",
+                "digest": "fnv1a64:6ffd6ba990ae4073",
                 "prefix": "treecalc.table_context.v1;table_id=16:tree-table:sales;namespace_token=58:treecalc.table_namespa",
                 "present": true
               },
               "table_id": "tree-table:sales",
               "table_invalidation_identity": {
-                "digest": "fnv1a64:74c673718ddf362e",
+                "digest": "fnv1a64:a5bd0a93773ff486",
                 "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=16:tree-table:sales;namespace=138",
                 "present": true
               },
@@ -1355,8 +1355,8 @@
               }
             },
             "callback_identity": {
-              "digest": "fnv1a64:5e905ff9fc3e02c9",
-              "prefix": "treecalc.table_lifecycle.callback.v1;event=11:row_reorder;before=6069:treecalc.table_lifecycle.v",
+              "digest": "fnv1a64:a6dd3c99c40e8e6f",
+              "prefix": "treecalc.table_lifecycle.callback.v1;event=11:row_reorder;before=6143:treecalc.table_lifecycle.v",
               "present": true
             },
             "case_id": "tbl-life-row-reorder",
@@ -1470,13 +1470,13 @@
               "row_order_version": "table-rows:sales:order:v1",
               "sheet_scope_ref": "sheet:default",
               "table_context_identity": {
-                "digest": "fnv1a64:12549d7ee99053b5",
+                "digest": "fnv1a64:9b87b83d9d3ff2f7",
                 "prefix": "treecalc.table_context.v1;table_id=16:tree-table:sales;namespace_token=58:treecalc.table_namespa",
                 "present": true
               },
               "table_id": "tree-table:sales",
               "table_invalidation_identity": {
-                "digest": "fnv1a64:a13c2d6832c92418",
+                "digest": "fnv1a64:4eff8ad3e49aef7d",
                 "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=16:tree-table:sales;namespace=138",
                 "present": true
               },
@@ -1551,13 +1551,13 @@
               "row_order_version": "table-rows:sales:order:v1",
               "sheet_scope_ref": "sheet:default",
               "table_context_identity": {
-                "digest": "fnv1a64:814faee49b13ee7f",
+                "digest": "fnv1a64:6ffd6ba990ae4073",
                 "prefix": "treecalc.table_context.v1;table_id=16:tree-table:sales;namespace_token=58:treecalc.table_namespa",
                 "present": true
               },
               "table_id": "tree-table:sales",
               "table_invalidation_identity": {
-                "digest": "fnv1a64:74c673718ddf362e",
+                "digest": "fnv1a64:a5bd0a93773ff486",
                 "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=16:tree-table:sales;namespace=138",
                 "present": true
               },
@@ -1594,8 +1594,8 @@
               }
             },
             "callback_identity": {
-              "digest": "fnv1a64:4bb67545305fcad4",
-              "prefix": "treecalc.table_lifecycle.callback.v1;event=13:column_insert;before=6069:treecalc.table_lifecycle",
+              "digest": "fnv1a64:60a3bfb374fa6cb6",
+              "prefix": "treecalc.table_lifecycle.callback.v1;event=13:column_insert;before=6143:treecalc.table_lifecycle",
               "present": true
             },
             "case_id": "tbl-life-column-insert",
@@ -1698,13 +1698,13 @@
               "row_order_version": "table-rows:sales:order:v1",
               "sheet_scope_ref": "sheet:default",
               "table_context_identity": {
-                "digest": "fnv1a64:c2fcc9a5a7a65cd4",
+                "digest": "fnv1a64:27a5e102e33f1bcb",
                 "prefix": "treecalc.table_context.v1;table_id=16:tree-table:sales;namespace_token=58:treecalc.table_namespa",
                 "present": true
               },
               "table_id": "tree-table:sales",
               "table_invalidation_identity": {
-                "digest": "fnv1a64:45a98cc765eccbc6",
+                "digest": "fnv1a64:f9a598e02f0c97d9",
                 "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=16:tree-table:sales;namespace=138",
                 "present": true
               },
@@ -1779,13 +1779,13 @@
               "row_order_version": "table-rows:sales:order:v1",
               "sheet_scope_ref": "sheet:default",
               "table_context_identity": {
-                "digest": "fnv1a64:814faee49b13ee7f",
+                "digest": "fnv1a64:6ffd6ba990ae4073",
                 "prefix": "treecalc.table_context.v1;table_id=16:tree-table:sales;namespace_token=58:treecalc.table_namespa",
                 "present": true
               },
               "table_id": "tree-table:sales",
               "table_invalidation_identity": {
-                "digest": "fnv1a64:74c673718ddf362e",
+                "digest": "fnv1a64:a5bd0a93773ff486",
                 "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=16:tree-table:sales;namespace=138",
                 "present": true
               },
@@ -1822,8 +1822,8 @@
               }
             },
             "callback_identity": {
-              "digest": "fnv1a64:cb501cbc1f0581b8",
-              "prefix": "treecalc.table_lifecycle.callback.v1;event=13:column_delete;before=6069:treecalc.table_lifecycle",
+              "digest": "fnv1a64:335a1087f00d88cc",
+              "prefix": "treecalc.table_lifecycle.callback.v1;event=13:column_delete;before=6143:treecalc.table_lifecycle",
               "present": true
             },
             "case_id": "tbl-life-column-delete",
@@ -1928,13 +1928,13 @@
               "row_order_version": "table-rows:sales:order:v1",
               "sheet_scope_ref": "sheet:default",
               "table_context_identity": {
-                "digest": "fnv1a64:4d7852f29ec7cee1",
+                "digest": "fnv1a64:f57864f2166aa229",
                 "prefix": "treecalc.table_context.v1;table_id=16:tree-table:sales;namespace_token=58:treecalc.table_namespa",
                 "present": true
               },
               "table_id": "tree-table:sales",
               "table_invalidation_identity": {
-                "digest": "fnv1a64:ca1405581df1e795",
+                "digest": "fnv1a64:028459575dfedbed",
                 "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=16:tree-table:sales;namespace=138",
                 "present": true
               },
@@ -2009,13 +2009,13 @@
               "row_order_version": "table-rows:sales:order:v1",
               "sheet_scope_ref": "sheet:default",
               "table_context_identity": {
-                "digest": "fnv1a64:814faee49b13ee7f",
+                "digest": "fnv1a64:6ffd6ba990ae4073",
                 "prefix": "treecalc.table_context.v1;table_id=16:tree-table:sales;namespace_token=58:treecalc.table_namespa",
                 "present": true
               },
               "table_id": "tree-table:sales",
               "table_invalidation_identity": {
-                "digest": "fnv1a64:74c673718ddf362e",
+                "digest": "fnv1a64:a5bd0a93773ff486",
                 "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=16:tree-table:sales;namespace=138",
                 "present": true
               },
@@ -2052,8 +2052,8 @@
               }
             },
             "callback_identity": {
-              "digest": "fnv1a64:6889e70ab9474745",
-              "prefix": "treecalc.table_lifecycle.callback.v1;event=14:column_reorder;before=6069:treecalc.table_lifecycl",
+              "digest": "fnv1a64:d232c56180fd087f",
+              "prefix": "treecalc.table_lifecycle.callback.v1;event=14:column_reorder;before=6143:treecalc.table_lifecycl",
               "present": true
             },
             "case_id": "tbl-life-column-reorder",
@@ -2160,13 +2160,13 @@
               "row_order_version": "table-rows:sales:order:v1",
               "sheet_scope_ref": "sheet:default",
               "table_context_identity": {
-                "digest": "fnv1a64:815ca59f464c7805",
+                "digest": "fnv1a64:8ffd28792b6c7d99",
                 "prefix": "treecalc.table_context.v1;table_id=16:tree-table:sales;namespace_token=58:treecalc.table_namespa",
                 "present": true
               },
               "table_id": "tree-table:sales",
               "table_invalidation_identity": {
-                "digest": "fnv1a64:660ceb5459ac010f",
+                "digest": "fnv1a64:e0f48d7e49d7e51b",
                 "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=16:tree-table:sales;namespace=138",
                 "present": true
               },
@@ -2241,13 +2241,13 @@
               "row_order_version": "table-rows:sales:order:v1",
               "sheet_scope_ref": "sheet:default",
               "table_context_identity": {
-                "digest": "fnv1a64:814faee49b13ee7f",
+                "digest": "fnv1a64:6ffd6ba990ae4073",
                 "prefix": "treecalc.table_context.v1;table_id=16:tree-table:sales;namespace_token=58:treecalc.table_namespa",
                 "present": true
               },
               "table_id": "tree-table:sales",
               "table_invalidation_identity": {
-                "digest": "fnv1a64:74c673718ddf362e",
+                "digest": "fnv1a64:a5bd0a93773ff486",
                 "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=16:tree-table:sales;namespace=138",
                 "present": true
               },
@@ -2284,8 +2284,8 @@
               }
             },
             "callback_identity": {
-              "digest": "fnv1a64:d6b7c64d470077ac",
-              "prefix": "treecalc.table_lifecycle.callback.v1;event=13:column_rename;before=6069:treecalc.table_lifecycle",
+              "digest": "fnv1a64:6a1505a727df2d1f",
+              "prefix": "treecalc.table_lifecycle.callback.v1;event=13:column_rename;before=6143:treecalc.table_lifecycle",
               "present": true
             },
             "case_id": "tbl-life-column-rename",
@@ -2390,13 +2390,13 @@
               "row_order_version": "table-rows:sales:order:v1",
               "sheet_scope_ref": "sheet:default",
               "table_context_identity": {
-                "digest": "fnv1a64:815ca59f464c7805",
+                "digest": "fnv1a64:8ffd28792b6c7d99",
                 "prefix": "treecalc.table_context.v1;table_id=16:tree-table:sales;namespace_token=58:treecalc.table_namespa",
                 "present": true
               },
               "table_id": "tree-table:sales",
               "table_invalidation_identity": {
-                "digest": "fnv1a64:660ceb5459ac010f",
+                "digest": "fnv1a64:e0f48d7e49d7e51b",
                 "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=16:tree-table:sales;namespace=138",
                 "present": true
               },
@@ -2471,13 +2471,13 @@
               "row_order_version": "table-rows:sales:order:v1",
               "sheet_scope_ref": "sheet:default",
               "table_context_identity": {
-                "digest": "fnv1a64:814faee49b13ee7f",
+                "digest": "fnv1a64:6ffd6ba990ae4073",
                 "prefix": "treecalc.table_context.v1;table_id=16:tree-table:sales;namespace_token=58:treecalc.table_namespa",
                 "present": true
               },
               "table_id": "tree-table:sales",
               "table_invalidation_identity": {
-                "digest": "fnv1a64:74c673718ddf362e",
+                "digest": "fnv1a64:a5bd0a93773ff486",
                 "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=16:tree-table:sales;namespace=138",
                 "present": true
               },
@@ -2514,8 +2514,8 @@
               }
             },
             "callback_identity": {
-              "digest": "fnv1a64:53cd7c8831a3a8a0",
-              "prefix": "treecalc.table_lifecycle.callback.v1;event=16:header_text_edit;before=6069:treecalc.table_lifecy",
+              "digest": "fnv1a64:b518ce975478f08b",
+              "prefix": "treecalc.table_lifecycle.callback.v1;event=16:header_text_edit;before=6143:treecalc.table_lifecy",
               "present": true
             },
             "case_id": "tbl-life-header-text-edit",
@@ -2620,13 +2620,13 @@
               "row_order_version": "table-rows:sales:order:v1",
               "sheet_scope_ref": "sheet:default",
               "table_context_identity": {
-                "digest": "fnv1a64:a1007ad5d242a2e6",
+                "digest": "fnv1a64:fb922c3b2d984a4c",
                 "prefix": "treecalc.table_context.v1;table_id=16:tree-table:sales;namespace_token=58:treecalc.table_namespa",
                 "present": true
               },
               "table_id": "tree-table:sales",
               "table_invalidation_identity": {
-                "digest": "fnv1a64:b09d957f4131e320",
+                "digest": "fnv1a64:079166e4888d7d5f",
                 "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=16:tree-table:sales;namespace=138",
                 "present": true
               },
@@ -2701,13 +2701,13 @@
               "row_order_version": "table-rows:sales:order:v1",
               "sheet_scope_ref": "sheet:default",
               "table_context_identity": {
-                "digest": "fnv1a64:814faee49b13ee7f",
+                "digest": "fnv1a64:6ffd6ba990ae4073",
                 "prefix": "treecalc.table_context.v1;table_id=16:tree-table:sales;namespace_token=58:treecalc.table_namespa",
                 "present": true
               },
               "table_id": "tree-table:sales",
               "table_invalidation_identity": {
-                "digest": "fnv1a64:74c673718ddf362e",
+                "digest": "fnv1a64:a5bd0a93773ff486",
                 "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=16:tree-table:sales;namespace=138",
                 "present": true
               },
@@ -2744,8 +2744,8 @@
               }
             },
             "callback_identity": {
-              "digest": "fnv1a64:3019c0e7d76470fa",
-              "prefix": "treecalc.table_lifecycle.callback.v1;event=17:totals_row_toggle;before=6069:treecalc.table_lifec",
+              "digest": "fnv1a64:b8716b716b800fa7",
+              "prefix": "treecalc.table_lifecycle.callback.v1;event=17:totals_row_toggle;before=6143:treecalc.table_lifec",
               "present": true
             },
             "case_id": "tbl-life-totals-row-toggle",
@@ -2845,13 +2845,13 @@
               "row_order_version": "table-rows:sales:order:v1",
               "sheet_scope_ref": "sheet:default",
               "table_context_identity": {
-                "digest": "fnv1a64:605fa089e64d439c",
+                "digest": "fnv1a64:98dcce27b242c811",
                 "prefix": "treecalc.table_context.v1;table_id=16:tree-table:sales;namespace_token=58:treecalc.table_namespa",
                 "present": true
               },
               "table_id": "tree-table:sales",
               "table_invalidation_identity": {
-                "digest": "fnv1a64:c26772cd20ece5f8",
+                "digest": "fnv1a64:06f4bd9601f62a2f",
                 "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=16:tree-table:sales;namespace=138",
                 "present": true
               },
@@ -2926,13 +2926,13 @@
               "row_order_version": "table-rows:sales:order:v1",
               "sheet_scope_ref": "sheet:default",
               "table_context_identity": {
-                "digest": "fnv1a64:814faee49b13ee7f",
+                "digest": "fnv1a64:6ffd6ba990ae4073",
                 "prefix": "treecalc.table_context.v1;table_id=16:tree-table:sales;namespace_token=58:treecalc.table_namespa",
                 "present": true
               },
               "table_id": "tree-table:sales",
               "table_invalidation_identity": {
-                "digest": "fnv1a64:74c673718ddf362e",
+                "digest": "fnv1a64:a5bd0a93773ff486",
                 "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=16:tree-table:sales;namespace=138",
                 "present": true
               },
@@ -2969,8 +2969,8 @@
               }
             },
             "callback_identity": {
-              "digest": "fnv1a64:69fad7fb5f4db425",
-              "prefix": "treecalc.table_lifecycle.callback.v1;event=19:totals_formula_edit;before=6069:treecalc.table_lif",
+              "digest": "fnv1a64:d9cd1bb7fff9f340",
+              "prefix": "treecalc.table_lifecycle.callback.v1;event=19:totals_formula_edit;before=6143:treecalc.table_lif",
               "present": true
             },
             "case_id": "tbl-life-totals-formula-edit",
@@ -3067,13 +3067,13 @@
               "row_order_version": "table-rows:sales:order:v1",
               "sheet_scope_ref": "sheet:default",
               "table_context_identity": {
-                "digest": "fnv1a64:b938f929d8631faa",
+                "digest": "fnv1a64:4c8bb522e58be472",
                 "prefix": "treecalc.table_context.v1;table_id=16:tree-table:sales;namespace_token=58:treecalc.table_namespa",
                 "present": true
               },
               "table_id": "tree-table:sales",
               "table_invalidation_identity": {
-                "digest": "fnv1a64:84b932f8e6e8e200",
+                "digest": "fnv1a64:8fb9b515b99c7a9c",
                 "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=16:tree-table:sales;namespace=144",
                 "present": true
               },
@@ -3148,13 +3148,13 @@
               "row_order_version": "table-rows:sales:order:v1",
               "sheet_scope_ref": "sheet:default",
               "table_context_identity": {
-                "digest": "fnv1a64:814faee49b13ee7f",
+                "digest": "fnv1a64:6ffd6ba990ae4073",
                 "prefix": "treecalc.table_context.v1;table_id=16:tree-table:sales;namespace_token=58:treecalc.table_namespa",
                 "present": true
               },
               "table_id": "tree-table:sales",
               "table_invalidation_identity": {
-                "digest": "fnv1a64:74c673718ddf362e",
+                "digest": "fnv1a64:a5bd0a93773ff486",
                 "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=16:tree-table:sales;namespace=138",
                 "present": true
               },
@@ -3191,8 +3191,8 @@
               }
             },
             "callback_identity": {
-              "digest": "fnv1a64:46e1419ba531455b",
-              "prefix": "treecalc.table_lifecycle.callback.v1;event=12:table_rename;before=6069:treecalc.table_lifecycle.",
+              "digest": "fnv1a64:d48e513c587eb1a9",
+              "prefix": "treecalc.table_lifecycle.callback.v1;event=12:table_rename;before=6143:treecalc.table_lifecycle.",
               "present": true
             },
             "case_id": "tbl-life-table-rename",
@@ -3294,13 +3294,13 @@
               "row_order_version": "table-rows:sales:order:v1",
               "sheet_scope_ref": "sheet:default",
               "table_context_identity": {
-                "digest": "fnv1a64:ba8578dae1a07ba3",
+                "digest": "fnv1a64:a9aa648cc76e3e1f",
                 "prefix": "treecalc.table_context.v1;table_id=16:tree-table:sales;namespace_token=58:treecalc.table_namespa",
                 "present": true
               },
               "table_id": "tree-table:sales",
               "table_invalidation_identity": {
-                "digest": "fnv1a64:1e283dcbc4671489",
+                "digest": "fnv1a64:bddeff63921868f9",
                 "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=16:tree-table:sales;namespace=138",
                 "present": true
               },
@@ -3375,13 +3375,13 @@
               "row_order_version": "table-rows:sales:order:v1",
               "sheet_scope_ref": "sheet:default",
               "table_context_identity": {
-                "digest": "fnv1a64:814faee49b13ee7f",
+                "digest": "fnv1a64:6ffd6ba990ae4073",
                 "prefix": "treecalc.table_context.v1;table_id=16:tree-table:sales;namespace_token=58:treecalc.table_namespa",
                 "present": true
               },
               "table_id": "tree-table:sales",
               "table_invalidation_identity": {
-                "digest": "fnv1a64:74c673718ddf362e",
+                "digest": "fnv1a64:a5bd0a93773ff486",
                 "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=16:tree-table:sales;namespace=138",
                 "present": true
               },
@@ -3418,8 +3418,8 @@
               }
             },
             "callback_identity": {
-              "digest": "fnv1a64:5c26414c462a9162",
-              "prefix": "treecalc.table_lifecycle.callback.v1;event=10:table_move;before=6069:treecalc.table_lifecycle.ve",
+              "digest": "fnv1a64:9275ba2fc393bd0c",
+              "prefix": "treecalc.table_lifecycle.callback.v1;event=10:table_move;before=6143:treecalc.table_lifecycle.ve",
               "present": true
             },
             "case_id": "tbl-life-table-move",
@@ -3522,13 +3522,13 @@
               "row_order_version": "table-rows:sales:order:v1",
               "sheet_scope_ref": "sheet:default",
               "table_context_identity": {
-                "digest": "fnv1a64:814faee49b13ee7f",
+                "digest": "fnv1a64:6ffd6ba990ae4073",
                 "prefix": "treecalc.table_context.v1;table_id=16:tree-table:sales;namespace_token=58:treecalc.table_namespa",
                 "present": true
               },
               "table_id": "tree-table:sales",
               "table_invalidation_identity": {
-                "digest": "fnv1a64:74c673718ddf362e",
+                "digest": "fnv1a64:a5bd0a93773ff486",
                 "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=16:tree-table:sales;namespace=138",
                 "present": true
               },
@@ -3565,8 +3565,8 @@
               }
             },
             "callback_identity": {
-              "digest": "fnv1a64:e5e9b5f3877a4568",
-              "prefix": "treecalc.table_lifecycle.callback.v1;event=12:table_delete;before=6069:treecalc.table_lifecycle.",
+              "digest": "fnv1a64:fcda50deb0d818f1",
+              "prefix": "treecalc.table_lifecycle.callback.v1;event=12:table_delete;before=6143:treecalc.table_lifecycle.",
               "present": true
             },
             "case_id": "tbl-life-table-delete",
@@ -3679,13 +3679,13 @@
               "row_order_version": "table-rows:sales:order:v5",
               "sheet_scope_ref": "sheet:default",
               "table_context_identity": {
-                "digest": "fnv1a64:53a47ab666ac8dba",
+                "digest": "fnv1a64:3290cdeb904c4680",
                 "prefix": "treecalc.table_context.v1;table_id=16:tree-table:sales;namespace_token=58:treecalc.table_namespa",
                 "present": true
               },
               "table_id": "tree-table:sales",
               "table_invalidation_identity": {
-                "digest": "fnv1a64:288cb647606a6565",
+                "digest": "fnv1a64:bf7f2198daf68294",
                 "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=16:tree-table:sales;namespace=138",
                 "present": true
               },
@@ -3760,13 +3760,13 @@
               "row_order_version": "table-rows:sales:order:v1",
               "sheet_scope_ref": "sheet:default",
               "table_context_identity": {
-                "digest": "fnv1a64:814faee49b13ee7f",
+                "digest": "fnv1a64:6ffd6ba990ae4073",
                 "prefix": "treecalc.table_context.v1;table_id=16:tree-table:sales;namespace_token=58:treecalc.table_namespa",
                 "present": true
               },
               "table_id": "tree-table:sales",
               "table_invalidation_identity": {
-                "digest": "fnv1a64:74c673718ddf362e",
+                "digest": "fnv1a64:a5bd0a93773ff486",
                 "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=16:tree-table:sales;namespace=138",
                 "present": true
               },
@@ -3803,8 +3803,8 @@
               }
             },
             "callback_identity": {
-              "digest": "fnv1a64:ed9f2fbfa4ece717",
-              "prefix": "treecalc.table_lifecycle.callback.v1;event=12:table_resize;before=6069:treecalc.table_lifecycle.",
+              "digest": "fnv1a64:1f94314cce6342fd",
+              "prefix": "treecalc.table_lifecycle.callback.v1;event=12:table_resize;before=6143:treecalc.table_lifecycle.",
               "present": true
             },
             "case_id": "tbl-life-table-resize",
@@ -3929,13 +3929,13 @@
               "row_order_version": "table-rows:sales:order:v1",
               "sheet_scope_ref": "sheet:default",
               "table_context_identity": {
-                "digest": "fnv1a64:3639e9fe4a1d55e6",
+                "digest": "fnv1a64:95a8421db633c4e2",
                 "prefix": "treecalc.table_context.v1;table_id=16:tree-table:sales;namespace_token=58:treecalc.table_namespa",
                 "present": true
               },
               "table_id": "tree-table:sales",
               "table_invalidation_identity": {
-                "digest": "fnv1a64:4b9a81c5928c3fe2",
+                "digest": "fnv1a64:95d5226a8a2b66c2",
                 "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=16:tree-table:sales;namespace=170",
                 "present": true
               },
@@ -4010,13 +4010,13 @@
               "row_order_version": "table-rows:sales:order:v1",
               "sheet_scope_ref": "sheet:default",
               "table_context_identity": {
-                "digest": "fnv1a64:814faee49b13ee7f",
+                "digest": "fnv1a64:6ffd6ba990ae4073",
                 "prefix": "treecalc.table_context.v1;table_id=16:tree-table:sales;namespace_token=58:treecalc.table_namespa",
                 "present": true
               },
               "table_id": "tree-table:sales",
               "table_invalidation_identity": {
-                "digest": "fnv1a64:74c673718ddf362e",
+                "digest": "fnv1a64:a5bd0a93773ff486",
                 "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=16:tree-table:sales;namespace=138",
                 "present": true
               },
@@ -4053,8 +4053,8 @@
               }
             },
             "callback_identity": {
-              "digest": "fnv1a64:74dc54e157964425",
-              "prefix": "treecalc.table_lifecycle.callback.v1;event=11:node_rename;before=6069:treecalc.table_lifecycle.v",
+              "digest": "fnv1a64:5c7cfa7cd6d0590f",
+              "prefix": "treecalc.table_lifecycle.callback.v1;event=11:node_rename;before=6143:treecalc.table_lifecycle.v",
               "present": true
             },
             "case_id": "tbl-life-node-rename",
@@ -4156,13 +4156,13 @@
               "row_order_version": "table-rows:sales:order:v1",
               "sheet_scope_ref": "sheet:default",
               "table_context_identity": {
-                "digest": "fnv1a64:5d2aa290afd59947",
+                "digest": "fnv1a64:50b7c52511fd1493",
                 "prefix": "treecalc.table_context.v1;table_id=16:tree-table:sales;namespace_token=58:treecalc.table_namespa",
                 "present": true
               },
               "table_id": "tree-table:sales",
               "table_invalidation_identity": {
-                "digest": "fnv1a64:cd56b18fb23bddde",
+                "digest": "fnv1a64:4f5f2dd26f73ef56",
                 "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=16:tree-table:sales;namespace=154",
                 "present": true
               },
@@ -4237,13 +4237,13 @@
               "row_order_version": "table-rows:sales:order:v1",
               "sheet_scope_ref": "sheet:default",
               "table_context_identity": {
-                "digest": "fnv1a64:814faee49b13ee7f",
+                "digest": "fnv1a64:6ffd6ba990ae4073",
                 "prefix": "treecalc.table_context.v1;table_id=16:tree-table:sales;namespace_token=58:treecalc.table_namespa",
                 "present": true
               },
               "table_id": "tree-table:sales",
               "table_invalidation_identity": {
-                "digest": "fnv1a64:74c673718ddf362e",
+                "digest": "fnv1a64:a5bd0a93773ff486",
                 "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=16:tree-table:sales;namespace=138",
                 "present": true
               },
@@ -4280,8 +4280,8 @@
               }
             },
             "callback_identity": {
-              "digest": "fnv1a64:ae7f68e9caac3b35",
-              "prefix": "treecalc.table_lifecycle.callback.v1;event=9:node_move;before=6069:treecalc.table_lifecycle.vers",
+              "digest": "fnv1a64:5fc4222e345a53b5",
+              "prefix": "treecalc.table_lifecycle.callback.v1;event=9:node_move;before=6143:treecalc.table_lifecycle.vers",
               "present": true
             },
             "case_id": "tbl-life-node-move",
@@ -4385,13 +4385,13 @@
               "row_order_version": "table-rows:sales:order:v1",
               "sheet_scope_ref": "sheet:default",
               "table_context_identity": {
-                "digest": "fnv1a64:814faee49b13ee7f",
+                "digest": "fnv1a64:6ffd6ba990ae4073",
                 "prefix": "treecalc.table_context.v1;table_id=16:tree-table:sales;namespace_token=58:treecalc.table_namespa",
                 "present": true
               },
               "table_id": "tree-table:sales",
               "table_invalidation_identity": {
-                "digest": "fnv1a64:74c673718ddf362e",
+                "digest": "fnv1a64:a5bd0a93773ff486",
                 "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=16:tree-table:sales;namespace=138",
                 "present": true
               },
@@ -4428,8 +4428,8 @@
               }
             },
             "callback_identity": {
-              "digest": "fnv1a64:58456f53f3bb6895",
-              "prefix": "treecalc.table_lifecycle.callback.v1;event=11:node_delete;before=6069:treecalc.table_lifecycle.v",
+              "digest": "fnv1a64:9d0bcc06b151622c",
+              "prefix": "treecalc.table_lifecycle.callback.v1;event=11:node_delete;before=6143:treecalc.table_lifecycle.v",
               "present": true
             },
             "case_id": "tbl-life-node-delete",
@@ -4539,13 +4539,13 @@
               "row_order_version": "table-rows:sales:order:v1",
               "sheet_scope_ref": "sheet:default",
               "table_context_identity": {
-                "digest": "fnv1a64:814faee49b13ee7f",
+                "digest": "fnv1a64:6ffd6ba990ae4073",
                 "prefix": "treecalc.table_context.v1;table_id=16:tree-table:sales;namespace_token=58:treecalc.table_namespa",
                 "present": true
               },
               "table_id": "tree-table:sales",
               "table_invalidation_identity": {
-                "digest": "fnv1a64:74c673718ddf362e",
+                "digest": "fnv1a64:a5bd0a93773ff486",
                 "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=16:tree-table:sales;namespace=138",
                 "present": true
               },
@@ -4620,13 +4620,13 @@
               "row_order_version": "table-rows:sales:order:v1",
               "sheet_scope_ref": "sheet:default",
               "table_context_identity": {
-                "digest": "fnv1a64:814faee49b13ee7f",
+                "digest": "fnv1a64:6ffd6ba990ae4073",
                 "prefix": "treecalc.table_context.v1;table_id=16:tree-table:sales;namespace_token=58:treecalc.table_namespa",
                 "present": true
               },
               "table_id": "tree-table:sales",
               "table_invalidation_identity": {
-                "digest": "fnv1a64:74c673718ddf362e",
+                "digest": "fnv1a64:a5bd0a93773ff486",
                 "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=16:tree-table:sales;namespace=138",
                 "present": true
               },
@@ -4663,8 +4663,8 @@
               }
             },
             "callback_identity": {
-              "digest": "fnv1a64:c4f91dbdca7f6752",
-              "prefix": "treecalc.table_lifecycle.callback.v1;event=11:save_reopen;before=6069:treecalc.table_lifecycle.v",
+              "digest": "fnv1a64:a5b966d8f9afe7c8",
+              "prefix": "treecalc.table_lifecycle.callback.v1;event=11:save_reopen;before=6143:treecalc.table_lifecycle.v",
               "present": true
             },
             "case_id": "tbl-life-save-reopen",
@@ -4742,13 +4742,13 @@
               "row_order_version": "table-rows:sales:order:v1",
               "sheet_scope_ref": "sheet:default",
               "table_context_identity": {
-                "digest": "fnv1a64:814faee49b13ee7f",
+                "digest": "fnv1a64:6ffd6ba990ae4073",
                 "prefix": "treecalc.table_context.v1;table_id=16:tree-table:sales;namespace_token=58:treecalc.table_namespa",
                 "present": true
               },
               "table_id": "tree-table:sales",
               "table_invalidation_identity": {
-                "digest": "fnv1a64:74c673718ddf362e",
+                "digest": "fnv1a64:a5bd0a93773ff486",
                 "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=16:tree-table:sales;namespace=138",
                 "present": true
               },
@@ -4786,8 +4786,8 @@
             },
             "before_state": null,
             "callback_identity": {
-              "digest": "fnv1a64:4efbfd8847129821",
-              "prefix": "treecalc.table_lifecycle.callback.v1;event=14:workspace_open;before=4:none;after=6069:treecalc.t",
+              "digest": "fnv1a64:e661c3ddb973ec46",
+              "prefix": "treecalc.table_lifecycle.callback.v1;event=14:workspace_open;before=4:none;after=6143:treecalc.t",
               "present": true
             },
             "case_id": "tbl-life-workspace-open",
@@ -4888,13 +4888,13 @@
               "row_order_version": "table-rows:sales:order:v1",
               "sheet_scope_ref": "sheet:default",
               "table_context_identity": {
-                "digest": "fnv1a64:814faee49b13ee7f",
+                "digest": "fnv1a64:6ffd6ba990ae4073",
                 "prefix": "treecalc.table_context.v1;table_id=16:tree-table:sales;namespace_token=58:treecalc.table_namespa",
                 "present": true
               },
               "table_id": "tree-table:sales",
               "table_invalidation_identity": {
-                "digest": "fnv1a64:74c673718ddf362e",
+                "digest": "fnv1a64:a5bd0a93773ff486",
                 "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=16:tree-table:sales;namespace=138",
                 "present": true
               },
@@ -4931,8 +4931,8 @@
               }
             },
             "callback_identity": {
-              "digest": "fnv1a64:b1c09178d364b6e5",
-              "prefix": "treecalc.table_lifecycle.callback.v1;event=15:workspace_close;before=6069:treecalc.table_lifecyc",
+              "digest": "fnv1a64:91200a8a763e12bc",
+              "prefix": "treecalc.table_lifecycle.callback.v1;event=15:workspace_close;before=6143:treecalc.table_lifecyc",
               "present": true
             },
             "case_id": "tbl-life-workspace-close",
@@ -5042,13 +5042,13 @@
               "row_order_version": "table-rows:sales:order:v1",
               "sheet_scope_ref": "sheet:default",
               "table_context_identity": {
-                "digest": "fnv1a64:f8251c542fa6ad10",
+                "digest": "fnv1a64:228c7c0324d21098",
                 "prefix": "treecalc.table_context.v1;table_id=16:tree-table:sales;namespace_token=58:treecalc.table_namespa",
                 "present": true
               },
               "table_id": "tree-table:sales",
               "table_invalidation_identity": {
-                "digest": "fnv1a64:b02978f4c79f7dc5",
+                "digest": "fnv1a64:0b0c01ff98f2849d",
                 "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=16:tree-table:sales;namespace=152",
                 "present": true
               },
@@ -5123,13 +5123,13 @@
               "row_order_version": "table-rows:sales:order:v1",
               "sheet_scope_ref": "sheet:default",
               "table_context_identity": {
-                "digest": "fnv1a64:814faee49b13ee7f",
+                "digest": "fnv1a64:6ffd6ba990ae4073",
                 "prefix": "treecalc.table_context.v1;table_id=16:tree-table:sales;namespace_token=58:treecalc.table_namespa",
                 "present": true
               },
               "table_id": "tree-table:sales",
               "table_invalidation_identity": {
-                "digest": "fnv1a64:74c673718ddf362e",
+                "digest": "fnv1a64:a5bd0a93773ff486",
                 "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=16:tree-table:sales;namespace=138",
                 "present": true
               },
@@ -5166,8 +5166,8 @@
               }
             },
             "callback_identity": {
-              "digest": "fnv1a64:ec6c074a55728c94",
-              "prefix": "treecalc.table_lifecycle.callback.v1;event=24:workspace_alias_mutation;before=6069:treecalc.tabl",
+              "digest": "fnv1a64:be25d96816f3df0b",
+              "prefix": "treecalc.table_lifecycle.callback.v1;event=24:workspace_alias_mutation;before=6143:treecalc.tabl",
               "present": true
             },
             "case_id": "tbl-life-workspace-alias-mutation",
@@ -5269,13 +5269,13 @@
               "row_order_version": "table-rows:sales:order:v1",
               "sheet_scope_ref": "sheet:default",
               "table_context_identity": {
-                "digest": "fnv1a64:814faee49b13ee7f",
+                "digest": "fnv1a64:6ffd6ba990ae4073",
                 "prefix": "treecalc.table_context.v1;table_id=16:tree-table:sales;namespace_token=58:treecalc.table_namespa",
                 "present": true
               },
               "table_id": "tree-table:sales",
               "table_invalidation_identity": {
-                "digest": "fnv1a64:74c673718ddf362e",
+                "digest": "fnv1a64:a5bd0a93773ff486",
                 "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=16:tree-table:sales;namespace=138",
                 "present": true
               },
@@ -5350,13 +5350,13 @@
               "row_order_version": "table-rows:sales:order:v1",
               "sheet_scope_ref": "sheet:default",
               "table_context_identity": {
-                "digest": "fnv1a64:814faee49b13ee7f",
+                "digest": "fnv1a64:6ffd6ba990ae4073",
                 "prefix": "treecalc.table_context.v1;table_id=16:tree-table:sales;namespace_token=58:treecalc.table_namespa",
                 "present": true
               },
               "table_id": "tree-table:sales",
               "table_invalidation_identity": {
-                "digest": "fnv1a64:74c673718ddf362e",
+                "digest": "fnv1a64:a5bd0a93773ff486",
                 "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=16:tree-table:sales;namespace=138",
                 "present": true
               },
@@ -5393,8 +5393,8 @@
               }
             },
             "callback_identity": {
-              "digest": "fnv1a64:1bad903d7185fec5",
-              "prefix": "treecalc.table_lifecycle.callback.v1;event=35:function_registry_snapshot_mutation;before=6069:tr",
+              "digest": "fnv1a64:6e45c679dac738ab",
+              "prefix": "treecalc.table_lifecycle.callback.v1;event=35:function_registry_snapshot_mutation;before=6143:tr",
               "present": true
             },
             "case_id": "tbl-life-function-registry-snapshot-mutation",
@@ -5481,13 +5481,13 @@
               "row_order_version": "table-rows:sales:order:v1",
               "sheet_scope_ref": "sheet:default",
               "table_context_identity": {
-                "digest": "fnv1a64:932d4ec2d94066d8",
+                "digest": "fnv1a64:4257416d9ec86c30",
                 "prefix": "treecalc.table_context.v1;table_id=16:tree-table:sales;namespace_token=58:treecalc.table_namespa",
                 "present": true
               },
               "table_id": "tree-table:sales",
               "table_invalidation_identity": {
-                "digest": "fnv1a64:81391f98ed47a475",
+                "digest": "fnv1a64:29627c6d06c3dbed",
                 "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=16:tree-table:sales;namespace=146",
                 "present": true
               },
@@ -5562,13 +5562,13 @@
               "row_order_version": "table-rows:sales:order:v1",
               "sheet_scope_ref": "sheet:default",
               "table_context_identity": {
-                "digest": "fnv1a64:814faee49b13ee7f",
+                "digest": "fnv1a64:6ffd6ba990ae4073",
                 "prefix": "treecalc.table_context.v1;table_id=16:tree-table:sales;namespace_token=58:treecalc.table_namespa",
                 "present": true
               },
               "table_id": "tree-table:sales",
               "table_invalidation_identity": {
-                "digest": "fnv1a64:74c673718ddf362e",
+                "digest": "fnv1a64:a5bd0a93773ff486",
                 "prefix": "treecalc.table_invalidation.v1;table_node_id=6:node:1;table_id=16:tree-table:sales;namespace=138",
                 "present": true
               },
@@ -5605,8 +5605,8 @@
               }
             },
             "callback_identity": {
-              "digest": "fnv1a64:be478c940d2fd9b3",
-              "prefix": "treecalc.table_lifecycle.callback.v1;event=17:structural_rebind;before=6069:treecalc.table_lifec",
+              "digest": "fnv1a64:01411fd40476b393",
+              "prefix": "treecalc.table_lifecycle.callback.v1;event=17:structural_rebind;before=6143:treecalc.table_lifec",
               "present": true
             },
             "case_id": "tbl-life-structural-rebind",
