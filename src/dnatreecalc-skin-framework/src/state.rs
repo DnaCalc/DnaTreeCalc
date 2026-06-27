@@ -673,7 +673,8 @@ impl SharedSkinStateHandle {
     /// Snapshot of the audit ring (newest last).
     #[must_use]
     pub fn audit_log(&self) -> Vec<SharedStateAuditRecord> {
-        self.audit.with_untracked(|ring| ring.iter().cloned().collect())
+        self.audit
+            .with_untracked(|ring| ring.iter().cloned().collect())
     }
 
     /// Raw mutation escape hatch — host-internal bookkeeping only; suite code

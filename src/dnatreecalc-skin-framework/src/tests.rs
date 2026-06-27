@@ -795,7 +795,10 @@ fn universal_grammar_resolves_the_canonical_verbs() {
         registry.resolve(&KeyChord::bare("/")),
         Some(SkinVerb::NameBox)
     );
-    assert_eq!(registry.resolve(&KeyChord::bare(" ")), Some(SkinVerb::Leader));
+    assert_eq!(
+        registry.resolve(&KeyChord::bare(" ")),
+        Some(SkinVerb::Leader)
+    );
     assert_eq!(
         registry.resolve(&KeyChord::bare("e")),
         Some(SkinVerb::Explain)
@@ -1142,5 +1145,8 @@ fn style_maps_calc_state_provenance_and_selection() {
 
     let mut pending = published;
     pending.computed_value = NodeValueProjection::Pending;
-    assert_eq!(provenance_tint(&pending, &workspace), ProvenanceTint::Pending);
+    assert_eq!(
+        provenance_tint(&pending, &workspace),
+        ProvenanceTint::Pending
+    );
 }

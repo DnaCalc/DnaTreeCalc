@@ -331,15 +331,16 @@ impl KeybindingRegistry {
     pub fn with_overrides(overrides: &KeybindingOverrideMap) -> Result<Self, KeybindingError> {
         let mut remapped: Vec<(SkinVerb, KeyChord)> = Vec::new();
         for (id, chord) in overrides.iter() {
-            let verb =
-                SkinVerb::from_stable_id(id).ok_or_else(|| KeybindingError::UnknownVerb(id.clone()))?;
+            let verb = SkinVerb::from_stable_id(id)
+                .ok_or_else(|| KeybindingError::UnknownVerb(id.clone()))?;
             remapped.push((verb, chord.clone()));
         }
 
         let mut bindings: Vec<(KeyChord, SkinVerb)> = Vec::new();
         let mut emitted: Vec<SkinVerb> = Vec::new();
         for (chord, verb) in Self::universal().bindings {
-            if let Some((_, new_chord)) = remapped.iter().find(|(candidate, _)| *candidate == verb) {
+            if let Some((_, new_chord)) = remapped.iter().find(|(candidate, _)| *candidate == verb)
+            {
                 // Collapse any compatibility chords to the single new chord.
                 if !emitted.contains(&verb) {
                     bindings.push((new_chord.clone(), verb));
@@ -352,7 +353,8 @@ impl KeybindingRegistry {
 
         for index in 0..bindings.len() {
             for other in (index + 1)..bindings.len() {
-                if bindings[index].0 == bindings[other].0 && bindings[index].1 != bindings[other].1 {
+                if bindings[index].0 == bindings[other].0 && bindings[index].1 != bindings[other].1
+                {
                     return Err(KeybindingError::Collision {
                         chord: bindings[index].0.clone(),
                         occupied_by: bindings[index].1,
@@ -444,7 +446,10 @@ mod tests {
             registry.bindings().len(),
             KeybindingRegistry::universal().bindings().len()
         );
-        assert_eq!(registry.resolve(&KeyChord::bare("e")), Some(SkinVerb::Explain));
+        assert_eq!(
+            registry.resolve(&KeyChord::bare("e")),
+            Some(SkinVerb::Explain)
+        );
     }
 
     #[test]
@@ -452,7 +457,10 @@ mod tests {
         let mut overrides = KeybindingOverrideMap::new();
         overrides.set(SkinVerb::Explain, KeyChord::bare("x"));
         let registry = KeybindingRegistry::with_overrides(&overrides).unwrap();
-        assert_eq!(registry.resolve(&KeyChord::bare("x")), Some(SkinVerb::Explain));
+        assert_eq!(
+            registry.resolve(&KeyChord::bare("x")),
+            Some(SkinVerb::Explain)
+        );
         assert_eq!(registry.resolve(&KeyChord::bare("e")), None);
 
         // Recalculate carries F9 + the Ctrl+Enter compat chord; remapping
@@ -476,7 +484,10 @@ mod tests {
         swap.set(SkinVerb::Unfold, KeyChord::bare("h"));
         let registry = KeybindingRegistry::with_overrides(&swap).unwrap();
         assert_eq!(registry.resolve(&KeyChord::bare("l")), Some(SkinVerb::Fold));
-        assert_eq!(registry.resolve(&KeyChord::bare("h")), Some(SkinVerb::Unfold));
+        assert_eq!(
+            registry.resolve(&KeyChord::bare("h")),
+            Some(SkinVerb::Unfold)
+        );
 
         // Remap Explain onto Fold's chord while Fold still holds it ⇒ clash.
         let mut clash = KeybindingOverrideMap::new();

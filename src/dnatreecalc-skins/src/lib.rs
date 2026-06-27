@@ -15,8 +15,8 @@ pub mod companions;
 pub mod dependency_inspector;
 pub mod flow;
 pub mod formula_tree;
-mod node_management;
 pub mod ledger;
+mod node_management;
 pub mod outline_table;
 pub mod sheet;
 mod spine_widgets;
@@ -36,8 +36,8 @@ pub use dependency_inspector::{
     DEPENDENCY_INSPECTOR_ID, DependencyInspector, DependencyInspectorState,
 };
 pub use flow::{FLOW_ID, FlowLens, FlowState};
-pub use ledger::{LEDGER_ID, LedgerLens, LedgerState};
 pub use formula_tree::{FORMULA_TREE_ID, FormulaTree, FormulaTreeState};
+pub use ledger::{LEDGER_ID, LedgerLens, LedgerState};
 pub use outline_table::{OUTLINE_TABLE_ID, OutlineTable, OutlineTableState};
 pub use sheet::{SHEET_ID, SheetLens, SheetState};
 pub use transport::{TRANSPORT_ID, TransportLens, TransportState};

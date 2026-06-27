@@ -740,9 +740,7 @@ mod tests {
             key: NodeKey::new(key),
             id: NodeId::new(path),
             display_name: path.rsplit('.').next().unwrap_or(path).to_string(),
-            parent: path
-                .rsplit_once('.')
-                .map(|(parent, _)| NodeId::new(parent)),
+            parent: path.rsplit_once('.').map(|(parent, _)| NodeId::new(parent)),
             children: Vec::new(),
             depth: path.matches('.').count() as u32,
             content_kind: dnatreecalc_skin_framework::NodeContentKind::Constant,
@@ -803,8 +801,13 @@ mod tests {
             dnatreecalc_skin_framework::SkinId::new("test-lens"),
             dnatreecalc_skin_framework::SkinMountSlot::Main,
         );
-        let receipt =
-            commit_content_edit(&dispatch, shared, &origin, NodeId::new("A"), "=1+1".to_string());
+        let receipt = commit_content_edit(
+            &dispatch,
+            shared,
+            &origin,
+            NodeId::new("A"),
+            "=1+1".to_string(),
+        );
         assert!(receipt.accepted);
         assert!(shared.get_untracked().manual_recalc_pending);
         assert!(matches!(
@@ -823,9 +826,7 @@ mod tests {
 
     #[test]
     fn delete_confirm_message_only_warns_when_destructive() {
-        use dnatreecalc_skin_framework::{
-            MutationImpactIntentProjection, RecalcPlanProjection,
-        };
+        use dnatreecalc_skin_framework::{MutationImpactIntentProjection, RecalcPlanProjection};
         // Clean leaf, no dependents → delete directly (no confirm).
         assert_eq!(delete_confirm_message(None, 0), None);
         // Has children → confirm.

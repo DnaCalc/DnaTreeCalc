@@ -34,8 +34,8 @@ use dnatreecalc_skin_framework::{
     ATLAS_SPINE_CSS, Dispatcher, InitialNodeContentProjection, IntentReceipt, KeyChord,
     KeybindingRegistry, NodeId, NodeKey, NodeView, SharedSkinStateHandle, SharedStateOrigin,
     SkinCapabilities, SkinCategory, SkinContext, SkinHandle, SkinId, SkinManifest, SkinState,
-    SkinVerb, TemplateProjection, WorkspaceIntent, WorkspaceSkin, WorkspaceState,
-    calc_state_class, provenance_tint, selection_mode_class,
+    SkinVerb, TemplateProjection, WorkspaceIntent, WorkspaceSkin, WorkspaceState, calc_state_class,
+    provenance_tint, selection_mode_class,
 };
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -157,9 +157,8 @@ fn build_capture_line(path: &str, content: &str) -> Result<CaptureLine, String> 
                 .to_string(),
         );
     }
-    let path_segments = parse_path_segments(path).ok_or_else(|| {
-        "invalid path — use Dotted.Path.Leaf with non-empty segments".to_string()
-    })?;
+    let path_segments = parse_path_segments(path)
+        .ok_or_else(|| "invalid path — use Dotted.Path.Leaf with non-empty segments".to_string())?;
     let content = content.trim();
     let content = if content.is_empty() {
         None
@@ -275,10 +274,10 @@ fn push_capture_history(entries: &mut Vec<CaptureEntry>, entry: CaptureEntry, li
 
 /// The typed error Display text from a rejected receipt — never invented.
 fn receipt_error_text(receipt: &IntentReceipt) -> String {
-    receipt
-        .error
-        .as_ref()
-        .map_or_else(|| "the host rejected the intent".to_string(), ToString::to_string)
+    receipt.error.as_ref().map_or_else(
+        || "the host rejected the intent".to_string(),
+        ToString::to_string,
+    )
 }
 
 /// Depth-first visible-rows walk for the echo pane. Effectively-meta subtrees
@@ -396,10 +395,7 @@ fn execute_capture_line(
         .find(|handle| !before.contains(handle))
         .ok_or_else(|| "the host did not surface a new candidate handle".to_string())?;
 
-    let mut parent_key = plan
-        .existing_parent
-        .as_ref()
-        .map(|(_, key)| key.clone());
+    let mut parent_key = plan.existing_parent.as_ref().map(|(_, key)| key.clone());
     let mut path_so_far = plan
         .existing_parent
         .as_ref()
@@ -1038,9 +1034,7 @@ const CAPTURE_CSS: &str = r#"
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dnatreecalc_skin_framework::{
-        IntentError, NodeContentKind, NodeValueProjection,
-    };
+    use dnatreecalc_skin_framework::{IntentError, NodeContentKind, NodeValueProjection};
     use std::collections::BTreeMap;
 
     fn node(path: &str, is_meta: bool) -> NodeView {
@@ -1048,9 +1042,7 @@ mod tests {
             key: NodeKey::new(format!("k:{path}")),
             id: NodeId::new(path),
             display_name: path.rsplit('.').next().unwrap_or(path).to_string(),
-            parent: path
-                .rsplit_once('.')
-                .map(|(parent, _)| NodeId::new(parent)),
+            parent: path.rsplit_once('.').map(|(parent, _)| NodeId::new(parent)),
             children: Vec::new(),
             depth: path.matches('.').count() as u32,
             content_kind: NodeContentKind::Constant,
@@ -1230,8 +1222,7 @@ mod tests {
 
     #[test]
     fn single_add_node_at_root_has_no_parent() {
-        let intent =
-            build_single_add_node(None, "Margin", InitialNodeContentProjection::Empty);
+        let intent = build_single_add_node(None, "Margin", InitialNodeContentProjection::Empty);
         assert_eq!(
             intent,
             WorkspaceIntent::AddNode {

@@ -551,8 +551,7 @@ fn tree_row_view(
     let indent = format!("padding-left:{}px;", 6 + row.depth * INDENT_PX);
     let key_for_toggle = row.key.clone();
     let id_for_click = row.id.clone();
-    let dependents_badge =
-        (row.incoming_count > 0).then(|| format!("← {}", row.incoming_count));
+    let dependents_badge = (row.incoming_count > 0).then(|| format!("← {}", row.incoming_count));
 
     let chevron = if row.has_children {
         let glyph = if row.collapsed { "▸" } else { "▾" };
@@ -588,8 +587,7 @@ fn tree_row_view(
         }
         .into_any()
     } else {
-        view! { <span class="dtc-tree-row__chevron dtc-tree-row__chevron--leaf"></span> }
-            .into_any()
+        view! { <span class="dtc-tree-row__chevron dtc-tree-row__chevron--leaf"></span> }.into_any()
     };
 
     view! {
@@ -777,9 +775,7 @@ mod tests {
             key: NodeKey::new(key),
             id: NodeId::new(path),
             display_name: path.rsplit('.').next().unwrap_or(path).to_string(),
-            parent: path
-                .rsplit_once('.')
-                .map(|(parent, _)| NodeId::new(parent)),
+            parent: path.rsplit_once('.').map(|(parent, _)| NodeId::new(parent)),
             children: Vec::new(),
             depth: path.matches('.').count() as u32,
             content_kind: NodeContentKind::Constant,

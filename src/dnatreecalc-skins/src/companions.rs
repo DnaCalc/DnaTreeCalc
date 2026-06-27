@@ -281,19 +281,38 @@ mod tests {
         let lens = LensCompanion::new();
         let console = ConsoleCompanion::new();
 
-        assert!(lens.capabilities().slot_allowed(SkinMountSlot::RightInspector));
+        assert!(
+            lens.capabilities()
+                .slot_allowed(SkinMountSlot::RightInspector)
+        );
         assert!(!lens.capabilities().slot_allowed(SkinMountSlot::Main));
-        assert!(!lens.capabilities().slot_allowed(SkinMountSlot::BottomConsole));
+        assert!(
+            !lens
+                .capabilities()
+                .slot_allowed(SkinMountSlot::BottomConsole)
+        );
 
-        assert!(console.capabilities().slot_allowed(SkinMountSlot::BottomConsole));
+        assert!(
+            console
+                .capabilities()
+                .slot_allowed(SkinMountSlot::BottomConsole)
+        );
         assert!(!console.capabilities().slot_allowed(SkinMountSlot::Main));
-        assert!(!console.capabilities().slot_allowed(SkinMountSlot::RightInspector));
+        assert!(
+            !console
+                .capabilities()
+                .slot_allowed(SkinMountSlot::RightInspector)
+        );
     }
 
     #[test]
     fn primary_lens_defaults_to_main_only() {
         let flow = crate::flow::FlowLens::new();
         assert!(flow.capabilities().slot_allowed(SkinMountSlot::Main));
-        assert!(!flow.capabilities().slot_allowed(SkinMountSlot::RightInspector));
+        assert!(
+            !flow
+                .capabilities()
+                .slot_allowed(SkinMountSlot::RightInspector)
+        );
     }
 }

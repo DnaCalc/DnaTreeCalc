@@ -149,9 +149,7 @@ fn compute_layout(workspace: &WorkspaceState) -> FlowLayout {
     let layout_keys: Vec<NodeKey> = workspace
         .key_order
         .iter()
-        .filter(|key| {
-            workspace.node_by_key(key).is_some() && !workspace.is_effective_meta(key)
-        })
+        .filter(|key| workspace.node_by_key(key).is_some() && !workspace.is_effective_meta(key))
         .cloned()
         .collect();
     let key_set: BTreeSet<NodeKey> = layout_keys.iter().cloned().collect();
@@ -439,8 +437,7 @@ fn FlowView(cx: SkinContext<FlowState>) -> impl IntoView {
             }
             SkinVerb::TraceBack => {
                 ev.prevent_default();
-                grammar_state
-                    .update(|s| s.back_depth = (s.back_depth + 1) % (MAX_TRACE_DEPTH + 1));
+                grammar_state.update(|s| s.back_depth = (s.back_depth + 1) % (MAX_TRACE_DEPTH + 1));
             }
             SkinVerb::NameBox => {
                 ev.prevent_default();
@@ -533,9 +530,7 @@ fn FlowView(cx: SkinContext<FlowState>) -> impl IntoView {
     // The explain stack renders as the lens-specific extra inside the shared
     // inspector.
     let explain_detail = Memo::new(move |_| {
-        selection.with(|sel| {
-            workspace.with(|ws| ws.active_node_detail(sel).map(|d| d.node_key))
-        })
+        selection.with(|sel| workspace.with(|ws| ws.active_node_detail(sel).map(|d| d.node_key)))
     });
     let traces = Memo::new(move |_| {
         let owner = explain_detail.get();
@@ -929,7 +924,10 @@ mod tests {
         let mut ws = linear_workspace();
         // Make A a meta node with a regular-flagged child: both must leave the
         // stage (effective-meta contagion), B/C stay.
-        ws.nodes_by_key.get_mut(&NodeKey::new("k:A")).unwrap().is_meta = true;
+        ws.nodes_by_key
+            .get_mut(&NodeKey::new("k:A"))
+            .unwrap()
+            .is_meta = true;
         ws.nodes.get_mut(&NodeId::new("A")).unwrap().is_meta = true;
         let mut child = node("k:AC", "A.Child");
         child.parent = Some(NodeId::new("A"));

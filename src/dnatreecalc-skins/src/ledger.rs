@@ -710,13 +710,8 @@ fn CleaveBar(
     });
     let sort_choice = Memo::new(move |_| {
         shared_signal.with(|shared_state| {
-            cleave_sort_choice(
-                shared_state
-                    .cleave
-                    .as_ref()
-                    .and_then(|cleave| cleave.sort),
-            )
-            .to_string()
+            cleave_sort_choice(shared_state.cleave.as_ref().and_then(|cleave| cleave.sort))
+                .to_string()
         })
     });
     let text_value = Memo::new(move |_| {
@@ -1138,12 +1133,7 @@ mod tests {
         // Regular-flagged child of a meta parent: effectively meta, must drop.
         let mut meta_child = node("k:mc", "Meta.Child");
         meta_child.parent = Some(NodeId::new("Meta"));
-        let ws = workspace_with(vec![
-            node("k:a", "A"),
-            meta,
-            meta_child,
-            node("k:b", "B"),
-        ]);
+        let ws = workspace_with(vec![node("k:a", "A"), meta, meta_child, node("k:b", "B")]);
 
         assert_eq!(
             ledger_rows(&ws, None),
@@ -1277,7 +1267,10 @@ mod tests {
     #[test]
     fn cleave_filter_choice_round_trips_authorable_filters() {
         assert_eq!(cleave_filter_choice(None), "");
-        assert_eq!(cleave_filter_choice(Some(&CleaveFilter::HasError)), "errors");
+        assert_eq!(
+            cleave_filter_choice(Some(&CleaveFilter::HasError)),
+            "errors"
+        );
         assert_eq!(
             cleave_filter_choice(Some(&CleaveFilter::CalcState(
                 NodeCalcStateProjection::DirtyPending

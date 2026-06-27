@@ -25,7 +25,8 @@ pub(crate) fn NodeManagementPanel(
     let active_persona = Memo::new(move |_| {
         shared_signal.map_or(Persona::Author, |signal| signal.with(|state| state.persona))
     });
-    let allows = move |kind: CommandIntentKindProjection| active_persona.get().allows_intent_kind(kind);
+    let allows =
+        move |kind: CommandIntentKindProjection| active_persona.get().allows_intent_kind(kind);
     let new_symbol = RwSignal::new(String::new());
     let new_content = RwSignal::new(String::new());
     let selected_template = RwSignal::new(String::new());
@@ -566,7 +567,8 @@ mod tests {
 
         // Legal but breaks dependents ⇒ an orphan count.
         let mut orphaning = impact_fixture(true);
-        orphaning.orphaned_dependents = vec![NodeId::new("tree-node:2"), NodeId::new("tree-node:3")];
+        orphaning.orphaned_dependents =
+            vec![NodeId::new("tree-node:2"), NodeId::new("tree-node:3")];
         assert_eq!(impact_verdict(&orphaning), ImpactVerdict::Orphan(2));
 
         // Illegal ⇒ a labelled block surfacing the collision pair verbatim.
