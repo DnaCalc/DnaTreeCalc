@@ -27,7 +27,7 @@ use std::sync::Arc;
 
 use dnatreecalc_skin_framework::{
     ATLAS_SPINE_CSS, ActiveSelectionDetailProjection, Dispatcher,
-    FormulaReferenceInsertionProjection, FormulaReferenceInsertionTarget, GridProjection, KeyChord,
+    FormulaReferenceInsertionProjection, FormulaReferenceInsertionTarget, KeyChord,
     KeybindingRegistry, NodeId, NodeKey, NodeView, SharedStateOrigin, SkinCapabilities,
     SkinCategory, SkinContext, SkinHandle, SkinId, SkinManifest, SkinState, SkinVerb,
     TableCellEditabilityProjection, TableCellProjection, TableCellRegionProjection,
@@ -677,18 +677,26 @@ fn SheetView(cx: SkinContext<SheetState>) -> impl IntoView {
             })
             .collect::<Vec<_>>();
 
-        let grids = ws
-            .grids
-            .iter()
-            .map(|(grid_id, grid)| grid_surface_view(grid_id.clone(), grid, body_dispatch.clone()))
-            .collect::<Vec<_>>();
-
         view! {
             <div class="dtc-sheet-rows">{rows}</div>
             {tables}
-            {grids}
         }
     };
+
+    // Grid surfaces are built ONCE here (untracked), OUTSIDE the `body` reactive
+    // block, so each scroll container persists across projection updates -- a
+    // SetGridInterest re-scope replaces only the windowed cells (reactive inside
+    // the surface) and never recreates the scroll box, which would reset scrollTop
+    // and hide the window. (A grid attached after mount would need a re-mount;
+    // acceptable for the read path, where grids are present at load.)
+    let grid_dispatch = dispatch.clone();
+    let grid_surfaces = workspace
+        .get_untracked()
+        .grids
+        .keys()
+        .cloned()
+        .map(|grid_id| grid_surface(grid_id, workspace, grid_dispatch.clone()))
+        .collect::<Vec<_>>();
 
     let css = format!("{ATLAS_SPINE_CSS}\n{SPINE_WIDGETS_CSS}\n{SHEET_CSS}");
     let toggle_state = state.clone();
@@ -765,6 +773,7 @@ fn SheetView(cx: SkinContext<SheetState>) -> impl IntoView {
                 <div class="dtc-sheet__scroll">
                     <NameBoxBar name_box=name_box workspace=workspace dispatch=dispatch.clone() />
                     {body}
+                    {grid_surfaces}
                 </div>
                 <NodeInspector
                     workspace=workspace
@@ -868,36 +877,53 @@ fn grid_interest_window(
     (top_row, left_col, bottom_row, right_col)
 }
 
-/// A windowed grid surface for a grid-backed sheet node: the interest cells are
-/// positioned on a virtual canvas the size of the (capped) sheet, and scrolling
-/// dispatches [`WorkspaceIntent::SetGridInterest`] so OxCalc re-scopes the
-/// projection to the newly visible window ("viewing is subscribing").
-fn grid_surface_view(
+/// A windowed grid surface for a grid-backed sheet node. The scroll container and
+/// virtual canvas are built once (stable across projection updates); only the
+/// positioned cells re-render reactively, so a `SetGridInterest` re-scope swaps
+/// the windowed cells without resetting the scroll position. Scrolling dispatches
+/// [`WorkspaceIntent::SetGridInterest`] so OxCalc re-scopes the projection to the
+/// newly visible window ("viewing is subscribing").
+fn grid_surface(
     grid_id: NodeId,
-    grid: &GridProjection,
+    workspace: ReadSignal<WorkspaceState>,
     dispatch: Arc<dyn Dispatcher>,
 ) -> AnyView {
-    let canvas_height = f64::from(grid.max_rows.min(GRID_VIRTUAL_CELL_CAP)) * GRID_ROW_HEIGHT_PX;
-    let canvas_width = f64::from(grid.max_cols.min(GRID_VIRTUAL_CELL_CAP)) * GRID_COL_WIDTH_PX;
-    let cells = grid
-        .cells
-        .iter()
-        .map(|cell| {
-            let top = f64::from(cell.row.saturating_sub(1)) * GRID_ROW_HEIGHT_PX;
-            let left = f64::from(cell.col.saturating_sub(1)) * GRID_COL_WIDTH_PX;
-            let style = format!(
-                "position:absolute;top:{top}px;left:{left}px;width:{GRID_COL_WIDTH_PX}px;height:{GRID_ROW_HEIGHT_PX}px;"
-            );
-            let value = render_value(&cell.value);
-            view! { <div class="dtc-grid__cell" style=style>{value}</div> }
-        })
-        .collect::<Vec<_>>();
+    // The sheet extent is fixed, so the canvas size is read once (untracked); the
+    // scroll handler clamps windows to it.
+    let (max_rows, max_cols) = workspace
+        .get_untracked()
+        .grids
+        .get(&grid_id)
+        .map_or((1, 1), |grid| (grid.max_rows, grid.max_cols));
+    let canvas_height = f64::from(max_rows.min(GRID_VIRTUAL_CELL_CAP)) * GRID_ROW_HEIGHT_PX;
+    let canvas_width = f64::from(max_cols.min(GRID_VIRTUAL_CELL_CAP)) * GRID_COL_WIDTH_PX;
 
-    let max_rows = grid.max_rows;
-    let max_cols = grid.max_cols;
+    // Reactive: only the windowed cells re-render when the projection changes; the
+    // surrounding scroll box is created once, so scrollTop survives a re-scope.
+    let cells_id = grid_id.clone();
+    let cells = move || {
+        let ws = workspace.get();
+        let Some(grid) = ws.grids.get(&cells_id) else {
+            return Vec::new();
+        };
+        grid.cells
+            .iter()
+            .map(|cell| {
+                let top = f64::from(cell.row.saturating_sub(1)) * GRID_ROW_HEIGHT_PX;
+                let left = f64::from(cell.col.saturating_sub(1)) * GRID_COL_WIDTH_PX;
+                let style = format!(
+                    "position:absolute;top:{top}px;left:{left}px;width:{GRID_COL_WIDTH_PX}px;height:{GRID_ROW_HEIGHT_PX}px;"
+                );
+                let value = render_value(&cell.value);
+                view! { <div class="dtc-grid__cell" style=style>{value}</div> }
+            })
+            .collect::<Vec<_>>()
+    };
+
     // Each scroll tick re-scopes the window. Coalescing a scroll storm into the
     // latest window (like EditContentDeferred in the worker proxy) is the
     // documented refinement; the read path dispatches per event.
+    let scroll_id = grid_id.clone();
     let on_scroll = move |ev: leptos::ev::Event| {
         let Some(target) = ev.target() else {
             return;
@@ -914,7 +940,7 @@ fn grid_surface_view(
             max_cols,
         );
         dispatch.dispatch(WorkspaceIntent::SetGridInterest {
-            grid: grid_id.clone(),
+            grid: scroll_id.clone(),
             top_row,
             left_col,
             bottom_row,
