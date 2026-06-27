@@ -299,8 +299,8 @@ mod tests {
     use crate::intent::StructuralDeltaProjection;
     use crate::workspace::{
         CalcRunProjection, CalcRunStateProjection, ClipboardOperationProjection,
-        ClipboardPayloadProjection, ClipboardProjection, GridCellProjection, GridProjection,
-        NodeValueProjection,
+        ClipboardPayloadProjection, ClipboardProjection, GridCellProjection, GridOverlayBundle,
+        GridProjection, NodeValueProjection,
     };
 
     fn sample_calc_run() -> CalcRunProjection {
@@ -345,6 +345,8 @@ mod tests {
                 value_epoch: 1,
             }],
             projection_epoch: 1,
+            overlays: GridOverlayBundle::default(),
+            overlay_epoch: 0,
             differential_clean: true,
         }
     }

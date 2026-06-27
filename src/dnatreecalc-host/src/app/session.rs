@@ -13,7 +13,9 @@ use dnatreecalc_skin_framework::{
     FormulaBindPreviewInputKind, FormulaBindPreviewProfileViolationKindProjection,
     FormulaBindPreviewProfileViolationProjection, FormulaBindPreviewProjection,
     FormulaReferenceInsertionProjection, FormulaReferenceInsertionTarget, GridCellProjection,
-    GridProjection, InitialNodeContentProjection, InvalidationReasonProjection,
+    GridMergedOverlayDescriptor, GridOverlayBundle, GridOverlayRect, GridProjection,
+    GridSpillOverlayDescriptor, GridTableColumnBand, GridTableOverlayDescriptor,
+    InitialNodeContentProjection, InvalidationReasonProjection,
     MutationImpactBlockedReasonProjection, MutationImpactIntentProjection,
     MutationImpactProjection, NameCollisionProjection, NodeAttributePatch, NodeCalcStateProjection,
     NodeContentKind as FrameworkContentKind, NodeId, NodeInvalidationProjection, NodeKey,
@@ -44,7 +46,9 @@ use oxcalc_core::consumer::{
     OxCalcTreePreviewMutation, OxCalcTreeRuntimePolicy, OxCalcTreeWorkspaceCreate,
     OxCalcTreeWorkspaceId, OxCalcTreeWorkspaceSnapshot, TransactionRecalcPolicy,
 };
-use oxcalc_core::consumer::{GridBackingSeed, GridInterestRegions, OxCalcTreeGridView};
+use oxcalc_core::consumer::{
+    GridBackingSeed, GridInterestRegions, OxCalcTreeGridOverlayRect, OxCalcTreeGridView,
+};
 use oxcalc_core::coordinator::{RuntimeEffect, RuntimeEffectFamily};
 use oxcalc_core::dependency::{
     DependencyDescriptor, DependencyDescriptorKind, DependencyGraph, InvalidationReasonKind,
@@ -7722,7 +7726,73 @@ fn grid_projection_for(
         max_cols: view.bounds.max_cols,
         cells,
         projection_epoch,
+        overlays: grid_overlay_bundle_for(view),
+        overlay_epoch: view.overlay_epoch,
         differential_clean: view.differential_mismatches.is_empty(),
+    }
+}
+
+fn grid_overlay_rect(rect: &OxCalcTreeGridOverlayRect) -> GridOverlayRect {
+    GridOverlayRect {
+        top_row: rect.top_row,
+        left_col: rect.left_col,
+        bottom_row: rect.bottom_row,
+        right_col: rect.right_col,
+        clipped_top: rect.clipped_top,
+        clipped_left: rect.clipped_left,
+        clipped_bottom: rect.clipped_bottom,
+        clipped_right: rect.clipped_right,
+    }
+}
+
+/// Map the seam's window-clipped overlay readouts into skin-IR overlay
+/// descriptors. Table descriptors carry geometry + identity only; their row
+/// values live in the shared `TableProjection` (pointed at by `table_node_key`
+/// when a grid-table/tree-table linkage exists - `None` for now).
+fn grid_overlay_bundle_for(view: &OxCalcTreeGridView) -> GridOverlayBundle {
+    GridOverlayBundle {
+        tables: view
+            .overlays
+            .tables
+            .iter()
+            .map(|table| GridTableOverlayDescriptor {
+                table_id: table.table_id.clone(),
+                table_name: table.table_name.clone(),
+                table_node_key: None,
+                table_range: grid_overlay_rect(&table.table_range),
+                header_rect: table.header_rect.as_ref().map(grid_overlay_rect),
+                totals_rect: table.totals_rect.as_ref().map(grid_overlay_rect),
+                columns: table
+                    .columns
+                    .iter()
+                    .map(|column| GridTableColumnBand {
+                        column_id: column.column_id.clone(),
+                        column_name: column.column_name.clone(),
+                        ordinal: column.ordinal,
+                        data_rect: grid_overlay_rect(&column.data_rect),
+                    })
+                    .collect(),
+            })
+            .collect(),
+        spills: view
+            .overlays
+            .spills
+            .iter()
+            .map(|spill| GridSpillOverlayDescriptor {
+                anchor_row: spill.anchor.row,
+                anchor_col: spill.anchor.col,
+                extent: grid_overlay_rect(&spill.extent),
+                blocked: spill.blocked,
+            })
+            .collect(),
+        merged: view
+            .overlays
+            .merged
+            .iter()
+            .map(|region| GridMergedOverlayDescriptor {
+                rect: grid_overlay_rect(&region.rect),
+            })
+            .collect(),
     }
 }
 
@@ -9376,6 +9446,8 @@ mod tests {
                     GridAuthoredCell::Literal(CalcValue::number(9.0)),
                 ),
             ],
+            table_overlays: Vec::new(),
+            merged_regions: Vec::new(),
         };
 
         // Attaching the grid projects all authored cells, and the grid appears in
@@ -9406,6 +9478,79 @@ mod tests {
         assert!(
             matches!(&b1.value, NodeValueProjection::Number { display, .. } if display == "21")
         );
+    }
+
+    #[test]
+    fn session_grid_projection_surfaces_overlay_descriptors() {
+        use oxcalc_core::consumer::GridBackingSeed;
+        use oxcalc_core::grid::authored::GridAuthoredCell;
+        use oxcalc_core::grid::coords::{ExcelGridBounds, ExcelGridCellAddress};
+        use oxcalc_core::grid::geometry::GridRect;
+        use oxcalc_core::grid::machine::{GridTableColumn, GridTableOverlay};
+        use oxfunc_core::value::CalcValue;
+
+        let fixture = WorkspaceFixture {
+            schema_version: "treecalc-workspace-v1".to_string(),
+            workspace_id: "grid-overlays".to_string(),
+            description: None,
+            profile: None,
+            nodes: vec![WorkspaceNodeFixture {
+                node_id: "Sheet1".to_string(),
+                formula: String::new(),
+                is_meta: false,
+                table: None,
+            }],
+        };
+        let model = WorkspaceModel::try_from(fixture).unwrap();
+        let mut session = TreeWorkspaceSession::from_model(&model).unwrap();
+        session.recalculate().unwrap();
+
+        let bounds = ExcelGridBounds::strict_excel();
+        let rect = |top, left, bottom, right| {
+            GridRect::new("book:ov", "sheet:ov", top, left, bottom, right, bounds).unwrap()
+        };
+        let table = GridTableOverlay::new(
+            "table1",
+            "Sales",
+            rect(1, 1, 4, 2),
+            vec![
+                GridTableColumn::new("table1:region", "Region", 1, rect(2, 1, 4, 1)),
+                GridTableColumn::new("table1:amount", "Amount", 2, rect(2, 2, 4, 2)),
+            ],
+        )
+        .with_header_rect(rect(1, 1, 1, 2));
+        let seed = GridBackingSeed {
+            workbook_id: "book:ov".to_string(),
+            sheet_id: "sheet:ov".to_string(),
+            bounds,
+            authored: vec![(
+                ExcelGridCellAddress::new("book:ov", "sheet:ov", 2, 1),
+                GridAuthoredCell::Literal(CalcValue::number(1.0)),
+            )],
+            table_overlays: vec![table],
+            merged_regions: vec![rect(1, 3, 2, 4)],
+        };
+        let sheet = NodeId::new("Sheet1");
+
+        // Whole grid: the table and merged overlays surface in the skin-IR
+        // projection, geometry + identity intact.
+        let full = session.set_node_grid(&sheet, seed).unwrap();
+        assert_eq!(full.overlays.tables.len(), 1);
+        assert_eq!(full.overlays.tables[0].table_name, "Sales");
+        assert_eq!(full.overlays.tables[0].columns.len(), 2);
+        assert!(full.overlays.tables[0].header_rect.is_some());
+        assert_eq!(full.overlays.merged.len(), 1);
+        assert!(full.overlay_epoch >= 1);
+
+        // Scope to A1:B2: the table clips at the bottom and the merged region
+        // C1:D2 falls outside the window and drops.
+        let windowed = session.register_grid_interest(&sheet, 1, 1, 2, 2).unwrap();
+        assert_eq!(windowed.overlays.tables.len(), 1);
+        let range = &windowed.overlays.tables[0].table_range;
+        assert_eq!(range.bottom_row, 2);
+        assert!(range.clipped_bottom);
+        assert_eq!(windowed.overlays.merged.len(), 0);
+        assert!(windowed.overlay_epoch >= full.overlay_epoch);
     }
 
     #[test]

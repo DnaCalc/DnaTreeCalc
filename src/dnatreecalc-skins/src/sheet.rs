@@ -27,8 +27,8 @@ use std::sync::Arc;
 
 use dnatreecalc_skin_framework::{
     ATLAS_SPINE_CSS, ActiveSelectionDetailProjection, Dispatcher,
-    FormulaReferenceInsertionProjection, FormulaReferenceInsertionTarget, KeyChord,
-    KeybindingRegistry, NodeId, NodeKey, NodeView, SharedStateOrigin, SkinCapabilities,
+    FormulaReferenceInsertionProjection, FormulaReferenceInsertionTarget, GridOverlayRect,
+    KeyChord, KeybindingRegistry, NodeId, NodeKey, NodeView, SharedStateOrigin, SkinCapabilities,
     SkinCategory, SkinContext, SkinHandle, SkinId, SkinManifest, SkinState, SkinVerb,
     TableCellEditabilityProjection, TableCellProjection, TableCellRegionProjection,
     TableCellSelection, TableProjection, WorkspaceDeltaChange, WorkspaceIntent, WorkspaceSkin,
@@ -877,6 +877,27 @@ fn grid_interest_window(
     (top_row, left_col, bottom_row, right_col)
 }
 
+/// Absolute-position style for an overlay box over a window-clipped rect, in the
+/// same coordinate space as the cells. Each edge is drawn `solid` when the rect
+/// ends within the window and `clipped` (dashed) when the window cut it, so a
+/// clipped border reads as "continues beyond the window".
+fn overlay_box_style(rect: &GridOverlayRect, solid: &str, clipped: &str) -> String {
+    let top = f64::from(rect.top_row.saturating_sub(1)) * GRID_ROW_HEIGHT_PX;
+    let left = f64::from(rect.left_col.saturating_sub(1)) * GRID_COL_WIDTH_PX;
+    let width = f64::from(rect.right_col.saturating_sub(rect.left_col) + 1) * GRID_COL_WIDTH_PX;
+    let height = f64::from(rect.bottom_row.saturating_sub(rect.top_row) + 1) * GRID_ROW_HEIGHT_PX;
+    let border = |is_clipped: bool| if is_clipped { clipped } else { solid };
+    format!(
+        "position:absolute;top:{top}px;left:{left}px;width:{width}px;height:{height}px;\
+         box-sizing:border-box;pointer-events:none;\
+         border-top:{};border-left:{};border-bottom:{};border-right:{};",
+        border(rect.clipped_top),
+        border(rect.clipped_left),
+        border(rect.clipped_bottom),
+        border(rect.clipped_right),
+    )
+}
+
 /// A windowed grid surface for a grid-backed sheet node. The scroll container and
 /// virtual canvas are built once (stable across projection updates); only the
 /// positioned cells re-render reactively, so a `SetGridInterest` re-scope swaps
@@ -920,6 +941,77 @@ fn grid_surface(
             .collect::<Vec<_>>()
     };
 
+    // Reactive read-only overlay layer (tables, merged regions, spills) drawn over
+    // the cells in the same coordinate space. Each box is `pointer-events:none` so
+    // it never intercepts cell interaction; a dashed edge marks a window-clipped
+    // boundary ("continues beyond the window").
+    let overlays_id = grid_id.clone();
+    let overlays = move || {
+        let ws = workspace.get();
+        let Some(grid) = ws.grids.get(&overlays_id) else {
+            return Vec::new();
+        };
+        let mut boxes: Vec<AnyView> = Vec::new();
+        for table in &grid.overlays.tables {
+            if let Some(header) = &table.header_rect {
+                let style = format!(
+                    "{}background:rgba(59,125,216,0.12);",
+                    overlay_box_style(header, "1px solid #3b7dd8", "1px dashed #3b7dd8")
+                );
+                boxes.push(
+                    view! {
+                        <div class="dtc-grid__overlay dtc-grid__overlay--table-header" style=style></div>
+                    }
+                    .into_any(),
+                );
+            }
+            let style = overlay_box_style(
+                &table.table_range,
+                "2px solid #3b7dd8",
+                "1px dashed #3b7dd8",
+            );
+            let label = table.table_name.clone();
+            boxes.push(
+                view! {
+                    <div class="dtc-grid__overlay dtc-grid__overlay--table" style=style title=label></div>
+                }
+                .into_any(),
+            );
+        }
+        for region in &grid.overlays.merged {
+            let style = overlay_box_style(&region.rect, "1px solid #9a6b2f", "1px dashed #9a6b2f");
+            boxes.push(
+                view! { <div class="dtc-grid__overlay dtc-grid__overlay--merged" style=style></div> }
+                    .into_any(),
+            );
+        }
+        for spill in &grid.overlays.spills {
+            let (style, class) = if spill.blocked {
+                (
+                    format!(
+                        "{}background:rgba(192,57,43,0.10);",
+                        overlay_box_style(&spill.extent, "2px solid #c0392b", "1px dashed #c0392b")
+                    ),
+                    "dtc-grid__overlay dtc-grid__overlay--spill-blocked",
+                )
+            } else {
+                (
+                    format!(
+                        "{}background:rgba(58,138,58,0.08);",
+                        overlay_box_style(
+                            &spill.extent,
+                            "1px dashed #3a8a3a",
+                            "1px dashed #3a8a3a"
+                        )
+                    ),
+                    "dtc-grid__overlay dtc-grid__overlay--spill",
+                )
+            };
+            boxes.push(view! { <div class=class style=style></div> }.into_any());
+        }
+        boxes
+    };
+
     // Each scroll tick re-scopes the window. Coalescing a scroll storm into the
     // latest window (like EditContentDeferred in the worker proxy) is the
     // documented refinement; the read path dispatches per event.
@@ -955,6 +1047,7 @@ fn grid_surface(
                 style=format!("position:relative;height:{canvas_height}px;width:{canvas_width}px;")
             >
                 {cells}
+                {overlays}
             </div>
         </div>
     }

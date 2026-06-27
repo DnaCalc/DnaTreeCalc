@@ -60,6 +60,8 @@ fn dispatch_set_grid_interest_scopes_projection_and_streams_grid_changed() {
                 GridAuthoredCell::Literal(CalcValue::number(5.0)),
             ),
         ],
+        table_overlays: Vec::new(),
+        merged_regions: Vec::new(),
     };
     let sheet = NodeId::new("Sheet1");
     session.set_node_grid(&sheet, seed).unwrap();

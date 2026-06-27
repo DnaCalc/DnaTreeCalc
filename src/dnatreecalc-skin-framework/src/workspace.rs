@@ -772,9 +772,99 @@ pub struct GridProjection {
     /// The recalc epoch this projection reflects (the max cell value epoch); a
     /// client pulls "changes since" by comparing against it.
     pub projection_epoch: u64,
+    /// Read-only overlay descriptors (tables, spills, merged regions) clipped to
+    /// the viewed window. A forward-compatible bundle: a new family is a new
+    /// field that older mirrors ignore.
+    #[serde(default, skip_serializing_if = "GridOverlayBundle::is_empty")]
+    pub overlays: GridOverlayBundle,
+    /// Bumped whenever the window-clipped overlay set changes, independently of
+    /// the cell value epochs.
+    #[serde(default)]
+    pub overlay_epoch: u64,
     /// True when the permanent-pair differential found no mismatch for this view
     /// (the optimized and reference grid engines agreed).
     pub differential_clean: bool,
+}
+
+/// The window-clipped, read-only overlay descriptors for a [`GridProjection`].
+/// A forward-compatible bundle of named vectors: a new overlay family is added
+/// as a new `#[serde(default)]` field that older mirrors deserialize as empty.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GridOverlayBundle {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tables: Vec<GridTableOverlayDescriptor>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub spills: Vec<GridSpillOverlayDescriptor>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub merged: Vec<GridMergedOverlayDescriptor>,
+}
+
+impl GridOverlayBundle {
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.tables.is_empty() && self.spills.is_empty() && self.merged.is_empty()
+    }
+}
+
+/// An overlay rectangle in absolute 1-based grid coordinates, clipped to the
+/// viewed window. Each `clipped_*` flag records whether that edge was cut by the
+/// window (so a renderer can draw a "continues beyond the window" affordance
+/// rather than a hard border).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GridOverlayRect {
+    pub top_row: u32,
+    pub left_col: u32,
+    pub bottom_row: u32,
+    pub right_col: u32,
+    pub clipped_top: bool,
+    pub clipped_left: bool,
+    pub clipped_bottom: bool,
+    pub clipped_right: bool,
+}
+
+/// One column band of a table overlay, clipped to the viewed window.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GridTableColumnBand {
+    pub column_id: String,
+    pub column_name: String,
+    pub ordinal: u32,
+    pub data_rect: GridOverlayRect,
+}
+
+/// A structured-table overlay descriptor (geometry + identity), clipped to the
+/// viewed window. When the grid table maps to a shared workspace table node, it
+/// points at that canonical [`TableProjection`] by key (`table_node_key`) rather
+/// than duplicating its rows; `None` when no such linkage exists yet.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GridTableOverlayDescriptor {
+    pub table_id: String,
+    pub table_name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub table_node_key: Option<NodeKey>,
+    pub table_range: GridOverlayRect,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub header_rect: Option<GridOverlayRect>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub totals_rect: Option<GridOverlayRect>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub columns: Vec<GridTableColumnBand>,
+}
+
+/// A spilled-array overlay descriptor: the (unclipped) anchor cell that produced
+/// the spill, the window-clipped extent, and whether the spill is blocked
+/// (`#SPILL!`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GridSpillOverlayDescriptor {
+    pub anchor_row: u32,
+    pub anchor_col: u32,
+    pub extent: GridOverlayRect,
+    pub blocked: bool,
+}
+
+/// A merged-region overlay descriptor, clipped to the viewed window.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GridMergedOverlayDescriptor {
+    pub rect: GridOverlayRect,
 }
 
 /// One computed grid cell in a windowed [`GridProjection`].
