@@ -27,7 +27,7 @@ use std::sync::Arc;
 
 use dnatreecalc_skin_framework::{
     ATLAS_SPINE_CSS, ActiveSelectionDetailProjection, Dispatcher,
-    FormulaReferenceInsertionProjection, FormulaReferenceInsertionTarget, KeyChord,
+    FormulaReferenceInsertionProjection, FormulaReferenceInsertionTarget, GridProjection, KeyChord,
     KeybindingRegistry, NodeId, NodeKey, NodeView, SharedStateOrigin, SkinCapabilities,
     SkinCategory, SkinContext, SkinHandle, SkinId, SkinManifest, SkinState, SkinVerb,
     TableCellEditabilityProjection, TableCellProjection, TableCellRegionProjection,
@@ -35,6 +35,7 @@ use dnatreecalc_skin_framework::{
     WorkspaceState, calc_state_class, provenance_tint, selection_mode_class,
 };
 use leptos::prelude::*;
+use leptos::wasm_bindgen::JsCast;
 use serde::{Deserialize, Serialize};
 
 use crate::spine_widgets::{
@@ -175,16 +176,15 @@ fn sheet_commit_intent(
         return None;
     };
     match (cell.region, cell.editability) {
-        (TableCellRegionProjection::Body, TableCellEditabilityProjection::DirectInput) => {
-            cell.row_id
-                .clone()
-                .map(|row_id| WorkspaceIntent::EditTableCell {
-                    table: cell.table.clone(),
-                    row_id,
-                    column_id: cell.column_id.clone(),
-                    content,
-                })
-        }
+        (TableCellRegionProjection::Body, TableCellEditabilityProjection::DirectInput) => cell
+            .row_id
+            .clone()
+            .map(|row_id| WorkspaceIntent::EditTableCell {
+                table: cell.table.clone(),
+                row_id,
+                column_id: cell.column_id.clone(),
+                content,
+            }),
         (TableCellRegionProjection::Body, TableCellEditabilityProjection::FormulaBacked) => {
             Some(WorkspaceIntent::EditTableColumnFormula {
                 table: cell.table.clone(),
@@ -442,8 +442,13 @@ fn SheetView(cx: SkinContext<SheetState>) -> impl IntoView {
         };
         let content = bar_text.get_untracked();
         if let ActiveSelectionDetailProjection::Node(node) = &detail_now {
-            let receipt =
-                commit_content_edit(&bar_dispatch, shared, &bar_origin, node.node.clone(), content);
+            let receipt = commit_content_edit(
+                &bar_dispatch,
+                shared,
+                &bar_origin,
+                node.node.clone(),
+                content,
+            );
             if receipt.accepted {
                 bar_editing.set(false);
                 rejection.set(None);
@@ -496,9 +501,8 @@ fn SheetView(cx: SkinContext<SheetState>) -> impl IntoView {
     });
     let bar_badge = Memo::new(move |_| detail.get().as_ref().and_then(editability_badge));
     let bar_disabled = Memo::new(move |_| bar_is_read_only(detail.get().as_ref()));
-    let arm_enabled = Memo::new(move |_| {
-        matches!(detail.get(), Some(ActiveSelectionDetailProjection::Node(_)))
-    });
+    let arm_enabled =
+        Memo::new(move |_| matches!(detail.get(), Some(ActiveSelectionDetailProjection::Node(_))));
 
     // Row clicks: plain select, or — when point-mode is armed — insert a
     // reference to the clicked node into the edited node's bar buffer at the
@@ -513,8 +517,7 @@ fn SheetView(cx: SkinContext<SheetState>) -> impl IntoView {
                 }
                 return;
             }
-            let Some(ActiveSelectionDetailProjection::Node(edited)) = detail.get_untracked()
-            else {
+            let Some(ActiveSelectionDetailProjection::Node(edited)) = detail.get_untracked() else {
                 insert_armed.set(false);
                 return;
             };
@@ -674,9 +677,16 @@ fn SheetView(cx: SkinContext<SheetState>) -> impl IntoView {
             })
             .collect::<Vec<_>>();
 
+        let grids = ws
+            .grids
+            .iter()
+            .map(|(grid_id, grid)| grid_surface_view(grid_id.clone(), grid, body_dispatch.clone()))
+            .collect::<Vec<_>>();
+
         view! {
             <div class="dtc-sheet-rows">{rows}</div>
             {tables}
+            {grids}
         }
     };
 
@@ -821,6 +831,105 @@ fn node_row_view(
                 }.into_any())}
             </div>
             <div class="dtc-sheet-row__value">{value_view}</div>
+        </div>
+    }
+    .into_any()
+}
+
+/// Fixed grid cell metrics for the windowed sheet surface. Per-cell sizing and
+/// text layout are Phase 5; the read path renders a uniform cell box.
+const GRID_ROW_HEIGHT_PX: f64 = 22.0;
+const GRID_COL_WIDTH_PX: f64 = 84.0;
+/// Cap the virtual scroll canvas so a full Excel-extent sheet does not blow past
+/// the browser's max element height; the window math still clamps to real bounds.
+const GRID_VIRTUAL_CELL_CAP: u32 = 100_000;
+
+/// The 1-based inclusive interest window a scroll offset exposes over a uniform
+/// grid, clamped to the grid bounds with a one-cell trailing overscan. Pure, so
+/// the scroll-to-window mapping is unit-testable without a DOM.
+fn grid_interest_window(
+    scroll_top: f64,
+    scroll_left: f64,
+    viewport_height: f64,
+    viewport_width: f64,
+    max_rows: u32,
+    max_cols: u32,
+) -> (u32, u32, u32, u32) {
+    let axis = |offset: f64, viewport: f64, cell: f64, max: u32| -> (u32, u32) {
+        let max = max.max(1);
+        let first = (offset / cell).floor().max(0.0) as u32 + 1;
+        let visible = (viewport / cell).ceil() as u32 + 1;
+        let top = first.min(max);
+        let bottom = top.saturating_add(visible).min(max).max(top);
+        (top, bottom)
+    };
+    let (top_row, bottom_row) = axis(scroll_top, viewport_height, GRID_ROW_HEIGHT_PX, max_rows);
+    let (left_col, right_col) = axis(scroll_left, viewport_width, GRID_COL_WIDTH_PX, max_cols);
+    (top_row, left_col, bottom_row, right_col)
+}
+
+/// A windowed grid surface for a grid-backed sheet node: the interest cells are
+/// positioned on a virtual canvas the size of the (capped) sheet, and scrolling
+/// dispatches [`WorkspaceIntent::SetGridInterest`] so OxCalc re-scopes the
+/// projection to the newly visible window ("viewing is subscribing").
+fn grid_surface_view(
+    grid_id: NodeId,
+    grid: &GridProjection,
+    dispatch: Arc<dyn Dispatcher>,
+) -> AnyView {
+    let canvas_height = f64::from(grid.max_rows.min(GRID_VIRTUAL_CELL_CAP)) * GRID_ROW_HEIGHT_PX;
+    let canvas_width = f64::from(grid.max_cols.min(GRID_VIRTUAL_CELL_CAP)) * GRID_COL_WIDTH_PX;
+    let cells = grid
+        .cells
+        .iter()
+        .map(|cell| {
+            let top = f64::from(cell.row.saturating_sub(1)) * GRID_ROW_HEIGHT_PX;
+            let left = f64::from(cell.col.saturating_sub(1)) * GRID_COL_WIDTH_PX;
+            let style = format!(
+                "position:absolute;top:{top}px;left:{left}px;width:{GRID_COL_WIDTH_PX}px;height:{GRID_ROW_HEIGHT_PX}px;"
+            );
+            let value = render_value(&cell.value);
+            view! { <div class="dtc-grid__cell" style=style>{value}</div> }
+        })
+        .collect::<Vec<_>>();
+
+    let max_rows = grid.max_rows;
+    let max_cols = grid.max_cols;
+    // Each scroll tick re-scopes the window. Coalescing a scroll storm into the
+    // latest window (like EditContentDeferred in the worker proxy) is the
+    // documented refinement; the read path dispatches per event.
+    let on_scroll = move |ev: leptos::ev::Event| {
+        let Some(target) = ev.target() else {
+            return;
+        };
+        let Ok(element) = target.dyn_into::<leptos::web_sys::Element>() else {
+            return;
+        };
+        let (top_row, left_col, bottom_row, right_col) = grid_interest_window(
+            f64::from(element.scroll_top()),
+            f64::from(element.scroll_left()),
+            f64::from(element.client_height()),
+            f64::from(element.client_width()),
+            max_rows,
+            max_cols,
+        );
+        dispatch.dispatch(WorkspaceIntent::SetGridInterest {
+            grid: grid_id.clone(),
+            top_row,
+            left_col,
+            bottom_row,
+            right_col,
+        });
+    };
+
+    view! {
+        <div class="dtc-grid" aria-label="Grid surface" on:scroll=on_scroll>
+            <div
+                class="dtc-grid__canvas"
+                style=format!("position:relative;height:{canvas_height}px;width:{canvas_width}px;")
+            >
+                {cells}
+            </div>
         </div>
     }
     .into_any()
@@ -1110,6 +1219,18 @@ const SHEET_CSS: &str = r#"
 .dtc-sheet__body { display: flex; flex: 1; min-height: 0; }
 .dtc-sheet__scroll { flex: 1; overflow: auto; padding: 8px 12px; min-width: 0; }
 
+.dtc-grid {
+  position: relative; overflow: auto; height: 320px; margin: 8px 0;
+  border: 1px solid var(--dtc-border, #ccc); background: var(--dtc-surface);
+}
+.dtc-grid__cell {
+  box-sizing: border-box; padding: 2px 4px; overflow: hidden;
+  white-space: nowrap; text-overflow: ellipsis;
+  border-right: 1px solid var(--dtc-border, #eee);
+  border-bottom: 1px solid var(--dtc-border, #eee);
+  font-variant-numeric: tabular-nums;
+}
+
 .dtc-sheet-bar {
   display: flex; align-items: center; gap: 8px; padding: 6px 12px;
   border-bottom: 1px solid var(--dtc-border-muted); background: var(--dtc-surface-subtle);
@@ -1211,6 +1332,24 @@ mod tests {
     };
     use std::collections::BTreeMap;
 
+    #[test]
+    fn grid_interest_window_maps_scroll_to_clamped_bounds() {
+        // Top-left, a 220x420 viewport over uniform 22x84 cells: ~10 rows and
+        // ~5 cols visible, plus a one-cell trailing overscan.
+        assert_eq!(
+            grid_interest_window(0.0, 0.0, 220.0, 420.0, 1000, 1000),
+            (1, 1, 12, 7)
+        );
+        // Scrolling down one viewport advances the first row to 11.
+        let (top, _, _, _) = grid_interest_window(220.0, 0.0, 220.0, 420.0, 1000, 1000);
+        assert_eq!(top, 11);
+        // The window clamps to a small grid's real bounds.
+        assert_eq!(
+            grid_interest_window(0.0, 0.0, 220.0, 420.0, 4, 3),
+            (1, 1, 4, 3)
+        );
+    }
+
     fn node(key: &str, path: &str) -> NodeView {
         NodeView {
             key: NodeKey::new(key),
@@ -1247,7 +1386,12 @@ mod tests {
         }
     }
 
-    fn cell(row_id: Option<&str>, column_id: &str, key: &str, display: &str) -> TableCellProjection {
+    fn cell(
+        row_id: Option<&str>,
+        column_id: &str,
+        key: &str,
+        display: &str,
+    ) -> TableCellProjection {
         TableCellProjection {
             row_id: row_id.map(str::to_string),
             column_id: column_id.to_string(),
@@ -1355,13 +1499,15 @@ mod tests {
             row_id: row_id.map(str::to_string),
             column_id: column_id.to_string(),
         });
-        ws.active_table_cell_detail(&selection).expect("cell detail")
+        ws.active_table_cell_detail(&selection)
+            .expect("cell detail")
     }
 
     #[test]
     fn selection_label_names_nodes_and_cells() {
         assert_eq!(selection_label(&node_detail()), "A");
-        let body = ActiveSelectionDetailProjection::TableCell(cell_detail(Some("row:1"), "col:qty"));
+        let body =
+            ActiveSelectionDetailProjection::TableCell(cell_detail(Some("row:1"), "col:qty"));
         assert_eq!(selection_label(&body), "Items!row:1:col:qty");
         let totals = ActiveSelectionDetailProjection::TableCell(cell_detail(None, "col:qty"));
         assert_eq!(selection_label(&totals), "Items!totals:col:qty");
