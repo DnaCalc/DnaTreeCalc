@@ -299,6 +299,13 @@ impl HostDispatcher {
                     .set(SelectionState::with_table_cell(table_cell));
                 IntentReceipt::accepted().with_delta(self.publish_unchanged_delta())
             }
+            WorkspaceIntent::SetGridInterest {
+                grid,
+                top_row,
+                left_col,
+                bottom_row,
+                right_col,
+            } => self.apply_grid_interest(&grid, top_row, left_col, bottom_row, right_col),
             WorkspaceIntent::EditFormula { node, content } => self
                 .apply_workspace_transaction_edit(|session| {
                     session.edit_formula_transaction(
@@ -1179,6 +1186,47 @@ impl HostDispatcher {
                 transaction_id: Some(transaction.transaction_id),
             })
         })
+    }
+
+    /// Scope a grid's projection to a visible window and republish ("viewing is
+    /// subscribing"). Read-shaping only: it runs no transaction and advances no
+    /// revision; the projection diff emits the GridChanged delta the mirror
+    /// patches in place.
+    fn apply_grid_interest(
+        &self,
+        grid: &NodeId,
+        top_row: u32,
+        left_col: u32,
+        bottom_row: u32,
+        right_col: u32,
+    ) -> IntentReceipt {
+        let session_id = match self.active_session_id() {
+            Ok(id) => id,
+            Err(error) => return self.reject_current(error),
+        };
+        let projected = HOST_SESSIONS.with(|sessions| -> Result<WorkspaceState, IntentError> {
+            let session = sessions
+                .borrow()
+                .get(&session_id)
+                .cloned()
+                .ok_or_else(|| host_failure("workspace session handle is not available"))?;
+            let mut session = session
+                .lock()
+                .map_err(|_| host_failure("workspace session mutex poisoned"))?;
+            session
+                .register_grid_interest(grid, top_row, left_col, bottom_row, right_col)
+                .map_err(intent_error_from_session)?;
+            session.workspace_state().map_err(intent_error_from_session)
+        });
+        match projected {
+            Ok(mut after) => {
+                let before = self.workspace.map(|workspace| workspace.get_untracked());
+                after.clipboard = before.as_ref().and_then(|state| state.clipboard.clone());
+                let (_, delta) = self.publish_projection_state(before.as_ref(), after, false);
+                IntentReceipt::accepted().with_delta(delta)
+            }
+            Err(error) => self.reject_current(error),
+        }
     }
 
     fn apply_candidate_projection_edit(
@@ -2374,6 +2422,17 @@ fn workspace_delta(
             .any(|after| after.id == sweep.id)
         {
             changes.push(WorkspaceDeltaChange::SweepRemoved(sweep.id.clone()));
+        }
+    }
+
+    // A grid-backed node whose windowed projection changed (recompute, or a moved
+    // interest window) streams as a complete-replacement GridChanged the mirror
+    // patches in place. (Grid *removal* has no intent in the read path yet; when a
+    // clear-grid verb lands it must emit a removal/resync, since GridChanged alone
+    // cannot evict a grid from the mirror.)
+    for (node_id, grid) in &after.grids {
+        if before.grids.get(node_id) != Some(grid) {
+            changes.push(WorkspaceDeltaChange::GridChanged(grid.clone()));
         }
     }
 

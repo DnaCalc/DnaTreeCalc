@@ -491,6 +491,17 @@ pub enum WorkspaceIntent {
     SetPersona {
         persona: crate::permissions::Persona,
     },
+    /// Register the visible cell window of a grid-backed sheet node ("viewing is
+    /// subscribing"): the host scopes OxCalc's grid projection to this row/column
+    /// rectangle and streams back the windowed cells. Read-shaping only -- it does
+    /// not mutate the document or advance the revision.
+    SetGridInterest {
+        grid: NodeId,
+        top_row: u32,
+        left_col: u32,
+        bottom_row: u32,
+        right_col: u32,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -937,6 +948,7 @@ impl Dispatcher for InMemoryDispatcher {
             | WorkspaceIntent::NavigateRevision { .. }
             | WorkspaceIntent::Undo
             | WorkspaceIntent::Redo
+            | WorkspaceIntent::SetGridInterest { .. }
             | WorkspaceIntent::SetPersona { .. } => IntentReceipt::accepted(),
         }
     }
