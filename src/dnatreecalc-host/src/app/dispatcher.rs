@@ -2209,6 +2209,9 @@ fn intent_error_from_session(error: TreeWorkspaceSessionError) -> IntentError {
         TreeWorkspaceSessionError::ProjectionOutOfSync { node } => {
             IntentError::ProjectionOutOfSync { node }
         }
+        TreeWorkspaceSessionError::GridInterest { node, detail } => {
+            host_failure(format!("grid interest for {node}: {detail}"))
+        }
         TreeWorkspaceSessionError::OxCalc(
             oxcalc_core::consumer::OxCalcTreeContextError::UnknownCandidate { handle },
         ) => IntentError::UnknownCandidate {

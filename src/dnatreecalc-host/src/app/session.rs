@@ -12,8 +12,8 @@ use dnatreecalc_skin_framework::{
     FormulaBindPreviewDiagnosticProjection, FormulaBindPreviewDiagnosticStage,
     FormulaBindPreviewInputKind, FormulaBindPreviewProfileViolationKindProjection,
     FormulaBindPreviewProfileViolationProjection, FormulaBindPreviewProjection,
-    FormulaReferenceInsertionProjection, FormulaReferenceInsertionTarget,
-    InitialNodeContentProjection, InvalidationReasonProjection,
+    FormulaReferenceInsertionProjection, FormulaReferenceInsertionTarget, GridCellProjection,
+    GridProjection, InitialNodeContentProjection, InvalidationReasonProjection,
     MutationImpactBlockedReasonProjection, MutationImpactIntentProjection,
     MutationImpactProjection, NameCollisionProjection, NodeAttributePatch, NodeCalcStateProjection,
     NodeContentKind as FrameworkContentKind, NodeId, NodeInvalidationProjection, NodeKey,
@@ -44,11 +44,13 @@ use oxcalc_core::consumer::{
     OxCalcTreePreviewMutation, OxCalcTreeRuntimePolicy, OxCalcTreeWorkspaceCreate,
     OxCalcTreeWorkspaceId, OxCalcTreeWorkspaceSnapshot, TransactionRecalcPolicy,
 };
+use oxcalc_core::consumer::{GridBackingSeed, GridInterestRegions, OxCalcTreeGridView};
 use oxcalc_core::coordinator::{RuntimeEffect, RuntimeEffectFamily};
 use oxcalc_core::dependency::{
     DependencyDescriptor, DependencyDescriptorKind, DependencyGraph, InvalidationReasonKind,
     TreeReferenceCollectionDependency, TreeReferenceCollectionFamily,
 };
+use oxcalc_core::grid::geometry::GridRect;
 use oxcalc_core::recalc::NodeCalcState;
 use oxcalc_core::recalc::{OverlayEntry, OverlayKind};
 use oxcalc_core::structural::TreeNodeId;
@@ -5279,6 +5281,20 @@ impl TreeWorkspaceSession {
             .into_iter()
             .map(|(tree_node_id, table)| Ok((self.node_id_for_tree_node(tree_node_id)?, table)))
             .collect::<Result<BTreeMap<_, _>, TreeWorkspaceSessionError>>()?;
+        // Project each grid-backed node's windowed grid view ("viewing is
+        // subscribing": only the cells inside the registered interest are present).
+        let mut grids = BTreeMap::new();
+        for tree_node_id in self.context.grid_backed_node_ids(&self.workspace_id)? {
+            let Some(view) = self.context.grid_view(&self.workspace_id, tree_node_id)? else {
+                continue;
+            };
+            let node_id = self.node_id_for_tree_node(tree_node_id)?;
+            let node_key = node_key_for_tree_node(tree_node_id);
+            grids.insert(
+                node_id.clone(),
+                grid_projection_for(&view, node_id, node_key),
+            );
+        }
         let dependencies = match self.last_outcome.as_ref() {
             Some(outcome) => self.dependency_graph_projection(&outcome.dependency_graph)?,
             // Between calculation runs (structural edits, candidate commit,
@@ -5363,13 +5379,95 @@ impl TreeWorkspaceSession {
             nodes,
             dependencies,
             tables,
-            // Grid projections are wired into workspace_state in bead 3.6.
-            grids: BTreeMap::new(),
+            grids,
             clipboard: None,
             diagnostics,
         };
         state.series = state.series_for_keys(&state.key_order);
         Ok(state)
+    }
+
+    /// Attach a grid backing to a sheet node (the model equivalent of giving a
+    /// node a grid the way another node carries a table). The grid then projects
+    /// through `workspace_state`. Returns the windowed projection of the freshly
+    /// attached grid.
+    pub fn set_node_grid(
+        &mut self,
+        node: &NodeId,
+        seed: GridBackingSeed,
+    ) -> Result<GridProjection, TreeWorkspaceSessionError> {
+        let tree_node_id = self.tree_node_id(node.as_str())?;
+        self.context
+            .set_node_grid(&self.workspace_id, tree_node_id, seed)?;
+        self.project_grid(tree_node_id, node)
+    }
+
+    /// Register the client's visible cell window on a grid (the "viewing is
+    /// subscribing" pull): OxCalc scopes the grid's cached projection to the
+    /// window, and the returned [`GridProjection`] carries only those cells. The
+    /// grid's workbook/sheet coordinates are read back from its current view, so
+    /// the caller only supplies a row/column rectangle.
+    pub fn register_grid_interest(
+        &mut self,
+        node: &NodeId,
+        top_row: u32,
+        left_col: u32,
+        bottom_row: u32,
+        right_col: u32,
+    ) -> Result<GridProjection, TreeWorkspaceSessionError> {
+        let tree_node_id = self.tree_node_id(node.as_str())?;
+        let view = self
+            .context
+            .grid_view(&self.workspace_id, tree_node_id)?
+            .ok_or_else(|| TreeWorkspaceSessionError::ProjectionOutOfSync {
+                node: format!("grid {node}"),
+            })?;
+        let regions = match view.cells.first() {
+            // Derive the sheet's workbook/sheet ids from any populated cell, so
+            // the window rectangle lands in the grid's own coordinate space.
+            Some(cell) => {
+                let rect = GridRect::new(
+                    cell.address.workbook_id.clone(),
+                    cell.address.sheet_id.clone(),
+                    top_row,
+                    left_col,
+                    bottom_row,
+                    right_col,
+                    view.bounds,
+                )
+                .map_err(|error| TreeWorkspaceSessionError::GridInterest {
+                    node: node.to_string(),
+                    detail: error.to_string(),
+                })?;
+                GridInterestRegions {
+                    viewport: Some(rect),
+                    monitored: Vec::new(),
+                }
+            }
+            // An empty grid has nothing to scope; leave interest unset.
+            None => GridInterestRegions::default(),
+        };
+        self.context
+            .register_grid_interest(&self.workspace_id, tree_node_id, regions)?;
+        self.project_grid(tree_node_id, node)
+    }
+
+    fn project_grid(
+        &self,
+        tree_node_id: TreeNodeId,
+        node: &NodeId,
+    ) -> Result<GridProjection, TreeWorkspaceSessionError> {
+        let view = self
+            .context
+            .grid_view(&self.workspace_id, tree_node_id)?
+            .ok_or_else(|| TreeWorkspaceSessionError::ProjectionOutOfSync {
+                node: format!("grid {node}"),
+            })?;
+        Ok(grid_projection_for(
+            &view,
+            node.clone(),
+            node_key_for_tree_node(tree_node_id),
+        ))
     }
 
     pub fn dependency_members_for(
@@ -7255,6 +7353,8 @@ pub enum TreeWorkspaceSessionError {
     EmptySweep { sweep_id: String },
     #[error("OxCalc context projection is out of sync for {node}")]
     ProjectionOutOfSync { node: String },
+    #[error("grid interest window for {node} is invalid: {detail}")]
+    GridInterest { node: String, detail: String },
 }
 
 fn table_snapshot_from_fixture(
@@ -7591,6 +7691,39 @@ fn comparative_values_for_candidate(
             (projected_key, value.clone())
         })
         .collect()
+}
+
+/// Project an OxCalc grid view (windowed, interest-scoped) into the Skin IR
+/// [`GridProjection`]: each readout's `CalcValue` becomes a render
+/// `NodeValueProjection`, the sheet bounds size the viewport, and the differential
+/// mismatch set collapses to a clean flag. Format is Phase 4, so cells carry no
+/// effective format yet.
+fn grid_projection_for(
+    view: &OxCalcTreeGridView,
+    grid_node_id: NodeId,
+    grid_node_key: NodeKey,
+) -> GridProjection {
+    let cells = view
+        .cells
+        .iter()
+        .map(|cell| GridCellProjection {
+            row: cell.address.row,
+            col: cell.address.col,
+            value: calc_value_projection(&cell.value, None),
+            value_epoch: cell.value_epoch,
+        })
+        .collect::<Vec<_>>();
+    let projection_epoch = cells.iter().map(|cell| cell.value_epoch).max().unwrap_or(0);
+    GridProjection {
+        grid_node_key,
+        grid_node_id,
+        grid_id: view.grid_id.clone(),
+        max_rows: view.bounds.max_rows,
+        max_cols: view.bounds.max_cols,
+        cells,
+        projection_epoch,
+        differential_clean: view.differential_mismatches.is_empty(),
+    }
 }
 
 fn value_projection_for(
@@ -9191,6 +9324,88 @@ mod tests {
 
         assert_eq!(value.display_text(), "#VALUE!");
         assert!(matches!(value, NodeValueProjection::Error(text) if text == "#VALUE!"));
+    }
+
+    #[test]
+    fn session_projects_grid_backing_and_scopes_to_interest_window() {
+        use oxcalc_core::consumer::GridBackingSeed;
+        use oxcalc_core::grid::authored::{GridAuthoredCell, GridFormulaCell};
+        use oxcalc_core::grid::coords::{ExcelGridBounds, ExcelGridCellAddress};
+        use oxfunc_core::value::CalcValue;
+
+        let fixture = WorkspaceFixture {
+            schema_version: "treecalc-workspace-v1".to_string(),
+            workspace_id: "grid-projection".to_string(),
+            description: None,
+            profile: None,
+            nodes: vec![WorkspaceNodeFixture {
+                node_id: "Sheet1".to_string(),
+                formula: String::new(),
+                is_meta: false,
+                table: None,
+            }],
+        };
+        let model = WorkspaceModel::try_from(fixture).unwrap();
+        let mut session = TreeWorkspaceSession::from_model(&model).unwrap();
+        session.recalculate().unwrap();
+
+        let bounds = ExcelGridBounds::strict_excel();
+        let address = |row, col| ExcelGridCellAddress::new("book:gp", "sheet:gp", row, col);
+        let seed = GridBackingSeed {
+            workbook_id: "book:gp".to_string(),
+            sheet_id: "sheet:gp".to_string(),
+            bounds,
+            authored: vec![
+                (
+                    address(1, 1),
+                    GridAuthoredCell::Literal(CalcValue::number(7.0)),
+                ),
+                (
+                    address(1, 2),
+                    GridAuthoredCell::Formula(GridFormulaCell::new(
+                        "=A1*3",
+                        "excel.grid.v1:cell:R[0]C[-1]*3",
+                    )),
+                ),
+                (
+                    address(2, 1),
+                    GridAuthoredCell::Literal(CalcValue::number(5.0)),
+                ),
+                (
+                    address(3, 1),
+                    GridAuthoredCell::Literal(CalcValue::number(9.0)),
+                ),
+            ],
+        };
+
+        // Attaching the grid projects all authored cells, and the grid appears in
+        // the workspace projection keyed by its sheet node.
+        let sheet = NodeId::new("Sheet1");
+        let full = session.set_node_grid(&sheet, seed).unwrap();
+        assert_eq!(full.cells.len(), 4);
+        assert_eq!(full.max_rows, bounds.max_rows);
+        assert!(full.differential_clean);
+        assert!(
+            session
+                .workspace_state()
+                .unwrap()
+                .grids
+                .contains_key(&sheet)
+        );
+
+        // Registering interest in row 1 (A1:B1) scopes the projection to the
+        // window -- the off-window literals in rows 2 and 3 drop out.
+        let windowed = session.register_grid_interest(&sheet, 1, 1, 1, 2).unwrap();
+        assert_eq!(windowed.cells.len(), 2);
+        assert!(windowed.cells.iter().all(|cell| cell.row == 1));
+        let b1 = windowed
+            .cells
+            .iter()
+            .find(|cell| cell.col == 2)
+            .expect("B1 is in the window");
+        assert!(
+            matches!(&b1.value, NodeValueProjection::Number { display, .. } if display == "21")
+        );
     }
 
     #[test]
