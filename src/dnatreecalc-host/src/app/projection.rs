@@ -112,6 +112,9 @@ pub fn workspace_state_from_model(model: &WorkspaceModel) -> WorkspaceState {
         nodes,
         dependencies: DependencyGraphProjection::default(),
         tables: BTreeMap::new(),
+        // Grid projections are populated by the live session (bead 3.6); the
+        // model-derived projection has no grid-backed sheet nodes yet.
+        grids: BTreeMap::new(),
         clipboard: None,
         diagnostics: Vec::new(),
     }

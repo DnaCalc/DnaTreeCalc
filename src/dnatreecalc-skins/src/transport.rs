@@ -176,11 +176,7 @@ fn pulse_change_summary(change: &WorkspaceDeltaChange) -> String {
     match change {
         WorkspaceDeltaChange::FullReset => "full reset".to_string(),
         WorkspaceDeltaChange::Structural(delta) => {
-            let mut line = format!(
-                "structure: +{} -{}",
-                delta.added.len(),
-                delta.removed.len()
-            );
+            let mut line = format!("structure: +{} -{}", delta.added.len(), delta.removed.len());
             if !delta.changed.is_empty() {
                 line.push_str(&format!(" ~{}", delta.changed.len()));
             }
@@ -213,6 +209,9 @@ fn pulse_change_summary(change: &WorkspaceDeltaChange) -> String {
         WorkspaceDeltaChange::ScenarioRemoved(id) => format!("scenario {id} removed"),
         WorkspaceDeltaChange::SweepChanged(sweep) => format!("sweep {} changed", sweep.id),
         WorkspaceDeltaChange::SweepRemoved(id) => format!("sweep {id} removed"),
+        WorkspaceDeltaChange::GridChanged(grid) => {
+            format!("grid {} updated ({} cells)", grid.grid_id, grid.cells.len())
+        }
     }
 }
 
@@ -438,10 +437,7 @@ fn TransportView(cx: SkinContext<TransportState>) -> impl IntoView {
                 } else {
                     None
                 };
-                let candidate_count = basis_counts
-                    .get(&entry.revision_id)
-                    .copied()
-                    .unwrap_or(0);
+                let candidate_count = basis_counts.get(&entry.revision_id).copied().unwrap_or(0);
                 timeline_card_view(
                     entry,
                     snapshot_ids,
@@ -714,15 +710,12 @@ fn TransportControls(
     state: SkinStateHandle<TransportState>,
     dispatch: Arc<dyn Dispatcher>,
 ) -> impl IntoView {
-    let catalog = Memo::new(move |_| {
-        workspace.with(|ws| selection.with(|sel| ws.command_catalog(sel)))
-    });
-    let undo_meta = Memo::new(move |_| {
-        catalog.with(|c| c.get(CommandIntentKindProjection::Undo).cloned())
-    });
-    let redo_meta = Memo::new(move |_| {
-        catalog.with(|c| c.get(CommandIntentKindProjection::Redo).cloned())
-    });
+    let catalog =
+        Memo::new(move |_| workspace.with(|ws| selection.with(|sel| ws.command_catalog(sel))));
+    let undo_meta =
+        Memo::new(move |_| catalog.with(|c| c.get(CommandIntentKindProjection::Undo).cloned()));
+    let redo_meta =
+        Memo::new(move |_| catalog.with(|c| c.get(CommandIntentKindProjection::Redo).cloned()));
     let here = Memo::new(move |_| {
         workspace.with(|ws| {
             (
@@ -1027,9 +1020,9 @@ mod tests {
         ])]);
         assert_eq!(pulse_line(&delta), Some("3 values changed".to_string()));
 
-        let single = delta_with(vec![WorkspaceDeltaChange::ValuesChanged(vec![value_delta(
-            "k:a",
-        )])]);
+        let single = delta_with(vec![WorkspaceDeltaChange::ValuesChanged(vec![
+            value_delta("k:a"),
+        ])]);
         assert_eq!(pulse_line(&single), Some("1 value changed".to_string()));
     }
 

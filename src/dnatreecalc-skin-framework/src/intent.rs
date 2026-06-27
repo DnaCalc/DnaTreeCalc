@@ -5,7 +5,8 @@ use crate::identity::{NodeId, NodeKey};
 use crate::selection::{SelectionState, TableCellSelection};
 use crate::workspace::{
     CalcRunProjection, CandidateProjection, ClipboardProjection, DependencyKindProjection,
-    InitialNodeContentProjection, NodeValueProjection, ScenarioProjection, SweepProjection,
+    GridProjection, InitialNodeContentProjection, NodeValueProjection, ScenarioProjection,
+    SweepProjection,
 };
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -772,6 +773,10 @@ pub enum WorkspaceDeltaChange {
     ScenarioRemoved(String),
     SweepChanged(SweepProjection),
     SweepRemoved(String),
+    /// A grid-backed node's windowed projection changed (cells recomputed, or the
+    /// interest window moved). Carries the complete new windowed grid projection,
+    /// so the mirror applies it in place.
+    GridChanged(GridProjection),
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]

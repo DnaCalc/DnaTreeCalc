@@ -5363,6 +5363,8 @@ impl TreeWorkspaceSession {
             nodes,
             dependencies,
             tables,
+            // Grid projections are wired into workspace_state in bead 3.6.
+            grids: BTreeMap::new(),
             clipboard: None,
             diagnostics,
         };

@@ -136,6 +136,7 @@ pub fn change_kind(change: &WorkspaceDeltaChange) -> &'static str {
         C::ScenarioRemoved(_) => "scenario_removed",
         C::SweepChanged(_) => "sweep_changed",
         C::SweepRemoved(_) => "sweep_removed",
+        C::GridChanged(_) => "grid_changed",
     }
 }
 
@@ -158,7 +159,10 @@ pub fn is_delta_applicable(change: &WorkspaceDeltaChange) -> bool {
     use WorkspaceDeltaChange as C;
     match change {
         // Complete replacements of a whole projection field.
-        C::CalcRun(_) | C::ClipboardChanged(_) => true,
+        // GridChanged carries the entire new windowed grid projection for one
+        // node, so the mirror replaces it in place (the whole point of "viewing
+        // is subscribing" -- a grid recompute must not force a full snapshot).
+        C::CalcRun(_) | C::ClipboardChanged(_) | C::GridChanged(_) => true,
         // A UI hint only — there is no projection-state change to mirror.
         C::FormulaReferenceInserted(_) => true,
         // Key-only, partial, collection-upsert, or full-reset: the snapshot is
@@ -196,7 +200,11 @@ pub fn apply_delta(state: &mut WorkspaceState, delta: &WorkspaceDelta) -> Result
             got: delta.from_seq,
         });
     }
-    if let Some(change) = delta.changes.iter().find(|change| !is_delta_applicable(change)) {
+    if let Some(change) = delta
+        .changes
+        .iter()
+        .find(|change| !is_delta_applicable(change))
+    {
         return Err(ResyncReason::UnrepresentableChange {
             kind: change_kind(change),
         });
@@ -206,6 +214,9 @@ pub fn apply_delta(state: &mut WorkspaceState, delta: &WorkspaceDelta) -> Result
             WorkspaceDeltaChange::CalcRun(run) => state.last_run = Some(run.clone()),
             WorkspaceDeltaChange::ClipboardChanged(clipboard) => {
                 state.clipboard = clipboard.clone();
+            }
+            WorkspaceDeltaChange::GridChanged(grid) => {
+                state.grids.insert(grid.grid_node_id.clone(), grid.clone());
             }
             // FormulaReferenceInserted is a UI hint with no projection state.
             // Everything else was rejected by the applicability guard above.
@@ -288,7 +299,8 @@ mod tests {
     use crate::intent::StructuralDeltaProjection;
     use crate::workspace::{
         CalcRunProjection, CalcRunStateProjection, ClipboardOperationProjection,
-        ClipboardPayloadProjection, ClipboardProjection,
+        ClipboardPayloadProjection, ClipboardProjection, GridCellProjection, GridProjection,
+        NodeValueProjection,
     };
 
     fn sample_calc_run() -> CalcRunProjection {
@@ -316,6 +328,27 @@ mod tests {
         }
     }
 
+    fn sample_grid_projection() -> GridProjection {
+        GridProjection {
+            grid_node_key: NodeKey::new("sheet"),
+            grid_node_id: NodeId::new("Sheet1"),
+            grid_id: "book:grid:sheet:grid".to_string(),
+            max_rows: 1_048_576,
+            max_cols: 16_384,
+            cells: vec![GridCellProjection {
+                row: 1,
+                col: 1,
+                value: NodeValueProjection::Number {
+                    raw: "7".to_string(),
+                    display: "7".to_string(),
+                },
+                value_epoch: 1,
+            }],
+            projection_epoch: 1,
+            differential_clean: true,
+        }
+    }
+
     fn mirror_at(seq: u64) -> WorkspaceState {
         WorkspaceState {
             projection_seq: seq,
@@ -338,9 +371,14 @@ mod tests {
         let applicable = [
             WorkspaceDeltaChange::CalcRun(sample_calc_run()),
             WorkspaceDeltaChange::ClipboardChanged(None),
+            WorkspaceDeltaChange::GridChanged(sample_grid_projection()),
         ];
         for change in &applicable {
-            assert!(is_delta_applicable(change), "{} should apply", change_kind(change));
+            assert!(
+                is_delta_applicable(change),
+                "{} should apply",
+                change_kind(change)
+            );
         }
         let resync = [
             WorkspaceDeltaChange::FullReset,
@@ -353,7 +391,11 @@ mod tests {
             WorkspaceDeltaChange::SweepRemoved("w".to_string()),
         ];
         for change in &resync {
-            assert!(!is_delta_applicable(change), "{} should resync", change_kind(change));
+            assert!(
+                !is_delta_applicable(change),
+                "{} should resync",
+                change_kind(change)
+            );
         }
     }
 
@@ -380,6 +422,22 @@ mod tests {
     }
 
     #[test]
+    fn apply_delta_patches_grid_changed_in_place() {
+        // "Viewing is subscribing": a grid recompute streams as a GridChanged
+        // delta the mirror applies in place (no full snapshot/resync), landing
+        // the windowed projection under its sheet node and advancing the seq.
+        let mut mirror = mirror_at(7);
+        let grid = sample_grid_projection();
+        let result = apply_delta(
+            &mut mirror,
+            &delta(7, 8, vec![WorkspaceDeltaChange::GridChanged(grid.clone())]),
+        );
+        assert!(result.is_ok());
+        assert_eq!(mirror.projection_seq, 8);
+        assert_eq!(mirror.grids.get(&grid.grid_node_id), Some(&grid));
+    }
+
+    #[test]
     fn apply_delta_resyncs_on_gap_and_leaves_the_mirror_untouched() {
         let mut mirror = mirror_at(4);
         let err = apply_delta(
@@ -387,7 +445,13 @@ mod tests {
             &delta(6, 7, vec![WorkspaceDeltaChange::CalcRun(sample_calc_run())]),
         )
         .unwrap_err();
-        assert_eq!(err, ResyncReason::SequenceGap { expected: 4, got: 6 });
+        assert_eq!(
+            err,
+            ResyncReason::SequenceGap {
+                expected: 4,
+                got: 6
+            }
+        );
         assert_eq!(mirror.projection_seq, 4, "mirror must not advance on a gap");
         assert_eq!(mirror.last_run, None, "no partial patch on a gap");
     }
@@ -422,16 +486,22 @@ mod tests {
     #[test]
     fn for_receipt_ships_a_snapshot_only_when_the_delta_needs_one() {
         let state = mirror_at(2);
-        let applicable = IntentReceipt::accepted()
-            .with_delta(delta(1, 2, vec![WorkspaceDeltaChange::ClipboardChanged(None)]));
+        let applicable = IntentReceipt::accepted().with_delta(delta(
+            1,
+            2,
+            vec![WorkspaceDeltaChange::ClipboardChanged(None)],
+        ));
         assert!(
             SessionResponse::for_receipt(1, applicable, &state, None)
                 .snapshot
                 .is_none()
         );
 
-        let needs_snapshot = IntentReceipt::accepted()
-            .with_delta(delta(1, 2, vec![WorkspaceDeltaChange::ValuesChanged(Vec::new())]));
+        let needs_snapshot = IntentReceipt::accepted().with_delta(delta(
+            1,
+            2,
+            vec![WorkspaceDeltaChange::ValuesChanged(Vec::new())],
+        ));
         assert!(
             SessionResponse::for_receipt(2, needs_snapshot, &state, None)
                 .snapshot
@@ -459,7 +529,9 @@ mod tests {
         // A (latest), B, Recalculate — A holds its original slot with seq 3.
         assert_eq!(drained.len(), 3);
         assert_eq!(drained[0].0, 3);
-        assert!(matches!(&drained[0].1, WorkspaceIntent::EditContentDeferred { content, .. } if content == "12"));
+        assert!(
+            matches!(&drained[0].1, WorkspaceIntent::EditContentDeferred { content, .. } if content == "12")
+        );
         assert!(matches!(drained[2].1, WorkspaceIntent::Recalculate));
         assert!(queue.is_empty());
     }

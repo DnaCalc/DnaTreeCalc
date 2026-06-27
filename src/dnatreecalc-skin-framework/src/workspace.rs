@@ -39,6 +39,10 @@ pub struct WorkspaceState {
     pub nodes: BTreeMap<NodeId, NodeView>,
     pub dependencies: DependencyGraphProjection,
     pub tables: BTreeMap<NodeId, TableProjection>,
+    /// Windowed grid projections, keyed by the grid-backed sheet node. Only grids
+    /// the client is interested in are present, and each carries only the cells
+    /// inside the registered interest window ("viewing is subscribing").
+    pub grids: BTreeMap<NodeId, GridProjection>,
     pub clipboard: Option<ClipboardProjection>,
     pub diagnostics: Vec<String>,
 }
@@ -745,6 +749,42 @@ fn active_table_cell_editability(
             }
         }
     }
+}
+
+/// A windowed projection of a grid-backed sheet node's computed cells, scoped to
+/// the client's registered interest region(s). The host fills it from OxCalc's
+/// `grid_view`; a huge grid projects only the cells inside the viewed window, so
+/// the projection stays bounded regardless of the sheet's extent.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GridProjection {
+    /// The grid-backed sheet node (stable engine identity).
+    pub grid_node_key: NodeKey,
+    /// The grid-backed sheet node (display path); the key into `WorkspaceState.grids`.
+    pub grid_node_id: NodeId,
+    /// Stable grid id from the engine backing.
+    pub grid_id: String,
+    /// Grid bounds (the Excel sheet extent), so a viewer can size scrollbars
+    /// without materializing cells.
+    pub max_rows: u32,
+    pub max_cols: u32,
+    /// The windowed computed cells — only those inside the registered interest.
+    pub cells: Vec<GridCellProjection>,
+    /// The recalc epoch this projection reflects (the max cell value epoch); a
+    /// client pulls "changes since" by comparing against it.
+    pub projection_epoch: u64,
+    /// True when the permanent-pair differential found no mismatch for this view
+    /// (the optimized and reference grid engines agreed).
+    pub differential_clean: bool,
+}
+
+/// One computed grid cell in a windowed [`GridProjection`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GridCellProjection {
+    pub row: u32,
+    pub col: u32,
+    pub value: NodeValueProjection,
+    /// The recalc epoch at which this cell's value last changed.
+    pub value_epoch: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -2114,12 +2154,7 @@ impl WorkspaceState {
         keys
     }
 
-    fn cleave_filter_matches(
-        &self,
-        filter: &CleaveFilter,
-        node: &NodeView,
-        key: &NodeKey,
-    ) -> bool {
+    fn cleave_filter_matches(&self, filter: &CleaveFilter, node: &NodeView, key: &NodeKey) -> bool {
         match filter {
             CleaveFilter::CalcState(state) => node.calc_state == Some(*state),
             CleaveFilter::HasError => matches!(node.computed_value, NodeValueProjection::Error(_)),
