@@ -215,12 +215,39 @@ pub fn mount_dnatreecalc(element_id: &str) -> Result<(), JsValue> {
     let workspace_document_store: Arc<dyn WorkspaceDocumentStore> = Arc::new(
         BrowserLocalStorageWorkspaceDocumentStore::new(local_storage.clone()),
     );
-    let (session, restored_selection) =
+    let (mut session, restored_selection) =
         workspace_session_from_document_store_or_default(workspace_document_store.as_ref())
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
     // The real restored selection (before the dev fallback below) is what the
     // worker should reopen with.
     let selected_for_document = restored_selection.clone();
+    // Dev affordance (`?grid=1`): attach a demonstration grid to the workspace
+    // root so the Sheet lens (Ctrl+4) renders a scrollable grid surface; scrolling
+    // re-scopes the window via SetGridInterest. Off by default.
+    let grid_demo = window
+        .location()
+        .search()
+        .map(|search| search.contains("grid=1"))
+        .unwrap_or(false);
+    let grid_demo_node = if grid_demo {
+        match session.attach_demo_grid() {
+            Ok(node) => {
+                web_sys::console::log_1(
+                    &format!(
+                        "?grid=1 demo grid attached to node {node} -- open the Sheet lens (Ctrl+4)"
+                    )
+                    .into(),
+                );
+                Some(node)
+            }
+            Err(error) => {
+                web_sys::console::error_1(&format!("?grid=1 demo grid failed: {error}").into());
+                None
+            }
+        }
+    } else {
+        None
+    };
     let session = Arc::new(std::sync::Mutex::new(session));
     let workspace_state = session
         .lock()
@@ -232,7 +259,10 @@ pub fn mount_dnatreecalc(element_id: &str) -> Result<(), JsValue> {
         workspace.get_untracked().projection_seq,
     ));
     let selection = RwSignal::new(SelectionState::with_primary(
-        restored_selection.or_else(|| Some(NodeId::new("Sheet1.RandArray5x5"))),
+        grid_demo_node
+            .clone()
+            .or(restored_selection)
+            .or_else(|| Some(NodeId::new("Sheet1.RandArray5x5"))),
     ));
     let shared = SharedSkinStateHandle::new(SharedSkinState::default());
     let skin_state_store: Arc<dyn SkinStatePersistenceStore> =

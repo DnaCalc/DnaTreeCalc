@@ -5474,6 +5474,48 @@ impl TreeWorkspaceSession {
         ))
     }
 
+    /// Attach a demonstration grid to the workspace's root node so the Sheet lens
+    /// has a grid surface to render (column A literals 1..=200, column B `=A*10`)
+    /// -- tall enough that scrolling re-scopes the interest window. A dev
+    /// affordance for manually inspecting the grid read path; not part of any
+    /// document model. Returns the node the grid landed on.
+    pub fn attach_demo_grid(&mut self) -> Result<NodeId, TreeWorkspaceSessionError> {
+        use oxcalc_core::grid::authored::{GridAuthoredCell, GridFormulaCell};
+        use oxcalc_core::grid::coords::{ExcelGridBounds, ExcelGridCellAddress};
+
+        let node = self.display_order.first().cloned().ok_or(
+            TreeWorkspaceSessionError::ProjectionOutOfSync {
+                node: "workspace has no root node for the demo grid".to_string(),
+            },
+        )?;
+        let workbook_id = "book:demo";
+        let sheet_id = "sheet:demo";
+        let mut authored = Vec::new();
+        for row in 1..=200u32 {
+            authored.push((
+                ExcelGridCellAddress::new(workbook_id, sheet_id, row, 1),
+                GridAuthoredCell::Literal(CalcValue::number(f64::from(row))),
+            ));
+            authored.push((
+                ExcelGridCellAddress::new(workbook_id, sheet_id, row, 2),
+                GridAuthoredCell::Formula(GridFormulaCell::new(
+                    "=A1*10",
+                    "excel.grid.v1:cell:R[0]C[-1]*10",
+                )),
+            ));
+        }
+        let seed = GridBackingSeed {
+            workbook_id: workbook_id.to_string(),
+            sheet_id: sheet_id.to_string(),
+            bounds: ExcelGridBounds::strict_excel(),
+            authored,
+            table_overlays: Vec::new(),
+            merged_regions: Vec::new(),
+        };
+        self.set_node_grid(&node, seed)?;
+        Ok(node)
+    }
+
     pub fn dependency_members_for(
         &self,
         outcome: &OxCalcTreeCalculationOutcome,
