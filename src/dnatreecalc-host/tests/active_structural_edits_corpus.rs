@@ -87,9 +87,13 @@ fn active_structural_edit_corpus_executes_rebinds_through_direct_oxcalc_context(
 
         match case.expect.outcome.as_str() {
             "unresolved" => {
+                // Excel-faithful: deleting / renaming / moving a referenced tree
+                // node (a defined name) leaves the formula text unchanged and the
+                // caller commits with #NAME? -- it is not rejected -- while still
+                // surfacing the unresolved-name diagnostic.
                 assert_eq!(
                     result.run_state,
-                    OxCalcTreeRunState::Rejected,
+                    OxCalcTreeRunState::Published,
                     "{} unresolved run state",
                     case.id
                 );

@@ -9062,7 +9062,7 @@ fn programmable_skin_renames_and_reorders_table_columns_from_outside_ir() {
 }
 
 #[test]
-fn programmable_skin_projects_errors_and_diagnostics_after_rejected_recalc() {
+fn programmable_skin_projects_name_error_and_diagnostics_after_unresolved_edit() {
     let harness = Harness::empty();
     let skin = harness.driver.clone();
 
@@ -9077,9 +9077,11 @@ fn programmable_skin_projects_errors_and_diagnostics_after_rejected_recalc() {
         session.workspace_state().unwrap()
     };
 
+    // Excel-faithful: an unresolved name commits with #NAME? (it is not rejected)
+    // while projecting the unresolved-name binding diagnostics and an error value.
     assert!(matches!(
         state.last_run.as_ref().map(|run| run.run_state),
-        Some(CalcRunStateProjection::Rejected)
+        Some(CalcRunStateProjection::Published)
     ));
     assert!(!state.diagnostics.is_empty());
     let formula_node = state.node(&NodeId::new("Root.A")).unwrap();
@@ -9090,7 +9092,7 @@ fn programmable_skin_projects_errors_and_diagnostics_after_rejected_recalc() {
             && diagnostic.span.start_utf8 == 1
             && diagnostic.span.end_utf8 == 8
     }));
-    let run = state.last_run.as_ref().expect("rejected run projects");
+    let run = state.last_run.as_ref().expect("committed run projects");
     assert!(run.binding_diagnostics.iter().any(|diagnostic| {
         diagnostic.node == NodeId::new("Root.A")
             && diagnostic.node_key == formula_node.key

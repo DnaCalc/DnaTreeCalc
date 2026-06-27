@@ -82,9 +82,12 @@ fn programmable_skin_structural_corpus_cases_execute_from_outside_ir() {
 
         match case.expect.outcome.as_str() {
             "unresolved" => {
+                // Excel-faithful: an unresolved name (deleted / renamed / moved
+                // defined name) commits with #NAME? -- it is not rejected -- while
+                // still surfacing the unresolved-name diagnostic.
                 assert_eq!(
                     state.last_run.as_ref().map(|run| run.run_state),
-                    Some(CalcRunStateProjection::Rejected),
+                    Some(CalcRunStateProjection::Published),
                     "{} unresolved run state",
                     case.id
                 );

@@ -89,9 +89,12 @@ fn active_walkup_corpus_executes_through_direct_oxcalc_context() {
                 assert_dependency_members(&session, &result, case);
             }
             ("unresolved", _) => {
+                // Excel-faithful: a tree node is a defined name, so an unresolved
+                // name commits with #NAME? (it is not rejected) while still
+                // surfacing the unresolved-name diagnostic.
                 assert_eq!(
                     result.run_state,
-                    OxCalcTreeRunState::Rejected,
+                    OxCalcTreeRunState::Published,
                     "{} unresolved run state",
                     case.id
                 );
