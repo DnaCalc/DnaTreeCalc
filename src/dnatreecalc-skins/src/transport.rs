@@ -212,6 +212,12 @@ fn pulse_change_summary(change: &WorkspaceDeltaChange) -> String {
         WorkspaceDeltaChange::GridChanged(grid) => {
             format!("grid {} updated ({} cells)", grid.grid_id, grid.cells.len())
         }
+        WorkspaceDeltaChange::GridOverlaysChanged { overlays, .. } => format!(
+            "grid overlays updated ({} tables, {} spills, {} merged)",
+            overlays.tables.len(),
+            overlays.spills.len(),
+            overlays.merged.len()
+        ),
     }
 }
 

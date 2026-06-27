@@ -137,6 +137,7 @@ pub fn change_kind(change: &WorkspaceDeltaChange) -> &'static str {
         C::SweepChanged(_) => "sweep_changed",
         C::SweepRemoved(_) => "sweep_removed",
         C::GridChanged(_) => "grid_changed",
+        C::GridOverlaysChanged { .. } => "grid_overlays_changed",
     }
 }
 
@@ -162,7 +163,12 @@ pub fn is_delta_applicable(change: &WorkspaceDeltaChange) -> bool {
         // GridChanged carries the entire new windowed grid projection for one
         // node, so the mirror replaces it in place (the whole point of "viewing
         // is subscribing" -- a grid recompute must not force a full snapshot).
-        C::CalcRun(_) | C::ClipboardChanged(_) | C::GridChanged(_) => true,
+        // GridOverlaysChanged carries the entire new overlay bundle for one node,
+        // so the mirror replaces that field in place without a snapshot.
+        C::CalcRun(_)
+        | C::ClipboardChanged(_)
+        | C::GridChanged(_)
+        | C::GridOverlaysChanged { .. } => true,
         // A UI hint only — there is no projection-state change to mirror.
         C::FormulaReferenceInserted(_) => true,
         // Key-only, partial, collection-upsert, or full-reset: the snapshot is
@@ -217,6 +223,21 @@ pub fn apply_delta(state: &mut WorkspaceState, delta: &WorkspaceDelta) -> Result
             }
             WorkspaceDeltaChange::GridChanged(grid) => {
                 state.grids.insert(grid.grid_node_id.clone(), grid.clone());
+            }
+            WorkspaceDeltaChange::GridOverlaysChanged {
+                grid_node_id,
+                overlays,
+                overlay_epoch,
+            } => {
+                // Patch overlays in place; the cells and projection epoch are
+                // untouched (an overlay-only tick). If the grid is not yet
+                // mirrored, skip - a grid first appears via a GridChanged (which
+                // carries overlays), so an overlay-only patch for an unknown grid
+                // does not occur in the normal flow.
+                if let Some(grid) = state.grids.get_mut(grid_node_id) {
+                    grid.overlays = overlays.clone();
+                    grid.overlay_epoch = *overlay_epoch;
+                }
             }
             // FormulaReferenceInserted is a UI hint with no projection state.
             // Everything else was rejected by the applicability guard above.
@@ -299,8 +320,9 @@ mod tests {
     use crate::intent::StructuralDeltaProjection;
     use crate::workspace::{
         CalcRunProjection, CalcRunStateProjection, ClipboardOperationProjection,
-        ClipboardPayloadProjection, ClipboardProjection, GridCellProjection, GridOverlayBundle,
-        GridProjection, NodeValueProjection,
+        ClipboardPayloadProjection, ClipboardProjection, GridCellProjection,
+        GridMergedOverlayDescriptor, GridOverlayBundle, GridOverlayRect, GridProjection,
+        NodeValueProjection,
     };
 
     fn sample_calc_run() -> CalcRunProjection {
@@ -374,6 +396,11 @@ mod tests {
             WorkspaceDeltaChange::CalcRun(sample_calc_run()),
             WorkspaceDeltaChange::ClipboardChanged(None),
             WorkspaceDeltaChange::GridChanged(sample_grid_projection()),
+            WorkspaceDeltaChange::GridOverlaysChanged {
+                grid_node_id: NodeId::new("Sheet1"),
+                overlays: GridOverlayBundle::default(),
+                overlay_epoch: 1,
+            },
         ];
         for change in &applicable {
             assert!(
@@ -437,6 +464,58 @@ mod tests {
         assert!(result.is_ok());
         assert_eq!(mirror.projection_seq, 8);
         assert_eq!(mirror.grids.get(&grid.grid_node_id), Some(&grid));
+    }
+
+    #[test]
+    fn apply_delta_patches_grid_overlays_changed_in_place() {
+        // An overlay-only tick streams as GridOverlaysChanged: the mirror patches
+        // overlays/overlay_epoch in place without disturbing the cells, and never
+        // forces a resync.
+        let mut mirror = mirror_at(7);
+        let grid = sample_grid_projection();
+        apply_delta(
+            &mut mirror,
+            &delta(7, 8, vec![WorkspaceDeltaChange::GridChanged(grid.clone())]),
+        )
+        .unwrap();
+        let cells_before = mirror.grids.get(&grid.grid_node_id).unwrap().cells.clone();
+
+        let overlays = GridOverlayBundle {
+            merged: vec![GridMergedOverlayDescriptor {
+                rect: GridOverlayRect {
+                    top_row: 1,
+                    left_col: 1,
+                    bottom_row: 2,
+                    right_col: 2,
+                    clipped_top: false,
+                    clipped_left: false,
+                    clipped_bottom: false,
+                    clipped_right: false,
+                },
+            }],
+            ..Default::default()
+        };
+        let result = apply_delta(
+            &mut mirror,
+            &delta(
+                8,
+                9,
+                vec![WorkspaceDeltaChange::GridOverlaysChanged {
+                    grid_node_id: grid.grid_node_id.clone(),
+                    overlays: overlays.clone(),
+                    overlay_epoch: 3,
+                }],
+            ),
+        );
+        assert!(result.is_ok());
+        assert_eq!(mirror.projection_seq, 9);
+        let mirrored = mirror.grids.get(&grid.grid_node_id).unwrap();
+        assert_eq!(mirrored.overlays, overlays);
+        assert_eq!(mirrored.overlay_epoch, 3);
+        assert_eq!(
+            mirrored.cells, cells_before,
+            "an overlay-only patch must leave the cells untouched"
+        );
     }
 
     #[test]

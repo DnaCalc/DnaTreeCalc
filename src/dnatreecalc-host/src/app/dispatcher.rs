@@ -4,7 +4,7 @@ use dnatreecalc_skin_framework::{
     AuthoringScope, CandidateProjection, ClipboardNodeFormatProjection,
     ClipboardNodeValueProjection, ClipboardOperationProjection, ClipboardPayloadKind,
     ClipboardPayloadProjection, ClipboardProjection, DependencyDeltaProjection, Dispatcher,
-    FormulaBindPreviewProjection, IntentError, IntentReceipt, IntentRecord,
+    FormulaBindPreviewProjection, GridProjection, IntentError, IntentReceipt, IntentRecord,
     MutationImpactIntentProjection, MutationImpactProjection, NodeContentKind, NodeId, NodeKey,
     NodeValueDeltaProjection, NodeValueProjection, NodeView, Persona, PreviewError, PreviewService,
     SelectionState, SharedSkinStateHandle, SharedStateChange, SharedStateOrigin,
@@ -2427,12 +2427,23 @@ fn workspace_delta(
 
     // A grid-backed node whose windowed projection changed (recompute, or a moved
     // interest window) streams as a complete-replacement GridChanged the mirror
-    // patches in place. (Grid *removal* has no intent in the read path yet; when a
-    // clear-grid verb lands it must emit a removal/resync, since GridChanged alone
-    // cannot evict a grid from the mirror.)
+    // patches in place. When *only* the overlay descriptors changed (the cell
+    // window held steady), the narrow GridOverlaysChanged path ships just the new
+    // bundle so an overlay-only tick does not push the whole cell window. (Grid
+    // *removal* has no intent in the read path yet; when a clear-grid verb lands
+    // it must emit a removal/resync, since GridChanged alone cannot evict a grid
+    // from the mirror.)
     for (node_id, grid) in &after.grids {
-        if before.grids.get(node_id) != Some(grid) {
-            changes.push(WorkspaceDeltaChange::GridChanged(grid.clone()));
+        match before.grids.get(node_id) {
+            Some(previous) if previous == grid => {}
+            Some(previous) if grid_change_is_overlay_only(previous, grid) => {
+                changes.push(WorkspaceDeltaChange::GridOverlaysChanged {
+                    grid_node_id: node_id.clone(),
+                    overlays: grid.overlays.clone(),
+                    overlay_epoch: grid.overlay_epoch,
+                });
+            }
+            _ => changes.push(WorkspaceDeltaChange::GridChanged(grid.clone())),
         }
     }
 
@@ -2441,6 +2452,25 @@ fn workspace_delta(
         to_seq,
         changes,
     }
+}
+
+/// Whether the only difference between two grid projections is the overlay set
+/// (`overlays`/`overlay_epoch`) while the cells and every other field held
+/// steady - the cue to take the narrow `GridOverlaysChanged` path instead of a
+/// full `GridChanged`.
+///
+/// Robust to new `GridProjection` fields: it swaps the overlay fields onto a
+/// clone of `before` and compares the whole struct, so any *other* field that
+/// changed makes this `false` (forcing the full path) without this function
+/// having to enumerate fields.
+fn grid_change_is_overlay_only(before: &GridProjection, after: &GridProjection) -> bool {
+    if before.overlays == after.overlays && before.overlay_epoch == after.overlay_epoch {
+        return false;
+    }
+    let mut probe = before.clone();
+    probe.overlays = after.overlays.clone();
+    probe.overlay_epoch = after.overlay_epoch;
+    probe == *after
 }
 
 fn structural_delta(before: &WorkspaceState, after: &WorkspaceState) -> StructuralDeltaProjection {
@@ -2564,4 +2594,94 @@ fn empty_workspace_session(workspace_id: &str) -> Result<TreeWorkspaceSession, S
     };
     let model = WorkspaceModel::try_from(fixture).map_err(|error| error.to_string())?;
     TreeWorkspaceSession::from_model(&model).map_err(|error| error.to_string())
+}
+
+#[cfg(test)]
+mod overlay_delta_tests {
+    use super::*;
+    use dnatreecalc_skin_framework::{
+        GridCellProjection, GridMergedOverlayDescriptor, GridOverlayBundle, GridOverlayRect,
+    };
+
+    fn base_grid() -> GridProjection {
+        GridProjection {
+            grid_node_key: NodeKey::new("sheet"),
+            grid_node_id: NodeId::new("Sheet1"),
+            grid_id: "book:g:sheet:g".to_string(),
+            max_rows: 100,
+            max_cols: 26,
+            cells: vec![GridCellProjection {
+                row: 1,
+                col: 1,
+                value: NodeValueProjection::Number {
+                    raw: "1".to_string(),
+                    display: "1".to_string(),
+                },
+                value_epoch: 1,
+            }],
+            projection_epoch: 1,
+            overlays: GridOverlayBundle::default(),
+            overlay_epoch: 0,
+            differential_clean: true,
+        }
+    }
+
+    fn merged_bundle() -> GridOverlayBundle {
+        GridOverlayBundle {
+            merged: vec![GridMergedOverlayDescriptor {
+                rect: GridOverlayRect {
+                    top_row: 1,
+                    left_col: 1,
+                    bottom_row: 2,
+                    right_col: 2,
+                    clipped_top: false,
+                    clipped_left: false,
+                    clipped_bottom: false,
+                    clipped_right: false,
+                },
+            }],
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn overlay_only_change_takes_the_narrow_path() {
+        let before = base_grid();
+        let mut after = base_grid();
+        after.overlays = merged_bundle();
+        after.overlay_epoch = 1;
+        assert!(grid_change_is_overlay_only(&before, &after));
+    }
+
+    #[test]
+    fn cell_change_takes_the_full_path() {
+        let before = base_grid();
+        let mut after = base_grid();
+        after.cells[0].value = NodeValueProjection::Number {
+            raw: "2".to_string(),
+            display: "2".to_string(),
+        };
+        after.cells[0].value_epoch = 2;
+        after.projection_epoch = 2;
+        assert!(!grid_change_is_overlay_only(&before, &after));
+    }
+
+    #[test]
+    fn identical_projection_is_not_overlay_only() {
+        assert!(!grid_change_is_overlay_only(&base_grid(), &base_grid()));
+    }
+
+    #[test]
+    fn combined_cell_and_overlay_change_takes_the_full_path() {
+        let before = base_grid();
+        let mut after = base_grid();
+        after.cells[0].value_epoch = 2;
+        after.projection_epoch = 2;
+        after.overlays = merged_bundle();
+        after.overlay_epoch = 1;
+        assert!(
+            !grid_change_is_overlay_only(&before, &after),
+            "a combined cell+overlay change must take the full GridChanged path"
+        );
+    }
 }

@@ -5,8 +5,8 @@ use crate::identity::{NodeId, NodeKey};
 use crate::selection::{SelectionState, TableCellSelection};
 use crate::workspace::{
     CalcRunProjection, CandidateProjection, ClipboardProjection, DependencyKindProjection,
-    GridProjection, InitialNodeContentProjection, NodeValueProjection, ScenarioProjection,
-    SweepProjection,
+    GridOverlayBundle, GridProjection, InitialNodeContentProjection, NodeValueProjection,
+    ScenarioProjection, SweepProjection,
 };
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -788,6 +788,15 @@ pub enum WorkspaceDeltaChange {
     /// interest window moved). Carries the complete new windowed grid projection,
     /// so the mirror applies it in place.
     GridChanged(GridProjection),
+    /// Only a grid's overlay descriptors changed (the cell window held steady).
+    /// The narrow path: ships just the new bundle + epoch so an overlay-only tick
+    /// does not force the whole cell window through the channel, and the mirror
+    /// patches `overlays`/`overlay_epoch` in place without disturbing the cells.
+    GridOverlaysChanged {
+        grid_node_id: NodeId,
+        overlays: GridOverlayBundle,
+        overlay_epoch: u64,
+    },
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
