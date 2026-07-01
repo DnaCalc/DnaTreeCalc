@@ -23,7 +23,8 @@ For someone new to the project:
 7. [`ux/TRACEABILITY.md`](ux/TRACEABILITY.md) — maps prototype affordances to skins, primitives, host state, DnaTreeCalc services, and OxFml/OxCalc flows.
 8. [`ux/IMPLEMENTATION_MATRIX.md`](ux/IMPLEMENTATION_MATRIX.md) — UX-side implementation driver: trace IDs, scenario cards, contracts, harness expectations, and workset entry criteria.
 9. [`ux/TECHNICAL.md`](ux/TECHNICAL.md) — how to build it.
-10. [`interop/EXCEL_EXPORT_AND_REPLAY.md`](interop/EXCEL_EXPORT_AND_REPLAY.md) — export and verification against Excel.
+10. [`ux/DNACALC_HOST_CORE_XLSX_NOTEBOOK_PROOF.md`](ux/DNACALC_HOST_CORE_XLSX_NOTEBOOK_PROOF.md) — W011 reference-host proof: OxDoc + OxCalc `.xlsx` open/edit/recalc/save through Skin IR and B1.
+11. [`interop/EXCEL_EXPORT_AND_REPLAY.md`](interop/EXCEL_EXPORT_AND_REPLAY.md) — export and verification against Excel.
 
 ---
 
@@ -53,6 +54,7 @@ The user experience.
 | [`ux/REQUIREMENTS.md`](ux/REQUIREMENTS.md) | Conceptual UX requirements: personas, presentation areas, editing actions, keybindings, skin surfaces, interaction patterns, adaptive behaviors, cross-cutting concerns, coverage check. |
 | [`ux/SKINS.md`](ux/SKINS.md) | The Winamp-style skin architecture: layered design, `WorkspaceSkin` trait, `SkinContext`, intent dispatch, per-skin meta-namespaces, formatting-vs-skin-styling boundary, call traces, phasing. The load-bearing UI architecture. |
 | [`ux/TECHNICAL.md`](ux/TECHNICAL.md) | Implementation/integration plan: tech stack (Leptos/WASM, extends DnaOneCalc), crate layout, state model, OxCalc context, persistence format, per-component plan, UDF hosting, performance, build phasing, verification host. |
+| [`ux/DNACALC_HOST_CORE_XLSX_NOTEBOOK_PROOF.md`](ux/DNACALC_HOST_CORE_XLSX_NOTEBOOK_PROOF.md) | W011 reference-host proof plan: split `dnacalc-skin-ir` / `dnacalc-skin-leptos`, create Leptos-free `dnacalc-host-core`, host OxDoc + OxCalc together for `.xlsx`, and ship the first B1 notebook interaction path. |
 | [`ux/prototypes/index.html`](ux/prototypes/index.html) | Eight visual HTML mockups — the first eight skins: workspace shell, array value, template editor, outline-table, format editor, Excel-style cell, nodes-across, canvas flow. Open `index.html` to navigate. |
 | [`ux/TRACEABILITY.md`](ux/TRACEABILITY.md) | Fine-detail UX traceability: prototype-to-skin mapping, feature ownership, state/intent/engine boundaries, and concrete flows from editor text to OxCalc publication and invalidation/resize back to display updates. |
 | [`ux/IMPLEMENTATION_MATRIX.md`](ux/IMPLEMENTATION_MATRIX.md) | UX-side work driver built from traceability: stable trace IDs, implementation slices, component/service contracts, scenario cards, trace events, harness expectations, and workset entry criteria. |

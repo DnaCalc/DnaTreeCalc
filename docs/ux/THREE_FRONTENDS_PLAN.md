@@ -2,7 +2,7 @@
 
 > **PLAN 1 of 2 (local / DnaTreeCalc).** The upstream Ox\* lanes (`[U-xxx]`) referenced throughout are specified in [`../interop/UPSTREAM_OX_LANES.md`](../interop/UPSTREAM_OX_LANES.md). This doc owns the DnaTreeCalc-side substrate, the canonical contracts, and the three skins.
 >
-> Provenance: split from an approved planning exercise, hardened by two read-only design passes (an Ox\*-stack capability audit and a design-deepening fan-out + fidelity critic). Related: [`SKINS.md`](SKINS.md) (skin doctrine), [`../model/CORE_MODEL_SPEC.md`](../model/CORE_MODEL_SPEC.md), [`../interop/EXCEL_EXPORT_AND_REPLAY.md`](../interop/EXCEL_EXPORT_AND_REPLAY.md).
+> Provenance: split from an approved planning exercise, hardened by two read-only design passes (an Ox\*-stack capability audit and a design-deepening fan-out + fidelity critic). Related: [`SKINS.md`](SKINS.md) (skin doctrine), [`DNACALC_HOST_CORE_XLSX_NOTEBOOK_PROOF.md`](DNACALC_HOST_CORE_XLSX_NOTEBOOK_PROOF.md) (W011 reference-host execution plan), [`../model/CORE_MODEL_SPEC.md`](../model/CORE_MODEL_SPEC.md), [`../interop/EXCEL_EXPORT_AND_REPLAY.md`](../interop/EXCEL_EXPORT_AND_REPLAY.md).
 
 ## Context & intent
 

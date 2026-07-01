@@ -28,6 +28,7 @@ These epic beads were created during W001 bootstrap. Use this table only to pair
 | W008_excel_import | `dtc-xlx` |
 | W009_excel_export_and_replay | `dtc-p5q` |
 | W010_udf_hosting | `dtc-dht` |
+| W011_dnacalc_host_core_xlsx_notebook_proof | `dtc-hj2` |
 
 ---
 
@@ -46,6 +47,8 @@ W001 → W002 → W005 → { W003, W004 } → W006 → W007 → W008 → W009 �
 **Cross-cutting from the foundation.** Two build targets are stood up early — the browser WASM shell and the native **Tauri** desktop shell (the native-code-hosting vehicle; `ux/TECHNICAL.md` §1, §1.1) — so neither is retrofitted. A **performance measurement harness** with timed stress workloads (`ux/TECHNICAL.md` §7.6; `docs/test-corpus/perf/`) is scaffolding built as soon as the OxCalc context supports it, since iterating on engine+host speed is part of the proving-ground mission, not a late add.
 
 Engine prerequisites in OxCalc/OxFml/OxFunc (Spec `model/CORE_MODEL_SPEC.md` §6) gate several worksets; those are coordinated via handovers, not owned here. New since the seed map: version-based undo (§6 item 13), table-node unpacking (§6 item 14 — Tables are a cross-repo build area, in scope), and node-as-function invocation (§6 item 15).
+
+**W011 pivot.** W011 is an explicit near-term integration pivot, not an item at the tail of the original tree-only sequence. It proves the DnaCalc host pattern for `.xlsx` workbooks while reusing and cleaning up the skin architecture that TreeCalc has already grown. It may proceed alongside existing open worksets where dependency edges allow; live execution truth stays in `br`.
 
 ---
 
@@ -141,4 +144,13 @@ Engine prerequisites in OxCalc/OxFml/OxFunc (Spec `model/CORE_MODEL_SPEC.md` §6
 - **Closure condition:** UDF-using workspaces evaluate and verify with UDFs provisioned into Excel.
 - **Initial epic lanes:** shared-core consumption; Excel-side provisioning handover follow-through.
 - **Verification:** Excel anchor with UDFs provisioned into Excel (OxXlPlay VBA + `.xll` provisioning), reusing the W009 verify-workspace path. Scaffolding: a UDF fixture set (VBA module + a sample `.xll`).
+- **Status:** OPEN
+
+### W011_dnacalc_host_core_xlsx_notebook_proof
+- **Purpose:** Create the first clean DnaCalc reference host that marries OxDoc and OxCalc end-to-end: open a small `.xlsx` through OxDoc, have the host own the OxDoc source/model context and the OxCalc workbook context, pass the neutral model into OxCalc, render workbook grids through Skin IR in a B1 Pluto-style notebook, edit a cell, recalculate dependents, and save/download a round-tripped workbook.
+- **Depends on:** Existing skin/host skeleton code in this repo. Upstream OxCalc/OxDoc work is coordinated via W011 handovers, not direct writes from this repo. W010 remains separate and off the critical path.
+- **Spec sections:** `ux/DNACALC_HOST_CORE_XLSX_NOTEBOOK_PROOF.md`; `ux/SKINS.md`; `ux/THREE_FRONTENDS_PLAN.md`; `interop/UPSTREAM_OX_LANES.md`.
+- **Closure condition:** fixture workbook `A1 = 7`, `B1 = =A1*3` opens in B1; editing `A1` to `10` makes `B1` show `30` through OxCalc and emits `GridChanged`; save/download reopens through OxDoc with `A1` changed and `B1` formula text preserved; the notebook uses only Skin IR; the host core compiles/tests without Leptos; the same document mounts notebook-only and notebook plus companion skin; strict/full/values profile behavior is covered by the first fixture lane.
+- **Initial epic lanes:** workset/register anchoring; Skin IR split (`dnacalc-skin-ir` + `dnacalc-skin-leptos`); Leptos-free `dnacalc-host-core`; model-neutral sessions (`CalcModelSession`, `RichTreeSession`, `WorkbookSession`); OxCalc/OxDoc handovers; `.xlsx` open/ingest; read-only B1; `EditGridCell` edit/recalc loop; browser open/download; save/reopen; multi-skin layout; strict-grid profile lane.
+- **Verification:** Local build/test/lint/format for touched crates; no-Leptos dependency checks for pure core crates; Skin IR protocol tests; host-core open/edit/recalc/save tests; browser click-through for open/edit/recalc/download; OxDoc reopen assertions for saved bytes; Excel anchor for workbook round-trip and formula/value preservation. Formal tier remains a design aim but does not gate this first host proof.
 - **Status:** OPEN
