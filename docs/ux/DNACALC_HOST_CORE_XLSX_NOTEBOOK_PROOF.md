@@ -425,12 +425,30 @@ existing** (dtc-hj2.5), never on upstream implementations landing.
 
 **Ask ranking (verified against code):**
 
-- **(b) is the only hard blocker for general workbooks:** a public
+- **(b) is the first hard blocker for general workbooks:** a public
   `bind_grid_formula(source_text, channel, address, bounds) ->
   Result<GridFormulaCell, _>` wrapping the existing `pub(super)`
   `bind_grid_formula_for_transform` recipe (key =
   `BoundFormula.formula_template_identity.key`). Small, additive, independent
   of the CTRO rework's semantics. Nothing in W011's fixture waits on it.
+- **(e) defined-name seeding is the second hard blocker, immediately behind
+  (b) — ask upstream to land them together.** There is no consumer-level way
+  to seed defined names (`GridOptimizedSheet::set_defined_name` /
+  `set_sheet_defined_name` / `set_dynamic_defined_name` are `pub` but
+  unreachable through `OxCalcTreeContext`/`GridBackingSeed`); as of
+  `e069136e`, formulas referencing unseeded names deterministically evaluate
+  to `#NAME?` (self-healing when the name appears). This is **not
+  peripheral**: defined names are the workbook profile's named things — the
+  bridge to the tree model's named nodes, the home of LAMBDA, and the core of
+  the literate-notebook thesis (B1's named inputs/outputs, B3's named-path
+  access). The moment (b) lands, nearly every real workbook hits name
+  references — landing (b) without (e) unblocks almost nothing in practice.
+  The engine side is already complete post-CTRO (name-identity edges,
+  `GridDirtySeed::Name`, lifecycle reports, `#NAME?` self-healing); the ask
+  is thin consumer plumbing: a `defined_names` field on `GridBackingSeed`
+  (workbook- and sheet-scoped, plus dynamic) or consumer-level verbs, wired
+  to the existing sheet setters. OxDoc already models the name catalog
+  (`DefinedNameSpec`), so host-side name extraction at open is purely local.
 - **(a) neutral ingest API — de-scoped for W011:** the host implements
   `struct OxDocGridIngest` (in dnacalc-host-core) as an
   `oxdoc_model::OxCalcIngestSink`, accumulating one `GridBackingSeed` per
@@ -472,11 +490,18 @@ Handovers still specify contracts (signatures), not file locations, as
 general hygiene; line-number evidence is re-verified at authoring time
 (current: `bind_grid_formula_for_transform` at `optimized_sheet.rs:7241`).
 
-**New ingest gap found post-CTRO:** defined-name seeding. Add it to the
-OxCalc ingest handover: either a `defined_names` field on `GridBackingSeed`
-or a consumer-level set-defined-name verb (folds naturally into ask (a)); the
-interim behavior is the deterministic `#NAME?` of `e069136e`. Fixture scope
-unaffected.
+**Defined names — the W011 boundary and the readiness lane.** Within W011 the
+gap is contained, loudly: name-using formulas are unkeyable in fixture scope,
+so they already fail with the typed ingest error, and dtc-hj2.6 additionally
+reads the OxDoc defined-name catalog at open and surfaces a typed
+names-present note — a W011 open never renders `#NAME?` for a name the file
+actually defines. Two guards protect the post-(b) horizon: the save path must
+never overwrite a file's cached value with a `#NAME?` that stems from
+unseeded names (recorded in dtc-hj2.10's future shape), and dtc-hj2.14 keeps
+a prepared name fixture (`TheInput -> Sheet1!A1`, `D1 = =TheInput*2`) as a
+pending lane that activates the day the OxCalc seeding surface lands —
+asserting seed → value, unseeded → `#NAME?` → self-heal, and the
+cached-value guard.
 
 ## Execution Path
 
@@ -544,6 +569,7 @@ Epic: `dtc-hj2` - `W011: dnacalc_host_core_xlsx_notebook_proof`.
 | `dtc-hj2.11` | Prove notebook plus companion skin layout | `dtc-hj2.8` |
 | `dtc-hj2.12` | Add strict-grid profile fixture lane | `dtc-hj2.10` |
 | `dtc-hj2.13` | Align worker boundary with host-core | `dtc-hj2.3` |
+| `dtc-hj2.14` | Defined-name readiness: detection now, pending name-fixture lane on upstream verb | `dtc-hj2.6` |
 
 Note: `dtc-hj2.10` deliberately does **not** depend on `dtc-hj2.9` — the save
 proof is native; the browser download click-through of the same bytes belongs
@@ -554,7 +580,10 @@ to `dtc-hj2.9` and epic closure, in either order. The `dtc-hj2.5` edges mean
 ## Acceptance Tests
 
 - Open proof: fixture `A1 = 7`, `B1 = =A1*3` appears in B1; `GridProjection`
-  shows B1 `kind=Formula` with `source_text="=A1*3"`.
+  shows B1 `kind=Formula` with `source_text="=A1*3"`. Opening a workbook
+  whose formulas use defined names yields the typed unkeyable-formula
+  rejection plus a typed names-present note from the OxDoc name catalog —
+  never silent `#NAME?` cells for names the file defines.
 - Edit proof: edit `A1` to `10`; `B1` becomes `30` through OxCalc and the
   notebook consumes `GridChanged`. Typing `=A1+1` into a cell yields the typed
   `FormulaEditingNotYetSupported` receipt, visibly surfaced.
