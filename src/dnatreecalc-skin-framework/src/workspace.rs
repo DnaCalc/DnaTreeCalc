@@ -189,6 +189,35 @@ impl WorkspaceState {
         self.nodes_by_key.get(key)
     }
 
+    /// Classify a node by key into its derived [`NodeClassification`]
+    /// (canonical contract **C2**). Pure derivation from the node's
+    /// `content_kind` and its incoming dependency-edge count — nothing is
+    /// stored. An unknown key classifies as [`NodeClassification::Empty`].
+    #[must_use]
+    pub fn node_classification(&self, key: &NodeKey) -> NodeClassification {
+        let Some(node) = self.node_by_key(key) else {
+            return NodeClassification::Empty;
+        };
+        let consumed = self.dependencies.incoming_count_by_key(key) > 0;
+        match node.content_kind {
+            NodeContentKind::Empty => NodeClassification::Empty,
+            NodeContentKind::Constant => {
+                if consumed {
+                    NodeClassification::Input
+                } else {
+                    NodeClassification::FreeValue
+                }
+            }
+            NodeContentKind::Formula => {
+                if consumed {
+                    NodeClassification::Intermediate
+                } else {
+                    NodeClassification::Output
+                }
+            }
+        }
+    }
+
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.nodes.is_empty()
@@ -953,6 +982,45 @@ impl NodeContentKind {
 impl fmt::Display for NodeContentKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.stable_id())
+    }
+}
+
+/// Derived role of a node, computed from its [`NodeContentKind`] and the
+/// dependency graph — never stored (canonical contract **C2**). This is the
+/// single classifier; every skin (B1's tint, B3's `list_inputs`/`list_outputs`)
+/// calls it, so they can never disagree about what a node is.
+///
+/// **Axis rule:** content-kind decides literal-vs-computed; the node's
+/// *incoming* edge count decides consumed-vs-terminal. The outgoing count is
+/// deliberately unused. Spill children are `Formula` non-anchors and classify
+/// normally here; their read-only-ness is the spill marker's concern, separate
+/// from classification.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum NodeClassification {
+    /// A literal value that other nodes consume — a model input.
+    Input,
+    /// A literal value nothing consumes — a free/unused constant.
+    FreeValue,
+    /// A formula other nodes consume — an intermediate result.
+    Intermediate,
+    /// A formula nothing consumes — a terminal output.
+    Output,
+    /// No content.
+    Empty,
+}
+
+impl NodeClassification {
+    /// Stable, lower-snake string form for transport (e.g. B3 JSON), mirroring
+    /// [`NodeContentKind::stable_id`].
+    #[must_use]
+    pub const fn stable_id(self) -> &'static str {
+        match self {
+            Self::Input => "input",
+            Self::FreeValue => "free_value",
+            Self::Intermediate => "intermediate",
+            Self::Output => "output",
+            Self::Empty => "empty",
+        }
     }
 }
 
@@ -2358,6 +2426,169 @@ fn cleave_number(node: Option<&NodeView>) -> Option<f64> {
 /// crosses the future worker `postMessage` boundary must survive
 /// serialize → deserialize unchanged, through `serde_json` specifically
 /// (the structured-clone fallback wire format).
+#[cfg(test)]
+mod classification_tests {
+    use super::*;
+
+    fn node(id: &str, kind: NodeContentKind) -> NodeView {
+        NodeView {
+            key: NodeKey::new(format!("key:{id}")),
+            id: NodeId::new(id),
+            display_name: id.to_string(),
+            parent: None,
+            children: Vec::new(),
+            depth: 0,
+            content_kind: kind,
+            content_text: String::new(),
+            computed_value: NodeValueProjection::default(),
+            scenario_override: None,
+            literalized_value_input: None,
+            value_epoch: None,
+            calc_state: None,
+            effective_format: None,
+            note: None,
+            attributes: BTreeMap::new(),
+            binding_diagnostics: Vec::new(),
+            is_meta: false,
+            table: None,
+        }
+    }
+
+    fn key(id: &str) -> NodeKey {
+        NodeKey::new(format!("key:{id}"))
+    }
+
+    /// Build a workspace from nodes plus directed `(owner, target)` dependency
+    /// edges. Only the reverse-edge index is populated — that is what
+    /// `incoming_count_by_key` (and therefore the classifier) reads.
+    fn workspace(nodes: Vec<NodeView>, edges: &[(&str, &str)]) -> WorkspaceState {
+        let mut state = WorkspaceState::default();
+        for view in nodes {
+            state.key_order.push(view.key.clone());
+            state.nodes.insert(view.id.clone(), view.clone());
+            state.nodes_by_key.insert(view.key.clone(), view);
+        }
+        for (owner, target) in edges {
+            let edge = DependencyEdgeProjection {
+                edge_id: format!("{owner}->{target}"),
+                descriptor_id: format!("desc:{owner}->{target}"),
+                owner: NodeId::new(*owner),
+                owner_key: key(owner),
+                target: NodeId::new(*target),
+                target_key: key(target),
+                kind: DependencyKindProjection::StaticDirect,
+            };
+            state
+                .dependencies
+                .reverse_edges_by_key
+                .entry(edge.target_key.clone())
+                .or_default()
+                .push(edge);
+        }
+        state
+    }
+
+    #[test]
+    fn constant_is_input_when_consumed_else_free_value() {
+        // `rate` is a constant consumed by `monthly`; `weights` is unused.
+        let state = workspace(
+            vec![
+                node("rate", NodeContentKind::Constant),
+                node("monthly", NodeContentKind::Formula),
+                node("weights", NodeContentKind::Constant),
+            ],
+            &[("monthly", "rate")],
+        );
+        assert_eq!(
+            state.node_classification(&key("rate")),
+            NodeClassification::Input
+        );
+        assert_eq!(
+            state.node_classification(&key("weights")),
+            NodeClassification::FreeValue
+        );
+    }
+
+    #[test]
+    fn formula_is_intermediate_when_consumed_else_output() {
+        // base <- mid <- top: base/mid are consumed, top is terminal.
+        let state = workspace(
+            vec![
+                node("base", NodeContentKind::Formula),
+                node("mid", NodeContentKind::Formula),
+                node("top", NodeContentKind::Formula),
+            ],
+            &[("mid", "base"), ("top", "mid")],
+        );
+        assert_eq!(
+            state.node_classification(&key("base")),
+            NodeClassification::Intermediate
+        );
+        assert_eq!(
+            state.node_classification(&key("mid")),
+            NodeClassification::Intermediate
+        );
+        assert_eq!(
+            state.node_classification(&key("top")),
+            NodeClassification::Output
+        );
+    }
+
+    #[test]
+    fn empty_content_is_empty_even_when_depended_on() {
+        let state = workspace(
+            vec![
+                node("blank", NodeContentKind::Empty),
+                node("f", NodeContentKind::Formula),
+            ],
+            &[("f", "blank")],
+        );
+        assert_eq!(
+            state.node_classification(&key("blank")),
+            NodeClassification::Empty
+        );
+    }
+
+    #[test]
+    fn unknown_key_is_empty() {
+        let state = WorkspaceState::default();
+        assert_eq!(
+            state.node_classification(&key("ghost")),
+            NodeClassification::Empty
+        );
+    }
+
+    #[test]
+    fn only_incoming_edges_matter_not_outgoing() {
+        // `lonely` (constant) has an OUTGOING edge to `other` but no incoming;
+        // it must stay FreeValue. `other` gains an incoming edge -> Input.
+        let state = workspace(
+            vec![
+                node("lonely", NodeContentKind::Constant),
+                node("other", NodeContentKind::Constant),
+            ],
+            &[("lonely", "other")],
+        );
+        assert_eq!(
+            state.node_classification(&key("lonely")),
+            NodeClassification::FreeValue
+        );
+        assert_eq!(
+            state.node_classification(&key("other")),
+            NodeClassification::Input
+        );
+    }
+
+    #[test]
+    fn stable_ids_are_lower_snake() {
+        assert_eq!(NodeClassification::Input.stable_id(), "input");
+        assert_eq!(NodeClassification::FreeValue.stable_id(), "free_value");
+        assert_eq!(NodeClassification::Intermediate.stable_id(), "intermediate");
+        assert_eq!(NodeClassification::Output.stable_id(), "output");
+        assert_eq!(NodeClassification::Empty.stable_id(), "empty");
+    }
+}
+
 #[cfg(test)]
 mod serde_round_trip_tests {
     use super::*;
