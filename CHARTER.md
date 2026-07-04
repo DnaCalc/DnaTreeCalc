@@ -41,7 +41,7 @@ A standing aim of the whole program shapes how we build. Much of Excel's behavio
 
 ## What TreeCalc is not
 
-- **Not a grid.** No coordinates; no value spilling between nodes. The grid arrives with PreCalc and beyond.
+- **Not a grid.** No coordinates; no value spilling between nodes. The grid arrives with PreCalc and beyond. *(Mark, 2026-07-02: this clause describes the TreeCalc **model**, not the repo's hosting scope. The owner-approved dual-profile decision (treecalc-v1 + strict-excel-grid) and the W011 DnaCalc-host pivot sanction hosting `.xlsx` grid workbooks from this repo through `dnacalc-host-core` — see `docs/WORKSET_REGISTER.md` "W011 pivot" and `docs/ux/DNACALC_HOST_CORE_XLSX_NOTEBOOK_PROOF.md`. A full charter amendment is pending.)*
 - **Not an engine.** Calculation is OxCalc; the formula language is OxFml; functions and value semantics are OxFunc. TreeCalc is the *host*.
 - **Not a reimplementation of Excel semantics.** Those live in the Ox\* libraries and are consumed, never duplicated.
 

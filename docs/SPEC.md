@@ -44,6 +44,7 @@ Excel interoperation and verification.
 | Document | Covers |
 |---|---|
 | [`interop/EXCEL_EXPORT_AND_REPLAY.md`](interop/EXCEL_EXPORT_AND_REPLAY.md) | Converting a workspace to Excel and verifying it against Excel as canonical truth. Repo partitioning (TreeCalc converts; OxXlPlay builds+observes; OxReplay compares+governs); the `WorkbookConstructionSpec` contract; export strategies (defined-names primary + grid-cell promotion); bake/mangle passes; export manifest; UDF provisioning; verification commands; end-to-end flow; handover docs to author. (Excel *import* is in `model/CORE_MODEL_SPEC.md` §10.) |
+| [`interop/UPSTREAM_OX_LANES.md`](interop/UPSTREAM_OX_LANES.md) | The authoritative `[U-xxx]` upstream lane ledger — the coordination contract between DnaTreeCalc (consumer) and the owning Ox\* crates for the three-front-ends plan: lane table, mini-specs, fidelity proofs, dependency ordering and critical path. PLAN 2 of 2 (upstream), paired with `ux/THREE_FRONTENDS_PLAN.md`. |
 
 ## UX
 
@@ -54,6 +55,7 @@ The user experience.
 | [`ux/REQUIREMENTS.md`](ux/REQUIREMENTS.md) | Conceptual UX requirements: personas, presentation areas, editing actions, keybindings, skin surfaces, interaction patterns, adaptive behaviors, cross-cutting concerns, coverage check. |
 | [`ux/SKINS.md`](ux/SKINS.md) | The Winamp-style skin architecture: layered design, `WorkspaceSkin` trait, `SkinContext`, intent dispatch, per-skin meta-namespaces, formatting-vs-skin-styling boundary, call traces, phasing. The load-bearing UI architecture. |
 | [`ux/TECHNICAL.md`](ux/TECHNICAL.md) | Implementation/integration plan: tech stack (Leptos/WASM, extends DnaOneCalc), crate layout, state model, OxCalc context, persistence format, per-component plan, UDF hosting, performance, build phasing, verification host. |
+| [`ux/THREE_FRONTENDS_PLAN.md`](ux/THREE_FRONTENDS_PLAN.md) | The approved three-front-ends plan (PLAN 1 of 2, local): one literate/reactive strict-Excel substrate skinned as B1 Pluto-style notebook, B2 dashboard+builder (B2a standalone host), and B3 CLI/MCP transport; canonical contracts (C1–C5), make-now interfaces, wave phasing. Paired with `interop/UPSTREAM_OX_LANES.md`. |
 | [`ux/DNACALC_HOST_CORE_XLSX_NOTEBOOK_PROOF.md`](ux/DNACALC_HOST_CORE_XLSX_NOTEBOOK_PROOF.md) | W011 reference-host proof plan: split `dnacalc-skin-ir` / `dnacalc-skin-leptos`, create Leptos-free `dnacalc-host-core`, host OxDoc + OxCalc together for `.xlsx`, and ship the first B1 notebook interaction path. |
 | [`ux/prototypes/index.html`](ux/prototypes/index.html) | Eight visual HTML mockups — the first eight skins: workspace shell, array value, template editor, outline-table, format editor, Excel-style cell, nodes-across, canvas flow. Open `index.html` to navigate. |
 | [`ux/TRACEABILITY.md`](ux/TRACEABILITY.md) | Fine-detail UX traceability: prototype-to-skin mapping, feature ownership, state/intent/engine boundaries, and concrete flows from editor text to OxCalc publication and invalidation/resize back to display updates. |
