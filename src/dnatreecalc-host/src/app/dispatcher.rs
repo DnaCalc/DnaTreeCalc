@@ -2261,12 +2261,12 @@ fn intent_error_from_session(error: TreeWorkspaceSessionError) -> IntentError {
             host_failure(format!("grid interest for {node}: {detail}"))
         }
         TreeWorkspaceSessionError::OxCalc(
-            oxcalc_core::consumer::OxCalcTreeContextError::UnknownCandidate { handle },
+            oxcalc_core::consumer::OxCalcDocumentError::UnknownCandidate { handle },
         ) => IntentError::UnknownCandidate {
             handle: handle.to_string(),
         },
         TreeWorkspaceSessionError::OxCalc(
-            oxcalc_core::consumer::OxCalcTreeContextError::CandidateBasisNotCurrent {
+            oxcalc_core::consumer::OxCalcDocumentError::CandidateBasisNotCurrent {
                 handle,
                 basis_revision_id,
                 current_revision_id,
@@ -2277,7 +2277,7 @@ fn intent_error_from_session(error: TreeWorkspaceSessionError) -> IntentError {
             current_revision_id: current_revision_id.to_string(),
         },
         TreeWorkspaceSessionError::OxCalc(
-            oxcalc_core::consumer::OxCalcTreeContextError::CandidateRebaseConflict {
+            oxcalc_core::consumer::OxCalcDocumentError::CandidateRebaseConflict {
                 handle,
                 basis_revision_id,
                 current_revision_id,
@@ -2294,7 +2294,7 @@ fn intent_error_from_session(error: TreeWorkspaceSessionError) -> IntentError {
                 .collect(),
         },
         TreeWorkspaceSessionError::OxCalc(
-            oxcalc_core::consumer::OxCalcTreeContextError::CandidateHasRetainedChild {
+            oxcalc_core::consumer::OxCalcDocumentError::CandidateHasRetainedChild {
                 handle,
                 child_handle,
             },

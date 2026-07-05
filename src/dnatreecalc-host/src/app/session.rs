@@ -38,7 +38,7 @@ use dnatreecalc_skin_framework::{
 use oxcalc_core::consumer::OxCalcTreeRunState;
 use oxcalc_core::consumer::{
     CandidateOverlayHandle, OxCalcTreeCalculationOutcome, OxCalcTreeCandidateReapPolicy,
-    OxCalcTreeCandidateView, OxCalcTreeContext, OxCalcTreeContextError, OxCalcTreeContextOptions,
+    OxCalcTreeCandidateView, OxCalcDocumentContext, OxCalcDocumentError, OxCalcDocumentContextOptions,
     OxCalcTreeDryBindDiagnosticStage, OxCalcTreeDryBindInputKind,
     OxCalcTreeDryBindProfileViolationKind, OxCalcTreeDryBindVerdict, OxCalcTreeEdit,
     OxCalcTreeEditResult, OxCalcTreeEditTransaction, OxCalcTreeHostCapabilitySnapshot,
@@ -170,7 +170,7 @@ pub struct TreeWorkspaceCollectionDependencyProjection {
 }
 
 pub struct TreeWorkspaceSession {
-    context: OxCalcTreeContext,
+    context: OxCalcDocumentContext,
     workspace_id: OxCalcTreeWorkspaceId,
     profile: &'static str,
     engine_root_id: TreeNodeId,
@@ -1931,7 +1931,7 @@ impl TreeWorkspaceSession {
         if let Some(candidate) = self.candidate_handles.get(&scenario.candidate_handle) {
             match self.context.unpin_candidate_retention(candidate) {
                 Ok(_) => {}
-                Err(OxCalcTreeContextError::CandidateRetentionPinNotHeld { .. }) => {}
+                Err(OxCalcDocumentError::CandidateRetentionPinNotHeld { .. }) => {}
                 Err(error) => return Err(error.into()),
             }
         }
@@ -7204,11 +7204,11 @@ impl TreeWorkspaceSession {
     }
 }
 
-fn context_for_profile(profile: &CapabilityProfileId) -> OxCalcTreeContext {
+fn context_for_profile(profile: &CapabilityProfileId) -> OxCalcDocumentContext {
     context_for_profile_id(profile.as_str())
 }
 
-fn context_for_profile_id(profile: &str) -> OxCalcTreeContext {
+fn context_for_profile_id(profile: &str) -> OxCalcDocumentContext {
     let capability_profile_id = match profile {
         "strict-excel" => "host-capabilities:strict-excel",
         _ => "host-capabilities:treecalc-v1",
@@ -7218,8 +7218,8 @@ fn context_for_profile_id(profile: &str) -> OxCalcTreeContext {
         derivation_trace_enabled: true,
         ..OxCalcTreeRuntimePolicy::default()
     };
-    OxCalcTreeContext::new(
-        OxCalcTreeContextOptions::new()
+    OxCalcDocumentContext::new(
+        OxCalcDocumentContextOptions::new()
             .with_runtime_policy(runtime_policy)
             .with_host_capabilities(OxCalcTreeHostCapabilitySnapshot {
                 capability_profile_id: capability_profile_id.to_string(),
@@ -7326,7 +7326,7 @@ fn attribute_key_is_path_safe(key: &str) -> bool {
 #[derive(Debug, thiserror::Error)]
 pub enum TreeWorkspaceSessionError {
     #[error(transparent)]
-    OxCalc(#[from] OxCalcTreeContextError),
+    OxCalc(#[from] OxCalcDocumentError),
     #[error("unsupported .dnatree document schema {schema_version}")]
     UnsupportedDocumentSchema { schema_version: String },
     #[error("unknown DnaTreeCalc node path {node}")]
