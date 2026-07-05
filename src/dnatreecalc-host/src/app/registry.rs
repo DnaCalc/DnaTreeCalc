@@ -1,7 +1,8 @@
 use dnatreecalc_skin_framework::SkinRegistry;
 use dnatreecalc_skins::{
     Bench, CaptureLens, ConsoleCompanion, DependencyInspector, FlowLens, FormulaTree, LedgerLens,
-    LensCompanion, OutlineTable, SheetLens, TransportLens, TreeLens, TripleEditor, ValueBoard,
+    LensCompanion, NotebookLens, OutlineTable, SheetLens, TransportLens, TreeLens, TripleEditor,
+    ValueBoard,
 };
 
 /// Build the default skin registry.
@@ -23,6 +24,10 @@ pub fn build_default_registry() -> SkinRegistry {
     registry.register(FlowLens::new());
     registry.register(Bench::new());
     registry.register(TransportLens::new());
+    // N1: the read-only notebook skin, reachable from the switcher so the
+    // browser-harness rule (§E.0) has a real route to mount and assert
+    // against; the notebook's editing loop (N2+) still lands later.
+    registry.register(NotebookLens::new());
     // Walking-skeleton legacy skins.
     registry.register(TripleEditor::new());
     registry.register(FormulaTree::new());
