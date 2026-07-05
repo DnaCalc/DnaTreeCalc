@@ -67,10 +67,17 @@ impl WorkbookSession {
     /// recalc's tick (if any drain has run under this session so far — H5
     /// does not persist this across a session reload, matching the engine's
     /// own session-local `last_result` convention elsewhere), and a per-sheet
-    /// dirty summary derived from each sheet's own published provenance (no
-    /// private accumulated-seeds peek needed: a Manual-mode edit always
-    /// re-tags its own cell `Stale`, so "any published cell Stale" is the
-    /// honest, engine-backed dirty signal).
+    /// dirty summary read from the engine's own undrained-edits accounting
+    /// (`has_undrained_edits`, W062 hotfix calc-5kqg.57) rather than scanned
+    /// from published cell provenance. A "any published cell Stale" scan is a
+    /// false negative for a brand-new cell under Manual mode: an address with
+    /// no prior published entry has nothing for the engine's own
+    /// `mark_published_stale` to re-tag, so the grid view can show zero
+    /// `Stale` cells even though an edit is genuinely undrained. The engine
+    /// readout has no such gap — it is ground truth over its own seed
+    /// accounting, not a scan of the projection. Cell-level provenance
+    /// (`grid_cell_provenance`, [`value_provenance_projection`]) is unchanged
+    /// by this — only this sheet-level summary's source moved.
     pub fn workbook_calc_projection(
         &self,
         last_recalc_tick: Option<u64>,
@@ -78,14 +85,9 @@ impl WorkbookSession {
         let settings = self.context().workbook_calc_settings(self.workspace_id())?;
         let mut sheets = Vec::new();
         for row in self.sheets()? {
-            let view = self
+            let dirty = self
                 .context()
-                .grid_view(self.workspace_id(), row.node_id)?
-                .ok_or(WorkbookSessionError::SheetNotGridBacked { node: row.node_id })?;
-            let dirty = view
-                .cells
-                .iter()
-                .any(|cell| matches!(cell.provenance, PublishedValueProvenance::Stale { .. }));
+                .has_undrained_edits(self.workspace_id(), row.node_id)?;
             sheets.push(SheetCalcSummaryProjection {
                 grid_node_id: crate::workbook::sheet_grid_node_id(row.node_id),
                 dirty,
@@ -233,6 +235,54 @@ mod tests {
         assert!(
             !projection_after.sheets[0].dirty,
             "the sheet summary is clean once every published cell is fresh again"
+        );
+    }
+
+    /// H5 follow-up (dtc-ajl.29): a brand-new cell under Manual mode — an
+    /// address with no prior published entry — has nothing for the engine's
+    /// own `mark_published_stale` to re-tag, so a Stale-scan over published
+    /// cell provenance would false-negative here (zero `Stale` cells to
+    /// find). The engine's `has_undrained_edits` readout has no such gap: it
+    /// reads the seed set directly, so the sheet summary reports dirty even
+    /// though `grid_cell_provenance` for the new cell is `None` (not `Stale`).
+    #[test]
+    fn brand_new_cell_under_manual_reports_dirty_with_zero_stale_cells() {
+        let mut session = WorkbookSession::create("workbook:h5-brand-new-manual").unwrap();
+        let sheet = session.add_sheet("Sheet1").unwrap();
+
+        // Manual mode from the start: no cell has ever been published on this
+        // sheet, so there is no prior `Calculated` entry for a later edit to
+        // retag `Stale`.
+        session.set_calc_mode(CalcModeProjection::Manual).unwrap();
+
+        // A brand-new cell, never touched before.
+        session.enter_grid_cell(sheet, 1, 1, "10").unwrap();
+
+        // Zero Stale cells: the cell has no prior published entry at all, so
+        // provenance reads `None`, not `Stale`.
+        let provenance = session.grid_cell_provenance(sheet, 1, 1).unwrap();
+        assert_eq!(
+            provenance, None,
+            "a brand-new cell under Manual has no prior published entry to retag Stale"
+        );
+
+        // Yet the sheet summary is honestly dirty: the engine's own
+        // undrained-edits accounting sees the seed, independent of the
+        // (false-negative-prone) Stale scan.
+        let projection = session.workbook_calc_projection(None).unwrap();
+        assert!(
+            projection.sheets[0].dirty,
+            "has_undrained_edits reports dirty for the brand-new cell even with zero Stale cells"
+        );
+
+        // Recalculate (F9) drains the seed; the sheet summary flips clean.
+        let outcome = session.recalculate().unwrap();
+        assert!(outcome.drained_any(), "F9 drained the brand-new cell's seed");
+        let tick = outcome.tick_id.expect("a drain mints a tick");
+        let projection_after = session.workbook_calc_projection(Some(tick)).unwrap();
+        assert!(
+            !projection_after.sheets[0].dirty,
+            "the sheet summary is clean once the engine's seed set is drained"
         );
     }
 
