@@ -12,6 +12,7 @@
 //! dnacalc_skin_ir::*`) so downstream imports stay stable.
 
 pub mod accessibility;
+pub mod components;
 pub mod in_memory_dispatcher;
 pub mod keybinding;
 pub mod registry;
@@ -27,6 +28,10 @@ pub use dnacalc_skin_ir::*;
 pub use accessibility::{
     AriaAttrs, SelectableItemA11y, SelectableRowA11y, aria_bool, listbox_a11y, roving_tabindex,
     stable_node_dom_id, table_a11y, tree_a11y,
+};
+pub use components::cell_entry::{
+    CELL_ENTRY_CSS, CellEntryEditor, EntryCommitResult, EntryDiagnostics, EntryFeedback,
+    classify_entry_receipt, unresolved_name_note,
 };
 pub use in_memory_dispatcher::InMemoryDispatcher;
 pub use keybinding::{

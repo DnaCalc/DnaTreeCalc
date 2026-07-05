@@ -22,12 +22,15 @@
 //! tables in grid/declaration order — matching B.1's "name-declaration order
 //! + sheet/cell order for unlisted entries" default.
 
+use std::sync::Arc;
+
 use dnatreecalc_skin_framework::{
-    DefinedNameProjection, DefinedNameScopeProjection, DefinedNameTargetProjection,
+    CELL_ENTRY_CSS, CellEntryEditor, DefinedNameProjection, DefinedNameScopeProjection,
+    DefinedNameTargetProjection, Dispatcher, EntryDiagnostics, EntryFeedback,
     GridAuthoredCellProjection, GridAuthoredKindProjection, GridCellProjection,
-    GridTableOverlayDescriptor, NodeClassification, NodeId, NodeValueProjection, SkinCapabilities,
-    SkinCategory, SkinContext, SkinHandle, SkinId, SkinManifest, SkinState, WorkspaceSkin,
-    WorkspaceState,
+    GridEditabilityProjection, GridTableOverlayDescriptor, NodeClassification, NodeId,
+    NodeValueProjection, SkinCapabilities, SkinCategory, SkinContext, SkinHandle, SkinId,
+    SkinManifest, SkinState, WorkspaceSkin, WorkspaceState,
 };
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -372,6 +375,91 @@ fn cell_display_name(grid: &NodeId, row: u32, col: u32) -> String {
     format!("{grid}!R{row}C{col}")
 }
 
+/// The editable backing cell of a notebook entry (§B.3 edit-commit loop): the
+/// `(grid, row, col)` an `EnterGridCell` commit targets, plus the committed
+/// text the editor's buffer seeds from (source text for a formula, literal
+/// text for a literal, empty for a cleared cell).
+///
+/// `None` for entries N2 does not make editable: a table entry (structural,
+/// K-track), a dynamic name (its body is a `SetDefinedName` re-bind, N3's), a
+/// static name whose backing cell is outside the window (nothing to seed from
+/// or address), and any cell whose `editability != Editable` (a spill/merged/
+/// repeated/table-structural follower renders read-only — the classifier is
+/// the backstop, §B.8).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EntryEditTarget {
+    pub grid: NodeId,
+    pub row: u32,
+    pub col: u32,
+    pub initial_text: String,
+}
+
+/// The committed text an authored cell's editor seeds from: a formula's source
+/// text, a literal's display text, or empty (an empty/rich-stub cell has no
+/// authored text to edit).
+fn authored_initial_text(authored: &GridAuthoredCellProjection) -> String {
+    match authored.kind {
+        GridAuthoredKindProjection::Formula => authored.source_text.clone().unwrap_or_default(),
+        GridAuthoredKindProjection::Literal => authored.literal_text.clone().unwrap_or_default(),
+        GridAuthoredKindProjection::Empty | GridAuthoredKindProjection::RichStub => String::new(),
+    }
+}
+
+/// Resolve the editable backing cell of an entry, or `None` when N2 does not
+/// author it (see [`EntryEditTarget`]). A cell is editable only when its
+/// authored projection classifies `Editable` — the notebook never guesses past
+/// the classifier (§B.8, §C.3's affordance table).
+#[must_use]
+pub fn entry_edit_target(entry: &NotebookEntry) -> Option<EntryEditTarget> {
+    match &entry.kind {
+        NotebookEntryKind::Table { .. } => None,
+        NotebookEntryKind::Name { name, backing_cell } => {
+            // A dynamic name's body is a formula re-bind (N3), not a cell edit.
+            if name.is_dynamic {
+                return None;
+            }
+            let cell = backing_cell.as_ref()?;
+            let authored = cell.authored.as_ref()?;
+            if !matches!(authored.editability, GridEditabilityProjection::Editable) {
+                return None;
+            }
+            let DefinedNameTargetProjection::Static(rect) = &name.target else {
+                return None;
+            };
+            // Address the edit at the backing cell's own coordinates — the same
+            // cell `resolve_backing_cell` matched (rect anchor). Its grid is
+            // already known: the backing cell was resolved from exactly one
+            // grid's window, so re-use the authored cell's coordinates and the
+            // name's scope grid, keeping the read and edit paths identical.
+            let grid = match &name.scope {
+                DefinedNameScopeProjection::Sheet(id) => id.clone(),
+                // A workbook-scoped name has no single grid identity on the
+                // intent surface here; N2 leaves it read-only (multi-grid
+                // resolution is a K-track/engine-ask concern, as N1's
+                // `name_scope_grid` already documents).
+                DefinedNameScopeProjection::Workbook => return None,
+            };
+            Some(EntryEditTarget {
+                grid,
+                row: rect.top_row,
+                col: rect.left_col,
+                initial_text: authored_initial_text(authored),
+            })
+        }
+        NotebookEntryKind::Cell { grid, authored, .. } => {
+            if !matches!(authored.editability, GridEditabilityProjection::Editable) {
+                return None;
+            }
+            Some(EntryEditTarget {
+                grid: grid.clone(),
+                row: authored.row,
+                col: authored.col,
+                initial_text: authored_initial_text(authored),
+            })
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // View (read-only render: entry list + name rail, §B.2)
 // ---------------------------------------------------------------------------
@@ -379,13 +467,20 @@ fn cell_display_name(grid: &NodeId, row: u32, col: u32) -> String {
 #[component]
 fn NotebookView(cx: SkinContext<NotebookState>) -> impl IntoView {
     let workspace = cx.workspace;
+    let dispatch = cx.dispatch.clone();
 
-    let entries = move || {
-        let ws = workspace.get();
-        derive_entries(&ws)
-            .into_iter()
-            .map(entry_row_view)
-            .collect::<Vec<_>>()
+    let entries = {
+        let dispatch = dispatch.clone();
+        move || {
+            let ws = workspace.get();
+            let dispatch = dispatch.clone();
+            derive_entries(&ws)
+                .into_iter()
+                .map(move |entry| {
+                    view! { <EntryRow entry=entry dispatch=dispatch.clone() /> }.into_any()
+                })
+                .collect::<Vec<_>>()
+        }
     };
 
     let name_rail = move || {
@@ -400,6 +495,7 @@ fn NotebookView(cx: SkinContext<NotebookState>) -> impl IntoView {
 
     view! {
         <style>{NOTEBOOK_CSS}</style>
+        <style>{CELL_ENTRY_CSS}</style>
         <section class="dtc-notebook" aria-label="Notebook">
             <div class="dtc-notebook__entries">{entries}</div>
             <aside class="dtc-notebook__rail" aria-label="Names">
@@ -430,39 +526,154 @@ fn classification_label(classification: NodeClassification) -> &'static str {
     }
 }
 
-/// One read-only entry row: gutter glyph, display name, C2 badge, and the
-/// rendered value (array results render through the shared
-/// [`render_value`], which already collapses to the `{R×C array}` chip —
-/// never editable here, N1 is read-only by construction).
-fn entry_row_view(entry: NotebookEntry) -> AnyView {
+/// One entry row (§B.2 anatomy, §B.3 edit-commit loop): gutter glyph, display
+/// name, C2 badge, and either the rendered value (read state) or the shared
+/// [`CellEntryEditor`] (edit state). Array results render through the shared
+/// [`render_value`], which collapses to the `{R×C array}` chip — never
+/// editable, spill results are read-only by classifier (§B.8).
+///
+/// An entry that [`entry_edit_target`] resolves as editable becomes an
+/// affordance: clicking its body (or pressing `Enter` while it holds focus)
+/// opens the editor; committing dispatches exactly one
+/// [`WorkspaceIntent::EnterGridCell`]; `Esc` reverts without dispatch; a typed
+/// rejection keeps the editor open and lists the diagnostics under it (§B.3
+/// step 3, §B.5). A non-editable entry (table, dynamic name, read-only cell)
+/// renders exactly as N1's read-only row.
+#[component]
+fn EntryRow(entry: NotebookEntry, dispatch: Arc<dyn Dispatcher>) -> impl IntoView {
     let glyph = entry_glyph(&entry);
     let badge_class = classification_class(entry.classification);
     let badge_label = classification_label(entry.classification);
-    let value_view = match &entry.kind {
+    let display_name = entry.display_name.clone();
+    let kind_label = entry_kind_label(&entry.kind);
+    // The value projection (Clone) an entry renders in its read state; `None`
+    // for entries that show no value row (a name with no resolved backing cell,
+    // a table). Kept as the projection — not a rendered `AnyView` (not `Clone`)
+    // — so the reactive body can re-render it on each read/edit toggle.
+    let value_projection: Option<NodeValueProjection> = match &entry.kind {
         NotebookEntryKind::Name {
             backing_cell: Some(cell),
             ..
-        } => Some(render_value(&cell.value)),
+        } => Some(cell.value.clone()),
         NotebookEntryKind::Name {
             backing_cell: None, ..
         } => None,
-        NotebookEntryKind::Cell { value, .. } => Some(render_value(value)),
+        NotebookEntryKind::Cell { value, .. } => Some(value.clone()),
         NotebookEntryKind::Table { .. } => None,
     };
 
+    let edit_target = entry_edit_target(&entry);
+    let editing = RwSignal::new(false);
+    let feedback = RwSignal::new(EntryFeedback::None);
+
+    // Read-only entries (no edit target) render exactly as N1 did.
+    let Some(target) = edit_target else {
+        let value_view = value_projection.as_ref().map(|value| {
+            view! {
+                <div class="dtc-notebook-entry__value">{render_value(value)}</div>
+            }
+            .into_any()
+        });
+        return view! {
+            <div class="dtc-notebook-entry" data-entry-kind=kind_label>
+                <div class="dtc-notebook-entry__head">
+                    <span class="dtc-notebook-entry__glyph">{glyph}</span>
+                    <span class="dtc-notebook-entry__name">{display_name}</span>
+                    <span class=format!("dtc-notebook-badge {badge_class}")>{badge_label}</span>
+                </div>
+                {value_view}
+            </div>
+        }
+        .into_any();
+    };
+
+    let open_editor = move |_| {
+        // Reopening from a clean read state starts with no stale feedback; a
+        // rejection that reopened the editor already set its own feedback.
+        if !editing.get_untracked() {
+            feedback.set(EntryFeedback::None);
+            editing.set(true);
+        }
+    };
+    let open_on_enter = move |ev: leptos::ev::KeyboardEvent| {
+        if ev.key() == "Enter" && !editing.get_untracked() {
+            ev.prevent_default();
+            feedback.set(EntryFeedback::None);
+            editing.set(true);
+        }
+    };
+
+    let editor_target = target.clone();
+    let editor_dispatch = dispatch.clone();
+    let body = move || {
+        if editing.get() {
+            let target = editor_target.clone();
+            view! {
+                <CellEntryEditor
+                    grid=target.grid
+                    row=target.row
+                    col=target.col
+                    initial_text=target.initial_text
+                    dispatch=editor_dispatch.clone()
+                    editing=editing
+                    feedback=feedback
+                />
+            }
+            .into_any()
+        } else {
+            value_projection
+                .as_ref()
+                .map(|value| {
+                    view! {
+                        <div class="dtc-notebook-entry__value">{render_value(value)}</div>
+                    }
+                    .into_any()
+                })
+                .unwrap_or_else(|| ().into_any())
+        }
+    };
+
+    let feedback_view = move || feedback_below_editor(feedback.get());
+
     view! {
-        <div class="dtc-notebook-entry" data-entry-kind=entry_kind_label(&entry.kind)>
-            <div class="dtc-notebook-entry__head">
+        <div class="dtc-notebook-entry dtc-notebook-entry--editable" data-entry-kind=kind_label>
+            <div
+                class="dtc-notebook-entry__head"
+                role="button"
+                tabindex="0"
+                on:click=open_editor
+                on:keydown=open_on_enter
+            >
                 <span class="dtc-notebook-entry__glyph">{glyph}</span>
-                <span class="dtc-notebook-entry__name">{entry.display_name.clone()}</span>
+                <span class="dtc-notebook-entry__name">{display_name}</span>
                 <span class=format!("dtc-notebook-badge {badge_class}")>{badge_label}</span>
             </div>
-            {value_view.map(|value| view! {
-                <div class="dtc-notebook-entry__value">{value}</div>
-            }.into_any())}
+            {body}
+            {feedback_view}
         </div>
     }
     .into_any()
+}
+
+/// Render the post-commit feedback beneath the editor (§B.3 step 3, §B.5): a
+/// typed rejection lists its diagnostics through the shared [`EntryDiagnostics`]
+/// component; an unresolved-name success shows the `#NAME?` note; a generic
+/// engine error shows its message; a clean commit shows nothing.
+fn feedback_below_editor(feedback: EntryFeedback) -> AnyView {
+    match feedback {
+        EntryFeedback::None => ().into_any(),
+        EntryFeedback::Rejected { diagnostics } => {
+            view! { <EntryDiagnostics diagnostics=diagnostics /> }.into_any()
+        }
+        EntryFeedback::UnresolvedNames { note } => view! {
+            <div class="dtc-entry-note" role="status">{note}</div>
+        }
+        .into_any(),
+        EntryFeedback::OtherError { message } => view! {
+            <div class="dtc-entry-note dtc-entry-note--error" role="alert">{message}</div>
+        }
+        .into_any(),
+    }
 }
 
 fn entry_kind_label(kind: &NotebookEntryKind) -> &'static str {
@@ -871,6 +1082,133 @@ mod tests {
             .insert(NodeId::new("Sheet1"), grid_projection(cells, Vec::new()));
 
         assert_eq!(derive_entries(&ws).len(), 0);
+    }
+
+    /// N2: an editable literal-backed static name resolves an edit target at
+    /// its backing cell, seeded from the literal text — the `EnterGridCell`
+    /// commit addresses that cell.
+    #[test]
+    fn entry_edit_target_for_literal_name_addresses_backing_cell() {
+        let mut ws = WorkspaceState::default();
+        ws.defined_names.entries.push(name(
+            "rate",
+            DefinedNameTargetProjection::Static(static_rect(4, 2)),
+            false,
+        ));
+        let backing = authored_cell(
+            4,
+            2,
+            GridAuthoredKindProjection::Literal,
+            Some("0.065"),
+            None,
+        );
+        let cells = vec![cell_projection(4, 2, value_number("0.065"), Some(backing))];
+        ws.grids
+            .insert(NodeId::new("Sheet1"), grid_projection(cells, Vec::new()));
+
+        let entries = derive_entries(&ws);
+        let target = entry_edit_target(&entries[0]).expect("a literal name is editable");
+        assert_eq!(target.grid, NodeId::new("Sheet1"));
+        assert_eq!((target.row, target.col), (4, 2));
+        assert_eq!(target.initial_text, "0.065");
+    }
+
+    /// N2: an uncovered formula cell resolves an edit target seeded from its
+    /// source text.
+    #[test]
+    fn entry_edit_target_for_uncovered_formula_cell_seeds_source_text() {
+        let mut ws = WorkspaceState::default();
+        let cell = authored_cell(
+            2,
+            1,
+            GridAuthoredKindProjection::Formula,
+            None,
+            Some("=A1*3"),
+        );
+        let cells = vec![cell_projection(2, 1, value_number("30"), Some(cell))];
+        ws.grids
+            .insert(NodeId::new("Sheet1"), grid_projection(cells, Vec::new()));
+
+        let entries = derive_entries(&ws);
+        let target = entry_edit_target(&entries[0]).expect("an uncovered formula cell is editable");
+        assert_eq!((target.row, target.col), (2, 1));
+        assert_eq!(target.initial_text, "=A1*3");
+    }
+
+    /// N2: a dynamic name has no cell-edit target (its body is a
+    /// `SetDefinedName` re-bind, N3), and a table entry is never editable here.
+    #[test]
+    fn entry_edit_target_is_none_for_dynamic_name_and_table() {
+        let mut ws = WorkspaceState::default();
+        ws.defined_names.entries.push(name(
+            "monthly",
+            DefinedNameTargetProjection::Dynamic {
+                source_text: "=PMT(rate/12,360,-1)".to_string(),
+            },
+            true,
+        ));
+        let cells = vec![cell_projection(
+            3,
+            1,
+            NodeValueProjection::Text("base".to_string()),
+            Some(authored_cell(
+                3,
+                1,
+                GridAuthoredKindProjection::Literal,
+                Some("base"),
+                None,
+            )),
+        )];
+        let tables = vec![table_overlay("Scenarios", 3, 1, 4, 2)];
+        ws.grids
+            .insert(NodeId::new("Sheet1"), grid_projection(cells, tables));
+
+        let entries = derive_entries(&ws);
+        let dynamic = entries
+            .iter()
+            .find(|e| matches!(e.kind, NotebookEntryKind::Name { .. }))
+            .expect("a name entry");
+        assert_eq!(
+            entry_edit_target(dynamic),
+            None,
+            "dynamic name: no cell edit"
+        );
+        let table = entries
+            .iter()
+            .find(|e| matches!(e.kind, NotebookEntryKind::Table { .. }))
+            .expect("a table entry");
+        assert_eq!(
+            entry_edit_target(table),
+            None,
+            "table: never editable in N2"
+        );
+    }
+
+    /// N2: a non-`Editable` cell (e.g. a spill display member) renders
+    /// read-only — the classifier is the backstop, no edit target (§B.8).
+    #[test]
+    fn entry_edit_target_is_none_for_non_editable_cell() {
+        let mut ws = WorkspaceState::default();
+        let spill = GridAuthoredCellProjection {
+            row: 4,
+            col: 2,
+            kind: GridAuthoredKindProjection::Formula,
+            literal_text: None,
+            source_text: Some("=SEQUENCE(2)".to_string()),
+            editability: GridEditabilityProjection::SpillDisplay {
+                anchor: dnatreecalc_skin_framework::GridCellRefProjection { row: 3, col: 2 },
+            },
+        };
+        let cells = vec![cell_projection(4, 2, value_number("2"), Some(spill))];
+        ws.grids
+            .insert(NodeId::new("Sheet1"), grid_projection(cells, Vec::new()));
+
+        let entries = derive_entries(&ws);
+        assert_eq!(
+            entry_edit_target(&entries[0]),
+            None,
+            "a spill-display cell is read-only by classifier"
+        );
     }
 
     #[test]

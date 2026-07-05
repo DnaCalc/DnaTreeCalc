@@ -46,7 +46,14 @@ wasm-bindgen-test = "=0.3.67"
 wasm-bindgen-futures = "0.4"
 # Extra web-sys features the browser-smoke tests need on top of the lib's set
 # (feature unification applies them to the test build only, never the app).
-web-sys = { version = "0.3", features = ["History", "Node", "NodeList"] }
+web-sys = { version = "0.3", features = [
+    "History",
+    "Node",
+    "NodeList",
+    "HtmlInputElement",
+    "KeyboardEvent",
+    "KeyboardEventInit",
+] }
 
 [lints]
 workspace = true
