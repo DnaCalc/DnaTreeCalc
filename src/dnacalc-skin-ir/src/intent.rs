@@ -2,9 +2,10 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::identity::{NodeId, NodeKey};
 use crate::workspace::{
-    CalcRunProjection, CandidateProjection, ClipboardProjection, DependencyKindProjection,
-    GridAuthoredCellProjection, GridCellRefProjection, GridEntryDiagnosticProjection,
-    GridEntryOutcomeProjection, GridOverlayBundle, GridProjection, InitialNodeContentProjection,
+    CalcRunProjection, CandidateProjection, ClipboardProjection, DefinedNameScopeProjection,
+    DefinedNamesProjection, DependencyKindProjection, GridAuthoredCellProjection,
+    GridCellRefProjection, GridEntryDiagnosticProjection, GridEntryOutcomeProjection,
+    GridOverlayBundle, GridProjection, GridRectProjection, InitialNodeContentProjection,
     NodeValueProjection, ScenarioProjection, SweepProjection,
 };
 use serde::{Deserialize, Serialize};
@@ -521,6 +522,52 @@ pub enum WorkspaceIntent {
         row: u32,
         col: u32,
     },
+    /// Define (or redefine) a defined name at workbook or sheet scope (H4,
+    /// §A.2: `set_workbook_defined_name`/`set_sheet_defined_name`/the dynamic
+    /// variants). `target` selects the static-rect or dynamic-formula engine
+    /// verb; the skin never composes the underlying `GridRect` or resolves a
+    /// dynamic formula itself. Redefining an existing name at the same scope
+    /// is the engine's own last-write-wins semantics (no rejection); the only
+    /// typed duplicate-name rejection is a workbook-scope name colliding with
+    /// a root tree node's symbol (`DefinedNameCollidesWithTreeNode`, §A.4).
+    SetDefinedName {
+        scope: DefinedNameScopeProjection,
+        name: String,
+        target: DefinedNameTargetIntent,
+    },
+    /// Rename a defined name in place (H4, §A.2: `rename_defined_name`).
+    /// **Honest slice**: the engine has no identity-preserving rename setter,
+    /// so this is a target-preserving delete-then-redefine over the same name
+    /// store (mirroring the engine doc comment verbatim) — a dependent
+    /// formula written as `=old` re-resolves to `#NAME?` at the delete and
+    /// does not auto-heal under `new`; a formula written as `=new` after the
+    /// rename resolves the moved target.
+    RenameDefinedName {
+        scope: DefinedNameScopeProjection,
+        old_name: String,
+        new_name: String,
+    },
+    /// Delete a defined name at workbook or sheet scope (H4, §A.2:
+    /// `delete_defined_name`). Dependents referencing the deleted name
+    /// re-resolve to `#NAME?`; recreating a name with the same text at the
+    /// same scope self-heals those dependents on the next tick (the engine's
+    /// `NameIdentity` semantics, mirrored honestly — no host-side text
+    /// rewrite of referring formulas).
+    DeleteDefinedName {
+        scope: DefinedNameScopeProjection,
+        name: String,
+    },
+}
+
+/// The target payload for [`WorkspaceIntent::SetDefinedName`]: a static grid
+/// rectangle or a dynamic formula's source text, mirroring the engine's own
+/// static/dynamic verb split (§A.2's `set_*_defined_name` /
+/// `set_*_dynamic_defined_name` pair) as one intent-level choice rather than
+/// four separate intent variants.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DefinedNameTargetIntent {
+    Static(GridRectProjection),
+    Dynamic { source_text: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -746,6 +793,14 @@ pub enum IntentError {
     GridCellNotEditable {
         anchor: Option<GridCellRefProjection>,
     },
+    /// A `SetDefinedName`/`RenameDefinedName` write was rejected because a
+    /// workbook-scope name collides with a root tree node's symbol (H4, §A.4:
+    /// `DefinedNameCollidesWithTreeNode` — D2 §4.3 rule 4 / V8: a root tree
+    /// node **is** a workbook-scoped name, so this is a typed rejection, never
+    /// a silent shadow). The engine guarantees no mutation on this path; the
+    /// projection's defined-name catalog is unchanged.
+    #[error("defined name {name} collides with an existing node/name")]
+    DefinedNameCollision { name: String },
     /// An engine rejection this bead's map does not (yet) special-case —
     /// §A.4's "unknown/unmapped engine errors" decision: rendered as a
     /// generic rejection, the Debug payload behind a disclosure, never
@@ -872,6 +927,12 @@ pub enum WorkspaceDeltaChange {
         col: u32,
         outcome: GridEntryOutcomeProjection,
     },
+    /// The workbook's defined-name catalog changed (H4, §A.3): complete
+    /// replacement of `WorkspaceState::defined_names`, the same
+    /// whole-collection-replacement shape `CalcRun`/`ClipboardChanged` already
+    /// use — the catalog is small (one workbook, not a windowed grid), so
+    /// there is no windowing story to preserve here.
+    DefinedNamesChanged(DefinedNamesProjection),
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]

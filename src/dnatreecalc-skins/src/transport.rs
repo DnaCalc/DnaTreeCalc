@@ -224,6 +224,15 @@ fn pulse_change_summary(change: &WorkspaceDeltaChange) -> String {
         WorkspaceDeltaChange::GridCellEntered { row, col, .. } => {
             format!("cell R{row}C{col} entered")
         }
+        // H4: minimal arm forced by adding DefinedNamesChanged to the shared
+        // WorkspaceDeltaChange enum (this file is outside H4's owned scope —
+        // see the bead's coordination note on compiler-forced exhaustiveness
+        // arms in another lane's file).
+        WorkspaceDeltaChange::DefinedNamesChanged(catalog) => counted(
+            catalog.entries.len(),
+            "defined name updated",
+            "defined names updated",
+        ),
     }
 }
 

@@ -131,6 +131,24 @@ impl WorkbookSession {
         &self.workspace_id
     }
 
+    /// The underlying engine context (H4, `defined_names.rs`'s own module
+    /// seam: the defined-name verb set is document-surface API on
+    /// `OxCalcDocumentContext` directly, not re-wrapped per-verb here).
+    #[must_use]
+    pub(crate) fn context(&self) -> &OxCalcDocumentContext {
+        &self.context
+    }
+
+    pub(crate) fn context_mut(&mut self) -> &mut OxCalcDocumentContext {
+        &mut self.context
+    }
+
+    /// The session's default grid geometry (H4's `grid_rect_for` seam).
+    #[must_use]
+    pub(crate) fn bounds(&self) -> ExcelGridBounds {
+        self.bounds
+    }
+
     /// Add a sheet by display name and give it an empty grid backing, so a
     /// caller can immediately write cells into it. Returns the sheet's stable
     /// node id (the identity a rename preserves and a delete tombstones).
@@ -292,6 +310,24 @@ impl WorkbookSession {
         self.context
             .clear_grid_cell(&self.workspace_id, sheet, &address)?
             .ok_or(WorkbookSessionError::SheetNotGridBacked { node: sheet })
+    }
+
+    /// Add a root Calculation tree-node participant directly on the
+    /// underlying context (H4 test-only seam): the engine's
+    /// `DefinedNameCollidesWithTreeNode` rejection (D2 §4.3 rule 4 / V8) only
+    /// fires against a root tree node's symbol, and `WorkbookSession`'s public
+    /// API deliberately exposes sheets only (§A.1's "one grid-backed node per
+    /// sheet" shape) — so H4's own acceptance test for the collision path
+    /// needs this narrow escape hatch, mirroring H3's `enter_grid_cell_text`
+    /// test-only-helper precedent. Never used outside `#[cfg(test)]`.
+    #[cfg(test)]
+    pub(crate) fn add_root_calc_node_for_test(&mut self, symbol: &str, formula: &str) {
+        self.context
+            .add_node(
+                &self.workspace_id,
+                oxcalc_core::consumer::OxCalcTreeNodeCreate::new(symbol, formula),
+            )
+            .unwrap();
     }
 }
 

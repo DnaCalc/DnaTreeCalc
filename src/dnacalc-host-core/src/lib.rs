@@ -38,11 +38,13 @@
 //! Cross-sheet poll fan-out and skins are out of H6 scope (H7 and later).
 
 pub mod command;
+pub mod defined_names;
 pub mod grid_publication;
 pub mod present;
 pub mod workbook;
 
 pub use command::{HostCommand, HostCommandOutcome, ProjectionPublisher, RecordingPublisher};
+pub use defined_names::{DefinedNameTargetIntentInput, present_defined_name_rejection};
 pub use grid_publication::grid_authored_cell_projection;
 pub use present::present_grid_entry_rejection;
 pub use workbook::{
@@ -50,8 +52,8 @@ pub use workbook::{
 };
 
 use dnacalc_skin_ir::{
-    GridEntryOutcomeProjection, IntentError, IntentReceipt, NodeValueProjection, WorkspaceDelta,
-    WorkspaceDeltaChange, WorkspaceIntent,
+    DefinedNameTargetIntent, GridEntryOutcomeProjection, IntentError, IntentReceipt,
+    NodeValueProjection, WorkspaceDelta, WorkspaceDeltaChange, WorkspaceIntent,
 };
 use oxcalc_core::consumer::GridCellEntryOutcome;
 use oxfunc_core::value::CalcValue;
@@ -138,6 +140,26 @@ impl DocumentSession {
                 DocumentSession::Workbook(session),
                 WorkspaceIntent::ClearGridCell { grid, row, col },
             ) => dispatch_clear_grid_cell(session, &grid, row, col),
+            (
+                DocumentSession::Workbook(session),
+                WorkspaceIntent::SetDefinedName {
+                    scope,
+                    name,
+                    target,
+                },
+            ) => dispatch_set_defined_name(session, &scope, name, target),
+            (
+                DocumentSession::Workbook(session),
+                WorkspaceIntent::RenameDefinedName {
+                    scope,
+                    old_name,
+                    new_name,
+                },
+            ) => dispatch_rename_defined_name(session, &scope, &old_name, new_name),
+            (
+                DocumentSession::Workbook(session),
+                WorkspaceIntent::DeleteDefinedName { scope, name },
+            ) => dispatch_delete_defined_name(session, &scope, &name),
             (session, intent) => IntentReceipt::rejected(IntentError::UnsupportedByModel {
                 intent: workspace_intent_kind(&intent).to_string(),
                 model: session.model_name().to_string(),
@@ -199,6 +221,107 @@ fn dispatch_clear_grid_cell(
             })
         }
         Err(error) => IntentReceipt::rejected(present_grid_entry_rejection(&error)),
+    }
+}
+
+/// Resolve the sheet a defined-name write anchors on: `Sheet(grid)` scope
+/// anchors on that exact sheet; `Workbook` scope anchors on any grid-backed
+/// sheet (a workbook-scoped name is authored on one sheet's grid but visible
+/// workbook-wide, per `defined_names.rs`'s doc comment) — the workbook's
+/// first sheet in sheet order, since H4's intents (§A.2) carry no explicit
+/// sheet field for the workbook-scope case. A workbook with no sheets yet is
+/// the typed `GenericEngineRejection` fallback, never a panic.
+fn resolve_defined_name_anchor(
+    session: &WorkbookSession,
+    scope: &dnacalc_skin_ir::DefinedNameScopeProjection,
+) -> Result<oxcalc_core::structural::TreeNodeId, IntentError> {
+    use dnacalc_skin_ir::DefinedNameScopeProjection;
+    match scope {
+        DefinedNameScopeProjection::Sheet(grid) => resolve_sheet_node(grid),
+        DefinedNameScopeProjection::Workbook => session
+            .sheets()
+            .ok()
+            .and_then(|rows| rows.first().map(|row| row.node_id))
+            .ok_or_else(|| IntentError::GenericEngineRejection {
+                debug: "workbook-scoped defined name requires at least one sheet".to_string(),
+            }),
+    }
+}
+
+fn defined_name_target_intent_input(
+    target: DefinedNameTargetIntent,
+) -> DefinedNameTargetIntentInput {
+    match target {
+        DefinedNameTargetIntent::Static(rect) => DefinedNameTargetIntentInput::Static(rect),
+        DefinedNameTargetIntent::Dynamic { source_text } => {
+            DefinedNameTargetIntentInput::Dynamic { source_text }
+        }
+    }
+}
+
+/// Build the `DefinedNamesChanged` delta carrying the workbook's complete,
+/// freshly-read catalog (§A.3: complete-replacement patch, matching
+/// `CalcRun`/`ClipboardChanged`).
+fn defined_names_changed_receipt(session: &WorkbookSession) -> IntentReceipt {
+    match session.defined_names() {
+        Ok(catalog) => IntentReceipt::accepted().with_delta(WorkspaceDelta {
+            from_seq: 0,
+            to_seq: 0,
+            changes: vec![WorkspaceDeltaChange::DefinedNamesChanged(catalog)],
+        }),
+        Err(error) => IntentReceipt::rejected(present_defined_name_rejection(&error)),
+    }
+}
+
+fn dispatch_set_defined_name(
+    session: &mut WorkbookSession,
+    scope: &dnacalc_skin_ir::DefinedNameScopeProjection,
+    name: String,
+    target: DefinedNameTargetIntent,
+) -> IntentReceipt {
+    let anchor = match resolve_defined_name_anchor(session, scope) {
+        Ok(anchor) => anchor,
+        Err(error) => return IntentReceipt::rejected(error),
+    };
+    match session.set_defined_name(
+        anchor,
+        scope.clone(),
+        name,
+        defined_name_target_intent_input(target),
+    ) {
+        Ok(()) => defined_names_changed_receipt(session),
+        Err(error) => IntentReceipt::rejected(present_defined_name_rejection(&error)),
+    }
+}
+
+fn dispatch_rename_defined_name(
+    session: &mut WorkbookSession,
+    scope: &dnacalc_skin_ir::DefinedNameScopeProjection,
+    old_name: &str,
+    new_name: String,
+) -> IntentReceipt {
+    let anchor = match resolve_defined_name_anchor(session, scope) {
+        Ok(anchor) => anchor,
+        Err(error) => return IntentReceipt::rejected(error),
+    };
+    match session.rename_defined_name(anchor, scope.clone(), old_name, new_name) {
+        Ok(()) => defined_names_changed_receipt(session),
+        Err(error) => IntentReceipt::rejected(present_defined_name_rejection(&error)),
+    }
+}
+
+fn dispatch_delete_defined_name(
+    session: &mut WorkbookSession,
+    scope: &dnacalc_skin_ir::DefinedNameScopeProjection,
+    name: &str,
+) -> IntentReceipt {
+    let anchor = match resolve_defined_name_anchor(session, scope) {
+        Ok(anchor) => anchor,
+        Err(error) => return IntentReceipt::rejected(error),
+    };
+    match session.delete_defined_name(anchor, scope.clone(), name) {
+        Ok(()) => defined_names_changed_receipt(session),
+        Err(error) => IntentReceipt::rejected(present_defined_name_rejection(&error)),
     }
 }
 
@@ -700,5 +823,194 @@ mod tests {
             receipt.error,
             Some(IntentError::GenericEngineRejection { .. })
         ));
+    }
+
+    // ------------------------------------------------------------------
+    // H4 acceptance: defined-names intents end-to-end.
+    // ------------------------------------------------------------------
+
+    use dnacalc_skin_ir::{
+        DefinedNameScopeProjection, DefinedNameTargetProjection, GridRectProjection,
+    };
+
+    fn static_rect(
+        top_row: u32,
+        left_col: u32,
+        bottom_row: u32,
+        right_col: u32,
+    ) -> DefinedNameTargetIntent {
+        DefinedNameTargetIntent::Static(GridRectProjection {
+            top_row,
+            left_col,
+            bottom_row,
+            right_col,
+        })
+    }
+
+    /// H4 acceptance (1)/(2): `SetDefinedName` (static, workbook scope)
+    /// dispatches, and the resulting `DefinedNamesChanged` delta lists it
+    /// with scope + rect.
+    #[test]
+    fn set_defined_name_dispatches_and_projects_defined_names_changed() {
+        let (mut document, grid) = workbook_with_one_sheet("workbook:h4-set");
+        let _ = document.dispatch(WorkspaceIntent::EnterGridCell {
+            grid,
+            row: 2,
+            col: 2,
+            text: "5".to_string(),
+        });
+
+        let receipt = document.dispatch(WorkspaceIntent::SetDefinedName {
+            scope: DefinedNameScopeProjection::Workbook,
+            name: "Rate".to_string(),
+            target: static_rect(2, 2, 2, 2),
+        });
+
+        assert!(receipt.accepted, "a fresh defined name is accepted");
+        match receipt.delta.changes.as_slice() {
+            [WorkspaceDeltaChange::DefinedNamesChanged(catalog)] => {
+                assert_eq!(catalog.entries.len(), 1);
+                let entry = &catalog.entries[0];
+                assert_eq!(entry.name, "Rate");
+                assert_eq!(entry.scope, DefinedNameScopeProjection::Workbook);
+                assert_eq!(
+                    entry.target,
+                    DefinedNameTargetProjection::Static(GridRectProjection {
+                        top_row: 2,
+                        left_col: 2,
+                        bottom_row: 2,
+                        right_col: 2,
+                    })
+                );
+            }
+            other => panic!("expected exactly one DefinedNamesChanged change, got {other:?}"),
+        }
+    }
+
+    /// H4 acceptance (2), rename half: rename dispatches -> the catalog shows
+    /// the old name gone and the new name present.
+    #[test]
+    fn rename_defined_name_dispatches_and_projects_old_gone_new_present() {
+        let (mut document, _grid) = workbook_with_one_sheet("workbook:h4-rename-dispatch");
+        let _ = document.dispatch(WorkspaceIntent::SetDefinedName {
+            scope: DefinedNameScopeProjection::Workbook,
+            name: "Rate".to_string(),
+            target: static_rect(1, 1, 1, 1),
+        });
+
+        let receipt = document.dispatch(WorkspaceIntent::RenameDefinedName {
+            scope: DefinedNameScopeProjection::Workbook,
+            old_name: "Rate".to_string(),
+            new_name: "TaxRate".to_string(),
+        });
+
+        assert!(receipt.accepted, "renaming an existing name is accepted");
+        match receipt.delta.changes.as_slice() {
+            [WorkspaceDeltaChange::DefinedNamesChanged(catalog)] => {
+                assert_eq!(catalog.entries.len(), 1);
+                assert_eq!(catalog.entries[0].name, "TaxRate");
+                assert!(!catalog.entries.iter().any(|entry| entry.name == "Rate"));
+            }
+            other => panic!("expected exactly one DefinedNamesChanged change, got {other:?}"),
+        }
+    }
+
+    /// H4 acceptance (2), delete + recreate half: delete dispatches -> the
+    /// catalog no longer lists the name and the dependent shows a non-numeric
+    /// (#NAME?-shaped) value; recreating it self-heals the dependent.
+    #[test]
+    fn delete_then_recreate_defined_name_dispatches_and_self_heals_dependent() {
+        let (mut document, grid) = workbook_with_one_sheet("workbook:h4-delete-dispatch");
+        let _ = document.dispatch(WorkspaceIntent::EnterGridCell {
+            grid: grid.clone(),
+            row: 1,
+            col: 1,
+            text: "7".to_string(),
+        });
+        let _ = document.dispatch(WorkspaceIntent::SetDefinedName {
+            scope: DefinedNameScopeProjection::Workbook,
+            name: "Total".to_string(),
+            target: static_rect(1, 1, 1, 1),
+        });
+        let _ = document.dispatch(WorkspaceIntent::EnterGridCell {
+            grid: grid.clone(),
+            row: 2,
+            col: 1,
+            text: "=Total".to_string(),
+        });
+
+        let receipt = document.dispatch(WorkspaceIntent::DeleteDefinedName {
+            scope: DefinedNameScopeProjection::Workbook,
+            name: "Total".to_string(),
+        });
+        assert!(receipt.accepted, "deleting an existing name is accepted");
+        match receipt.delta.changes.as_slice() {
+            [WorkspaceDeltaChange::DefinedNamesChanged(catalog)] => {
+                assert!(catalog.entries.is_empty(), "Total is gone from the catalog");
+            }
+            other => panic!("expected exactly one DefinedNamesChanged change, got {other:?}"),
+        }
+
+        let DocumentSession::Workbook(session) = &document else {
+            unreachable!("workbook session")
+        };
+        let sheet = workbook::parse_sheet_grid_node_id(&grid).unwrap();
+        let after_delete = session.grid_cell_value(sheet, 2, 1).unwrap().unwrap();
+        assert!(
+            after_delete.as_number().is_none(),
+            "A2 no longer resolves to a plain number once Total is deleted, got {after_delete:?}"
+        );
+
+        // Recreate: self-heals.
+        let _ = document.dispatch(WorkspaceIntent::SetDefinedName {
+            scope: DefinedNameScopeProjection::Workbook,
+            name: "Total".to_string(),
+            target: static_rect(1, 1, 1, 1),
+        });
+        let DocumentSession::Workbook(session) = &document else {
+            unreachable!("workbook session")
+        };
+        assert_eq!(
+            session
+                .grid_cell_value(sheet, 2, 1)
+                .unwrap()
+                .and_then(|v| v.as_number()),
+            Some(7.0),
+            "recreating Total heals A2 back to 7"
+        );
+    }
+
+    /// H4 acceptance (3): a duplicate name (workbook-scope name colliding
+    /// with a root tree node's symbol) is a typed rejection receipt, and the
+    /// projection's defined-name catalog is unchanged.
+    #[test]
+    fn set_defined_name_collision_is_typed_rejection_and_projection_unchanged() {
+        let (mut document, _grid) = workbook_with_one_sheet("workbook:h4-collision-dispatch");
+        let DocumentSession::Workbook(session) = &mut document else {
+            unreachable!("workbook session")
+        };
+        session.add_root_calc_node_for_test("Rate", "5");
+
+        let receipt = document.dispatch(WorkspaceIntent::SetDefinedName {
+            scope: DefinedNameScopeProjection::Workbook,
+            name: "Rate".to_string(),
+            target: static_rect(3, 3, 3, 3),
+        });
+
+        assert!(!receipt.accepted, "a tree-node-colliding name is rejected");
+        match receipt.error {
+            Some(IntentError::DefinedNameCollision { name }) => {
+                assert_eq!(name, "Rate");
+            }
+            other => panic!("expected DefinedNameCollision, got {other:?}"),
+        }
+
+        let DocumentSession::Workbook(session) = &document else {
+            unreachable!("workbook session")
+        };
+        assert!(
+            session.defined_names().unwrap().entries.is_empty(),
+            "the rejected write leaves the projection's catalog unchanged"
+        );
     }
 }

@@ -115,6 +115,9 @@ pub fn workspace_state_from_model(model: &WorkspaceModel) -> WorkspaceState {
         // Grid projections are populated by the live session (bead 3.6); the
         // model-derived projection has no grid-backed sheet nodes yet.
         grids: BTreeMap::new(),
+        // This tree-model fixture projection carries no defined names (H4);
+        // a workbook session's live projection fills this field instead.
+        defined_names: Default::default(),
         clipboard: None,
         diagnostics: Vec::new(),
     }

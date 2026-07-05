@@ -43,6 +43,10 @@ pub struct WorkspaceState {
     /// the client is interested in are present, and each carries only the cells
     /// inside the registered interest window ("viewing is subscribing").
     pub grids: BTreeMap<NodeId, GridProjection>,
+    /// The workbook's complete defined-name catalog (H4, §A.3). Default-empty
+    /// for a pre-H4 mirror or a `RichTree` session that carries no names.
+    #[serde(default)]
+    pub defined_names: DefinedNamesProjection,
     pub clipboard: Option<ClipboardProjection>,
     pub diagnostics: Vec<String>,
 }
@@ -1024,6 +1028,67 @@ pub enum GridEntryOutcomeProjection {
 pub struct GridEntryDiagnosticProjection {
     pub message: String,
     pub span: Option<(u32, u32)>,
+}
+
+/// The complete defined-name catalog for a workbook session (H4, §A.3): the
+/// skin-IR mirror of OxCalc's `document_defined_names` readout-all verb
+/// (`consumer.rs`). `WorkspaceState::defined_names` and this projection's own
+/// `WorkspaceDeltaChange::DefinedNamesChanged` payload share this one type —
+/// the whole catalog is small (one workbook, not a windowed grid), so it is a
+/// complete-replacement patch every time, matching the doctrine documented at
+/// `session_channel.rs:145-158`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DefinedNamesProjection {
+    pub entries: Vec<DefinedNameProjection>,
+}
+
+/// One defined name, mirroring OxCalc's `DefinedNameReadout` (`consumer.rs`)
+/// verbatim: scope, name text, target (a static rect or a dynamic formula),
+/// and whether it is dynamic. Never carries a computed value — a dynamic
+/// name's current value is read the same way any other formula's is (through
+/// the grid/value projection), not duplicated here.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DefinedNameProjection {
+    pub scope: DefinedNameScopeProjection,
+    pub name: String,
+    pub target: DefinedNameTargetProjection,
+    pub is_dynamic: bool,
+}
+
+/// Mirror of OxCalc's `OxCalcTreeDefinedNameScope`: a name is scoped to the
+/// whole workbook or to one sheet. `Sheet` carries the sheet's stable grid
+/// [`NodeId`] (the same `sheet:{node}` address `EnterGridCell`/`ClearGridCell`
+/// already use, §A.2) — never the raw engine sheet-id string — so skins never
+/// see engine addresses.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DefinedNameScopeProjection {
+    Workbook,
+    Sheet(NodeId),
+}
+
+/// Mirror of OxCalc's `DefinedNameTargetReadout`: a defined name resolves
+/// either to a fixed grid rectangle (`Static`) or to a formula the engine
+/// re-evaluates on lookup (`Dynamic`). `Dynamic` carries only the authored
+/// source text — H4's NON-goals explicitly exclude any dynamic-name UI
+/// semantics beyond this passthrough (no live-value preview, no channel
+/// detail).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DefinedNameTargetProjection {
+    Static(GridRectProjection),
+    Dynamic { source_text: String },
+}
+
+/// A defined name's static target rectangle, in absolute 1-based grid
+/// coordinates. Deliberately distinct from [`GridOverlayRect`]: that type's
+/// `clipped_*` flags describe a window-clipped *overlay* geometry, which a
+/// name's target (never windowed — the whole catalog is a complete-replacement
+/// patch, §A.3) does not carry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GridRectProjection {
+    pub top_row: u32,
+    pub left_col: u32,
+    pub bottom_row: u32,
+    pub right_col: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

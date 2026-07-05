@@ -140,6 +140,7 @@ pub fn change_kind(change: &WorkspaceDeltaChange) -> &'static str {
         C::GridOverlaysChanged { .. } => "grid_overlays_changed",
         C::GridAuthoredChanged { .. } => "grid_authored_changed",
         C::GridCellEntered { .. } => "grid_cell_entered",
+        C::DefinedNamesChanged(_) => "defined_names_changed",
     }
 }
 
@@ -170,11 +171,14 @@ pub fn is_delta_applicable(change: &WorkspaceDeltaChange) -> bool {
         // GridAuthoredChanged carries the entire new windowed authored layer for
         // one node (H3), so the mirror replaces each cell's `authored` field in
         // place the same way, without a snapshot.
+        // DefinedNamesChanged carries the entire new defined-name catalog (H4),
+        // so the mirror replaces `WorkspaceState::defined_names` in place.
         C::CalcRun(_)
         | C::ClipboardChanged(_)
         | C::GridChanged(_)
         | C::GridOverlaysChanged { .. }
-        | C::GridAuthoredChanged { .. } => true,
+        | C::GridAuthoredChanged { .. }
+        | C::DefinedNamesChanged(_) => true,
         // A UI hint only — there is no projection-state change to mirror.
         // GridCellEntered is the H6 entry-verb receipt payload: the edited
         // sheet's GridChanged/GridAuthoredChanged (emitted alongside, §A.3)
@@ -273,6 +277,9 @@ pub fn apply_delta(state: &mut WorkspaceState, delta: &WorkspaceDelta) -> Result
                     grid.authored_epoch = *authored_epoch;
                 }
             }
+            WorkspaceDeltaChange::DefinedNamesChanged(defined_names) => {
+                state.defined_names = defined_names.clone();
+            }
             // FormulaReferenceInserted is a UI hint with no projection state.
             // Everything else was rejected by the applicability guard above.
             _ => {}
@@ -354,10 +361,11 @@ mod tests {
     use crate::intent::StructuralDeltaProjection;
     use crate::workspace::{
         CalcRunProjection, CalcRunStateProjection, ClipboardOperationProjection,
-        ClipboardPayloadProjection, ClipboardProjection, GridAuthoredCellProjection,
-        GridAuthoredKindProjection, GridCellProjection, GridEditabilityProjection,
-        GridMergedOverlayDescriptor, GridOverlayBundle, GridOverlayRect, GridProjection,
-        NodeValueProjection,
+        ClipboardPayloadProjection, ClipboardProjection, DefinedNameProjection,
+        DefinedNameScopeProjection, DefinedNameTargetProjection, DefinedNamesProjection,
+        GridAuthoredCellProjection, GridAuthoredKindProjection, GridCellProjection,
+        GridEditabilityProjection, GridMergedOverlayDescriptor, GridOverlayBundle, GridOverlayRect,
+        GridProjection, GridRectProjection, NodeValueProjection,
     };
 
     fn sample_calc_run() -> CalcRunProjection {
@@ -456,6 +464,19 @@ mod tests {
                 col: 1,
                 outcome: crate::workspace::GridEntryOutcomeProjection::Cleared,
             },
+            WorkspaceDeltaChange::DefinedNamesChanged(DefinedNamesProjection {
+                entries: vec![DefinedNameProjection {
+                    scope: DefinedNameScopeProjection::Workbook,
+                    name: "Rate".to_string(),
+                    target: DefinedNameTargetProjection::Static(GridRectProjection {
+                        top_row: 1,
+                        left_col: 1,
+                        bottom_row: 1,
+                        right_col: 1,
+                    }),
+                    is_dynamic: false,
+                }],
+            }),
         ];
         for change in &applicable {
             assert!(
@@ -633,6 +654,40 @@ mod tests {
             values_after, values_before,
             "an authored-only patch must leave the computed values untouched"
         );
+    }
+
+    #[test]
+    fn apply_delta_patches_defined_names_changed_in_place() {
+        // DefinedNamesChanged carries the entire new catalog (H4): the mirror
+        // replaces `WorkspaceState::defined_names` in place, without a
+        // snapshot, exactly like the other complete-replacement deltas.
+        let mut mirror = mirror_at(3);
+        assert_eq!(mirror.defined_names, DefinedNamesProjection::default());
+
+        let catalog = DefinedNamesProjection {
+            entries: vec![DefinedNameProjection {
+                scope: DefinedNameScopeProjection::Workbook,
+                name: "Rate".to_string(),
+                target: DefinedNameTargetProjection::Static(GridRectProjection {
+                    top_row: 2,
+                    left_col: 2,
+                    bottom_row: 2,
+                    right_col: 2,
+                }),
+                is_dynamic: false,
+            }],
+        };
+        let result = apply_delta(
+            &mut mirror,
+            &delta(
+                3,
+                4,
+                vec![WorkspaceDeltaChange::DefinedNamesChanged(catalog.clone())],
+            ),
+        );
+        assert!(result.is_ok());
+        assert_eq!(mirror.projection_seq, 4);
+        assert_eq!(mirror.defined_names, catalog);
     }
 
     #[test]

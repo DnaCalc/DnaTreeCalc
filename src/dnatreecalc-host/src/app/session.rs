@@ -5384,6 +5384,10 @@ impl TreeWorkspaceSession {
             dependencies,
             tables,
             grids,
+            // H4: this is the tree-session projection; defined names are
+            // Workbook-session-only in this bead's scope (out of bounds for
+            // the RichTree family), so this field stays default-empty here.
+            defined_names: Default::default(),
             clipboard: None,
             diagnostics,
         };
