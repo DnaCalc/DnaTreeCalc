@@ -813,6 +813,12 @@ pub struct GridProjection {
     /// True when the permanent-pair differential found no mismatch for this view
     /// (the optimized and reference grid engines agreed).
     pub differential_clean: bool,
+    /// Bumped whenever the windowed authored layer (`GridCellProjection::authored`)
+    /// changes, independently of the computed-value epochs — a client pulls
+    /// "authored changes since" by comparing against it (H3, §A.3). `0` for a
+    /// pre-H3 mirror or wire payload that never carried authored fields.
+    #[serde(default)]
+    pub authored_epoch: u64,
 }
 
 /// The window-clipped, read-only overlay descriptors for a [`GridProjection`].
@@ -904,6 +910,78 @@ pub struct GridCellProjection {
     pub value: NodeValueProjection,
     /// The recalc epoch at which this cell's value last changed.
     pub value_epoch: u64,
+    /// Authored-metadata mirror of OxCalc's `GridAuthoredCellReadout`
+    /// (`grid/authored.rs:505`) for this cell — kind, source text, and
+    /// editability, as opposed to `value` (the computed readout). `None` for
+    /// a pre-H3 mirror or wire payload that never carried authored fields;
+    /// `#[serde(default)]` so an older serialized `GridProjection` still
+    /// deserializes cleanly (the `GridOverlayBundle` forward-compatibility
+    /// pattern, `workspace.rs:822` at H3 authoring time).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authored: Option<GridAuthoredCellProjection>,
+}
+
+/// Authored-metadata mirror of one grid cell (W062 R5.5 `grid_authored_view`,
+/// `grid/authored.rs:505`): the authored kind, source text, and editability
+/// classification — never a computed value (that is `GridCellProjection::value`).
+///
+/// Carries its own `row`/`col` so it doubles as the element type of
+/// [`WorkspaceDeltaChange::GridAuthoredChanged`]'s flat cell list (§A.3); when
+/// nested inside a [`GridCellProjection`] the coordinates are redundant with
+/// the parent's own `row`/`col` (both describe the same cell) but are kept for
+/// a single reusable wire shape rather than a second, delta-only type.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GridAuthoredCellProjection {
+    pub row: u32,
+    pub col: u32,
+    pub kind: GridAuthoredKindProjection,
+    /// The literal's display text for a `Literal` cell; `None` otherwise.
+    pub literal_text: Option<String>,
+    /// The formula display text for a `Formula` cell (e.g. `"=A1*3"`); `None`
+    /// otherwise. Never a computed value.
+    pub source_text: Option<String>,
+    pub editability: GridEditabilityProjection,
+}
+
+/// Mirror of OxCalc's `GridAuthoredKind` (`grid/authored.rs:389`): what, if
+/// anything, is authored at a grid address.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum GridAuthoredKindProjection {
+    /// No authored record at this address.
+    Empty,
+    /// A typed literal value.
+    Literal,
+    /// A formula cell; the projection carries its source text.
+    Formula,
+    /// An inert rich-object stub retained from ingest (D4 §12).
+    RichStub,
+}
+
+/// A projected grid address (row/col only — skins never see engine addresses
+/// or workbook/sheet ids, per §A.2), used as the `anchor` payload of the
+/// non-`Editable` [`GridEditabilityProjection`] variants.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GridCellRefProjection {
+    pub row: u32,
+    pub col: u32,
+}
+
+/// Mirror of OxCalc's `GridCellEditability` (`grid/authored.rs:419`), the
+/// single classifier shared by the authored readout and the entry verbs'
+/// enforcement. Only `Editable` admits a write; every other variant is a typed
+/// rejection at entry time (H6) and a read-only affordance in a skin.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum GridEditabilityProjection {
+    /// A plain cell: editing is admitted by every entry verb.
+    Editable,
+    /// A member (non-anchor) of a repeated-formula region.
+    RepeatedRegionMember { anchor: GridCellRefProjection },
+    /// A follower (non-anchor) cell of a merged region.
+    MergedFollower { anchor: GridCellRefProjection },
+    /// A cell displaying a value spilled from a neighbouring array formula.
+    SpillDisplay { anchor: GridCellRefProjection },
+    /// A structural (header / totals) cell of a structured table.
+    TableStructural { table_id: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -2651,6 +2729,40 @@ mod serde_round_trip_tests {
     fn workspace_state_default_round_trips() {
         let state = WorkspaceState::default();
         assert_eq!(round_trip(&state), state);
+    }
+
+    /// H3 acceptance (2): a `GridProjection` serialized before H3 added
+    /// `GridCellProjection::authored` and `GridProjection::authored_epoch`
+    /// (i.e. JSON with neither field present) still deserializes — both
+    /// default (`authored: None`, `authored_epoch: 0`), the same
+    /// forward-compatibility contract `GridOverlayBundle`'s `#[serde(default)]`
+    /// fields already prove for older mirrors (`workspace.rs:822`).
+    #[test]
+    fn pre_h3_grid_projection_json_deserializes_with_authored_defaults() {
+        let pre_h3_json = r#"{
+            "grid_node_key": "sheet",
+            "grid_node_id": "Sheet1",
+            "grid_id": "book:grid:sheet:grid",
+            "max_rows": 1048576,
+            "max_cols": 16384,
+            "cells": [
+                {
+                    "row": 1,
+                    "col": 1,
+                    "value": { "Number": { "raw": "7", "display": "7" } },
+                    "value_epoch": 1
+                }
+            ],
+            "projection_epoch": 1,
+            "differential_clean": true
+        }"#;
+        let grid: GridProjection = serde_json::from_str(pre_h3_json).expect("deserialize");
+        assert_eq!(grid.authored_epoch, 0, "authored_epoch defaults to 0");
+        assert_eq!(
+            grid.cells[0].authored, None,
+            "a pre-H3 cell has no authored field, so it defaults to None"
+        );
+        assert_eq!(grid.overlays, GridOverlayBundle::default());
     }
 
     #[test]

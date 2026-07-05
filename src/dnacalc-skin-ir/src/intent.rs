@@ -3,8 +3,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::identity::{NodeId, NodeKey};
 use crate::workspace::{
     CalcRunProjection, CandidateProjection, ClipboardProjection, DependencyKindProjection,
-    GridOverlayBundle, GridProjection, InitialNodeContentProjection, NodeValueProjection,
-    ScenarioProjection, SweepProjection,
+    GridAuthoredCellProjection, GridOverlayBundle, GridProjection, InitialNodeContentProjection,
+    NodeValueProjection, ScenarioProjection, SweepProjection,
 };
 use serde::{Deserialize, Serialize};
 
@@ -801,6 +801,17 @@ pub enum WorkspaceDeltaChange {
         grid_node_id: NodeId,
         overlays: GridOverlayBundle,
         overlay_epoch: u64,
+    },
+    /// A grid-backed node's windowed authored layer changed (an edit landed,
+    /// or the interest window moved). Carries the complete new set of authored
+    /// cell projections for the window, so the mirror replaces the field in
+    /// place — the same "viewing is subscribing" shape as `GridChanged`, but
+    /// for authored kind/source-text/editability rather than computed values
+    /// (§A.3, H3).
+    GridAuthoredChanged {
+        grid_node_id: NodeId,
+        cells: Vec<GridAuthoredCellProjection>,
+        authored_epoch: u64,
     },
 }
 

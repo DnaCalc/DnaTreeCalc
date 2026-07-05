@@ -218,6 +218,9 @@ fn pulse_change_summary(change: &WorkspaceDeltaChange) -> String {
             overlays.spills.len(),
             overlays.merged.len()
         ),
+        WorkspaceDeltaChange::GridAuthoredChanged { cells, .. } => {
+            format!("grid authored layer updated ({} cells)", cells.len())
+        }
     }
 }
 

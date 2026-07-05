@@ -138,6 +138,7 @@ pub fn change_kind(change: &WorkspaceDeltaChange) -> &'static str {
         C::SweepRemoved(_) => "sweep_removed",
         C::GridChanged(_) => "grid_changed",
         C::GridOverlaysChanged { .. } => "grid_overlays_changed",
+        C::GridAuthoredChanged { .. } => "grid_authored_changed",
     }
 }
 
@@ -165,10 +166,14 @@ pub fn is_delta_applicable(change: &WorkspaceDeltaChange) -> bool {
         // is subscribing" -- a grid recompute must not force a full snapshot).
         // GridOverlaysChanged carries the entire new overlay bundle for one node,
         // so the mirror replaces that field in place without a snapshot.
+        // GridAuthoredChanged carries the entire new windowed authored layer for
+        // one node (H3), so the mirror replaces each cell's `authored` field in
+        // place the same way, without a snapshot.
         C::CalcRun(_)
         | C::ClipboardChanged(_)
         | C::GridChanged(_)
-        | C::GridOverlaysChanged { .. } => true,
+        | C::GridOverlaysChanged { .. }
+        | C::GridAuthoredChanged { .. } => true,
         // A UI hint only — there is no projection-state change to mirror.
         C::FormulaReferenceInserted(_) => true,
         // Key-only, partial, collection-upsert, or full-reset: the snapshot is
@@ -237,6 +242,31 @@ pub fn apply_delta(state: &mut WorkspaceState, delta: &WorkspaceDelta) -> Result
                 if let Some(grid) = state.grids.get_mut(grid_node_id) {
                     grid.overlays = overlays.clone();
                     grid.overlay_epoch = *overlay_epoch;
+                }
+            }
+            WorkspaceDeltaChange::GridAuthoredChanged {
+                grid_node_id,
+                cells,
+                authored_epoch,
+            } => {
+                // Patch each windowed cell's `authored` field in place by
+                // (row, col); the computed value and its epoch are untouched
+                // (an authored-only tick). If the grid is not yet mirrored,
+                // skip - a grid first appears via a GridChanged, so an
+                // authored-only patch for an unknown grid does not occur in
+                // the normal flow (mirrors the GridOverlaysChanged handling
+                // above).
+                if let Some(grid) = state.grids.get_mut(grid_node_id) {
+                    for authored in cells {
+                        if let Some(cell) = grid
+                            .cells
+                            .iter_mut()
+                            .find(|cell| cell.row == authored.row && cell.col == authored.col)
+                        {
+                            cell.authored = Some(authored.clone());
+                        }
+                    }
+                    grid.authored_epoch = *authored_epoch;
                 }
             }
             // FormulaReferenceInserted is a UI hint with no projection state.
@@ -320,7 +350,8 @@ mod tests {
     use crate::intent::StructuralDeltaProjection;
     use crate::workspace::{
         CalcRunProjection, CalcRunStateProjection, ClipboardOperationProjection,
-        ClipboardPayloadProjection, ClipboardProjection, GridCellProjection,
+        ClipboardPayloadProjection, ClipboardProjection, GridAuthoredCellProjection,
+        GridAuthoredKindProjection, GridCellProjection, GridEditabilityProjection,
         GridMergedOverlayDescriptor, GridOverlayBundle, GridOverlayRect, GridProjection,
         NodeValueProjection,
     };
@@ -365,11 +396,13 @@ mod tests {
                     display: "7".to_string(),
                 },
                 value_epoch: 1,
+                authored: None,
             }],
             projection_epoch: 1,
             overlays: GridOverlayBundle::default(),
             overlay_epoch: 0,
             differential_clean: true,
+            authored_epoch: 0,
         }
     }
 
@@ -400,6 +433,18 @@ mod tests {
                 grid_node_id: NodeId::new("Sheet1"),
                 overlays: GridOverlayBundle::default(),
                 overlay_epoch: 1,
+            },
+            WorkspaceDeltaChange::GridAuthoredChanged {
+                grid_node_id: NodeId::new("Sheet1"),
+                cells: vec![GridAuthoredCellProjection {
+                    row: 1,
+                    col: 1,
+                    kind: GridAuthoredKindProjection::Literal,
+                    literal_text: Some("7".to_string()),
+                    source_text: None,
+                    editability: GridEditabilityProjection::Editable,
+                }],
+                authored_epoch: 1,
             },
         ];
         for change in &applicable {
@@ -515,6 +560,68 @@ mod tests {
         assert_eq!(
             mirrored.cells, cells_before,
             "an overlay-only patch must leave the cells untouched"
+        );
+    }
+
+    #[test]
+    fn apply_delta_patches_grid_authored_changed_in_place() {
+        // An authored-only tick (an edit landed, or the interest window moved)
+        // streams as GridAuthoredChanged: the mirror patches each windowed
+        // cell's `authored` field and `authored_epoch` in place, without
+        // disturbing the computed values, and never forces a resync (H3).
+        let mut mirror = mirror_at(7);
+        let grid = sample_grid_projection();
+        apply_delta(
+            &mut mirror,
+            &delta(7, 8, vec![WorkspaceDeltaChange::GridChanged(grid.clone())]),
+        )
+        .unwrap();
+        let values_before: Vec<_> = mirror
+            .grids
+            .get(&grid.grid_node_id)
+            .unwrap()
+            .cells
+            .iter()
+            .map(|cell| (cell.row, cell.col, cell.value.clone(), cell.value_epoch))
+            .collect();
+
+        let authored_cell = GridAuthoredCellProjection {
+            row: 1,
+            col: 1,
+            kind: GridAuthoredKindProjection::Formula,
+            literal_text: None,
+            source_text: Some("=A1*3".to_string()),
+            editability: GridEditabilityProjection::Editable,
+        };
+        let result = apply_delta(
+            &mut mirror,
+            &delta(
+                8,
+                9,
+                vec![WorkspaceDeltaChange::GridAuthoredChanged {
+                    grid_node_id: grid.grid_node_id.clone(),
+                    cells: vec![authored_cell.clone()],
+                    authored_epoch: 2,
+                }],
+            ),
+        );
+        assert!(result.is_ok());
+        assert_eq!(mirror.projection_seq, 9);
+        let mirrored = mirror.grids.get(&grid.grid_node_id).unwrap();
+        assert_eq!(mirrored.authored_epoch, 2);
+        assert_eq!(
+            mirrored.cells[0].authored,
+            Some(authored_cell),
+            "the matching cell's authored field is patched in place"
+        );
+        let values_after: Vec<_> = mirrored
+            .cells
+            .iter()
+            .map(|cell| (cell.row, cell.col, cell.value.clone(), cell.value_epoch))
+            .collect();
+        assert_eq!(
+            values_after, values_before,
+            "an authored-only patch must leave the computed values untouched"
         );
     }
 

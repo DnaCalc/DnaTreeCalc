@@ -16,13 +16,17 @@
 //! entry verb) and its receipt projection are **H6**, deliberately out of scope
 //! here.
 
+use dnacalc_skin_ir::GridAuthoredCellProjection;
 use oxcalc_core::consumer::{
     GridBackingSeed, OxCalcDocumentContext, OxCalcDocumentError, OxCalcTreeGridView,
     OxCalcTreeWorkspaceCreate, OxCalcTreeWorkspaceId, SheetEnumerationRow,
 };
 use oxcalc_core::grid::coords::{ExcelGridBounds, ExcelGridCellAddress};
+use oxcalc_core::grid::geometry::GridRect;
 use oxcalc_core::structural::TreeNodeId;
 use oxfunc_core::value::CalcValue;
+
+use crate::grid_publication::grid_authored_cell_projection;
 
 /// The engine root symbol for a workbook workspace. Kept distinct from the
 /// tree-model root symbol so a workbook root is never confused for a general
@@ -187,5 +191,130 @@ impl WorkbookSession {
             .iter()
             .find(|cell| cell.address == address)
             .map(|cell| cell.value.clone()))
+    }
+
+    /// The windowed authored-metadata projection for a sheet's interest
+    /// window (H3, §A.3): the skin-IR mirror of `grid_authored_view`, filled
+    /// for exactly the requested rectangle — never the whole sheet — so the
+    /// host publishes `GridCellProjection::authored` only for cells a client
+    /// is actually viewing.
+    ///
+    /// `row`/`col` bounds are 1-based, inclusive, in strict-Excel coordinates
+    /// (the same window shape `SetGridInterest` registers).
+    pub fn grid_authored_cells(
+        &self,
+        sheet: TreeNodeId,
+        top_row: u32,
+        left_col: u32,
+        bottom_row: u32,
+        right_col: u32,
+    ) -> Result<Vec<GridAuthoredCellProjection>, WorkbookSessionError> {
+        let window = GridRect::new(
+            self.workspace_id.as_str(),
+            format!("sheet:{}", sheet.0),
+            top_row,
+            left_col,
+            bottom_row,
+            right_col,
+            self.bounds,
+        )
+        .map_err(|_| WorkbookSessionError::SheetNotGridBacked { node: sheet })?;
+        let readouts = self
+            .context
+            .grid_authored_view(&self.workspace_id, sheet, Some(window))?
+            .ok_or(WorkbookSessionError::SheetNotGridBacked { node: sheet })?;
+        Ok(readouts.iter().map(grid_authored_cell_projection).collect())
+    }
+
+    /// Author a cell's text through the engine's universal entry verb
+    /// (`enter_grid_cell`), the same three-way (literal/formula/cleared)
+    /// interpretation H6 will wire as a `WorkspaceIntent`. H3 exposes this
+    /// narrowly so its own acceptance test can seed a formula cell (and,
+    /// through a spilling array formula, a `SpillDisplay` follower) to read
+    /// back via [`WorkbookSession::grid_authored_cells`] — the universal
+    /// intent-level entry surface remains H6's scope.
+    #[cfg(test)]
+    fn enter_grid_cell_text(
+        &mut self,
+        sheet: TreeNodeId,
+        row: u32,
+        col: u32,
+        text: &str,
+    ) -> Result<(), WorkbookSessionError> {
+        let address = self.address_for(sheet, row, col);
+        self.context
+            .enter_grid_cell(&self.workspace_id, sheet, &address, text)?
+            .ok_or(WorkbookSessionError::SheetNotGridBacked { node: sheet })?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use dnacalc_skin_ir::{
+        GridAuthoredKindProjection, GridCellRefProjection, GridEditabilityProjection,
+    };
+
+    /// H3 acceptance (3), formula half: a formula cell's authored projection
+    /// carries `kind = Formula`, the exact authored source text (never a
+    /// computed value), and `editability = Editable` (an ordinary formula
+    /// cell is a normal write target).
+    #[test]
+    fn grid_authored_cells_projects_formula_cell() {
+        let mut session = WorkbookSession::create("workbook:h3-formula").unwrap();
+        let sheet = session.add_sheet("Sheet1").unwrap();
+        session
+            .set_grid_cell_value(sheet, 1, 1, CalcValue::number(5.0))
+            .unwrap();
+        session.enter_grid_cell_text(sheet, 2, 1, "=A1*3").unwrap();
+
+        let cells = session.grid_authored_cells(sheet, 1, 1, 2, 1).unwrap();
+        let formula_cell = cells
+            .iter()
+            .find(|cell| cell.row == 2 && cell.col == 1)
+            .expect("A2 is in the requested window");
+        assert_eq!(formula_cell.kind, GridAuthoredKindProjection::Formula);
+        assert_eq!(formula_cell.source_text.as_deref(), Some("=A1*3"));
+        assert_eq!(
+            formula_cell.editability,
+            GridEditabilityProjection::Editable
+        );
+    }
+
+    /// H3 acceptance (3), spill half: entering a spilling array formula
+    /// (`SEQUENCE(3,1)`, a 3-row vertical spill) makes its non-anchor
+    /// followers project `editability = SpillDisplay { anchor }` — the
+    /// anchor being the spilling formula's own cell, not the follower's.
+    #[test]
+    fn grid_authored_cells_projects_spill_display_member() {
+        let mut session = WorkbookSession::create("workbook:h3-spill").unwrap();
+        let sheet = session.add_sheet("Sheet1").unwrap();
+        session
+            .enter_grid_cell_text(sheet, 1, 1, "=SEQUENCE(3,1)")
+            .unwrap();
+
+        let cells = session.grid_authored_cells(sheet, 1, 1, 3, 1).unwrap();
+        let anchor_cell = cells
+            .iter()
+            .find(|cell| cell.row == 1 && cell.col == 1)
+            .expect("A1 (the spill anchor) is in the requested window");
+        assert_eq!(anchor_cell.kind, GridAuthoredKindProjection::Formula);
+        assert_eq!(
+            anchor_cell.editability,
+            GridEditabilityProjection::Editable,
+            "the spilling formula's own cell is an ordinary authored formula, not a SpillDisplay follower"
+        );
+
+        let follower = cells
+            .iter()
+            .find(|cell| cell.row == 2 && cell.col == 1)
+            .expect("A2 (a spill follower) is in the requested window");
+        assert_eq!(
+            follower.editability,
+            GridEditabilityProjection::SpillDisplay {
+                anchor: GridCellRefProjection { row: 1, col: 1 }
+            }
+        );
     }
 }

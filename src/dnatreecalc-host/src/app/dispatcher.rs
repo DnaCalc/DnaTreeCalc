@@ -2618,11 +2618,13 @@ mod overlay_delta_tests {
                     display: "1".to_string(),
                 },
                 value_epoch: 1,
+                authored: None,
             }],
             projection_epoch: 1,
             overlays: GridOverlayBundle::default(),
             overlay_epoch: 0,
             differential_clean: true,
+            authored_epoch: 0,
         }
     }
 

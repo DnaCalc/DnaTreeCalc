@@ -37,9 +37,9 @@ use dnatreecalc_skin_framework::{
 };
 use oxcalc_core::consumer::OxCalcTreeRunState;
 use oxcalc_core::consumer::{
-    CandidateOverlayHandle, OxCalcTreeCalculationOutcome, OxCalcTreeCandidateReapPolicy,
-    OxCalcTreeCandidateView, OxCalcDocumentContext, OxCalcDocumentError, OxCalcDocumentContextOptions,
-    OxCalcTreeDryBindDiagnosticStage, OxCalcTreeDryBindInputKind,
+    CandidateOverlayHandle, OxCalcDocumentContext, OxCalcDocumentContextOptions,
+    OxCalcDocumentError, OxCalcTreeCalculationOutcome, OxCalcTreeCandidateReapPolicy,
+    OxCalcTreeCandidateView, OxCalcTreeDryBindDiagnosticStage, OxCalcTreeDryBindInputKind,
     OxCalcTreeDryBindProfileViolationKind, OxCalcTreeDryBindVerdict, OxCalcTreeEdit,
     OxCalcTreeEditResult, OxCalcTreeEditTransaction, OxCalcTreeHostCapabilitySnapshot,
     OxCalcTreeNodeCreate, OxCalcTreeNodeView, OxCalcTreeOpenCandidateRequest,
@@ -7757,6 +7757,10 @@ fn grid_projection_for(
             col: cell.address.col,
             value: calc_value_projection(&cell.value, None),
             value_epoch: cell.value_epoch,
+            // The tree-model session does not fill authored metadata (H3
+            // scopes the authored-view fill to the workbook host-core path);
+            // `None` is the pre-H3-compatible default.
+            authored: None,
         })
         .collect::<Vec<_>>();
     let projection_epoch = cells.iter().map(|cell| cell.value_epoch).max().unwrap_or(0);
@@ -7771,6 +7775,7 @@ fn grid_projection_for(
         overlays: grid_overlay_bundle_for(view),
         overlay_epoch: view.overlay_epoch,
         differential_clean: view.differential_mismatches.is_empty(),
+        authored_epoch: 0,
     }
 }
 

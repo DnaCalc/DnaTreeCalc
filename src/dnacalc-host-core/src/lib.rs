@@ -30,9 +30,11 @@
 //! into host-core, xlsx, and the worker are all out of H2 scope.
 
 pub mod command;
+pub mod grid_publication;
 pub mod workbook;
 
 pub use command::{HostCommand, HostCommandOutcome, ProjectionPublisher, RecordingPublisher};
+pub use grid_publication::grid_authored_cell_projection;
 pub use workbook::{WorkbookSession, WorkbookSessionError};
 
 use dnacalc_skin_ir::{IntentError, IntentReceipt, WorkspaceIntent};
