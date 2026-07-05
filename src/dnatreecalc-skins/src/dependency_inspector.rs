@@ -179,6 +179,10 @@ fn DependencyInspectorView(cx: SkinContext<DependencyInspectorState>) -> impl In
     }
 }
 
+/// One dependency summary row: name, outgoing/incoming counts, and the
+/// selectable a11y button chrome. Plain fn (not a component) so the caller's
+/// list-building closure stays shallow.
+#[allow(clippy::too_many_arguments)]
 fn dependency_summary_row(
     id: NodeId,
     key: NodeKey,

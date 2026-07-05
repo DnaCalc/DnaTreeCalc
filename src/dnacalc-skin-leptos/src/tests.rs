@@ -33,7 +33,7 @@ use dnacalc_skin_ir::workspace::{
 use crate::in_memory_dispatcher::InMemoryDispatcher;
 use crate::registry::SkinRegistry;
 use crate::skin::{ErasedSkinContext, SkinContext, SkinHandle, WorkspaceSkin};
-use crate::state_handles::{SharedSkinStateHandle, SkinStateHandle};
+use crate::state_handles::SharedSkinStateHandle;
 use crate::theme::{ThemeMode, ThemeTokens};
 use crate::{
     SelectableItemA11y, SelectableRowA11y, listbox_a11y, roving_tabindex, stable_node_dom_id,

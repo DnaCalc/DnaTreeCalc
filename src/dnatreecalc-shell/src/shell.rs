@@ -3,9 +3,9 @@ use std::sync::Arc;
 use dnatreecalc_skin_framework::{
     Dispatcher, ErasedSkinContext, KeyChord, KeybindingRegistry, NodeId, PersistedSkinStateRecord,
     Persona, PreviewService, SelectionState, SharedSkinStateHandle, SharedStateChange,
-    SharedStateOrigin,
-    SkinId, SkinMountSlot, SkinRegistry, SkinStatePersistenceKey, SkinStatePersistenceStore,
-    SkinVerb, ThemeTokens, WorkspaceDelta, WorkspaceIntent, WorkspaceRecalcMode, WorkspaceState,
+    SharedStateOrigin, SkinId, SkinMountSlot, SkinRegistry, SkinStatePersistenceKey,
+    SkinStatePersistenceStore, SkinVerb, ThemeTokens, WorkspaceDelta, WorkspaceIntent,
+    WorkspaceRecalcMode, WorkspaceState,
 };
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -389,7 +389,12 @@ pub fn WorkspaceShell(
     let registry_for_presets = registry.clone();
     let presets_store = skin_state_store.clone();
     let shortcut_dispatch = dispatch.clone();
-    let shell_css = format!("{}\n{}\n{}", tokens.css_rule(".dtc-shell"), SHELL_CSS, COCKPIT_CSS);
+    let shell_css = format!(
+        "{}\n{}\n{}",
+        tokens.css_rule(".dtc-shell"),
+        SHELL_CSS,
+        COCKPIT_CSS
+    );
 
     let split_left_parts = parts.clone();
     let split_right_parts = parts.clone();
@@ -583,14 +588,14 @@ fn layout_slot_id(layout: &CockpitLayout, slot: SkinMountSlot) -> Option<String>
 /// capability manifest, and render either the skin or a fail-loud fallback.
 /// Clicking anywhere in the slot records it as the focused slot (audited).
 #[component]
-fn SlotView(parts: SlotParts, layout: RwSignal<CockpitLayout>, mount_slot: SkinMountSlot) -> impl IntoView {
+fn SlotView(
+    parts: SlotParts,
+    layout: RwSignal<CockpitLayout>,
+    mount_slot: SkinMountSlot,
+) -> impl IntoView {
     let shared = parts.shared;
     let slot_id = Memo::new(move |_| layout.with(|l| layout_slot_id(l, mount_slot)));
-    let focused = Memo::new(move |_| {
-        shared
-            .signal()
-            .with(|s| s.focused_slot == Some(mount_slot))
-    });
+    let focused = Memo::new(move |_| shared.signal().with(|s| s.focused_slot == Some(mount_slot)));
 
     view! {
         <div
@@ -658,7 +663,8 @@ fn CompanionHeader(
         .filter(|skin| skin.capabilities().slot_allowed(mount_slot))
         .map(|skin| (skin.id().as_str().to_string(), skin.manifest().display_name))
         .collect();
-    let current = Memo::new(move |_| layout.with(|l| layout_slot_id(l, mount_slot).unwrap_or_default()));
+    let current =
+        Memo::new(move |_| layout.with(|l| layout_slot_id(l, mount_slot).unwrap_or_default()));
 
     view! {
         <div class="dtc-companion-header">
@@ -706,11 +712,17 @@ fn set_layout_slot(layout: &mut CockpitLayout, slot: SkinMountSlot, id: Option<S
 fn CompanionToggles(registry: Arc<SkinRegistry>, layout: RwSignal<CockpitLayout>) -> impl IntoView {
     let default_inspector = registry
         .iter()
-        .find(|skin| skin.capabilities().slot_allowed(SkinMountSlot::RightInspector))
+        .find(|skin| {
+            skin.capabilities()
+                .slot_allowed(SkinMountSlot::RightInspector)
+        })
         .map(|skin| skin.id().as_str().to_string());
     let default_console = registry
         .iter()
-        .find(|skin| skin.capabilities().slot_allowed(SkinMountSlot::BottomConsole))
+        .find(|skin| {
+            skin.capabilities()
+                .slot_allowed(SkinMountSlot::BottomConsole)
+        })
         .map(|skin| skin.id().as_str().to_string());
     let inspector_open = Memo::new(move |_| layout.with(|l| l.inspector.is_some()));
     let console_open = Memo::new(move |_| layout.with(|l| l.console.is_some()));
@@ -963,7 +975,11 @@ fn handle_shell_keydown(
         }
         SkinVerb::NavPrev | SkinVerb::NavNext => {
             ev.prevent_default();
-            let direction = if matches!(verb, SkinVerb::NavPrev) { -1 } else { 1 };
+            let direction = if matches!(verb, SkinVerb::NavPrev) {
+                -1
+            } else {
+                1
+            };
             if let Some(next) = adjacent_node_selection(
                 &workspace.get_untracked(),
                 &selection.get_untracked(),
@@ -973,19 +989,17 @@ fn handle_shell_keydown(
             }
         }
         SkinVerb::ToParent => {
-            if let Some(parent) = parent_of_selection(
-                &workspace.get_untracked(),
-                &selection.get_untracked(),
-            ) {
+            if let Some(parent) =
+                parent_of_selection(&workspace.get_untracked(), &selection.get_untracked())
+            {
                 ev.prevent_default();
                 dispatch.dispatch(WorkspaceIntent::SelectNode(Some(parent)));
             }
         }
         SkinVerb::ToChild => {
-            if let Some(child) = first_child_of_selection(
-                &workspace.get_untracked(),
-                &selection.get_untracked(),
-            ) {
+            if let Some(child) =
+                first_child_of_selection(&workspace.get_untracked(), &selection.get_untracked())
+            {
                 ev.prevent_default();
                 dispatch.dispatch(WorkspaceIntent::SelectNode(Some(child)));
             }
@@ -1014,9 +1028,7 @@ fn skin_id_for_slot(skin_ids: &[SkinId], slot: u8) -> Option<SkinId> {
 /// `F1`..`F24` style keys — exempt from the typing suppression so F9
 /// recalculates from inside any edit buffer.
 fn is_function_key(key: &str) -> bool {
-    key.len() >= 2
-        && key.starts_with('F')
-        && key[1..].chars().all(|ch| ch.is_ascii_digit())
+    key.len() >= 2 && key.starts_with('F') && key[1..].chars().all(|ch| ch.is_ascii_digit())
 }
 
 fn parent_of_selection(workspace: &WorkspaceState, selection: &SelectionState) -> Option<NodeId> {
@@ -1495,7 +1507,11 @@ mod tests {
         let mut layout = CockpitLayout::solo(SkinId::new("flow"));
         // Splits are main-class, not companions — opening one does not stand
         // embedded widgets down.
-        set_layout_slot(&mut layout, SkinMountSlot::SplitLeft, Some("tree".to_string()));
+        set_layout_slot(
+            &mut layout,
+            SkinMountSlot::SplitLeft,
+            Some("tree".to_string()),
+        );
         set_layout_slot(
             &mut layout,
             SkinMountSlot::SplitRight,
@@ -1543,8 +1559,10 @@ mod tests {
             name: "Audit".to_string(),
             layout: CockpitLayout::solo(SkinId::new("ledger")),
         };
-        let updated =
-            upsert_user_preset(upsert_user_preset(presets, modeling_v2.clone()), audit.clone());
+        let updated = upsert_user_preset(
+            upsert_user_preset(presets, modeling_v2.clone()),
+            audit.clone(),
+        );
         assert_eq!(updated, vec![modeling_v2, audit]);
 
         // Presets are scoped per workspace.
