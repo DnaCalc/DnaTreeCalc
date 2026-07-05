@@ -5388,6 +5388,9 @@ impl TreeWorkspaceSession {
             // Workbook-session-only in this bead's scope (out of bounds for
             // the RichTree family), so this field stays default-empty here.
             defined_names: Default::default(),
+            // H5 compiler-forced field (this file is outside H5's owned
+            // scope): the RichTree session has no CalcMode concept.
+            workbook_calc: Default::default(),
             clipboard: None,
             diagnostics,
         };
@@ -7765,6 +7768,10 @@ fn grid_projection_for(
             // scopes the authored-view fill to the workbook host-core path);
             // `None` is the pre-H3-compatible default.
             authored: None,
+            // H5 compiler-forced arm (K1b/N1 lane file, not H5's Owns list):
+            // the tree-model session has no CalcMode concept, so it fills no
+            // provenance either.
+            provenance: None,
         })
         .collect::<Vec<_>>();
     let projection_epoch = cells.iter().map(|cell| cell.value_epoch).max().unwrap_or(0);

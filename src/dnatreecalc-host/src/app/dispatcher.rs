@@ -2619,6 +2619,9 @@ mod overlay_delta_tests {
                 },
                 value_epoch: 1,
                 authored: None,
+                // H5 compiler-forced arm (K1b/N1 lane file, not H5's Owns
+                // list): the tree-model session does not fill provenance.
+                provenance: None,
             }],
             projection_epoch: 1,
             overlays: GridOverlayBundle::default(),

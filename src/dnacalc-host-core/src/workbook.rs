@@ -239,6 +239,28 @@ impl WorkbookSession {
             .map(|cell| cell.value.clone()))
     }
 
+    /// Read back a single published grid cell's provenance (H5, §A.3): the
+    /// skin-IR mirror of OxCalc's `PublishedValueProvenance` — `None` if the
+    /// cell has no published value yet (same absence contract as
+    /// [`WorkbookSession::grid_cell_value`]).
+    pub fn grid_cell_provenance(
+        &self,
+        sheet: TreeNodeId,
+        row: u32,
+        col: u32,
+    ) -> Result<Option<dnacalc_skin_ir::ValueProvenanceProjection>, WorkbookSessionError> {
+        let address = self.address_for(sheet, row, col);
+        let view = self
+            .context
+            .grid_view(&self.workspace_id, sheet)?
+            .ok_or(WorkbookSessionError::SheetNotGridBacked { node: sheet })?;
+        Ok(view
+            .cells
+            .iter()
+            .find(|cell| cell.address == address)
+            .map(|cell| crate::calc::value_provenance_projection(cell.provenance)))
+    }
+
     /// The windowed authored-metadata projection for a sheet's interest
     /// window (H3, §A.3): the skin-IR mirror of `grid_authored_view`, filled
     /// for exactly the requested rectangle — never the whole sheet — so the

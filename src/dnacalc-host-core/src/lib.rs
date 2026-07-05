@@ -37,12 +37,17 @@
 //! error-presentation map from a rejected write to a typed [`IntentError`].
 //! Cross-sheet poll fan-out and skins are out of H6 scope (H7 and later).
 
+pub mod calc;
 pub mod command;
 pub mod defined_names;
 pub mod grid_publication;
 pub mod present;
 pub mod workbook;
 
+pub use calc::{
+    calc_mode_from_projection, calc_mode_projection, present_calc_rejection,
+    value_provenance_projection,
+};
 pub use command::{HostCommand, HostCommandOutcome, ProjectionPublisher, RecordingPublisher};
 pub use defined_names::{DefinedNameTargetIntentInput, present_defined_name_rejection};
 pub use grid_publication::grid_authored_cell_projection;
@@ -160,6 +165,12 @@ impl DocumentSession {
                 DocumentSession::Workbook(session),
                 WorkspaceIntent::DeleteDefinedName { scope, name },
             ) => dispatch_delete_defined_name(session, &scope, &name),
+            (DocumentSession::Workbook(session), WorkspaceIntent::SetCalcMode { mode }) => {
+                dispatch_set_calc_mode(session, mode)
+            }
+            (DocumentSession::Workbook(session), WorkspaceIntent::Recalculate) => {
+                dispatch_recalculate(session)
+            }
             (session, intent) => IntentReceipt::rejected(IntentError::UnsupportedByModel {
                 intent: workspace_intent_kind(&intent).to_string(),
                 model: session.model_name().to_string(),
@@ -322,6 +333,49 @@ fn dispatch_delete_defined_name(
     match session.delete_defined_name(anchor, scope.clone(), name) {
         Ok(()) => defined_names_changed_receipt(session),
         Err(error) => IntentReceipt::rejected(present_defined_name_rejection(&error)),
+    }
+}
+
+/// Build the `CalcStateChanged` delta carrying the workbook's freshly-read
+/// calc-mode/recalc projection (§A.3: complete-replacement patch, matching
+/// `DefinedNamesChanged`). `last_recalc_tick` is the tick a just-completed
+/// `Recalculate` minted (`None` for a plain `SetCalcMode` write, which mints
+/// no tick of its own — a scheduling fact never a value fact, D1 §5).
+fn calc_state_changed_receipt(
+    session: &WorkbookSession,
+    last_recalc_tick: Option<u64>,
+) -> IntentReceipt {
+    match session.workbook_calc_projection(last_recalc_tick) {
+        Ok(projection) => IntentReceipt::accepted().with_delta(WorkspaceDelta {
+            from_seq: 0,
+            to_seq: 0,
+            changes: vec![WorkspaceDeltaChange::CalcStateChanged(projection)],
+        }),
+        Err(error) => IntentReceipt::rejected(present_calc_rejection(&error)),
+    }
+}
+
+fn dispatch_set_calc_mode(
+    session: &mut WorkbookSession,
+    mode: dnacalc_skin_ir::CalcModeProjection,
+) -> IntentReceipt {
+    match session.set_calc_mode(mode) {
+        Ok(()) => calc_state_changed_receipt(session, None),
+        Err(error) => IntentReceipt::rejected(present_calc_rejection(&error)),
+    }
+}
+
+/// Dispatch `Recalculate` for a workbook session (H5, §A.2: routes to
+/// `recalculate_workbook`). Acceptance (3): with nothing dirty, the outcome's
+/// `drained_any()` is `false` and no tick is minted — the receipt still
+/// carries a `CalcStateChanged` delta (the projection is cheap to re-read and
+/// a caller may not have seen the mode before), but no `GridChanged` is
+/// emitted (cross-sheet fan-out on a genuine drain is H7's scope; a no-op
+/// recalc has nothing to fan out regardless).
+fn dispatch_recalculate(session: &mut WorkbookSession) -> IntentReceipt {
+    match session.recalculate() {
+        Ok(outcome) => calc_state_changed_receipt(session, outcome.tick_id),
+        Err(error) => IntentReceipt::rejected(present_calc_rejection(&error)),
     }
 }
 
@@ -1011,6 +1065,133 @@ mod tests {
         assert!(
             session.defined_names().unwrap().entries.is_empty(),
             "the rejected write leaves the projection's catalog unchanged"
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // H5 acceptance: calc mode + provenance + recalc intents end-to-end.
+    // ------------------------------------------------------------------
+
+    use dnacalc_skin_ir::{CalcModeProjection, ValueProvenanceProjection};
+
+    /// H5 acceptance (2): Manual mode -> edit -> cell provenance
+    /// `Stale{since}` and the value unchanged -> `Recalculate` -> the
+    /// `CalcStateChanged` receipt, and a re-read shows `Calculated{tick}` and
+    /// the updated value. Driven entirely through `WorkspaceIntent` dispatch
+    /// (`SetCalcMode`/`EnterGridCell`/`Recalculate`), not the session's own
+    /// narrower methods (those are `calc.rs`'s own unit tests).
+    #[test]
+    fn manual_mode_edit_stales_then_recalculate_intent_refreshes() {
+        let (mut document, grid) = workbook_with_one_sheet("workbook:h5-manual-dispatch");
+        let _ = document.dispatch(WorkspaceIntent::EnterGridCell {
+            grid: grid.clone(),
+            row: 1,
+            col: 1,
+            text: "7".to_string(),
+        });
+        let _ = document.dispatch(WorkspaceIntent::EnterGridCell {
+            grid: grid.clone(),
+            row: 1,
+            col: 2,
+            text: "=A1*3".to_string(),
+        });
+
+        let mode_receipt = document.dispatch(WorkspaceIntent::SetCalcMode {
+            mode: CalcModeProjection::Manual,
+        });
+        assert!(mode_receipt.accepted, "SetCalcMode(Manual) is accepted");
+        match mode_receipt.delta.changes.as_slice() {
+            [WorkspaceDeltaChange::CalcStateChanged(projection)] => {
+                assert_eq!(projection.mode, CalcModeProjection::Manual);
+            }
+            other => panic!("expected exactly one CalcStateChanged change, got {other:?}"),
+        }
+
+        // Manual-mode edit: A1 = 10. Nothing recalculates.
+        let _ = document.dispatch(WorkspaceIntent::EnterGridCell {
+            grid: grid.clone(),
+            row: 1,
+            col: 1,
+            text: "10".to_string(),
+        });
+
+        let DocumentSession::Workbook(session) = &document else {
+            unreachable!("workbook session")
+        };
+        let sheet = workbook::parse_sheet_grid_node_id(&grid).unwrap();
+        assert_eq!(
+            session.grid_cell_value(sheet, 1, 1).unwrap(),
+            Some(CalcValue::number(7.0)),
+            "A1's published value stays the pre-edit 7 under Manual"
+        );
+        assert!(
+            matches!(
+                session.grid_cell_provenance(sheet, 1, 1).unwrap(),
+                Some(ValueProvenanceProjection::Stale { .. })
+            ),
+            "A1's published value is tagged Stale, not silently fresh"
+        );
+
+        // Recalculate (F9) via the intent.
+        let recalc_receipt = document.dispatch(WorkspaceIntent::Recalculate);
+        assert!(recalc_receipt.accepted, "Recalculate is accepted");
+        let tick = match recalc_receipt.delta.changes.as_slice() {
+            [WorkspaceDeltaChange::CalcStateChanged(projection)] => projection
+                .last_recalc_tick
+                .expect("a genuine drain mints a tick"),
+            other => panic!("expected exactly one CalcStateChanged change, got {other:?}"),
+        };
+
+        let DocumentSession::Workbook(session) = &document else {
+            unreachable!("workbook session")
+        };
+        assert_eq!(
+            session.grid_cell_value(sheet, 1, 2).unwrap(),
+            Some(CalcValue::number(30.0)),
+            "after Recalculate, B1 = A1*3 = 30 (fresh value)"
+        );
+        assert_eq!(
+            session.grid_cell_provenance(sheet, 1, 2).unwrap(),
+            Some(ValueProvenanceProjection::Calculated { tick_id: tick }),
+            "after Recalculate, B1's provenance is Calculated with the drain's tick"
+        );
+    }
+
+    /// H5 acceptance (3): `Recalculate` with nothing dirty carries
+    /// `drained_any == false` on the underlying outcome, surfaced as
+    /// `last_recalc_tick == None` on the `CalcStateChanged` delta — the
+    /// receipt carries no `GridChanged` change (H5 emits no per-sheet
+    /// fan-out; that is H7's scope, and a no-op recalc has nothing to fan out
+    /// regardless).
+    #[test]
+    fn recalculate_intent_with_nothing_dirty_is_a_noop_receipt() {
+        let (mut document, grid) = workbook_with_one_sheet("workbook:h5-noop-dispatch");
+        let _ = document.dispatch(WorkspaceIntent::EnterGridCell {
+            grid,
+            row: 1,
+            col: 1,
+            text: "7".to_string(),
+        });
+
+        // Automatic mode already recalculated on write, so nothing is dirty.
+        let receipt = document.dispatch(WorkspaceIntent::Recalculate);
+        assert!(receipt.accepted, "Recalculate is accepted even as a no-op");
+        match receipt.delta.changes.as_slice() {
+            [WorkspaceDeltaChange::CalcStateChanged(projection)] => {
+                assert_eq!(
+                    projection.last_recalc_tick, None,
+                    "a no-op recalc mints no tick"
+                );
+            }
+            other => panic!("expected exactly one CalcStateChanged change, got {other:?}"),
+        }
+        assert!(
+            !receipt
+                .delta
+                .changes
+                .iter()
+                .any(|change| matches!(change, WorkspaceDeltaChange::GridChanged(_))),
+            "a no-op Recalculate emits no GridChanged"
         );
     }
 }

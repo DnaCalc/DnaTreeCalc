@@ -2,11 +2,12 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::identity::{NodeId, NodeKey};
 use crate::workspace::{
-    CalcRunProjection, CandidateProjection, ClipboardProjection, DefinedNameScopeProjection,
-    DefinedNamesProjection, DependencyKindProjection, GridAuthoredCellProjection,
-    GridCellRefProjection, GridEntryDiagnosticProjection, GridEntryOutcomeProjection,
-    GridOverlayBundle, GridProjection, GridRectProjection, InitialNodeContentProjection,
-    NodeValueProjection, ScenarioProjection, SweepProjection,
+    CalcModeProjection, CalcRunProjection, CandidateProjection, ClipboardProjection,
+    DefinedNameScopeProjection, DefinedNamesProjection, DependencyKindProjection,
+    GridAuthoredCellProjection, GridCellRefProjection, GridEntryDiagnosticProjection,
+    GridEntryOutcomeProjection, GridOverlayBundle, GridProjection, GridRectProjection,
+    InitialNodeContentProjection, NodeValueProjection, ScenarioProjection, SweepProjection,
+    WorkbookCalcProjection,
 };
 use serde::{Deserialize, Serialize};
 
@@ -116,8 +117,20 @@ pub enum WorkspaceIntent {
         row_id: Option<String>,
         column_id: String,
     },
-    /// Force the host to run calculation and publish a fresh projection.
+    /// Force the host to run calculation and publish a fresh projection. For
+    /// a workbook session (H5, §A.2), this routes to `recalculate_workbook`
+    /// (Excel's F9): drains any sheet carrying undrained authored edits,
+    /// republishing fresh `Calculated` values; a session with nothing dirty
+    /// (Automatic mode already recalculated, or a repeat call) is a genuine
+    /// no-op — no tick is minted and no `GridChanged` is emitted.
     Recalculate,
+    /// Set the workbook's calc-mode scheduling fact (H5, §A.2:
+    /// `set_workbook_calc_settings`, the `calc_mode` field only — date
+    /// system/iteration settings are out of H5's scope). A scheduling fact,
+    /// never a value fact: switching mode never invalidates a computed value.
+    SetCalcMode {
+        mode: CalcModeProjection,
+    },
     /// Replace the content text of a node. Empty -> Empty kind;
     /// leading `=` -> Formula; otherwise Constant. OxCalc does the
     /// rebind; the skin does not parse formula text.
@@ -933,6 +946,12 @@ pub enum WorkspaceDeltaChange {
     /// use — the catalog is small (one workbook, not a windowed grid), so
     /// there is no windowing story to preserve here.
     DefinedNamesChanged(DefinedNamesProjection),
+    /// The workbook's calc-mode/recalc state changed (H5, §A.3): complete
+    /// replacement of `WorkspaceState::workbook_calc` — mode changes
+    /// (`SetCalcMode`) and recalc drains (`Recalculate`) both emit this, the
+    /// same whole-collection-replacement shape `DefinedNamesChanged` uses
+    /// (small, workbook-wide, not windowed).
+    CalcStateChanged(WorkbookCalcProjection),
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]

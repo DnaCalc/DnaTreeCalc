@@ -118,6 +118,9 @@ pub fn workspace_state_from_model(model: &WorkspaceModel) -> WorkspaceState {
         // This tree-model fixture projection carries no defined names (H4);
         // a workbook session's live projection fills this field instead.
         defined_names: Default::default(),
+        // H5 compiler-forced field (this file is outside H5's owned scope):
+        // the tree-model fixture projection has no CalcMode concept.
+        workbook_calc: Default::default(),
         clipboard: None,
         diagnostics: Vec::new(),
     }

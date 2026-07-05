@@ -233,6 +233,13 @@ fn pulse_change_summary(change: &WorkspaceDeltaChange) -> String {
             "defined name updated",
             "defined names updated",
         ),
+        // H5: minimal arm forced by adding CalcStateChanged to the shared
+        // WorkspaceDeltaChange enum (this file is outside H5's owned scope —
+        // see the bead's coordination note on compiler-forced exhaustiveness
+        // arms in another lane's file).
+        WorkspaceDeltaChange::CalcStateChanged(projection) => {
+            format!("calc mode: {:?}", projection.mode)
+        }
     }
 }
 

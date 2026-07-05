@@ -141,6 +141,7 @@ pub fn change_kind(change: &WorkspaceDeltaChange) -> &'static str {
         C::GridAuthoredChanged { .. } => "grid_authored_changed",
         C::GridCellEntered { .. } => "grid_cell_entered",
         C::DefinedNamesChanged(_) => "defined_names_changed",
+        C::CalcStateChanged(_) => "calc_state_changed",
     }
 }
 
@@ -173,12 +174,15 @@ pub fn is_delta_applicable(change: &WorkspaceDeltaChange) -> bool {
         // place the same way, without a snapshot.
         // DefinedNamesChanged carries the entire new defined-name catalog (H4),
         // so the mirror replaces `WorkspaceState::defined_names` in place.
+        // CalcStateChanged carries the entire new calc-mode/recalc projection
+        // (H5), so the mirror replaces `WorkspaceState::workbook_calc` in place.
         C::CalcRun(_)
         | C::ClipboardChanged(_)
         | C::GridChanged(_)
         | C::GridOverlaysChanged { .. }
         | C::GridAuthoredChanged { .. }
-        | C::DefinedNamesChanged(_) => true,
+        | C::DefinedNamesChanged(_)
+        | C::CalcStateChanged(_) => true,
         // A UI hint only — there is no projection-state change to mirror.
         // GridCellEntered is the H6 entry-verb receipt payload: the edited
         // sheet's GridChanged/GridAuthoredChanged (emitted alongside, §A.3)
@@ -279,6 +283,9 @@ pub fn apply_delta(state: &mut WorkspaceState, delta: &WorkspaceDelta) -> Result
             }
             WorkspaceDeltaChange::DefinedNamesChanged(defined_names) => {
                 state.defined_names = defined_names.clone();
+            }
+            WorkspaceDeltaChange::CalcStateChanged(workbook_calc) => {
+                state.workbook_calc = Some(workbook_calc.clone());
             }
             // FormulaReferenceInserted is a UI hint with no projection state.
             // Everything else was rejected by the applicability guard above.
@@ -409,6 +416,7 @@ mod tests {
                 },
                 value_epoch: 1,
                 authored: None,
+                provenance: None,
             }],
             projection_epoch: 1,
             overlays: GridOverlayBundle::default(),
@@ -475,6 +483,14 @@ mod tests {
                         right_col: 1,
                     }),
                     is_dynamic: false,
+                }],
+            }),
+            WorkspaceDeltaChange::CalcStateChanged(crate::workspace::WorkbookCalcProjection {
+                mode: crate::workspace::CalcModeProjection::Manual,
+                last_recalc_tick: Some(1),
+                sheets: vec![crate::workspace::SheetCalcSummaryProjection {
+                    grid_node_id: NodeId::new("Sheet1"),
+                    dirty: false,
                 }],
             }),
         ];
@@ -688,6 +704,41 @@ mod tests {
         assert!(result.is_ok());
         assert_eq!(mirror.projection_seq, 4);
         assert_eq!(mirror.defined_names, catalog);
+    }
+
+    #[test]
+    fn apply_delta_patches_calc_state_changed_in_place() {
+        // CalcStateChanged carries the entire new calc-mode/recalc projection
+        // (H5): the mirror replaces `WorkspaceState::workbook_calc` in place,
+        // without a snapshot, matching DefinedNamesChanged's shape.
+        use crate::workspace::{
+            CalcModeProjection, SheetCalcSummaryProjection, WorkbookCalcProjection,
+        };
+
+        let mut mirror = mirror_at(3);
+        assert_eq!(mirror.workbook_calc, None);
+
+        let workbook_calc = WorkbookCalcProjection {
+            mode: CalcModeProjection::Manual,
+            last_recalc_tick: Some(42),
+            sheets: vec![SheetCalcSummaryProjection {
+                grid_node_id: NodeId::new("Sheet1"),
+                dirty: true,
+            }],
+        };
+        let result = apply_delta(
+            &mut mirror,
+            &delta(
+                3,
+                4,
+                vec![WorkspaceDeltaChange::CalcStateChanged(
+                    workbook_calc.clone(),
+                )],
+            ),
+        );
+        assert!(result.is_ok());
+        assert_eq!(mirror.projection_seq, 4);
+        assert_eq!(mirror.workbook_calc, Some(workbook_calc));
     }
 
     #[test]

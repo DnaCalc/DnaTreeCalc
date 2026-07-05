@@ -47,6 +47,12 @@ pub struct WorkspaceState {
     /// for a pre-H4 mirror or a `RichTree` session that carries no names.
     #[serde(default)]
     pub defined_names: DefinedNamesProjection,
+    /// The workbook's calc-mode/recalc state (H5, §A.3): mode, last recalc
+    /// tick, and a per-sheet dirty/stale summary. `None` for a pre-H5 mirror
+    /// or a `RichTree` session that carries no workbook calc settings at all
+    /// (a plain tree session has no `CalcMode` concept).
+    #[serde(default)]
+    pub workbook_calc: Option<WorkbookCalcProjection>,
     pub clipboard: Option<ClipboardProjection>,
     pub diagnostics: Vec<String>,
 }
@@ -923,6 +929,82 @@ pub struct GridCellProjection {
     /// pattern, `workspace.rs:822` at H3 authoring time).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub authored: Option<GridAuthoredCellProjection>,
+    /// How this cell's published `value` came to be (H5, §A.3): mirror of
+    /// OxCalc's `PublishedValueProvenance` (`workbook_settings.rs`) —
+    /// engine-`Calculated` this tick, `Stale` behind undrained authored edits
+    /// (Manual mode, or between an edit and the next `Recalculate`), or
+    /// `FileCached` (R6, unpopulated until then). `None` for a pre-H5 mirror
+    /// or wire payload that never carried provenance; `#[serde(default)]` so
+    /// an older serialized `GridProjection` still deserializes cleanly (the
+    /// same forward-compatibility pattern as `authored` above).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provenance: Option<ValueProvenanceProjection>,
+}
+
+/// Mirror of OxCalc's `PublishedValueProvenance` (`workbook_settings.rs`, W062
+/// R5.6): how a published cell value came to be — genuinely engine-computed,
+/// honestly stale behind undrained edits, or a pre-engine file cache. Never a
+/// value fact itself; always paired with `GridCellProjection::value`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ValueProvenanceProjection {
+    /// Genuinely evaluated by the engine on the recalc identified by `tick_id`.
+    Calculated { tick_id: u64 },
+    /// A value that was `Calculated` at `since_tick_id` but whose sheet has
+    /// since accumulated authored edits not yet drained through a recalc
+    /// (Manual calc mode, or between an edit and the next `Recalculate`). The
+    /// value on the projection is the pre-edit value: honestly stale, never
+    /// silently presented as fresh.
+    Stale { since_tick_id: u64 },
+    /// A cached value read from a loaded file, never evaluated by this
+    /// engine. H5's NON-goals exclude sourcing this variant (R6, ingest) —
+    /// it exists on the wire shape, unpopulated until then.
+    FileCached,
+}
+
+/// The workbook's calc-mode/recalc projection (H5, §A.3): mode, the last
+/// recalc's tick (if any drain has ever run), and a per-sheet dirty/stale
+/// summary. Complete-replacement on every `CalcStateChanged` delta (§A.3) —
+/// the catalog is workbook-wide, not windowed, matching `DefinedNamesProjection`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WorkbookCalcProjection {
+    pub mode: CalcModeProjection,
+    /// The tick id of the most recent `Recalculate` drain that actually ran
+    /// (`None` if no drain has happened yet in this session's lifetime — a
+    /// pure no-op recalc leaves this unchanged, since no tick is minted).
+    pub last_recalc_tick: Option<u64>,
+    /// One summary row per grid-backed sheet, in sheet order.
+    pub sheets: Vec<SheetCalcSummaryProjection>,
+}
+
+/// Mirror of OxCalc's `CalcMode` (`workbook_settings.rs`): a scheduling fact,
+/// never a value fact — changing it never invalidates a computed value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum CalcModeProjection {
+    /// Automatic recalculation (Excel default).
+    #[default]
+    Automatic,
+    /// Manual recalculation: edits accumulate as undrained seeds until the
+    /// next `Recalculate`.
+    Manual,
+}
+
+/// One sheet's contribution to the [`WorkbookCalcProjection`]'s per-sheet
+/// summary: whether it currently carries any undrained authored edits.
+/// Deliberately coarse (a single boolean, not a cell-level enumeration) — a
+/// skin locates the individual stale cells through
+/// `GridCellProjection::provenance` in its own windowed view; this summary is
+/// for whole-sheet affordances (a tab badge, a status-bar note), not a
+/// duplicate cell index.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SheetCalcSummaryProjection {
+    pub grid_node_id: NodeId,
+    /// True when at least one of the sheet's published cells currently
+    /// carries `ValueProvenanceProjection::Stale` — the honest, engine-backed
+    /// signal that this sheet has authored edits `Recalculate` has not yet
+    /// drained (a Manual-mode edit always re-tags its own cell `Stale`, per
+    /// the engine's `retag_stale` contract), without needing a private
+    /// accumulated-seeds peek.
+    pub dirty: bool,
 }
 
 /// Authored-metadata mirror of one grid cell (W062 R5.5 `grid_authored_view`,
@@ -2870,6 +2952,59 @@ mod serde_round_trip_tests {
             "a pre-H3 cell has no authored field, so it defaults to None"
         );
         assert_eq!(grid.overlays, GridOverlayBundle::default());
+    }
+
+    /// H5 acceptance (1): a `GridProjection` serialized before H5 added
+    /// `GridCellProjection::provenance` (i.e. JSON with neither the cell's
+    /// `provenance` field nor `WorkspaceState::workbook_calc` present) still
+    /// deserializes — both default (`provenance: None`, `workbook_calc: None`),
+    /// the same forward-compatibility contract H3/H4 already proved.
+    #[test]
+    fn pre_h5_grid_projection_json_deserializes_with_provenance_default() {
+        let pre_h5_json = r#"{
+            "grid_node_key": "sheet",
+            "grid_node_id": "Sheet1",
+            "grid_id": "book:grid:sheet:grid",
+            "max_rows": 1048576,
+            "max_cols": 16384,
+            "cells": [
+                {
+                    "row": 1,
+                    "col": 1,
+                    "value": { "Number": { "raw": "7", "display": "7" } },
+                    "value_epoch": 1
+                }
+            ],
+            "projection_epoch": 1,
+            "differential_clean": true
+        }"#;
+        let grid: GridProjection = serde_json::from_str(pre_h5_json).expect("deserialize");
+        assert_eq!(
+            grid.cells[0].provenance, None,
+            "a pre-H5 cell has no provenance field, so it defaults to None"
+        );
+    }
+
+    /// H5 acceptance (1): a pre-H5 `WorkspaceState` (no `workbook_calc` field
+    /// at all) still deserializes, with `workbook_calc` defaulting to `None`.
+    /// Built by serializing a real state and stripping the H5 key, so every
+    /// other field stays a realistic present-value JSON payload (matching
+    /// the pre-H3 grid-projection test's "older wire shape" proof style).
+    #[test]
+    fn pre_h5_workspace_state_json_deserializes_with_workbook_calc_default() {
+        let state = WorkspaceState::default();
+        let mut value: serde_json::Value = serde_json::to_value(&state).expect("state serializes");
+        value
+            .as_object_mut()
+            .expect("state is a JSON object")
+            .remove("workbook_calc");
+        let pre_h5_json = serde_json::to_string(&value).expect("value serializes");
+
+        let deserialized: WorkspaceState = serde_json::from_str(&pre_h5_json).expect("deserialize");
+        assert_eq!(
+            deserialized.workbook_calc, None,
+            "a pre-H5 mirror has no workbook_calc field, so it defaults to None"
+        );
     }
 
     #[test]
