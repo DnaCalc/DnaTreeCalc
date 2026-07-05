@@ -10,10 +10,13 @@
 //!
 //! K1a was a pure extraction (unchanged behavior). K1b (§C.2, §E.4) layers the
 //! two mandatory grid upgrades on top through the shared `grid_canvas`
-//! component: interest coalescing and authored-aware cell rendering. K1b adds
-//! no UI of its own here — no editing (K2), no tabs (K4), no formula bar (K3)
-//! — so `show_formulas` stays `false` until K3 gives the workbook shell a
-//! toggle to drive.
+//! component: interest coalescing and authored-aware cell rendering. K2
+//! (§C.3, §E.4) adds the in-grid cell edit loop entirely inside
+//! `grid_canvas::grid_surface` — this shell only needs to concatenate the
+//! shared editor's [`dnatreecalc_skin_framework::CELL_ENTRY_CSS`] alongside
+//! `GRID_CANVAS_CSS` so the mounted `CellEntryEditor`/`EntryDiagnostics`
+//! render styled. No tabs (K4), no formula bar (K3) yet — `show_formulas`
+//! stays `false` until K3 gives the workbook shell a toggle to drive.
 
 use std::sync::Arc;
 
@@ -105,7 +108,11 @@ fn WorkbookView(cx: SkinContext<WorkbookState>) -> impl IntoView {
         })
         .collect::<Vec<_>>();
 
-    let css = format!("{}\n{WORKBOOK_CSS}", crate::grid_canvas::GRID_CANVAS_CSS);
+    let css = format!(
+        "{}\n{}\n{WORKBOOK_CSS}",
+        crate::grid_canvas::GRID_CANVAS_CSS,
+        dnatreecalc_skin_framework::CELL_ENTRY_CSS,
+    );
 
     view! {
         <style>{css}</style>

@@ -20,14 +20,24 @@
 //!    classifier's read-only affordance when `authored.editability !=
 //!    Editable`, and (in show-formulas mode) `authored.source_text` in place
 //!    of the computed value.
+//!
+//! K2 (§C.3) adds the in-grid cell edit loop on top: a single-anchor
+//! selection model, the shared [`CellEntryEditor`]/`EntryDiagnostics` (N2)
+//! mounted over the selected cell, and the C.3 keyboard model (arrows/Tab
+//! move selection, `Enter`/`Shift+Enter` commit-and-move, `F2` toggles edit
+//! mode, `Esc` cancels). [`edit_attempt_outcome`] is the table-driven mapping
+//! from a cell's [`GridEditabilityProjection`] to what an edit attempt does
+//! (edit / jump-to-anchor / hint), reused by both the click handler and the
+//! keyboard model so the two entry points never diverge.
 
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
 use dnatreecalc_skin_framework::{
-    Dispatcher, GridAuthoredCellProjection, GridCellProjection, GridEditabilityProjection,
-    GridOverlayRect, NodeId, WorkspaceIntent, WorkspaceState,
+    CellEntryEditor, Dispatcher, EntryDiagnostics, EntryFeedback, GridAuthoredCellProjection,
+    GridAuthoredKindProjection, GridCellProjection, GridCellRefProjection,
+    GridEditabilityProjection, GridOverlayRect, NodeId, WorkspaceIntent, WorkspaceState,
 };
 use leptos::prelude::*;
 use leptos::wasm_bindgen::{self, JsCast};
@@ -163,6 +173,71 @@ fn editability_hint(editability: &GridEditabilityProjection) -> Option<String> {
     }
 }
 
+/// What an edit attempt (click / `F2` / type-to-edit) does for a given
+/// classification (route-map §C.3's "On edit attempt" column) — the
+/// table-driven mapping acceptance (1) asserts, one arm per
+/// [`GridEditabilityProjection`] variant. `Editable` opens the shared editor;
+/// every other variant is read-only and either jumps the selection to its
+/// anchor cell (with a status hint) or, for `TableStructural` (no single-cell
+/// anchor), surfaces a hint with no selection change.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EditAttemptOutcome {
+    /// Open the shared [`CellEntryEditor`] on this cell.
+    Edit,
+    /// Read-only: flash this cell and jump the selection to `anchor`,
+    /// surfacing `hint` (e.g. "Spilled from B3 — edit the anchor").
+    JumpToAnchor {
+        anchor: GridCellRefProjection,
+        hint: String,
+    },
+    /// Read-only with no single-cell anchor to jump to (`TableStructural`):
+    /// surface `hint` only, selection unchanged.
+    Hint { hint: String },
+}
+
+/// The table-driven mapping from a cell's editability classification to what
+/// an edit attempt does (§C.3 acceptance (1)). Shared by the click handler
+/// and the keyboard model (`Enter`/`F2`/type-to-edit) so both entry points
+/// agree with the classifier — the skin never guesses past it (§C.3, §A.4).
+#[must_use]
+pub fn edit_attempt_outcome(editability: &GridEditabilityProjection) -> EditAttemptOutcome {
+    match editability {
+        GridEditabilityProjection::Editable => EditAttemptOutcome::Edit,
+        GridEditabilityProjection::SpillDisplay { anchor } => EditAttemptOutcome::JumpToAnchor {
+            anchor: *anchor,
+            hint: format!(
+                "Spilled from {} — edit the anchor",
+                grid_cell_ref_label(anchor.row, anchor.col)
+            ),
+        },
+        GridEditabilityProjection::RepeatedRegionMember { anchor } => {
+            EditAttemptOutcome::JumpToAnchor {
+                anchor: *anchor,
+                hint: "Part of a filled region".to_string(),
+            }
+        }
+        GridEditabilityProjection::MergedFollower { anchor } => EditAttemptOutcome::JumpToAnchor {
+            anchor: *anchor,
+            hint: "Part of a merged cell".to_string(),
+        },
+        GridEditabilityProjection::TableStructural { .. } => EditAttemptOutcome::Hint {
+            hint: "Table header — rename via the table's header row".to_string(),
+        },
+    }
+}
+
+/// The committed text an authored cell's editor seeds from: a formula's
+/// source text, a literal's display text, or empty (an empty/rich-stub cell
+/// has no authored text to edit). Mirrors N2's `authored_initial_text`
+/// (`notebook.rs`) for the grid's own authored-cell shape.
+fn authored_initial_text(authored: &GridAuthoredCellProjection) -> String {
+    match authored.kind {
+        GridAuthoredKindProjection::Formula => authored.source_text.clone().unwrap_or_default(),
+        GridAuthoredKindProjection::Literal => authored.literal_text.clone().unwrap_or_default(),
+        GridAuthoredKindProjection::Empty | GridAuthoredKindProjection::RichStub => String::new(),
+    }
+}
+
 /// A minimal `A1`-style label for a projected `(row, col)` ref, used only for
 /// the hover-hint text (never for engine addressing — the projection never
 /// carries engine addresses, §A.2).
@@ -177,15 +252,99 @@ fn grid_cell_ref_label(row: u32, col: u32) -> String {
     format!("{col_label}{row}")
 }
 
-/// Render one windowed grid cell, authored-aware (route-map §C.2 K1b): a
-/// plain `Editable` cell renders its computed value (or, in show-formulas
-/// mode, its `authored.source_text`); a non-`Editable` cell additionally
-/// carries the classifier's read-only affordance class + hover hint so K2's
-/// edit loop has a rendering contract to key off of. Cells with no authored
-/// projection at all (pre-H3 mirror, or a projection that never carried
-/// authored fields) render exactly as K1a did — value-only, no affordance —
-/// so the upgrade is purely additive.
-fn render_grid_cell(cell: &GridCellProjection, show_formulas: bool) -> AnyView {
+/// K2's in-grid selection + edit state (§C.3): a single anchor cell
+/// (`anchor_row`/`anchor_col`, range selection is out of v1 scope per the
+/// bead's NON-goals), whether that cell is currently in edit mode, the
+/// shared editor's post-commit feedback, and a transient status hint (the
+/// jump-to-anchor / table-header message an edit attempt on a non-`Editable`
+/// cell surfaces). One `GridSelectionState` is created per `grid_surface`
+/// mount and threaded through every cell's click/keyboard handling so they
+/// all observe and drive the same anchor.
+#[derive(Debug, Clone, Copy)]
+struct GridSelectionState {
+    anchor_row: RwSignal<u32>,
+    anchor_col: RwSignal<u32>,
+    editing: RwSignal<bool>,
+    feedback: RwSignal<EntryFeedback>,
+    status_hint: RwSignal<Option<String>>,
+}
+
+impl GridSelectionState {
+    fn new() -> Self {
+        Self {
+            anchor_row: RwSignal::new(1),
+            anchor_col: RwSignal::new(1),
+            editing: RwSignal::new(false),
+            feedback: RwSignal::new(EntryFeedback::None),
+            status_hint: RwSignal::new(None),
+        }
+    }
+
+    /// Move the anchor to `(row, col)` (clamped to the grid bounds), closing
+    /// any open editor and clearing stale feedback/hint — the "select a
+    /// different cell" reset every navigation chord and every jump-to-anchor
+    /// shares.
+    fn move_to(&self, row: u32, col: u32, max_rows: u32, max_cols: u32) {
+        self.anchor_row.set(row.clamp(1, max_rows.max(1)));
+        self.anchor_col.set(col.clamp(1, max_cols.max(1)));
+        self.editing.set(false);
+        self.feedback.set(EntryFeedback::None);
+        self.status_hint.set(None);
+    }
+
+    /// Act on an edit attempt at `(row, col)` per the classifier's
+    /// [`EditAttemptOutcome`] (§C.3 acceptance (1)/(3)): `Edit` selects the
+    /// cell and opens the editor; `JumpToAnchor`/`Hint` select nothing new to
+    /// edit, dispatch nothing, and surface the status hint — a jump also
+    /// moves the anchor to the resolved anchor cell.
+    fn attempt_edit(
+        &self,
+        row: u32,
+        col: u32,
+        editability: Option<&GridEditabilityProjection>,
+        max_rows: u32,
+        max_cols: u32,
+    ) {
+        let outcome = editability.map_or(EditAttemptOutcome::Edit, edit_attempt_outcome);
+        match outcome {
+            EditAttemptOutcome::Edit => {
+                self.anchor_row.set(row.clamp(1, max_rows.max(1)));
+                self.anchor_col.set(col.clamp(1, max_cols.max(1)));
+                self.feedback.set(EntryFeedback::None);
+                self.status_hint.set(None);
+                self.editing.set(true);
+            }
+            EditAttemptOutcome::JumpToAnchor { anchor, hint } => {
+                self.move_to(anchor.row, anchor.col, max_rows, max_cols);
+                self.status_hint.set(Some(hint));
+            }
+            EditAttemptOutcome::Hint { hint } => {
+                self.status_hint.set(Some(hint));
+            }
+        }
+    }
+}
+
+/// Render one windowed grid cell, authored-aware (route-map §C.2 K1b) and
+/// selection/edit-aware (§C.3 K2): a plain `Editable` cell renders its
+/// computed value (or, in show-formulas mode, its `authored.source_text`)
+/// and, when it is the selected+editing anchor, the shared
+/// [`CellEntryEditor`] instead; a non-`Editable` cell additionally carries
+/// the classifier's read-only affordance class + hover hint, and an edit
+/// attempt on it dispatches nothing (§C.3 acceptance (3)). Cells with no
+/// authored projection at all (pre-H3 mirror, or a projection that never
+/// carried authored fields) render exactly as K1a did — value-only, no
+/// affordance, click selects but never edits — so the upgrade is purely
+/// additive.
+fn render_grid_cell(
+    grid_id: &NodeId,
+    cell: &GridCellProjection,
+    show_formulas: bool,
+    selection: GridSelectionState,
+    max_rows: u32,
+    max_cols: u32,
+    dispatch: Arc<dyn Dispatcher>,
+) -> AnyView {
     let top = f64::from(cell.row.saturating_sub(1)) * GRID_ROW_HEIGHT_PX;
     let left = f64::from(cell.col.saturating_sub(1)) * GRID_COL_WIDTH_PX;
     let style = format!(
@@ -195,10 +354,85 @@ fn render_grid_cell(cell: &GridCellProjection, show_formulas: bool) -> AnyView {
     let authored: Option<&GridAuthoredCellProjection> = cell.authored.as_ref();
     let affordance_class = authored.and_then(|a| editability_affordance_class(&a.editability));
     let hint = authored.and_then(|a| editability_hint(&a.editability));
-    let class = match affordance_class {
+    let is_selected =
+        selection.anchor_row.get() == cell.row && selection.anchor_col.get() == cell.col;
+    let is_editing = is_selected && selection.editing.get();
+    let mut class = match affordance_class {
         Some(affordance) => format!("dtc-grid__cell {affordance}"),
         None => "dtc-grid__cell".to_string(),
     };
+    if is_selected {
+        class.push_str(" dtc-grid__cell--selected");
+    }
+
+    if is_editing {
+        let grid = grid_id.clone();
+        let row = cell.row;
+        let col = cell.col;
+        let initial_text = authored.map(authored_initial_text).unwrap_or_default();
+
+        // §C.3's "Enter commits and moves selection down" / "Shift+Enter
+        // commits and moves up": `CellEntryEditor`'s own keydown handler
+        // commits on Enter and calls `stop_propagation`, so a bubble-phase
+        // listener on this wrapper never sees the key. A capture-phase
+        // listener runs before that (capture fires top-down, ahead of the
+        // input's bubble-phase handler), so it can observe the Shift flag
+        // and record which way to move; an `Effect` watching `editing` then
+        // performs the move only once the commit actually closes the editor
+        // (a rejection leaves `editing` true, so a rejected commit never
+        // moves the selection — the editor stays open with its diagnostics,
+        // per §B.3 step 3 reused in K context).
+        let pending_move: RwSignal<Option<bool>> = RwSignal::new(None);
+        let on_capture_keydown = move |ev: leptos::ev::KeyboardEvent| {
+            if ev.key() == "Enter" {
+                pending_move.set(Some(ev.shift_key()));
+            }
+        };
+        Effect::new(move |prev: Option<bool>| {
+            let now_editing = selection.editing.get();
+            if prev == Some(true)
+                && !now_editing
+                && let Some(shift) = pending_move.get_untracked()
+            {
+                pending_move.set(None);
+                if shift {
+                    selection.move_to(row.saturating_sub(1).max(1), col, max_rows, max_cols);
+                } else {
+                    selection.move_to(row.saturating_add(1), col, max_rows, max_cols);
+                }
+            }
+            now_editing
+        });
+
+        return view! {
+            <div class=class style=style on:keydown:capture=on_capture_keydown>
+                <CellEntryEditor
+                    grid=grid
+                    row=row
+                    col=col
+                    initial_text=initial_text
+                    dispatch=dispatch
+                    editing=selection.editing
+                    feedback=selection.feedback
+                />
+                {move || match selection.feedback.get() {
+                    EntryFeedback::None => ().into_any(),
+                    EntryFeedback::Rejected { diagnostics } => {
+                        view! { <EntryDiagnostics diagnostics=diagnostics /> }.into_any()
+                    }
+                    EntryFeedback::UnresolvedNames { note } => view! {
+                        <div class="dtc-entry-note" role="status">{note}</div>
+                    }
+                    .into_any(),
+                    EntryFeedback::OtherError { message } => view! {
+                        <div class="dtc-entry-note dtc-entry-note--error" role="alert">{message}</div>
+                    }
+                    .into_any(),
+                }}
+            </div>
+        }
+        .into_any();
+    }
 
     // Show-formulas mode renders the authored source text in place of the
     // computed value (route-map §C.2 K1b) whenever the cell has one; a
@@ -216,9 +450,22 @@ fn render_grid_cell(cell: &GridCellProjection, show_formulas: bool) -> AnyView {
         render_value(&cell.value)
     };
 
+    let row = cell.row;
+    let col = cell.col;
+    let editability = authored.map(|a| a.editability.clone());
+    let on_click = move |_: leptos::ev::MouseEvent| {
+        selection.attempt_edit(row, col, editability.as_ref(), max_rows, max_cols);
+    };
+
     match hint {
-        Some(hint) => view! { <div class=class style=style title=hint>{body}</div> }.into_any(),
-        None => view! { <div class=class style=style>{body}</div> }.into_any(),
+        Some(hint) => view! {
+            <div class=class style=style title=hint on:click=on_click>{body}</div>
+        }
+        .into_any(),
+        None => view! {
+            <div class=class style=style on:click=on_click>{body}</div>
+        }
+        .into_any(),
     }
 }
 
@@ -244,9 +491,15 @@ pub fn grid_surface(
     let canvas_height = f64::from(max_rows.min(GRID_VIRTUAL_CELL_CAP)) * GRID_ROW_HEIGHT_PX;
     let canvas_width = f64::from(max_cols.min(GRID_VIRTUAL_CELL_CAP)) * GRID_COL_WIDTH_PX;
 
+    // K2's single-anchor selection/edit state (§C.3): one per mounted
+    // surface, threaded into every cell's click handler and the keyboard
+    // model below.
+    let selection = GridSelectionState::new();
+
     // Reactive: only the windowed cells re-render when the projection changes; the
     // surrounding scroll box is created once, so scrollTop survives a re-scope.
     let cells_id = grid_id.clone();
+    let cells_dispatch = dispatch.clone();
     let cells = move || {
         let ws = workspace.get();
         let Some(grid) = ws.grids.get(&cells_id) else {
@@ -255,7 +508,17 @@ pub fn grid_surface(
         let show = show_formulas.get();
         grid.cells
             .iter()
-            .map(|cell| render_grid_cell(cell, show))
+            .map(|cell| {
+                render_grid_cell(
+                    &cells_id,
+                    cell,
+                    show,
+                    selection,
+                    max_rows,
+                    max_cols,
+                    cells_dispatch.clone(),
+                )
+            })
             .collect::<Vec<_>>()
     };
 
@@ -340,6 +603,10 @@ pub fn grid_surface(
     let coalescer = Rc::new(RefCell::new(GridInterestCoalescer::new()));
     let frame_scheduled = Rc::new(RefCell::new(false));
     let scroll_id = grid_id.clone();
+    // Cloned before `on_scroll` moves the outer `dispatch` — the keyboard
+    // handler below needs its own handle to dispatch `ClearGridCell`
+    // (§C.3's `Delete` chord).
+    let keydown_dispatch = dispatch.clone();
     let on_scroll = move |ev: leptos::ev::Event| {
         let Some(target) = ev.target() else {
             return;
@@ -391,8 +658,117 @@ pub fn grid_surface(
         flush.forget();
     };
 
+    // K2's keyboard model (§C.3 table): arrows/Tab move the anchor, `F2`
+    // toggles edit mode, `Enter` (not-yet-editing) opens the editor per the
+    // same `attempt_edit` the click handler uses (so a non-Editable cell
+    // dispatches nothing and only surfaces the anchor/hint, §C.3 acceptance
+    // (3)), `Delete`/`Backspace` dispatches `ClearGridCell` on a selected
+    // `Editable` cell (§C.3: "`Delete` on a selected cell → `ClearGridCell`"
+    // — gated on `Editable` the same way the click/Enter path is, so a
+    // non-Editable cell's Delete is a no-op rather than a raced dispatch),
+    // `Esc` clears a stale hint when nothing is open to cancel. "Commit and
+    // move down/up" for `Enter`/`Shift+Enter` while already editing is
+    // handled in `render_grid_cell`'s capture-phase listener instead:
+    // `CellEntryEditor`'s own bubble-phase handler commits on Enter and
+    // calls `stop_propagation`, so this container-level handler never
+    // observes Enter/Esc while an editor is mounted.
+    let keydown_id = grid_id.clone();
+    let on_keydown = move |ev: leptos::ev::KeyboardEvent| {
+        let ws = workspace.get_untracked();
+        let grid = ws.grids.get(&keydown_id);
+        let (max_rows, max_cols) = grid.map_or((1, 1), |g| (g.max_rows, g.max_cols));
+        let row = selection.anchor_row.get_untracked();
+        let col = selection.anchor_col.get_untracked();
+        let cell_editability = grid.and_then(|g| {
+            g.cells
+                .iter()
+                .find(|c| c.row == row && c.col == col)
+                .and_then(|c| c.authored.as_ref())
+                .map(|a| a.editability.clone())
+        });
+
+        match ev.key().as_str() {
+            "ArrowUp" => {
+                ev.prevent_default();
+                selection.move_to(row.saturating_sub(1).max(1), col, max_rows, max_cols);
+            }
+            "ArrowDown" => {
+                ev.prevent_default();
+                selection.move_to(row.saturating_add(1), col, max_rows, max_cols);
+            }
+            "ArrowLeft" => {
+                ev.prevent_default();
+                selection.move_to(row, col.saturating_sub(1).max(1), max_rows, max_cols);
+            }
+            "ArrowRight" => {
+                ev.prevent_default();
+                selection.move_to(row, col.saturating_add(1), max_rows, max_cols);
+            }
+            "Tab" => {
+                ev.prevent_default();
+                if ev.shift_key() {
+                    selection.move_to(row, col.saturating_sub(1).max(1), max_rows, max_cols);
+                } else {
+                    selection.move_to(row, col.saturating_add(1), max_rows, max_cols);
+                }
+            }
+            "F2" => {
+                ev.prevent_default();
+                if selection.editing.get_untracked() {
+                    selection.editing.set(false);
+                } else {
+                    selection.attempt_edit(row, col, cell_editability.as_ref(), max_rows, max_cols);
+                }
+            }
+            "Enter" if !selection.editing.get_untracked() => {
+                // Not editing yet: Enter opens the editor (or, on a
+                // non-Editable cell, dispatches nothing and surfaces the
+                // anchor hint) — §C.3 acceptance (3).
+                ev.prevent_default();
+                selection.attempt_edit(row, col, cell_editability.as_ref(), max_rows, max_cols);
+            }
+            "Delete" | "Backspace" if !selection.editing.get_untracked() => {
+                // §C.3: "Delete on a selected cell -> ClearGridCell". Gated
+                // on Editable exactly like the click/Enter edit-attempt path
+                // (a non-Editable cell's Delete is a no-op, not a raced
+                // dispatch the engine would reject anyway).
+                ev.prevent_default();
+                if matches!(
+                    cell_editability,
+                    Some(GridEditabilityProjection::Editable) | None
+                ) {
+                    keydown_dispatch.dispatch(WorkspaceIntent::ClearGridCell {
+                        grid: keydown_id.clone(),
+                        row,
+                        col,
+                    });
+                }
+            }
+            "Escape" if !selection.editing.get_untracked() => {
+                // Nothing open to cancel; clear a stale status hint.
+                selection.status_hint.set(None);
+            }
+            _ => {}
+        }
+    };
+
+    let status_bar = move || {
+        selection.status_hint.get().map(|hint| {
+            view! {
+                <div class="dtc-grid__status-hint" role="status">{hint}</div>
+            }
+            .into_any()
+        })
+    };
+
     view! {
-        <div class="dtc-grid" aria-label="Grid surface" on:scroll=on_scroll>
+        <div
+            class="dtc-grid"
+            aria-label="Grid surface"
+            tabindex="0"
+            on:scroll=on_scroll
+            on:keydown=on_keydown
+        >
             <div
                 class="dtc-grid__canvas"
                 style=format!("position:relative;height:{canvas_height}px;width:{canvas_width}px;")
@@ -401,6 +777,7 @@ pub fn grid_surface(
                 {overlays}
             </div>
         </div>
+        {status_bar}
     }
     .into_any()
 }
@@ -424,13 +801,34 @@ pub const GRID_CANVAS_CSS: &str = r#"
 .dtc-grid__cell--repeated-member { background: rgba(59,125,216,0.05); cursor: default; }
 .dtc-grid__cell--merged-follower { cursor: default; }
 .dtc-grid__cell--table-structural { background: rgba(59,125,216,0.10); font-weight: 600; cursor: default; }
+.dtc-grid__cell--selected { outline: 2px solid var(--dtc-accent, #1a4fa0); outline-offset: -1px; z-index: 1; }
 .dtc-value-display--formula { font-family: var(--dtc-mono-font, monospace); }
+.dtc-grid__status-hint {
+  margin-top: 4px; padding: 3px 8px; border-radius: 5px; font-size: 12px;
+  background: var(--dtc-warning-surface, #fff4e0); color: var(--dtc-warning-text, #8a5a00);
+}
 "#;
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dnatreecalc_skin_framework::{GridAuthoredKindProjection, GridCellRefProjection};
+    use dnatreecalc_skin_framework::{
+        GridAuthoredKindProjection, GridCellRefProjection, RecordingDispatcher,
+    };
+
+    /// A fresh, unselected [`GridSelectionState`] plus a no-op recording
+    /// dispatcher, for tests that exercise [`render_grid_cell`] in its
+    /// read-only (non-editing) rendering path — K2's selection/edit
+    /// machinery is additive to K1b's authored-aware rendering, so these
+    /// pre-K2 tests only need a default selection that never matches the
+    /// cell under test (anchor defaults to (1, 1)).
+    fn test_render_args() -> (NodeId, GridSelectionState, Arc<dyn Dispatcher>) {
+        (
+            NodeId::new("Sheet1"),
+            GridSelectionState::new(),
+            Arc::new(RecordingDispatcher::new()),
+        )
+    }
 
     #[test]
     fn grid_interest_window_maps_scroll_to_clamped_bounds() {
@@ -450,7 +848,7 @@ mod tests {
         );
     }
 
-    // ---- Acceptance (1): coalescing unit test -----------------------------
+    // ---- K1b acceptance (1): coalescing unit test --------------------------
     // N scroll events "in one frame" (i.e. N `note` calls before any `drain`)
     // must collapse to exactly one dispatch — asserted here as "one `drain`
     // returns the latest window, and only the latest".
@@ -488,7 +886,7 @@ mod tests {
         assert_eq!(coalescer.drain(), None);
     }
 
-    // ---- Acceptance (2): authored-aware affordance ------------------------
+    // ---- K1b acceptance (2): authored-aware affordance ---------------------
 
     fn anchor(row: u32, col: u32) -> GridCellRefProjection {
         GridCellRefProjection { row, col }
@@ -536,7 +934,17 @@ mod tests {
         // And through the cell-render fn itself: the rendered markup carries
         // the read-only affordance class, the anchor hint, and still shows
         // the spilled value.
-        let html = render_grid_cell(&spill_display_cell(), false).to_html();
+        let (grid_id, selection, dispatch) = test_render_args();
+        let html = render_grid_cell(
+            &grid_id,
+            &spill_display_cell(),
+            false,
+            selection,
+            100,
+            10,
+            dispatch.clone(),
+        )
+        .to_html();
         assert!(
             html.contains("dtc-grid__cell--spill-display"),
             "spill-display markup must carry the affordance class: {html}"
@@ -551,7 +959,16 @@ mod tests {
         );
 
         // An Editable cell rendered by the same fn has neither class nor hint.
-        let editable_html = render_grid_cell(&formula_cell("=A1*3"), false).to_html();
+        let editable_html = render_grid_cell(
+            &grid_id,
+            &formula_cell("=A1*3"),
+            false,
+            selection,
+            100,
+            10,
+            dispatch,
+        )
+        .to_html();
         assert!(
             !editable_html.contains("dtc-grid__cell--"),
             "an Editable cell must render no affordance modifier class: {editable_html}"
@@ -605,7 +1022,7 @@ mod tests {
         assert_eq!(grid_cell_ref_label(1, 27), "AA1");
     }
 
-    // ---- Acceptance (3): show-formulas mode --------------------------------
+    // ---- K1b acceptance (3): show-formulas mode ----------------------------
 
     fn formula_cell(source_text: &str) -> GridCellProjection {
         GridCellProjection {
@@ -631,16 +1048,20 @@ mod tests {
     #[test]
     fn show_formulas_mode_renders_source_text_instead_of_the_value() {
         let cell = formula_cell("=A1*3");
+        let (grid_id, selection, dispatch) = test_render_args();
 
         // Mode off: the computed value renders, never the source text.
-        let value_html = render_grid_cell(&cell, false).to_html();
+        let value_html =
+            render_grid_cell(&grid_id, &cell, false, selection, 100, 10, dispatch.clone())
+                .to_html();
         assert!(
             value_html.contains('3') && !value_html.contains("=A1*3"),
             "with show-formulas off the computed value must render: {value_html}"
         );
 
         // Mode on: the authored source text renders in place of the value.
-        let formula_html = render_grid_cell(&cell, true).to_html();
+        let formula_html =
+            render_grid_cell(&grid_id, &cell, true, selection, 100, 10, dispatch).to_html();
         assert!(
             formula_html.contains("=A1*3"),
             "with show-formulas on the authored source text must render: {formula_html}"
@@ -675,7 +1096,8 @@ mod tests {
 
         // A literal has no formula to show — show-formulas mode still renders
         // its value (never a blank).
-        let html = render_grid_cell(&cell, true).to_html();
+        let (grid_id, selection, dispatch) = test_render_args();
+        let html = render_grid_cell(&grid_id, &cell, true, selection, 100, 10, dispatch).to_html();
         assert!(
             html.contains('7'),
             "a literal cell renders its value even in show-formulas mode: {html}"
@@ -697,11 +1119,139 @@ mod tests {
             authored: None,
             provenance: None,
         };
-        let html = render_grid_cell(&cell, true).to_html();
+        let (grid_id, selection, dispatch) = test_render_args();
+        let html = render_grid_cell(&grid_id, &cell, true, selection, 100, 10, dispatch).to_html();
         assert!(html.contains("42"), "value renders: {html}");
         assert!(
             !html.contains("dtc-grid__cell--") && !html.contains("title="),
             "no affordance or hint without authored metadata: {html}"
         );
+    }
+
+    // ---- K2 acceptance (1): editability -> affordance mapping (table-driven) ----
+
+    #[test]
+    fn edit_attempt_outcome_maps_editable_to_edit() {
+        assert_eq!(
+            edit_attempt_outcome(&GridEditabilityProjection::Editable),
+            EditAttemptOutcome::Edit
+        );
+    }
+
+    #[test]
+    fn edit_attempt_outcome_maps_spill_display_to_jump_with_anchor_hint() {
+        let outcome = edit_attempt_outcome(&GridEditabilityProjection::SpillDisplay {
+            anchor: anchor(3, 2),
+        });
+        assert_eq!(
+            outcome,
+            EditAttemptOutcome::JumpToAnchor {
+                anchor: anchor(3, 2),
+                hint: "Spilled from B3 — edit the anchor".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn edit_attempt_outcome_maps_repeated_region_member_to_jump() {
+        let outcome = edit_attempt_outcome(&GridEditabilityProjection::RepeatedRegionMember {
+            anchor: anchor(2, 1),
+        });
+        assert_eq!(
+            outcome,
+            EditAttemptOutcome::JumpToAnchor {
+                anchor: anchor(2, 1),
+                hint: "Part of a filled region".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn edit_attempt_outcome_maps_merged_follower_to_jump() {
+        let outcome = edit_attempt_outcome(&GridEditabilityProjection::MergedFollower {
+            anchor: anchor(5, 5),
+        });
+        assert_eq!(
+            outcome,
+            EditAttemptOutcome::JumpToAnchor {
+                anchor: anchor(5, 5),
+                hint: "Part of a merged cell".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn edit_attempt_outcome_maps_table_structural_to_hint_with_no_anchor() {
+        let outcome = edit_attempt_outcome(&GridEditabilityProjection::TableStructural {
+            table_id: "tbl:Scenarios".to_string(),
+        });
+        assert_eq!(
+            outcome,
+            EditAttemptOutcome::Hint {
+                hint: "Table header — rename via the table's header row".to_string(),
+            }
+        );
+    }
+
+    // ---- K2 acceptance (3): SpillDisplay edit attempt dispatches nothing,
+    // ---- focuses the anchor ------------------------------------------------
+
+    #[test]
+    fn attempt_edit_on_spill_display_dispatches_nothing_and_focuses_anchor() {
+        let selection = GridSelectionState::new();
+        // Start selected somewhere else so a jump is observable.
+        selection.move_to(4, 2, 100, 10);
+        assert_eq!(selection.anchor_row.get_untracked(), 4);
+        assert_eq!(selection.anchor_col.get_untracked(), 2);
+
+        let editability = GridEditabilityProjection::SpillDisplay {
+            anchor: anchor(3, 2),
+        };
+        selection.attempt_edit(4, 2, Some(&editability), 100, 10);
+
+        // The selection jumped to the anchor cell, not the spill cell.
+        assert_eq!(selection.anchor_row.get_untracked(), 3);
+        assert_eq!(selection.anchor_col.get_untracked(), 2);
+        // No edit was opened — a non-Editable cell never mounts the editor.
+        assert!(!selection.editing.get_untracked());
+        // The status hint names the anchor, proving the "focuses the anchor"
+        // half of the acceptance, not just a silent no-op.
+        assert_eq!(
+            selection.status_hint.get_untracked().as_deref(),
+            Some("Spilled from B3 — edit the anchor")
+        );
+    }
+
+    #[test]
+    fn attempt_edit_on_table_structural_surfaces_hint_without_moving_selection() {
+        let selection = GridSelectionState::new();
+        selection.move_to(3, 1, 100, 10);
+
+        let editability = GridEditabilityProjection::TableStructural {
+            table_id: "tbl:Scenarios".to_string(),
+        };
+        selection.attempt_edit(3, 1, Some(&editability), 100, 10);
+
+        // No anchor to jump to: the selection stays put.
+        assert_eq!(selection.anchor_row.get_untracked(), 3);
+        assert_eq!(selection.anchor_col.get_untracked(), 1);
+        assert!(!selection.editing.get_untracked());
+        assert!(
+            selection
+                .status_hint
+                .get_untracked()
+                .unwrap()
+                .contains("Table header")
+        );
+    }
+
+    #[test]
+    fn attempt_edit_on_editable_cell_opens_the_editor() {
+        let selection = GridSelectionState::new();
+        selection.attempt_edit(2, 3, Some(&GridEditabilityProjection::Editable), 100, 10);
+        assert_eq!(selection.anchor_row.get_untracked(), 2);
+        assert_eq!(selection.anchor_col.get_untracked(), 3);
+        assert!(selection.editing.get_untracked());
+        assert_eq!(selection.status_hint.get_untracked(), None);
     }
 }
