@@ -3,7 +3,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::identity::{NodeId, NodeKey};
 use crate::workspace::{
     CalcRunProjection, CandidateProjection, ClipboardProjection, DependencyKindProjection,
-    GridAuthoredCellProjection, GridOverlayBundle, GridProjection, InitialNodeContentProjection,
+    GridAuthoredCellProjection, GridCellRefProjection, GridEntryDiagnosticProjection,
+    GridEntryOutcomeProjection, GridOverlayBundle, GridProjection, InitialNodeContentProjection,
     NodeValueProjection, ScenarioProjection, SweepProjection,
 };
 use serde::{Deserialize, Serialize};
@@ -499,6 +500,27 @@ pub enum WorkspaceIntent {
         bottom_row: u32,
         right_col: u32,
     },
+    /// Author a grid cell's text through the engine's universal entry verb
+    /// (H6, §A.2): OxFml is the sole text-to-value interpretation authority,
+    /// so there is no separate formula intent and no skin-side classification
+    /// of a leading `=`. Empty `text` is Excel's empty-commit-clears contract
+    /// and resolves to [`GridEntryOutcomeProjection::Cleared`], the same as
+    /// [`WorkspaceIntent::ClearGridCell`].
+    EnterGridCell {
+        grid: NodeId,
+        row: u32,
+        col: u32,
+        text: String,
+    },
+    /// Clear a grid cell's authored content directly (the gutter/Delete-key
+    /// path, as opposed to committing empty text through the entry buffer).
+    /// Resolves to [`GridEntryOutcomeProjection::Cleared`] on success, exactly
+    /// like an `EnterGridCell` with empty text.
+    ClearGridCell {
+        grid: NodeId,
+        row: u32,
+        col: u32,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -705,6 +727,31 @@ pub enum IntentError {
     /// and `model` names the family that rejected it.
     #[error("intent {intent} is not supported by the {model} document model")]
     UnsupportedByModel { intent: String, model: String },
+    /// A cell-entry write (`EnterGridCell`/`ClearGridCell`) was rejected with
+    /// typed diagnostics (H6, §A.4): OxFml's `AuthoredInputDiagnostics` or
+    /// `GridFormulaBindRejected`, mapped by `present.rs` — never a formatted
+    /// Debug string. The engine guarantees no mutation on this path, so the
+    /// authored cell is untouched; the caller (editor) re-shows `diagnostics`
+    /// with the entered text intact.
+    #[error("grid cell entry rejected: {diagnostics:?}")]
+    GridEntryRejected {
+        diagnostics: Vec<GridEntryDiagnosticProjection>,
+    },
+    /// A cell-entry write targeted a non-editable cell (`GridCellNotEditable`,
+    /// §A.4). Normally pre-empted by the affordance (a skin renders the cell
+    /// read-only from `editability`); this is the raced-write path. `anchor`
+    /// is the classifier's anchor cell (the editable cell a skin should jump
+    /// to), `None` for `TableStructural` (no single-cell anchor).
+    #[error("grid cell is not editable")]
+    GridCellNotEditable {
+        anchor: Option<GridCellRefProjection>,
+    },
+    /// An engine rejection this bead's map does not (yet) special-case —
+    /// §A.4's "unknown/unmapped engine errors" decision: rendered as a
+    /// generic rejection, the Debug payload behind a disclosure, never
+    /// silently dropped and never panicking.
+    #[error("the engine rejected this change: {debug}")]
+    GenericEngineRejection { debug: String },
 }
 
 /// One audited entry in the dispatcher's intent log (tenet 9): the intent,
@@ -812,6 +859,18 @@ pub enum WorkspaceDeltaChange {
         grid_node_id: NodeId,
         cells: Vec<GridAuthoredCellProjection>,
         authored_epoch: u64,
+    },
+    /// The receipt payload for a successful `EnterGridCell`/`ClearGridCell`
+    /// write (H6, §A.2's verb-façade table: `GridCellEntered { outcome }`).
+    /// This is a UI hint carrying the three-way outcome the entry verb
+    /// resolved to; the edited sheet's `GridChanged`/`GridAuthoredChanged`
+    /// (emitted alongside, per §A.3) are what the mirror actually patches —
+    /// this variant has no projection-state effect of its own.
+    GridCellEntered {
+        grid_node_id: NodeId,
+        row: u32,
+        col: u32,
+        outcome: GridEntryOutcomeProjection,
     },
 }
 

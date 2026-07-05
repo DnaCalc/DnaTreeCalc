@@ -139,6 +139,7 @@ pub fn change_kind(change: &WorkspaceDeltaChange) -> &'static str {
         C::GridChanged(_) => "grid_changed",
         C::GridOverlaysChanged { .. } => "grid_overlays_changed",
         C::GridAuthoredChanged { .. } => "grid_authored_changed",
+        C::GridCellEntered { .. } => "grid_cell_entered",
     }
 }
 
@@ -175,7 +176,10 @@ pub fn is_delta_applicable(change: &WorkspaceDeltaChange) -> bool {
         | C::GridOverlaysChanged { .. }
         | C::GridAuthoredChanged { .. } => true,
         // A UI hint only — there is no projection-state change to mirror.
-        C::FormulaReferenceInserted(_) => true,
+        // GridCellEntered is the H6 entry-verb receipt payload: the edited
+        // sheet's GridChanged/GridAuthoredChanged (emitted alongside, §A.3)
+        // are what actually patches the mirror.
+        C::FormulaReferenceInserted(_) | C::GridCellEntered { .. } => true,
         // Key-only, partial, collection-upsert, or full-reset: the snapshot is
         // authoritative and the proxy resyncs.
         C::FullReset
@@ -445,6 +449,12 @@ mod tests {
                     editability: GridEditabilityProjection::Editable,
                 }],
                 authored_epoch: 1,
+            },
+            WorkspaceDeltaChange::GridCellEntered {
+                grid_node_id: NodeId::new("Sheet1"),
+                row: 1,
+                col: 1,
+                outcome: crate::workspace::GridEntryOutcomeProjection::Cleared,
             },
         ];
         for change in &applicable {

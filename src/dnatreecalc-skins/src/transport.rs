@@ -221,6 +221,9 @@ fn pulse_change_summary(change: &WorkspaceDeltaChange) -> String {
         WorkspaceDeltaChange::GridAuthoredChanged { cells, .. } => {
             format!("grid authored layer updated ({} cells)", cells.len())
         }
+        WorkspaceDeltaChange::GridCellEntered { row, col, .. } => {
+            format!("cell R{row}C{col} entered")
+        }
     }
 }
 

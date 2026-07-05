@@ -15,11 +15,17 @@
 //! engine's `set_grid_cell_value` verb. `EnterGridCell` (the universal authored
 //! entry verb) and its receipt projection are **H6**, deliberately out of scope
 //! here.
+//!
+//! H6 promotes the universal entry verbs (`enter_grid_cell`/`clear_grid_cell`)
+//! to public API, and adds the `NodeId` <-> `TreeNodeId` sheet-address seam
+//! (§A.2: "skins never see engine addresses or `TreeNodeId`") that the
+//! `WorkspaceIntent`-level dispatch in `crate::lib` needs to resolve
+//! `EnterGridCell { grid: NodeId, .. }` to an engine sheet node.
 
-use dnacalc_skin_ir::GridAuthoredCellProjection;
+use dnacalc_skin_ir::{GridAuthoredCellProjection, NodeId};
 use oxcalc_core::consumer::{
-    GridBackingSeed, OxCalcDocumentContext, OxCalcDocumentError, OxCalcTreeGridView,
-    OxCalcTreeWorkspaceCreate, OxCalcTreeWorkspaceId, SheetEnumerationRow,
+    GridBackingSeed, GridCellEntryOutcome, OxCalcDocumentContext, OxCalcDocumentError,
+    OxCalcTreeGridView, OxCalcTreeWorkspaceCreate, OxCalcTreeWorkspaceId, SheetEnumerationRow,
 };
 use oxcalc_core::grid::coords::{ExcelGridBounds, ExcelGridCellAddress};
 use oxcalc_core::grid::geometry::GridRect;
@@ -27,6 +33,28 @@ use oxcalc_core::structural::TreeNodeId;
 use oxfunc_core::value::CalcValue;
 
 use crate::grid_publication::grid_authored_cell_projection;
+
+/// The stable `NodeId` a workbook session projects for a sheet's grid-backed
+/// node — the same `sheet:{node}` string this session already uses as the
+/// grid id internally (`add_sheet`), so a skin's `EnterGridCell { grid, .. }`
+/// round-trips through the identical stable address. Skins never see the raw
+/// engine `TreeNodeId` (§A.2).
+#[must_use]
+pub fn sheet_grid_node_id(sheet: TreeNodeId) -> NodeId {
+    NodeId::new(format!("sheet:{}", sheet.0))
+}
+
+/// Parse a [`sheet_grid_node_id`] projection back to its engine `TreeNodeId`.
+/// `None` if `node_id` is not that exact stable shape (a skin never
+/// constructs one itself; it only round-trips an id the host handed it).
+#[must_use]
+pub fn parse_sheet_grid_node_id(node_id: &NodeId) -> Option<TreeNodeId> {
+    node_id
+        .as_str()
+        .strip_prefix("sheet:")
+        .and_then(|rest| rest.parse::<u64>().ok())
+        .map(TreeNodeId)
+}
 
 /// The engine root symbol for a workbook workspace. Kept distinct from the
 /// tree-model root symbol so a workbook root is never confused for a general
@@ -227,25 +255,43 @@ impl WorkbookSession {
     }
 
     /// Author a cell's text through the engine's universal entry verb
-    /// (`enter_grid_cell`), the same three-way (literal/formula/cleared)
-    /// interpretation H6 will wire as a `WorkspaceIntent`. H3 exposes this
-    /// narrowly so its own acceptance test can seed a formula cell (and,
-    /// through a spilling array formula, a `SpillDisplay` follower) to read
-    /// back via [`WorkbookSession::grid_authored_cells`] — the universal
-    /// intent-level entry surface remains H6's scope.
-    #[cfg(test)]
-    fn enter_grid_cell_text(
+    /// (`enter_grid_cell`, H6 §A.2): the three-way
+    /// literal/formula/cleared interpretation `WorkspaceIntent::EnterGridCell`
+    /// dispatches to. OxFml is the sole text-to-value interpretation
+    /// authority; empty `text` is Excel's empty-commit-clears contract and
+    /// resolves through the engine's own `Cleared` arm — no skin-side
+    /// classification of a leading `=` happens here or anywhere upstream.
+    ///
+    /// On `Err`, the engine guarantees no mutation — a rejected entry leaves
+    /// the authored cell exactly as it was (asserted by H6's acceptance tests
+    /// via a re-read through [`WorkbookSession::grid_authored_cells`]).
+    pub fn enter_grid_cell(
         &mut self,
         sheet: TreeNodeId,
         row: u32,
         col: u32,
         text: &str,
-    ) -> Result<(), WorkbookSessionError> {
+    ) -> Result<GridCellEntryOutcome, WorkbookSessionError> {
         let address = self.address_for(sheet, row, col);
         self.context
             .enter_grid_cell(&self.workspace_id, sheet, &address, text)?
-            .ok_or(WorkbookSessionError::SheetNotGridBacked { node: sheet })?;
-        Ok(())
+            .ok_or(WorkbookSessionError::SheetNotGridBacked { node: sheet })
+    }
+
+    /// Clear a grid cell's authored content directly (`clear_grid_cell`, H6
+    /// §A.2), the `WorkspaceIntent::ClearGridCell` target — as opposed to
+    /// committing empty text through [`WorkbookSession::enter_grid_cell`].
+    /// Idempotent and revision-visible per the engine's own contract.
+    pub fn clear_grid_cell(
+        &mut self,
+        sheet: TreeNodeId,
+        row: u32,
+        col: u32,
+    ) -> Result<OxCalcTreeGridView, WorkbookSessionError> {
+        let address = self.address_for(sheet, row, col);
+        self.context
+            .clear_grid_cell(&self.workspace_id, sheet, &address)?
+            .ok_or(WorkbookSessionError::SheetNotGridBacked { node: sheet })
     }
 }
 
@@ -267,7 +313,7 @@ mod tests {
         session
             .set_grid_cell_value(sheet, 1, 1, CalcValue::number(5.0))
             .unwrap();
-        session.enter_grid_cell_text(sheet, 2, 1, "=A1*3").unwrap();
+        session.enter_grid_cell(sheet, 2, 1, "=A1*3").unwrap();
 
         let cells = session.grid_authored_cells(sheet, 1, 1, 2, 1).unwrap();
         let formula_cell = cells
@@ -291,7 +337,7 @@ mod tests {
         let mut session = WorkbookSession::create("workbook:h3-spill").unwrap();
         let sheet = session.add_sheet("Sheet1").unwrap();
         session
-            .enter_grid_cell_text(sheet, 1, 1, "=SEQUENCE(3,1)")
+            .enter_grid_cell(sheet, 1, 1, "=SEQUENCE(3,1)")
             .unwrap();
 
         let cells = session.grid_authored_cells(sheet, 1, 1, 3, 1).unwrap();

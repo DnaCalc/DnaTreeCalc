@@ -984,6 +984,48 @@ pub enum GridEditabilityProjection {
     TableStructural { table_id: String },
 }
 
+/// The three-way outcome of a universal cell-entry write (H6, §A.2/§A.3),
+/// mirroring OxCalc's `GridCellEntryOutcome` (`consumer.rs`) verbatim: a
+/// successful `enter_grid_cell`/`clear_grid_cell` call resolves to exactly one
+/// of these — never a fourth case — matching the engine's own three-way
+/// contract. The typed rejection half of the entry verb travels as
+/// `IntentError::GridEntryRejected` (§A.4), not as a variant here, so this
+/// projection carries only the success arms.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum GridEntryOutcomeProjection {
+    /// The entered text classified as a literal value; the projection carries
+    /// the resulting cell's rendered value.
+    Literal { value: NodeValueProjection },
+    /// The entered text classified as a formula. `unresolved_names` are the
+    /// defined names the bound formula references that are not yet resolved
+    /// on this sheet — a first-class success field (OxCalc W062 R5.9,
+    /// `calc-5kqg.55`), not a rejection: each evaluates `#NAME?` until seeded,
+    /// then self-heals (§B.3's edit-commit loop, step 3).
+    Formula {
+        unresolved_names: Vec<String>,
+        value: NodeValueProjection,
+    },
+    /// The entered text was empty (Excel's empty-commit-clears contract) or
+    /// the cell was cleared directly via `ClearGridCell`.
+    Cleared,
+}
+
+/// One rejection diagnostic on a cell-entry write, mirroring OxCalc's
+/// `EntryRejectionDiagnostic` (`grid/error.rs`, W062 R5.9) verbatim:
+/// `message` plus an *optional* UTF-8 byte span. `span` is `None` when OxFml
+/// has no span to offer for this diagnostic — the UI (§A.4) renders that row
+/// message-only, without a highlight, rather than fabricating a span.
+///
+/// Deliberately **not** [`SourceSpanProjection`] (§A.4's explicit decision):
+/// rejection diagnostics and bind-preview diagnostics are distinct engine
+/// types that arrive on different receipts and are not unified by R5.9; they
+/// share only the rendering component, not the wire type.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GridEntryDiagnosticProjection {
+    pub message: String,
+    pub span: Option<(u32, u32)>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NodeView {
     pub key: NodeKey,

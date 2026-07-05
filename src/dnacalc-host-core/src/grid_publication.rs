@@ -71,7 +71,7 @@ fn grid_editability_projection(editability: &GridCellEditability) -> GridEditabi
     }
 }
 
-fn grid_cell_ref_projection(address: &ExcelGridCellAddress) -> GridCellRefProjection {
+pub(crate) fn grid_cell_ref_projection(address: &ExcelGridCellAddress) -> GridCellRefProjection {
     GridCellRefProjection {
         row: address.row,
         col: address.col,

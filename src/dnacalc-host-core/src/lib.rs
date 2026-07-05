@@ -28,16 +28,33 @@
 //! [`ProjectionPublisher`] publication seam, and the Send/Sync audit below. The
 //! universal `EnterGridCell` authored-entry verb, the tree-session migration
 //! into host-core, xlsx, and the worker are all out of H2 scope.
+//!
+//! ## H6 scope
+//!
+//! H6 wires the cell-entry family end to end: `WorkspaceIntent::EnterGridCell`/
+//! `ClearGridCell` dispatch (this module), the three-way
+//! `GridCellEntered { outcome }` receipt payload, and the `present.rs` A.4
+//! error-presentation map from a rejected write to a typed [`IntentError`].
+//! Cross-sheet poll fan-out and skins are out of H6 scope (H7 and later).
 
 pub mod command;
 pub mod grid_publication;
+pub mod present;
 pub mod workbook;
 
 pub use command::{HostCommand, HostCommandOutcome, ProjectionPublisher, RecordingPublisher};
 pub use grid_publication::grid_authored_cell_projection;
-pub use workbook::{WorkbookSession, WorkbookSessionError};
+pub use present::present_grid_entry_rejection;
+pub use workbook::{
+    WorkbookSession, WorkbookSessionError, parse_sheet_grid_node_id, sheet_grid_node_id,
+};
 
-use dnacalc_skin_ir::{IntentError, IntentReceipt, WorkspaceIntent};
+use dnacalc_skin_ir::{
+    GridEntryOutcomeProjection, IntentError, IntentReceipt, NodeValueProjection, WorkspaceDelta,
+    WorkspaceDeltaChange, WorkspaceIntent,
+};
+use oxcalc_core::consumer::GridCellEntryOutcome;
+use oxfunc_core::value::CalcValue;
 
 // Re-export the engine document surface name the enum is built over, so callers
 // name it through host-core rather than reaching into `oxcalc_core` directly.
@@ -95,21 +112,159 @@ impl DocumentSession {
         }
     }
 
-    /// Route a `WorkspaceIntent` to the session's model family. In H2 no
-    /// grid-write intents are wired (the universal `EnterGridCell` verb is H6),
-    /// so the workbook family supports no `WorkspaceIntent` yet and every intent
-    /// — including a tree-only intent like `CreateScenario` — is answered with a
-    /// typed [`IntentError::UnsupportedByModel`] receipt. The tree family is a
-    /// seam placeholder and likewise routes nothing in H2.
+    /// Route a `WorkspaceIntent` to the session's model family.
     ///
-    /// This is the per-intent model-family gate the proof doc specifies; the
-    /// executable intent lanes attach in later beads.
+    /// H6 wires the universal cell-entry family (`EnterGridCell`/
+    /// `ClearGridCell`) for `Workbook` sessions — the sole executable lane
+    /// this dispatcher carries so far. Every other intent, and the entry
+    /// family on a `RichTree` session (a seam placeholder with no grid at
+    /// all), is answered with a typed [`IntentError::UnsupportedByModel`]
+    /// receipt. This is the per-intent model-family gate the proof doc
+    /// specifies; later beads (H4/H5/H7/…) attach their own lanes the same
+    /// way.
     #[must_use]
     pub fn dispatch(&mut self, intent: WorkspaceIntent) -> IntentReceipt {
-        IntentReceipt::rejected(IntentError::UnsupportedByModel {
-            intent: workspace_intent_kind(&intent).to_string(),
-            model: self.model_name().to_string(),
-        })
+        match (self, intent) {
+            (
+                DocumentSession::Workbook(session),
+                WorkspaceIntent::EnterGridCell {
+                    grid,
+                    row,
+                    col,
+                    text,
+                },
+            ) => dispatch_enter_grid_cell(session, &grid, row, col, &text),
+            (
+                DocumentSession::Workbook(session),
+                WorkspaceIntent::ClearGridCell { grid, row, col },
+            ) => dispatch_clear_grid_cell(session, &grid, row, col),
+            (session, intent) => IntentReceipt::rejected(IntentError::UnsupportedByModel {
+                intent: workspace_intent_kind(&intent).to_string(),
+                model: session.model_name().to_string(),
+            }),
+        }
+    }
+}
+
+/// Resolve an `EnterGridCell`/`ClearGridCell` intent's `grid: NodeId` to the
+/// workbook's engine sheet node, or the typed `UnsupportedByModel` shape a
+/// stale/unknown grid id gets (never a panic on an unrecognized address).
+fn resolve_sheet_node(
+    grid: &dnacalc_skin_ir::NodeId,
+) -> Result<oxcalc_core::structural::TreeNodeId, IntentError> {
+    workbook::parse_sheet_grid_node_id(grid).ok_or_else(|| IntentError::GenericEngineRejection {
+        debug: format!("unknown grid node id {grid:?}"),
+    })
+}
+
+fn dispatch_enter_grid_cell(
+    session: &mut WorkbookSession,
+    grid: &dnacalc_skin_ir::NodeId,
+    row: u32,
+    col: u32,
+    text: &str,
+) -> IntentReceipt {
+    let sheet = match resolve_sheet_node(grid) {
+        Ok(sheet) => sheet,
+        Err(error) => return IntentReceipt::rejected(error),
+    };
+    match session.enter_grid_cell(sheet, row, col, text) {
+        Ok(outcome) => grid_cell_entered_receipt(grid, row, col, &outcome),
+        Err(error) => IntentReceipt::rejected(present_grid_entry_rejection(&error)),
+    }
+}
+
+fn dispatch_clear_grid_cell(
+    session: &mut WorkbookSession,
+    grid: &dnacalc_skin_ir::NodeId,
+    row: u32,
+    col: u32,
+) -> IntentReceipt {
+    let sheet = match resolve_sheet_node(grid) {
+        Ok(sheet) => sheet,
+        Err(error) => return IntentReceipt::rejected(error),
+    };
+    match session.clear_grid_cell(sheet, row, col) {
+        Ok(_view) => {
+            let outcome = GridEntryOutcomeProjection::Cleared;
+            IntentReceipt::accepted().with_delta(WorkspaceDelta {
+                from_seq: 0,
+                to_seq: 0,
+                changes: vec![WorkspaceDeltaChange::GridCellEntered {
+                    grid_node_id: grid.clone(),
+                    row,
+                    col,
+                    outcome,
+                }],
+            })
+        }
+        Err(error) => IntentReceipt::rejected(present_grid_entry_rejection(&error)),
+    }
+}
+
+/// Build the accepted `GridCellEntered` receipt (§A.2's verb-façade row) from
+/// the engine's three-way [`GridCellEntryOutcome`], mirroring its
+/// literal/formula/cleared value(s) into the wire projection.
+fn grid_cell_entered_receipt(
+    grid: &dnacalc_skin_ir::NodeId,
+    row: u32,
+    col: u32,
+    outcome: &GridCellEntryOutcome,
+) -> IntentReceipt {
+    let projected = match outcome {
+        GridCellEntryOutcome::Literal { value, .. } => GridEntryOutcomeProjection::Literal {
+            value: calc_value_projection(value),
+        },
+        GridCellEntryOutcome::Formula {
+            unresolved_names,
+            view,
+            ..
+        } => GridEntryOutcomeProjection::Formula {
+            unresolved_names: unresolved_names.clone(),
+            value: view
+                .cells
+                .iter()
+                .find(|cell| cell.address.row == row && cell.address.col == col)
+                .map(|cell| calc_value_projection(&cell.value))
+                .unwrap_or(NodeValueProjection::Unevaluated),
+        },
+        GridCellEntryOutcome::Cleared { .. } => GridEntryOutcomeProjection::Cleared,
+    };
+    IntentReceipt::accepted().with_delta(WorkspaceDelta {
+        from_seq: 0,
+        to_seq: 0,
+        changes: vec![WorkspaceDeltaChange::GridCellEntered {
+            grid_node_id: grid.clone(),
+            row,
+            col,
+            outcome: projected,
+        }],
+    })
+}
+
+/// A minimal `CalcValue` -> `NodeValueProjection` rendering for the
+/// `GridCellEntered` receipt payload (H6's own scope: the entry receipt's
+/// literal/formula value, not the full windowed grid-value projection that
+/// `dnatreecalc-host`'s skin layer owns). Deliberately narrow, matching
+/// `grid_publication::grid_authored_cell_projection`'s literal-text
+/// convention: numbers/text/logical/empty render structurally, anything else
+/// (arrays, references, rich) falls back to a Debug-derived error/text
+/// rendering so no value silently disappears from the receipt.
+fn calc_value_projection(value: &CalcValue) -> NodeValueProjection {
+    use oxfunc_core::value::CoreValue;
+    match value.core() {
+        CoreValue::Number(number) => NodeValueProjection::Number {
+            raw: number.to_string(),
+            display: number.to_string(),
+        },
+        CoreValue::Text(text) => NodeValueProjection::Text(text.to_string_lossy()),
+        CoreValue::Logical(logical) => NodeValueProjection::Logical {
+            value: *logical,
+            display: if *logical { "TRUE" } else { "FALSE" }.to_string(),
+        },
+        CoreValue::Empty => NodeValueProjection::Empty,
+        CoreValue::Missing => NodeValueProjection::Missing,
+        other => NodeValueProjection::Error(format!("{other:?}")),
     }
 }
 
@@ -268,5 +423,282 @@ mod tests {
         let published = publisher.published();
         assert_eq!(published.len(), 1);
         assert!(!published[0].accepted);
+    }
+
+    // ------------------------------------------------------------------
+    // H6 acceptance: cell-entry intents end-to-end.
+    // ------------------------------------------------------------------
+
+    fn workbook_with_one_sheet(workspace_id: &str) -> (DocumentSession, dnacalc_skin_ir::NodeId) {
+        let mut session = WorkbookSession::create(workspace_id).unwrap();
+        let sheet = session.add_sheet("Sheet1").unwrap();
+        let grid = sheet_grid_node_id(sheet);
+        (DocumentSession::Workbook(session), grid)
+    }
+
+    /// H6 acceptance (1), literal half: `EnterGridCell` with a plain number
+    /// dispatches to `Literal`, and the receipt's projected value matches.
+    #[test]
+    fn enter_grid_cell_literal_dispatches_and_projects_value() {
+        let (mut document, grid) = workbook_with_one_sheet("workbook:h6-literal");
+
+        let receipt = document.dispatch(WorkspaceIntent::EnterGridCell {
+            grid: grid.clone(),
+            row: 1,
+            col: 1,
+            text: "10".to_string(),
+        });
+
+        assert!(receipt.accepted, "a plain number literal is accepted");
+        match receipt.delta.changes.as_slice() {
+            [
+                WorkspaceDeltaChange::GridCellEntered {
+                    grid_node_id,
+                    row,
+                    col,
+                    outcome,
+                },
+            ] => {
+                assert_eq!(*grid_node_id, grid);
+                assert_eq!(*row, 1);
+                assert_eq!(*col, 1);
+                match outcome {
+                    GridEntryOutcomeProjection::Literal { value } => assert_eq!(
+                        *value,
+                        NodeValueProjection::Number {
+                            raw: "10".to_string(),
+                            display: "10".to_string(),
+                        }
+                    ),
+                    other => panic!("expected Literal outcome, got {other:?}"),
+                }
+            }
+            other => panic!("expected exactly one GridCellEntered change, got {other:?}"),
+        }
+    }
+
+    /// H6 acceptance (1) + (2), formula half: `EnterGridCell` with a formula
+    /// referencing an as-yet-undefined name dispatches to `Formula`, and
+    /// `unresolved_names` surfaces the undefined name on the receipt
+    /// (acceptance assertion 2).
+    #[test]
+    fn enter_grid_cell_formula_dispatches_and_surfaces_unresolved_names() {
+        let (mut document, grid) = workbook_with_one_sheet("workbook:h6-formula");
+
+        let receipt = document.dispatch(WorkspaceIntent::EnterGridCell {
+            grid: grid.clone(),
+            row: 1,
+            col: 1,
+            text: "=TaxRate*2".to_string(),
+        });
+
+        assert!(
+            receipt.accepted,
+            "a formula referencing an undefined name is still accepted (it self-heals)"
+        );
+        match receipt.delta.changes.as_slice() {
+            [WorkspaceDeltaChange::GridCellEntered { outcome, .. }] => match outcome {
+                GridEntryOutcomeProjection::Formula {
+                    unresolved_names, ..
+                } => {
+                    assert_eq!(
+                        unresolved_names,
+                        &vec!["TaxRate".to_string()],
+                        "the undefined name surfaces on the Formula receipt"
+                    );
+                }
+                other => panic!("expected Formula outcome, got {other:?}"),
+            },
+            other => panic!("expected exactly one GridCellEntered change, got {other:?}"),
+        }
+    }
+
+    /// H6 acceptance (1), empty-clears half: committing empty text through
+    /// `EnterGridCell` resolves to `Cleared` (Excel's empty-commit contract).
+    #[test]
+    fn enter_grid_cell_empty_text_dispatches_to_cleared() {
+        let (mut document, grid) = workbook_with_one_sheet("workbook:h6-empty-clears");
+        let _ = document.dispatch(WorkspaceIntent::EnterGridCell {
+            grid: grid.clone(),
+            row: 1,
+            col: 1,
+            text: "10".to_string(),
+        });
+
+        let receipt = document.dispatch(WorkspaceIntent::EnterGridCell {
+            grid: grid.clone(),
+            row: 1,
+            col: 1,
+            text: String::new(),
+        });
+
+        assert!(receipt.accepted, "committing empty text is accepted");
+        match receipt.delta.changes.as_slice() {
+            [WorkspaceDeltaChange::GridCellEntered { outcome, .. }] => {
+                assert!(matches!(outcome, GridEntryOutcomeProjection::Cleared));
+            }
+            other => panic!("expected exactly one GridCellEntered change, got {other:?}"),
+        }
+    }
+
+    /// H6 acceptance (1), `ClearGridCell` half: clearing a literal cell
+    /// directly also resolves to `Cleared`, and a re-read shows the cell
+    /// authored-empty.
+    #[test]
+    fn clear_grid_cell_dispatches_to_cleared_and_authored_view_shows_empty() {
+        let (mut document, grid) = workbook_with_one_sheet("workbook:h6-clear");
+        let _ = document.dispatch(WorkspaceIntent::EnterGridCell {
+            grid: grid.clone(),
+            row: 1,
+            col: 1,
+            text: "10".to_string(),
+        });
+
+        let receipt = document.dispatch(WorkspaceIntent::ClearGridCell {
+            grid: grid.clone(),
+            row: 1,
+            col: 1,
+        });
+
+        assert!(
+            receipt.accepted,
+            "ClearGridCell on a literal cell is accepted"
+        );
+        match receipt.delta.changes.as_slice() {
+            [WorkspaceDeltaChange::GridCellEntered { outcome, .. }] => {
+                assert!(matches!(outcome, GridEntryOutcomeProjection::Cleared));
+            }
+            other => panic!("expected exactly one GridCellEntered change, got {other:?}"),
+        }
+
+        let DocumentSession::Workbook(session) = &document else {
+            unreachable!("workbook session")
+        };
+        let sheet = workbook::parse_sheet_grid_node_id(&grid).unwrap();
+        let cells = session.grid_authored_cells(sheet, 1, 1, 1, 1).unwrap();
+        let cell = cells
+            .iter()
+            .find(|cell| cell.row == 1 && cell.col == 1)
+            .expect("A1 is in the requested window");
+        assert_eq!(
+            cell.kind,
+            dnacalc_skin_ir::GridAuthoredKindProjection::Empty,
+            "the cleared cell's authored kind is Empty"
+        );
+    }
+
+    /// H6 acceptance (1), rejected half: an invalid formula (`=1+`) is
+    /// rejected with typed diagnostics carried on the receipt, AND a re-read
+    /// of the authored view proves no mutation happened (the engine's
+    /// no-mutation-on-diagnostics contract, asserted from the host-core
+    /// dispatch boundary — not just the engine's own unit test).
+    #[test]
+    fn enter_grid_cell_rejected_formula_carries_diagnostics_and_does_not_mutate() {
+        let (mut document, grid) = workbook_with_one_sheet("workbook:h6-rejected");
+        // Seed A1 with a literal first, so the re-read below has a concrete
+        // baseline the rejection must leave untouched.
+        let _ = document.dispatch(WorkspaceIntent::EnterGridCell {
+            grid: grid.clone(),
+            row: 1,
+            col: 1,
+            text: "7".to_string(),
+        });
+
+        let receipt = document.dispatch(WorkspaceIntent::EnterGridCell {
+            grid: grid.clone(),
+            row: 1,
+            col: 1,
+            text: "=1+".to_string(),
+        });
+
+        assert!(!receipt.accepted, "an unparseable formula is rejected");
+        match receipt.error {
+            Some(IntentError::GridEntryRejected { diagnostics }) => {
+                assert!(
+                    !diagnostics.is_empty(),
+                    "the rejection receipt carries at least one typed diagnostic"
+                );
+            }
+            other => panic!("expected GridEntryRejected, got {other:?}"),
+        }
+
+        // No mutation on Err: A1 is still the literal 7, not the rejected
+        // formula text.
+        let DocumentSession::Workbook(session) = &document else {
+            unreachable!("workbook session")
+        };
+        let sheet = workbook::parse_sheet_grid_node_id(&grid).unwrap();
+        let cells = session.grid_authored_cells(sheet, 1, 1, 1, 1).unwrap();
+        let cell = cells
+            .iter()
+            .find(|cell| cell.row == 1 && cell.col == 1)
+            .expect("A1 is in the requested window");
+        assert_eq!(
+            cell.kind,
+            dnacalc_skin_ir::GridAuthoredKindProjection::Literal,
+            "A1's authored kind is unchanged (still Literal, not Formula)"
+        );
+        assert_eq!(
+            cell.literal_text.as_deref(),
+            Some("7"),
+            "A1's literal text is unchanged by the rejected write"
+        );
+    }
+
+    /// H6 acceptance (3), one A.4 table row: `GridCellNotEditable` (a spill
+    /// follower) maps to a rejection carrying the classifier's anchor, never
+    /// a panic.
+    #[test]
+    fn enter_grid_cell_on_spill_follower_is_rejected_with_anchor() {
+        let (mut document, grid) = workbook_with_one_sheet("workbook:h6-spill-reject");
+        let _ = document.dispatch(WorkspaceIntent::EnterGridCell {
+            grid: grid.clone(),
+            row: 1,
+            col: 1,
+            text: "=SEQUENCE(3,1)".to_string(),
+        });
+
+        // A2 is a spill-display follower of A1's spilling formula.
+        let receipt = document.dispatch(WorkspaceIntent::EnterGridCell {
+            grid: grid.clone(),
+            row: 2,
+            col: 1,
+            text: "99".to_string(),
+        });
+
+        assert!(
+            !receipt.accepted,
+            "writing into a spill follower is rejected"
+        );
+        match receipt.error {
+            Some(IntentError::GridCellNotEditable { anchor }) => {
+                assert_eq!(
+                    anchor,
+                    Some(dnacalc_skin_ir::GridCellRefProjection { row: 1, col: 1 }),
+                    "the anchor is the spilling formula's own cell"
+                );
+            }
+            other => panic!("expected GridCellNotEditable, got {other:?}"),
+        }
+    }
+
+    /// H6 acceptance (3), the map's fallback row: an intent addressing an
+    /// unknown/stale grid id is a typed rejection, never a panic.
+    #[test]
+    fn enter_grid_cell_on_unknown_grid_id_is_generic_rejection_never_panics() {
+        let (mut document, _grid) = workbook_with_one_sheet("workbook:h6-unknown-grid");
+
+        let receipt = document.dispatch(WorkspaceIntent::EnterGridCell {
+            grid: dnacalc_skin_ir::NodeId::new("not-a-real-grid-id"),
+            row: 1,
+            col: 1,
+            text: "1".to_string(),
+        });
+
+        assert!(!receipt.accepted);
+        assert!(matches!(
+            receipt.error,
+            Some(IntentError::GenericEngineRejection { .. })
+        ));
     }
 }
