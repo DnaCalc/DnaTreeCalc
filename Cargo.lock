@@ -313,6 +313,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "dnacalc-host-core"
+version = "0.1.0"
+dependencies = [
+ "dnacalc-skin-ir",
+ "oxcalc-core",
+ "oxfunc_core",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "dnacalc-skin-ir"
 version = "0.1.0"
 dependencies = [

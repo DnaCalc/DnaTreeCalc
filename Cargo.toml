@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "src/dnacalc-host-core",
     "src/dnacalc-skin-ir",
     "src/dnacalc-skin-leptos",
     "src/dnatreecalc-host",

@@ -697,6 +697,14 @@ pub enum IntentError {
     Forbidden { persona: String },
     #[error("host failed to dispatch the intent: {0}")]
     HostFailure(String),
+    /// The active document model family does not support this intent — e.g.
+    /// `CreateScenario` on a `Workbook` session. Host-core produces this typed
+    /// receipt per intent (proof doc §Model-Neutral Sessions); the affordance is
+    /// capability-gated in skins so it is normally never shown, but the receipt
+    /// exists for transports and audit. `intent` names the rejected intent kind
+    /// and `model` names the family that rejected it.
+    #[error("intent {intent} is not supported by the {model} document model")]
+    UnsupportedByModel { intent: String, model: String },
 }
 
 /// One audited entry in the dispatcher's intent log (tenet 9): the intent,
