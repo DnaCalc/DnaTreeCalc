@@ -12,7 +12,8 @@ use dnatreecalc_skin_framework::{
     FormulaBindPreviewDiagnosticProjection, FormulaBindPreviewDiagnosticStage,
     FormulaBindPreviewInputKind, FormulaBindPreviewProfileViolationKindProjection,
     FormulaBindPreviewProfileViolationProjection, FormulaBindPreviewProjection,
-    FormulaReferenceInsertionProjection, FormulaReferenceInsertionTarget, GridCellProjection,
+    FormulaReferenceInsertionProjection, FormulaReferenceInsertionTarget,
+    GridAuthoredCellProjection, GridCellProjection,
     GridMergedOverlayDescriptor, GridOverlayBundle, GridOverlayRect, GridProjection,
     GridSpillOverlayDescriptor, GridTableColumnBand, GridTableOverlayDescriptor,
     InitialNodeContentProjection, InvalidationReasonProjection,
@@ -35,6 +36,7 @@ use dnatreecalc_skin_framework::{
     TableRowInput, TableRowProjection, TreeReferenceCollectionFamilyProjection,
     TreeReferenceCollectionProjection, WorkspaceRevisionProjection, WorkspaceState,
 };
+use dnacalc_host_core::grid_publication::grid_authored_cell_projection;
 use oxcalc_core::consumer::OxCalcTreeRunState;
 use oxcalc_core::consumer::{
     CandidateOverlayHandle, OxCalcDocumentContext, OxCalcDocumentContextOptions,
@@ -5294,9 +5296,11 @@ impl TreeWorkspaceSession {
             };
             let node_id = self.node_id_for_tree_node(tree_node_id)?;
             let node_key = node_key_for_tree_node(tree_node_id);
+            let authored =
+                authored_cells_for(&self.context, &self.workspace_id, tree_node_id, &view)?;
             grids.insert(
                 node_id.clone(),
-                grid_projection_for(&view, node_id, node_key),
+                grid_projection_for(&view, node_id, node_key, &authored),
             );
         }
         let dependencies = match self.last_outcome.as_ref() {
@@ -5474,10 +5478,13 @@ impl TreeWorkspaceSession {
             .ok_or_else(|| TreeWorkspaceSessionError::ProjectionOutOfSync {
                 node: format!("grid {node}"),
             })?;
+        let authored =
+            authored_cells_for(&self.context, &self.workspace_id, tree_node_id, &view)?;
         Ok(grid_projection_for(
             &view,
             node.clone(),
             node_key_for_tree_node(tree_node_id),
+            &authored,
         ))
     }
 
@@ -7751,10 +7758,20 @@ fn comparative_values_for_candidate(
 /// `NodeValueProjection`, the sheet bounds size the viewport, and the differential
 /// mismatch set collapses to a clean flag. Format is Phase 4, so cells carry no
 /// effective format yet.
+///
+/// `authored` is the windowed authored-metadata lookup (dtc-ajl.30), keyed by
+/// `(row, col)`, exactly matching `view.cells`'s window: the caller reads it
+/// from the engine's `grid_authored_view` (mirroring
+/// `dnacalc-host-core/src/grid_publication.rs`'s workbook-session fill —
+/// `WorkbookSession::grid_authored_cells`) via
+/// [`authored_cells_by_address`]. A cell with no entry (should not happen for
+/// a window built the same way) falls back to `None`, the pre-H3-compatible
+/// default.
 fn grid_projection_for(
     view: &OxCalcTreeGridView,
     grid_node_id: NodeId,
     grid_node_key: NodeKey,
+    authored: &BTreeMap<(u32, u32), GridAuthoredCellProjection>,
 ) -> GridProjection {
     let cells = view
         .cells
@@ -7764,10 +7781,13 @@ fn grid_projection_for(
             col: cell.address.col,
             value: calc_value_projection(&cell.value, None),
             value_epoch: cell.value_epoch,
-            // The tree-model session does not fill authored metadata (H3
-            // scopes the authored-view fill to the workbook host-core path);
-            // `None` is the pre-H3-compatible default.
-            authored: None,
+            // dtc-ajl.30: the tree-model session now fills authored metadata
+            // from the engine's `grid_authored_view`, windowed to exactly the
+            // cells this projection carries (mirroring host-core's workbook
+            // fill path, `grid_publication::grid_authored_cell_projection`).
+            authored: authored
+                .get(&(cell.address.row, cell.address.col))
+                .cloned(),
             // H5 compiler-forced arm (K1b/N1 lane file, not H5's Owns list):
             // the tree-model session has no CalcMode concept, so it fills no
             // provenance either.
@@ -7775,6 +7795,19 @@ fn grid_projection_for(
         })
         .collect::<Vec<_>>();
     let projection_epoch = cells.iter().map(|cell| cell.value_epoch).max().unwrap_or(0);
+    // dtc-ajl.30: the engine does not (yet) track an authored-only change
+    // epoch independent of computed-value epochs (`OxCalcTreeGridView` has no
+    // such field, and no producer in this codebase computes one — H3's
+    // workbook host-core fill leaves it as a caller concern too). Reuse
+    // `projection_epoch` as the authored epoch whenever the window actually
+    // carries authored data, so a client can still observe "authored changes
+    // since" against the same monotonic tick the cell values already bump on;
+    // an empty/un-authored window stays at the pre-H3 default `0`.
+    let authored_epoch = if cells.iter().any(|cell| cell.authored.is_some()) {
+        projection_epoch
+    } else {
+        0
+    };
     GridProjection {
         grid_node_key,
         grid_node_id,
@@ -7786,8 +7819,57 @@ fn grid_projection_for(
         overlays: grid_overlay_bundle_for(view),
         overlay_epoch: view.overlay_epoch,
         differential_clean: view.differential_mismatches.is_empty(),
-        authored_epoch: 0,
+        authored_epoch,
     }
+}
+
+/// Read the engine's authored-metadata readouts for exactly the window a
+/// [`OxCalcTreeGridView`] already carries (dtc-ajl.30) and index them by
+/// `(row, col)` for [`grid_projection_for`]. Builds the window rect from the
+/// view's own cell addresses (min/max row/col over the windowed cells,
+/// workbook/sheet ids from the first cell) rather than re-deriving the
+/// client's registered interest, so this always matches the cells actually
+/// being projected. An empty view (no cells) has no window to query and
+/// yields an empty map — the same "nothing to scope" case
+/// `register_grid_interest` already handles for interest registration.
+fn authored_cells_for(
+    context: &OxCalcDocumentContext,
+    workspace_id: &OxCalcTreeWorkspaceId,
+    tree_node_id: TreeNodeId,
+    view: &OxCalcTreeGridView,
+) -> Result<BTreeMap<(u32, u32), GridAuthoredCellProjection>, TreeWorkspaceSessionError> {
+    let Some(first) = view.cells.first() else {
+        return Ok(BTreeMap::new());
+    };
+    let top_row = view.cells.iter().map(|cell| cell.address.row).min().unwrap_or(first.address.row);
+    let bottom_row = view.cells.iter().map(|cell| cell.address.row).max().unwrap_or(first.address.row);
+    let left_col = view.cells.iter().map(|cell| cell.address.col).min().unwrap_or(first.address.col);
+    let right_col = view.cells.iter().map(|cell| cell.address.col).max().unwrap_or(first.address.col);
+    let window = GridRect::new(
+        first.address.workbook_id.clone(),
+        first.address.sheet_id.clone(),
+        top_row,
+        left_col,
+        bottom_row,
+        right_col,
+        view.bounds,
+    )
+    .map_err(|error| TreeWorkspaceSessionError::GridInterest {
+        node: format!("grid {}", tree_node_id.0),
+        detail: error.to_string(),
+    })?;
+    let readouts = context
+        .grid_authored_view(workspace_id, tree_node_id, Some(window))?
+        .unwrap_or_default();
+    Ok(readouts
+        .iter()
+        .map(|readout| {
+            (
+                (readout.address.row, readout.address.col),
+                grid_authored_cell_projection(readout),
+            )
+        })
+        .collect())
 }
 
 fn grid_overlay_rect(rect: &OxCalcTreeGridOverlayRect) -> GridOverlayRect {

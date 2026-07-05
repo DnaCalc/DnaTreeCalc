@@ -15,6 +15,7 @@ thiserror.workspace = true
 oxcalc_core.workspace = true
 oxfml_core.workspace = true
 oxfunc_core.workspace = true
+dnacalc-host-core = { path = "../dnacalc-host-core" }
 dnatreecalc-skin-framework = { path = "../dnatreecalc-skin-framework" }
 dnatreecalc-shell = { path = "../dnatreecalc-shell" }
 dnatreecalc-skins = { path = "../dnatreecalc-skins" }

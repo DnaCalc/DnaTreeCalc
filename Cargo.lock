@@ -360,6 +360,7 @@ dependencies = [
 name = "dnatreecalc-host"
 version = "0.1.0"
 dependencies = [
+ "dnacalc-host-core",
  "dnatreecalc-shell",
  "dnatreecalc-skin-framework",
  "dnatreecalc-skins",

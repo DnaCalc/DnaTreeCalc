@@ -6,19 +6,24 @@
 //! harness, so each owns a separate test file to avoid colliding edits to
 //! the same file.
 //!
-//! These tests mount the shared `grid_canvas::grid_surface` component
+//! Most of these tests mount the shared `grid_canvas::grid_surface` component
 //! **directly** into the browser DOM with a synthetic `WorkspaceState`
 //! carrying real authored metadata, rather than going through the `?grid=1`
-//! demo route: the demo grid rides the tree-model session, whose grid
-//! projection deliberately fills `authored: None` (H3 scoped the
-//! authored-view fill to the workbook host-core path —
-//! `dnatreecalc-host/src/app/session.rs`, `grid_projection_for`), so the
-//! app-route fixture can never exercise K1b's authored-aware branches. The
-//! fresh-eyes review of this bead traced that gap; wiring authored fill into
-//! the tree-model session is host-lane work outside K1b's file boundary and
-//! is recorded with the coordinator. Mounting the component directly is
-//! still a real browser proof: a live Leptos mount, real DOM, real scroll
-//! events, real `requestAnimationFrame` coalescing.
+//! demo route: at K1b/N1 authoring time the demo grid rode the tree-model
+//! session, whose grid projection hardcoded `authored: None` (H3 scoped the
+//! authored-view fill to the workbook host-core path only), so the app-route
+//! fixture could not exercise K1b's authored-aware branches. Mounting the
+//! component directly was still a real browser proof: a live Leptos mount,
+//! real DOM, real scroll events, real `requestAnimationFrame` coalescing.
+//!
+//! dtc-ajl.30 closed that gap: `TreeWorkspaceSession`'s grid projection
+//! (`dnatreecalc-host/src/app/session.rs`, `grid_projection_for`) now fills
+//! `authored` from the engine's `grid_authored_view`, mirroring host-core's
+//! workbook fill (`dnacalc-host-core/src/grid_publication.rs`). The
+//! `grid_1_route_renders_authored_formula_text_via_show_formulas_toggle` test
+//! below is the route-level proof this file's tests couldn't offer before:
+//! it drives the real `?grid=1` route end-to-end rather than mounting the
+//! component with a fixture.
 //!
 //! Run locally (same runner as H11):
 //!
@@ -273,6 +278,122 @@ async fn spill_display_cell_carries_read_only_affordance_in_the_live_dom() {
         marked.length(),
         1,
         "only the SpillDisplay cell carries an affordance modifier"
+    );
+}
+
+/// Point the page URL's query string at `search` without reloading,
+/// preserving path + hash. Mirrors `browser_smoke.rs`'s helper of the same
+/// shape (duplicated rather than shared across files, matching the K1b/N1
+/// per-file test-harness split already in place for this crate).
+fn set_url_search(search: &str) {
+    let window = web_sys::window().expect("window");
+    let location = window.location();
+    let url = format!(
+        "{}{}{}",
+        location.pathname().expect("pathname"),
+        search,
+        location.hash().expect("hash"),
+    );
+    window
+        .history()
+        .expect("history")
+        .replace_state_with_url(&wasm_bindgen::JsValue::NULL, "", Some(&url))
+        .expect("replaceState");
+}
+
+/// Find and click a skin-switcher tab (or any button) by its visible text.
+fn find_by_text(host: &web_sys::Element, selector: &str, text: &str) -> Option<web_sys::HtmlElement> {
+    let nodes = host.query_selector_all(selector).expect("query_selector_all");
+    for index in 0..nodes.length() {
+        let node = nodes.item(index)?;
+        let element: web_sys::HtmlElement = node.dyn_into().expect("element is an HtmlElement");
+        if element.text_content().unwrap_or_default().contains(text) {
+            return Some(element);
+        }
+    }
+    None
+}
+
+/// dtc-ajl.30 route-level proof: the `?grid=1` demo route now carries
+/// authored metadata all the way through the real `mount_dnatreecalc` app —
+/// not just the direct-fixture mount the rest of this file uses. Before this
+/// bead, `TreeWorkspaceSession`'s grid projection hardcoded
+/// `GridCellProjection::authored: None` (`dnatreecalc-host/src/app/session.rs`,
+/// `grid_projection_for`), so the Sheet lens's "Show formulas" toggle had
+/// nothing to render for the demo grid's column-B formula cells (`=A1*10`,
+/// seeded by `TreeWorkspaceSession::attach_demo_grid`) — this test would have
+/// failed on old `main` because the toggle button flips a mode with no
+/// authored data behind it, so `show_formulas_mode` would render blank/no
+/// `=A1*10` text anywhere in the grid.
+///
+/// Drives the real production path end-to-end: URL `?grid=1` ->
+/// `mount_dnatreecalc` -> `attach_demo_grid` -> `TreeWorkspaceSession`'s grid
+/// projection (now filled from the engine's `grid_authored_view`) -> the
+/// Sheet lens's grid surface -> the "Show formulas" toggle -> the DOM.
+#[wasm_bindgen_test]
+async fn grid_1_route_renders_authored_formula_text_via_show_formulas_toggle() {
+    set_url_search("?grid=1");
+    let host = fresh_mount_point("dtc-ajl30-grid-route-authored");
+
+    dnatreecalc_web::mount_dnatreecalc("dtc-ajl30-grid-route-authored")
+        .expect("mount_dnatreecalc must succeed");
+    next_tick().await;
+
+    // Switch to the Sheet lens, same as the H11 demo-grid smoke test.
+    let tabs = host
+        .query_selector_all(".dtc-skin-switcher__tab")
+        .expect("query tabs");
+    let mut sheet_tab = None;
+    for index in 0..tabs.length() {
+        let Some(node) = tabs.item(index) else {
+            continue;
+        };
+        let element: web_sys::HtmlElement = node.dyn_into().expect("tab is an HtmlElement");
+        if element.text_content().unwrap_or_default().contains("Sheet") {
+            sheet_tab = Some(element);
+            break;
+        }
+    }
+    sheet_tab
+        .expect("the shell must render a Sheet lens tab")
+        .click();
+    next_tick().await;
+
+    assert!(
+        query_in(&host, ".dtc-grid").is_some(),
+        "?grid=1 must render the demo grid surface in the Sheet lens"
+    );
+
+    // Before toggling, the computed values render (e.g. column B's `=A1*10`
+    // shows its number, not its source text).
+    let grid_text = || {
+        query_in(&host, ".dtc-grid")
+            .expect("grid surface must mount")
+            .text_content()
+            .unwrap_or_default()
+    };
+    let before = grid_text();
+    assert!(
+        !before.contains("=A1*10"),
+        "before toggling show-formulas, the demo grid renders computed values, not source text: {before}"
+    );
+
+    // Flip the real "Show formulas" toolbar button in the live DOM.
+    find_by_text(&host, "button", "Show formulas")
+        .expect("the Sheet lens must render a Show formulas toggle button")
+        .click();
+    next_tick().await;
+
+    // The route's authored fill (dtc-ajl.30) must now surface the demo
+    // grid's authored formula source text through the real projection path —
+    // this is the assertion that was structurally impossible before this
+    // bead, per this file's header note.
+    let during = grid_text();
+    assert!(
+        during.contains("=A1*10"),
+        "show-formulas mode over the ?grid=1 route must render the demo grid's \
+         authored formula source text (proves TreeWorkspaceSession's grid \
+         projection now fills `authored`, not just the direct-fixture mount): {during}"
     );
 }
 
