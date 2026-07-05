@@ -145,6 +145,12 @@ Implement C1 + the C4 decisions. A `SurfaceManifestStore` trait with two impls b
 ## B1 — Pluto-style literate notebook (lowest upstream load, ships first)
 A skin in `src/dnatreecalc-skins/`, registered in `lib.rs`, reusing `sheet.rs`'s windowed-grid/overlay machinery.
 
+> **2026-07-05:** the cell model below reflects the tree-model profile.
+> For the workbook-profile notebook (the dual-profile architecture
+> decision), the cell model is **superseded** by
+> [`FRONTEND_UI_DESIGN_AND_ROUTEMAP.md`](FRONTEND_UI_DESIGN_AND_ROUTEMAP.md)
+> §B.1 — see that doc for the current entry-kind table.
+
 **Cell model** — a notebook cell is a *view* over one top-level `NodeView`; `NotebookCellKind` is a skin-local view enum (never serialized), a pure function of `node.table` + `content_kind` + `computed_value`:
 
 | Kind | Backing | Mutable surface |
