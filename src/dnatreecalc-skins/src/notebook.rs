@@ -28,9 +28,10 @@ use dnatreecalc_skin_framework::{
     CELL_ENTRY_CSS, CellEntryEditor, DefinedNameProjection, DefinedNameScopeProjection,
     DefinedNameTargetProjection, Dispatcher, EntryDiagnostics, EntryFeedback,
     GridAuthoredCellProjection, GridAuthoredKindProjection, GridCellProjection,
-    GridEditabilityProjection, GridTableOverlayDescriptor, NodeClassification, NodeId,
-    NodeValueProjection, SkinCapabilities, SkinCategory, SkinContext, SkinHandle, SkinId,
-    SkinManifest, SkinState, WorkspaceSkin, WorkspaceState,
+    GridEditabilityProjection, GridTableOverlayDescriptor, NAME_FORM_CSS, NameForm,
+    NodeClassification, NodeId, NodeValueProjection, RenameNameForm, SkinCapabilities,
+    SkinCategory, SkinContext, SkinHandle, SkinId, SkinManifest, SkinState, WorkspaceIntent,
+    WorkspaceSkin, WorkspaceState,
 };
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -483,21 +484,60 @@ fn NotebookView(cx: SkinContext<NotebookState>) -> impl IntoView {
         }
     };
 
-    let name_rail = move || {
-        let ws = workspace.get();
-        ws.defined_names
-            .entries
-            .iter()
-            .cloned()
-            .map(name_rail_row_view)
-            .collect::<Vec<_>>()
+    let name_rail = {
+        let dispatch = dispatch.clone();
+        move || {
+            let ws = workspace.get();
+            let dispatch = dispatch.clone();
+            ws.defined_names
+                .entries
+                .iter()
+                .cloned()
+                .map(move |name| {
+                    view! { <NameRailRow name=name dispatch=dispatch.clone() /> }.into_any()
+                })
+                .collect::<Vec<_>>()
+        }
+    };
+
+    let name_form_open = RwSignal::new(false);
+    let open_name_form = move |_| name_form_open.set(true);
+    let name_form_view = {
+        let dispatch = dispatch.clone();
+        move || {
+            if !name_form_open.get() {
+                return ().into_any();
+            }
+            let ws = workspace.get();
+            view! {
+                <NameForm
+                    defined_names=ws.defined_names.clone()
+                    dispatch=dispatch.clone()
+                    open=name_form_open
+                />
+            }
+            .into_any()
+        }
     };
 
     view! {
         <style>{NOTEBOOK_CSS}</style>
         <style>{CELL_ENTRY_CSS}</style>
+        <style>{NAME_FORM_CSS}</style>
         <section class="dtc-notebook" aria-label="Notebook">
-            <div class="dtc-notebook__entries">{entries}</div>
+            <div class="dtc-notebook__entries">
+                {entries}
+                <div class="dtc-notebook__new-name">
+                    <button
+                        type="button"
+                        class="dtc-notebook__new-name-button"
+                        on:click=open_name_form
+                    >
+                        "+ name"
+                    </button>
+                    {name_form_view}
+                </div>
+            </div>
             <aside class="dtc-notebook__rail" aria-label="Names">
                 <div class="dtc-notebook__rail-title">"NAMES"</div>
                 {name_rail}
@@ -684,23 +724,113 @@ fn entry_kind_label(kind: &NotebookEntryKind) -> &'static str {
     }
 }
 
-/// One name-rail row (§B.2): name text, static value or dynamic formula
-/// chip. Read-only — clicking to scroll to the entry is N-track polish
-/// (N8), not N1.
-fn name_rail_row_view(name: DefinedNameProjection) -> AnyView {
+/// One name-rail row (§B.2 anatomy, §B.3 Name loop's rename/delete actions):
+/// name text, static value or dynamic formula chip, plus N3's rename-inline
+/// and delete-with-confirm actions.
+///
+/// Rename (acceptance 3): clicking the name's own text swaps it for
+/// [`RenameNameForm`], which dispatches **only** `RenameDefinedName` on
+/// commit (`components/name_form.rs`'s own scope; this component never
+/// constructs the rename intent itself).
+///
+/// Delete-with-name confirm (§B.3 step 5: "deleting the *entry* ... additionally
+/// deletes its covering name (`DeleteDefinedName`) after a confirm"): the
+/// gutter's delete action opens an inline confirm naming the target; accepting
+/// dispatches exactly one `DeleteDefinedName`.
+#[component]
+fn NameRailRow(name: DefinedNameProjection, dispatch: Arc<dyn Dispatcher>) -> impl IntoView {
     let target_text = match &name.target {
         DefinedNameTargetProjection::Static(rect) => {
             format!("R{}C{}", rect.top_row, rect.left_col)
         }
         DefinedNameTargetProjection::Dynamic { source_text } => source_text.clone(),
     };
+    let renaming = RwSignal::new(false);
+    let confirming_delete = RwSignal::new(false);
+    let scope = name.scope.clone();
+    let name_text = name.name.clone();
+
+    let start_rename = move |_| renaming.set(true);
+    let start_delete_confirm = move |_| confirming_delete.set(true);
+    let cancel_delete_confirm = move |_| confirming_delete.set(false);
+
+    let confirm_delete = {
+        let dispatch = dispatch.clone();
+        let scope = scope.clone();
+        let name_text = name_text.clone();
+        move |_| {
+            let _ = dispatch.dispatch(WorkspaceIntent::DeleteDefinedName {
+                scope: scope.clone(),
+                name: name_text.clone(),
+            });
+            confirming_delete.set(false);
+        }
+    };
+
+    let body = {
+        let scope = scope.clone();
+        let name_text = name_text.clone();
+        let dispatch = dispatch.clone();
+        let target_text = target_text.clone();
+        move || {
+            if renaming.get() {
+                view! {
+                    <RenameNameForm
+                        scope=scope.clone()
+                        current_name=name_text.clone()
+                        dispatch=dispatch.clone()
+                        editing=renaming
+                    />
+                }
+                .into_any()
+            } else {
+                view! {
+                    <div class="dtc-notebook-rail-row">
+                        <span
+                            class="dtc-notebook-rail-row__name"
+                            role="button"
+                            tabindex="0"
+                            on:click=start_rename
+                        >
+                            {name_text.clone()}
+                        </span>
+                        <span class="dtc-notebook-rail-row__target">{target_text.clone()}</span>
+                        <button
+                            type="button"
+                            class="dtc-notebook-rail-row__delete"
+                            aria-label="Delete this name"
+                            on:click=start_delete_confirm
+                        >
+                            "\u{2715}"
+                        </button>
+                    </div>
+                }
+                .into_any()
+            }
+        }
+    };
+
+    let confirm_view = {
+        let name_text = name_text.clone();
+        move || {
+            if !confirming_delete.get() {
+                return ().into_any();
+            }
+            view! {
+                <div class="dtc-notebook-rail-row__confirm" role="alertdialog">
+                    <span>{format!("Delete '{name_text}'?")}</span>
+                    <button type="button" on:click=confirm_delete.clone()>"Delete"</button>
+                    <button type="button" on:click=cancel_delete_confirm>"Cancel"</button>
+                </div>
+            }
+            .into_any()
+        }
+    };
+
     view! {
-        <div class="dtc-notebook-rail-row">
-            <span class="dtc-notebook-rail-row__name">{name.name.clone()}</span>
-            <span class="dtc-notebook-rail-row__target">{target_text}</span>
-        </div>
+        {body}
+        {confirm_view}
     }
-    .into_any()
 }
 
 const NOTEBOOK_CSS: &str = r#"
@@ -715,9 +845,24 @@ const NOTEBOOK_CSS: &str = r#"
   border-left: 1px solid var(--dtc-border-muted); background: var(--dtc-surface-subtle);
 }
 .dtc-notebook__rail-title { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; color: var(--dtc-text-subtle); margin-bottom: 6px; }
-.dtc-notebook-rail-row { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; }
-.dtc-notebook-rail-row__name { font-weight: 600; }
+.dtc-notebook-rail-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 0; }
+.dtc-notebook-rail-row__name { font-weight: 600; cursor: pointer; }
 .dtc-notebook-rail-row__target { color: var(--dtc-text-muted); font-family: ui-monospace, monospace; font-size: 11px; }
+.dtc-notebook-rail-row__delete {
+  border: none; background: none; color: var(--dtc-text-subtle); cursor: pointer;
+  font-size: 11px; padding: 0 2px;
+}
+.dtc-notebook-rail-row__confirm {
+  display: flex; align-items: center; gap: 6px; padding: 4px 6px; margin: 2px 0;
+  background: var(--dtc-warning-surface, #fff4e0); color: var(--dtc-warning-text, #8a5a00);
+  border-radius: 5px; font-size: 12px;
+}
+.dtc-notebook__new-name { margin-top: 4px; }
+.dtc-notebook__new-name-button {
+  padding: 4px 10px; border-radius: 6px; border: 1px dashed var(--dtc-border);
+  background: var(--dtc-surface); color: var(--dtc-text-subtle); cursor: pointer;
+  font-size: 12px;
+}
 
 .dtc-notebook-entry {
   padding: 6px 10px; background: var(--dtc-surface-panel);

@@ -5,3 +5,4 @@
 //! commit loop, diagnostics list, and (later) value/provenance chrome.
 
 pub mod cell_entry;
+pub mod name_form;

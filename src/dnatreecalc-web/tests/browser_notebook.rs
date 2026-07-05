@@ -1,25 +1,35 @@
-//! N2: browser-harness proof for the shared cell-entry editor + diagnostics
-//! (§B.3 edit-commit loop, §B.5 diagnostics).
+//! N2/N3: browser-harness proof for the shared cell-entry editor +
+//! diagnostics (§B.3 edit-commit loop, §B.5 diagnostics) and the `+ name`
+//! creation / rename forms (§B.3 Name loop).
 //!
 //! In its own file, not `tests/browser_smoke.rs` (H11's lane), matching the
 //! K1b coordination note (`browser_grid.rs`): concurrent lanes each own a
 //! separate harness file to avoid colliding edits.
 //!
-//! These tests mount the shared `CellEntryEditor` component **directly** into
-//! the browser DOM with a `RecordingDispatcher` (or a small rejecting
-//! dispatcher), rather than going through the `?grid=1` demo route: the demo
-//! grid rides the tree-model session, which fills `authored: None` and an
-//! empty `defined_names` catalog (documented in `browser_smoke.rs`'s N1 test),
-//! so no app-route fixture can drive an editable notebook entry. Mounting the
-//! component directly is still a real browser proof: a live Leptos mount, real
-//! DOM, real `input`/`keydown`/`blur` events, real intent dispatch through the
-//! `Dispatcher` trait.
+//! These tests mount the shared components **directly** into the browser DOM
+//! with a `RecordingDispatcher` (or a small rejecting dispatcher), rather
+//! than going through the `?grid=1` demo route: the demo grid rides the
+//! tree-model session, which fills `authored: None` and an empty
+//! `defined_names` catalog (documented in `browser_smoke.rs`'s N1 test), so
+//! no app-route fixture can drive an editable notebook entry or a name
+//! creation. Mounting the component directly is still a real browser proof: a
+//! live Leptos mount, real DOM, real `input`/`keydown`/`blur`/`click` events,
+//! real intent dispatch through the `Dispatcher` trait.
 //!
-//! The three acceptance assertions, proven in the live DOM:
+//! N2's three acceptance assertions, proven in the live DOM:
 //!   1. committing (Enter) drives exactly ONE `EnterGridCell`;
 //!   2. a rejection receipt keeps the editor open with the text intact and
 //!      renders the diagnostics under it;
 //!   3. Esc reverts the buffer and dispatches nothing.
+//!
+//! N3's three acceptance assertions, proven in the live DOM:
+//!   1. creating `rate = 0.065` dispatches `EnterGridCell` then
+//!      `SetDefinedName` (recorded order asserted) via a live click on the
+//!      `+ name` form's Create button;
+//!   2. a duplicate name renders the rejection inline and the form stays
+//!      open (mounted state, not just a pure-fn assertion);
+//!   3. rename dispatches only `RenameDefinedName`, driven by a live
+//!      Enter keypress on the rename field.
 //!
 //! Run locally (same runner as H11/K1b):
 //!
@@ -32,8 +42,9 @@
 use std::sync::Arc;
 
 use dnatreecalc_skin_framework::{
-    CellEntryEditor, Dispatcher, EntryDiagnostics, EntryFeedback, GridEntryDiagnosticProjection,
-    IntentError, IntentReceipt, NodeId, RecordingDispatcher, WorkspaceIntent,
+    CellEntryEditor, DefinedNameScopeProjection, DefinedNamesProjection, Dispatcher,
+    EntryDiagnostics, EntryFeedback, GridEntryDiagnosticProjection, IntentError, IntentReceipt,
+    NameForm, NodeId, RecordingDispatcher, RenameNameForm, WorkspaceIntent,
 };
 use leptos::prelude::*;
 use wasm_bindgen::JsCast;
@@ -273,4 +284,171 @@ async fn escape_reverts_buffer_without_dispatch() {
         "Esc must dispatch nothing at all"
     );
     assert!(!editing.get_untracked(), "Esc closes the editor");
+}
+
+// ---------------------------------------------------------------------------
+// N3: `+ name` creation form + rename inline, mounted directly (module doc).
+// ---------------------------------------------------------------------------
+
+/// Mount the `+ name` creation form over the given (already-mirrored)
+/// defined-names catalog. Returns the mount host and the form's `open` signal
+/// (a clean commit or Cancel flips it to `false`).
+fn mount_name_form(
+    mount_id: &str,
+    defined_names: DefinedNamesProjection,
+    dispatch: Arc<dyn Dispatcher>,
+) -> (web_sys::HtmlElement, RwSignal<bool>) {
+    let host = fresh_mount_point(mount_id);
+    let open = RwSignal::new(true);
+
+    let handle = leptos::mount::mount_to(host.clone().unchecked_into(), move || {
+        view! {
+            <NameForm
+                defined_names=defined_names.clone()
+                dispatch=dispatch.clone()
+                open=open
+            />
+        }
+    });
+    handle.forget();
+    (host, open)
+}
+
+fn name_form_input(host: &web_sys::Element, selector: &str) -> web_sys::HtmlInputElement {
+    query_in(host, selector)
+        .unwrap_or_else(|| panic!("{selector} must mount"))
+        .dyn_into::<web_sys::HtmlInputElement>()
+        .expect("input is an HtmlInputElement")
+}
+
+fn click(element: &web_sys::Element) {
+    let event = web_sys::MouseEvent::new("click").expect("construct click event");
+    element.dispatch_event(&event).expect("dispatch click");
+}
+
+/// N3 acceptance (1), browser proof: filling `rate` / `0.065` and clicking
+/// Create dispatches `EnterGridCell` then `SetDefinedName`, in that order,
+/// via a live DOM click — not just the pure `commit_static_name` unit test.
+#[wasm_bindgen_test]
+async fn create_name_button_dispatches_enter_then_set_defined_name_in_order() {
+    let dispatcher = RecordingDispatcher::new();
+    let dispatch: Arc<dyn Dispatcher> = Arc::new(dispatcher.clone());
+    let (host, open) = mount_name_form(
+        "dtc-n3-create",
+        DefinedNamesProjection::default(),
+        dispatch,
+    );
+    next_tick().await;
+
+    let name_input = name_form_input(&host, ".dtc-name-form__name");
+    type_into(&name_input, "rate");
+    let body_input = name_form_input(&host, ".dtc-name-form__body");
+    type_into(&body_input, "0.065");
+
+    let create_button = query_in(&host, ".dtc-name-form__create").expect("Create button mounts");
+    click(&create_button);
+    next_tick().await;
+
+    let intents = dispatcher.intents();
+    assert_eq!(intents.len(), 2, "exactly two intents dispatched");
+    match &intents[0] {
+        WorkspaceIntent::EnterGridCell { text, .. } => assert_eq!(text, "0.065"),
+        other => panic!("expected EnterGridCell first, got {other:?}"),
+    }
+    match &intents[1] {
+        WorkspaceIntent::SetDefinedName { name, .. } => assert_eq!(name, "rate"),
+        other => panic!("expected SetDefinedName second, got {other:?}"),
+    }
+    assert!(!open.get_untracked(), "a clean commit closes the form");
+}
+
+/// N3 acceptance (2), browser proof: creating a name that already exists in
+/// the mirrored catalog renders the rejection inline and the form stays
+/// open — zero intents dispatched (the honest client-side pre-check, module
+/// doc), proven against the live DOM, not a pure-fn assertion.
+#[wasm_bindgen_test]
+async fn duplicate_name_renders_inline_rejection_and_form_stays_open() {
+    let dispatcher = RecordingDispatcher::new();
+    let dispatch: Arc<dyn Dispatcher> = Arc::new(dispatcher.clone());
+    let mut catalog = DefinedNamesProjection::default();
+    catalog.entries.push(dnatreecalc_skin_framework::DefinedNameProjection {
+        scope: DefinedNameScopeProjection::Sheet(NodeId::new("_names")),
+        name: "rate".to_string(),
+        target: dnatreecalc_skin_framework::DefinedNameTargetProjection::Static(
+            dnatreecalc_skin_framework::GridRectProjection {
+                top_row: 1,
+                left_col: 1,
+                bottom_row: 1,
+                right_col: 1,
+            },
+        ),
+        is_dynamic: false,
+    });
+    let (host, open) = mount_name_form("dtc-n3-duplicate", catalog, dispatch);
+    next_tick().await;
+
+    let name_input = name_form_input(&host, ".dtc-name-form__name");
+    type_into(&name_input, "rate");
+    let body_input = name_form_input(&host, ".dtc-name-form__body");
+    type_into(&body_input, "0.07");
+
+    let create_button = query_in(&host, ".dtc-name-form__create").expect("Create button mounts");
+    click(&create_button);
+    next_tick().await;
+
+    assert_eq!(
+        dispatcher.intents().len(),
+        0,
+        "a duplicate name dispatches nothing at all"
+    );
+    assert!(open.get_untracked(), "the form stays open on rejection");
+    let error = query_in(&host, ".dtc-name-form__error").expect("the inline error must render");
+    let text = error.text_content().unwrap_or_default();
+    assert!(
+        text.contains("rate"),
+        "the inline rejection names the duplicate: {text}"
+    );
+}
+
+/// N3 acceptance (3), browser proof: committing a rename (Enter) dispatches
+/// ONLY `RenameDefinedName` — no `SetDefinedName`, no `EnterGridCell`.
+#[wasm_bindgen_test]
+async fn rename_dispatches_only_rename_defined_name_in_the_live_dom() {
+    let dispatcher = RecordingDispatcher::new();
+    let dispatch: Arc<dyn Dispatcher> = Arc::new(dispatcher.clone());
+    let host = fresh_mount_point("dtc-n3-rename");
+    let editing = RwSignal::new(true);
+
+    let handle = leptos::mount::mount_to(host.clone().unchecked_into(), move || {
+        view! {
+            <RenameNameForm
+                scope=DefinedNameScopeProjection::Sheet(NodeId::new("_names"))
+                current_name="rate".to_string()
+                dispatch=dispatch.clone()
+                editing=editing
+            />
+        }
+    });
+    handle.forget();
+    next_tick().await;
+
+    let input = name_form_input(&host, ".dtc-name-form__name");
+    input.set_value("taxRate");
+    let event = web_sys::Event::new("input").expect("construct input event");
+    input.dispatch_event(&event).expect("dispatch input event");
+    press_key(&input, "Enter");
+    next_tick().await;
+
+    let intents = dispatcher.intents();
+    assert_eq!(intents.len(), 1, "exactly one intent dispatched");
+    match &intents[0] {
+        WorkspaceIntent::RenameDefinedName {
+            old_name, new_name, ..
+        } => {
+            assert_eq!(old_name, "rate");
+            assert_eq!(new_name, "taxRate");
+        }
+        other => panic!("expected RenameDefinedName, got {other:?}"),
+    }
+    assert!(!editing.get_untracked(), "a clean rename closes the field");
 }

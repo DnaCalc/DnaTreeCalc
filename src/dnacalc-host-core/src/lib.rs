@@ -49,7 +49,9 @@ pub use calc::{
     value_provenance_projection,
 };
 pub use command::{HostCommand, HostCommandOutcome, ProjectionPublisher, RecordingPublisher};
-pub use defined_names::{DefinedNameTargetIntentInput, present_defined_name_rejection};
+pub use defined_names::{
+    DefinedNameTargetIntentInput, NAMES_BACKING_SHEET, present_defined_name_rejection,
+};
 pub use grid_publication::grid_authored_cell_projection;
 pub use present::present_grid_entry_rejection;
 pub use workbook::{

@@ -27,6 +27,16 @@ use oxcalc_core::structural::TreeNodeId;
 
 use crate::workbook::{WorkbookSession, WorkbookSessionError, sheet_grid_node_id};
 
+/// The `_names` backing sheet's display name (B.7/F.4 DECIDED, owner-ratified
+/// 2026-07-05): a hidden-in-notebook, append-only sheet, column A, one cell
+/// per static name — created lazily on first name creation. It is an
+/// **ordinary sheet to the engine** (B.7's rationale: zero new engine
+/// features, round-trips as a perfectly normal sheet+names workbook); "hidden"
+/// is a notebook-UI convention by the `_` prefix, not an engine visibility bit
+/// (none exists, `K8`'s "`_names` visible-in-K check" is the only place this
+/// sheet is ever meant to surface, by design).
+pub const NAMES_BACKING_SHEET: &str = "_names";
+
 // `result_large_err`: same rationale as `workbook.rs`'s impl block — this
 // module's errors wrap the same `WorkbookSessionError`/engine error by value,
 // so the allow is kept consistent across the crate's single-session native/
@@ -52,6 +62,53 @@ impl WorkbookSession {
             }
         }
         Ok(DefinedNamesProjection { entries })
+    }
+
+    /// Allocate the next free backing cell for a new static name on the
+    /// `_names` sheet (N3, B.7's host-core-policy convention): finds (or
+    /// lazily creates) the `_names` sheet, then returns the next append-only
+    /// row in column A — one past the highest row any name currently targets
+    /// on that sheet, or row 1 if the sheet is fresh. **Re-derivable, no side
+    /// ledger** (B.7): the "next free row" is computed fresh from
+    /// [`WorkbookSession::defined_names`] every call, by scanning the already-
+    /// allocated static targets whose scope's sheet is `_names` — never a
+    /// counter this session persists on its own, so a session rehydrated from
+    /// a snapshot allocates correctly on its very first call.
+    ///
+    /// This is the one function the bead's "host-core allocation helper"
+    /// clause names; N3's name-creation flow calls it once per `+ name`
+    /// commit, then dispatches `EnterGridCell` at the returned cell followed
+    /// by `SetDefinedName{Static}` over it (the two-intent creation, §B.3's
+    /// Decision paragraph — two undo steps, accepted v1).
+    pub fn allocate_next_names_backing_cell(
+        &mut self,
+    ) -> Result<(TreeNodeId, u32), WorkbookSessionError> {
+        let names_sheet = self.names_backing_sheet()?;
+        let next_row = self
+            .document_defined_names_on(names_sheet)?
+            .iter()
+            .filter_map(|readout| match &readout.target {
+                DefinedNameTargetReadout::Static(rect) => Some(rect.bottom_row),
+                DefinedNameTargetReadout::Dynamic { .. } => None,
+            })
+            .max()
+            .map_or(1, |highest_row| highest_row + 1);
+        Ok((names_sheet, next_row))
+    }
+
+    /// Find the `_names` sheet by its display name, creating it (grid-backed,
+    /// via [`WorkbookSession::add_sheet`]) the first time a name is created in
+    /// this workbook (B.7: "created lazily"). An ordinary sheet by every
+    /// engine measure — no hidden/system flag exists or is invented here.
+    fn names_backing_sheet(&mut self) -> Result<TreeNodeId, WorkbookSessionError> {
+        if let Some(existing) = self
+            .sheets()?
+            .into_iter()
+            .find(|row| row.display_name == NAMES_BACKING_SHEET)
+        {
+            return Ok(existing.node_id);
+        }
+        self.add_sheet(NAMES_BACKING_SHEET)
     }
 
     /// One grid node's own `document_defined_names` readout, `dnacalc-host-core`-internal
@@ -480,5 +537,101 @@ mod tests {
             }
             other => panic!("expected DefinedNameCollision, got {other:?}"),
         }
+    }
+
+    // ------------------------------------------------------------------
+    // N3 acceptance: `_names` backing-cell allocation (host-core policy,
+    // §B.7/F.4).
+    // ------------------------------------------------------------------
+
+    /// N3: the first allocation on a fresh workbook lazily creates the
+    /// `_names` sheet and returns row 1 (append-only, column A convention).
+    #[test]
+    fn allocate_next_names_backing_cell_creates_sheet_lazily_at_row_one() {
+        let (mut session, _sheet) = workbook_with_sheet("workbook:n3-alloc-fresh");
+        assert!(
+            session
+                .sheets()
+                .unwrap()
+                .iter()
+                .all(|row| row.display_name != NAMES_BACKING_SHEET),
+            "the _names sheet does not exist before the first allocation"
+        );
+
+        let (names_sheet, row) = session.allocate_next_names_backing_cell().unwrap();
+
+        assert_eq!(row, 1, "the first allocation lands on row 1");
+        let sheets = session.sheets().unwrap();
+        let names_row = sheets
+            .iter()
+            .find(|row| row.node_id == names_sheet)
+            .expect("the _names sheet now exists");
+        assert_eq!(names_row.display_name, NAMES_BACKING_SHEET);
+        assert!(
+            names_row.grid_backed,
+            "the lazily-created _names sheet is grid-backed like any sheet"
+        );
+    }
+
+    /// N3: a second allocation appends past the first name's target row —
+    /// re-derived fresh from the catalog each call, no side ledger (B.7).
+    #[test]
+    fn allocate_next_names_backing_cell_appends_past_existing_static_names() {
+        let (mut session, _sheet) = workbook_with_sheet("workbook:n3-alloc-append");
+
+        let (names_sheet, first_row) = session.allocate_next_names_backing_cell().unwrap();
+        assert_eq!(first_row, 1);
+        session
+            .set_grid_cell_value(names_sheet, first_row, 1, CalcValue::number(0.065))
+            .unwrap();
+        session
+            .set_defined_name(
+                names_sheet,
+                DefinedNameScopeProjection::Workbook,
+                "rate",
+                DefinedNameTargetIntentInput::Static(rect(first_row, 1, first_row, 1)),
+            )
+            .unwrap();
+
+        let (second_sheet, second_row) = session.allocate_next_names_backing_cell().unwrap();
+        assert_eq!(
+            second_sheet, names_sheet,
+            "the second allocation reuses the same _names sheet, not a new one"
+        );
+        assert_eq!(second_row, 2, "the second allocation appends at row 2");
+    }
+
+    /// N3: re-deriving the allocation with two names already on `_names`
+    /// still allocates past both — the "no side ledger" guarantee (B.7):
+    /// nothing but `document_defined_names` on the `_names` sheet is
+    /// consulted, so a session rehydrated from a snapshot allocates
+    /// correctly on its very first call.
+    #[test]
+    fn allocate_next_names_backing_cell_is_re_derivable_with_no_side_ledger() {
+        let (mut session, _sheet) = workbook_with_sheet("workbook:n3-alloc-re-derive");
+
+        let (names_sheet, row_a) = session.allocate_next_names_backing_cell().unwrap();
+        session
+            .set_defined_name(
+                names_sheet,
+                DefinedNameScopeProjection::Workbook,
+                "a",
+                DefinedNameTargetIntentInput::Static(rect(row_a, 1, row_a, 1)),
+            )
+            .unwrap();
+        let (_, row_b) = session.allocate_next_names_backing_cell().unwrap();
+        session
+            .set_defined_name(
+                names_sheet,
+                DefinedNameScopeProjection::Workbook,
+                "b",
+                DefinedNameTargetIntentInput::Static(rect(row_b, 1, row_b, 1)),
+            )
+            .unwrap();
+
+        // A third call (no counter state involved beyond the catalog itself)
+        // allocates row 3 — one past the highest of the two existing rows.
+        let (_, row_c) = session.allocate_next_names_backing_cell().unwrap();
+        assert_eq!(row_c, 3);
     }
 }
