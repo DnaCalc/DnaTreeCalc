@@ -2,17 +2,16 @@ use std::sync::Arc;
 
 use leptos::prelude::*;
 
-use crate::identity::{NodeKey, SkinId, SkinMountSlot};
-use crate::intent::{Dispatcher, WorkspaceDelta};
-use crate::manifest::{SkinCapabilities, SkinManifest};
-use crate::preview::PreviewService;
-use crate::selection::SelectionState;
-use crate::state::{
-    SharedSkinStateHandle, SkinState, SkinStateHandle, SkinStatePersistenceKey,
-    SkinStatePersistenceStore,
-};
+use dnacalc_skin_ir::identity::{NodeKey, SkinId, SkinMountSlot};
+use dnacalc_skin_ir::intent::{Dispatcher, WorkspaceDelta};
+use dnacalc_skin_ir::manifest::{SkinCapabilities, SkinManifest};
+use dnacalc_skin_ir::preview::PreviewService;
+use dnacalc_skin_ir::selection::SelectionState;
+use dnacalc_skin_ir::state::{SkinState, SkinStatePersistenceKey, SkinStatePersistenceStore};
+use dnacalc_skin_ir::workspace::WorkspaceState;
+
+use crate::state_handles::{SharedSkinStateHandle, SkinStateHandle};
 use crate::theme::ThemeTokens;
-use crate::workspace::WorkspaceState;
 
 /// Typed context passed to a [`WorkspaceSkin`] at mount time.
 ///
@@ -216,14 +215,16 @@ impl RegisteredSkin {
     pub fn negotiate_slot(
         &self,
         slot: SkinMountSlot,
-    ) -> Result<(), crate::manifest::CapabilityError> {
+    ) -> Result<(), dnacalc_skin_ir::manifest::CapabilityError> {
         if self.capabilities.slot_allowed(slot) {
             Ok(())
         } else {
-            Err(crate::manifest::CapabilityError::SlotNotSupported {
-                skin_id: self.id.as_str().to_string(),
-                slot,
-            })
+            Err(
+                dnacalc_skin_ir::manifest::CapabilityError::SlotNotSupported {
+                    skin_id: self.id.as_str().to_string(),
+                    slot,
+                },
+            )
         }
     }
 }

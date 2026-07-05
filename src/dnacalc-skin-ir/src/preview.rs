@@ -6,7 +6,7 @@
 //! OxCalc invalidation planning, host collision/orphan joins) and surfaced
 //! verbatim; the skin renders them and never re-derives legality itself.
 //!
-//! The service is optional on [`SkinContext`](crate::SkinContext): test
+//! The service is optional on `SkinContext`: test
 //! dispatchers and minimal hosts may omit it, and lenses degrade to the typed
 //! post-attempt rejection channel (`IntentReceipt::error`).
 

@@ -1,4 +1,4 @@
-use crate::NodeKey;
+use dnacalc_skin_ir::NodeKey;
 
 /// ARIA attributes for a container whose active child follows host selection.
 #[derive(Debug, Clone, PartialEq, Eq)]

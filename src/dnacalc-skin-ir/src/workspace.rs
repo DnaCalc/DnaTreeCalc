@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 /// Read-side projection of the workspace, as seen by a mounted skin.
 ///
 /// The host owns the UI projection while OxCalc owns the canonical model; this struct is what
-/// the host publishes through the [`SkinContext::workspace`](crate::SkinContext::workspace)
+/// the host publishes through the `SkinContext::workspace`
 /// signal so skins can render without knowing the OxCalc context or the
 /// persistence format. Mirrors the spec shape in `docs/ux/SKINS.md` §2.7,
 /// narrowed for the walking skeleton — meta-namespaces, templates, formats,

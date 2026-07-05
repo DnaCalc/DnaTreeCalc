@@ -4,7 +4,7 @@ use crate::identity::NodeId;
 
 /// Host-wide selection shared across all mounted skins.
 ///
-/// Skins read this through [`SkinContext::selection`](crate::SkinContext::selection);
+/// Skins read this through `SkinContext::selection`;
 /// changes go through the [`crate::Dispatcher`] using
 /// [`crate::WorkspaceIntent::SelectNode`] so selection updates are
 /// observable through the same path as any other intent and stay

@@ -12,7 +12,9 @@
 //! (see [`crate::ThemeTokens`]); [`ATLAS_SPINE_CSS`] defines them. A lens
 //! includes that CSS once and applies the class names these helpers return.
 
-use crate::workspace::{NodeCalcStateProjection, NodeValueProjection, NodeView, WorkspaceState};
+use dnacalc_skin_ir::workspace::{
+    NodeCalcStateProjection, NodeValueProjection, NodeView, WorkspaceState,
+};
 
 /// Map a node's calc-state to its (single, saturated) status class.
 ///

@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
-use crate::identity::SkinId;
 use crate::skin::{RegisteredSkin, WorkspaceSkin};
+use dnacalc_skin_ir::identity::SkinId;
 
 /// The host-wide registry of installed skins.
 ///

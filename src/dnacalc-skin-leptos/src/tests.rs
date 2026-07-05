@@ -12,20 +12,16 @@ use std::sync::{Arc, Mutex};
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::identity::{NodeId, NodeKey, SkinId, SkinMountSlot};
-use crate::intent::{
-    Dispatcher, InMemoryDispatcher, IntentReceipt, WorkspaceDelta, WorkspaceIntent,
-};
-use crate::manifest::{SkinCapabilities, SkinCategory, SkinManifest};
-use crate::registry::SkinRegistry;
-use crate::selection::SelectionState;
-use crate::skin::{ErasedSkinContext, SkinContext, SkinHandle, WorkspaceSkin};
-use crate::state::{
+use dnacalc_skin_ir::CommandIntentKindProjection;
+use dnacalc_skin_ir::identity::{NodeId, NodeKey, SkinId, SkinMountSlot};
+use dnacalc_skin_ir::intent::{Dispatcher, IntentReceipt, WorkspaceDelta, WorkspaceIntent};
+use dnacalc_skin_ir::manifest::{SkinCapabilities, SkinCategory, SkinManifest};
+use dnacalc_skin_ir::selection::SelectionState;
+use dnacalc_skin_ir::state::{
     InMemorySkinStatePersistenceStore, MigrationError, PersistedSkinStateRecord, SharedSkinState,
-    SharedSkinStateHandle, SkinState, SkinStatePersistenceKey,
+    SkinState, SkinStatePersistenceKey,
 };
-use crate::theme::{ThemeMode, ThemeTokens};
-use crate::workspace::{
+use dnacalc_skin_ir::workspace::{
     CandidateProjection, ClipboardNodeValueProjection, ClipboardOperationProjection,
     ClipboardPayloadProjection, ClipboardProjection, NodeContentKind, NodeValueProjection,
     NodeView, RevisionHistoryEntryProjection, RevisionHistoryProjection,
@@ -33,9 +29,15 @@ use crate::workspace::{
     SpeculationPressureProjection, SweepManifestProjection, SweepPointProjection, SweepProjection,
     WorkspaceRevisionProjection, WorkspaceState,
 };
+
+use crate::in_memory_dispatcher::InMemoryDispatcher;
+use crate::registry::SkinRegistry;
+use crate::skin::{ErasedSkinContext, SkinContext, SkinHandle, WorkspaceSkin};
+use crate::state_handles::{SharedSkinStateHandle, SkinStateHandle};
+use crate::theme::{ThemeMode, ThemeTokens};
 use crate::{
-    CommandIntentKindProjection, SelectableItemA11y, SelectableRowA11y, listbox_a11y,
-    roving_tabindex, stable_node_dom_id, tree_a11y,
+    SelectableItemA11y, SelectableRowA11y, listbox_a11y, roving_tabindex, stable_node_dom_id,
+    tree_a11y,
 };
 
 #[derive(Default, Clone, Serialize, Deserialize)]
