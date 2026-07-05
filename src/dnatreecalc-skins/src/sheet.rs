@@ -689,12 +689,20 @@ fn SheetView(cx: SkinContext<SheetState>) -> impl IntoView {
     // and hide the window. (A grid attached after mount would need a re-mount;
     // acceptable for the read path, where grids are present at load.)
     let grid_dispatch = dispatch.clone();
+    let grid_show_formulas: Signal<bool> = show_formulas.into();
     let grid_surfaces = workspace
         .get_untracked()
         .grids
         .keys()
         .cloned()
-        .map(|grid_id| crate::grid_canvas::grid_surface(grid_id, workspace, grid_dispatch.clone()))
+        .map(|grid_id| {
+            crate::grid_canvas::grid_surface(
+                grid_id,
+                workspace,
+                grid_dispatch.clone(),
+                grid_show_formulas,
+            )
+        })
         .collect::<Vec<_>>();
 
     let css = format!(

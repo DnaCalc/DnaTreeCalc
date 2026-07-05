@@ -8,9 +8,12 @@
 //! `grid_canvas::grid_surface`, so the extraction has a second live consumer
 //! and later K beads have a home to grow into.
 //!
-//! K1a is a pure extraction (unchanged behavior): the shell renders exactly the
-//! shared grid surface — no interest coalescing (K1b), no authored-aware cell
-//! rendering (K1b), no editing (K2), no tabs (K4), no formula bar (K3).
+//! K1a was a pure extraction (unchanged behavior). K1b (§C.2, §E.4) layers the
+//! two mandatory grid upgrades on top through the shared `grid_canvas`
+//! component: interest coalescing and authored-aware cell rendering. K1b adds
+//! no UI of its own here — no editing (K2), no tabs (K4), no formula bar (K3)
+//! — so `show_formulas` stays `false` until K3 gives the workbook shell a
+//! toggle to drive.
 
 use std::sync::Arc;
 
@@ -88,12 +91,18 @@ fn WorkbookView(cx: SkinContext<WorkbookState>) -> impl IntoView {
     let workspace = cx.workspace;
     let dispatch: Arc<dyn dnatreecalc_skin_framework::Dispatcher> = cx.dispatch.clone();
 
+    // K1b ships no show-formulas toggle for the workbook shell (K3 owns the
+    // formula bar); the grid still supports the mode end-to-end via the
+    // shared component, so wiring up a toggle later is additive.
+    let show_formulas = Signal::from(false);
     let grid_surfaces = workspace
         .get_untracked()
         .grids
         .keys()
         .cloned()
-        .map(|grid_id| crate::grid_canvas::grid_surface(grid_id, workspace, dispatch.clone()))
+        .map(|grid_id| {
+            crate::grid_canvas::grid_surface(grid_id, workspace, dispatch.clone(), show_formulas)
+        })
         .collect::<Vec<_>>();
 
     let css = format!("{}\n{WORKBOOK_CSS}", crate::grid_canvas::GRID_CANVAS_CSS);
