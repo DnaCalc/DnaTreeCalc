@@ -1,0 +1,17 @@
+# Browser-test harness wiring (H11, docs/ux/FRONTEND_UI_DESIGN_AND_ROUTEMAP.md §F.7):
+# `cargo test -p dnatreecalc-web --target wasm32-unknown-unknown` hands each test
+# artifact to `wasm-bindgen-test-runner` (from the globally installed
+# wasm-bindgen-cli, pinned to the workspace's wasm-bindgen version), which serves
+# it into a headless browser via a WebDriver pair on PATH (geckodriver+Firefox or
+# chromedriver+Chrome). Headless is the runner's default; set NO_HEADLESS=1 for
+# an interactive browser session. See src/dnatreecalc-web/tests/browser_smoke.rs
+# for the one-time local driver install note.
+[target.wasm32-unknown-unknown]
+runner = "wasm-bindgen-test-runner"
+
+# Pin the WebDriver pair to geckodriver+Firefox so the runner's auto-detection
+# does not pick a stale driver that happens to be on PATH (a machine-provided
+# msedgedriver 404'd here). Resolved via PATH; override per-machine by
+# exporting GECKODRIVER/CHROMEDRIVER to an absolute path.
+[env]
+GECKODRIVER = "geckodriver"
