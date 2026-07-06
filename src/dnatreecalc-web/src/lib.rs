@@ -12,8 +12,8 @@ use std::sync::Arc;
 
 #[cfg(target_arch = "wasm32")]
 use dnatreecalc_host::app::{
-    DnaTreeWorkspaceDocument, HostDispatcher, WorkspaceDocumentCatalog, WorkspaceDocumentStore,
-    WorkspaceDocumentStoreError, build_default_registry,
+    DnaTreeWorkspaceDocument, HostDispatcher, WorkbookHostDispatcher, WorkspaceDocumentCatalog,
+    WorkspaceDocumentStore, WorkspaceDocumentStoreError, build_default_registry,
     workspace_session_from_document_store_or_default,
 };
 #[cfg(target_arch = "wasm32")]
@@ -22,10 +22,10 @@ use dnatreecalc_shell::WorkspaceShell;
 use dnatreecalc_skin_framework::{
     Dispatcher, NodeId, PersistedSkinStateRecord, SelectionState, SharedSkinState,
     SharedSkinStateHandle, SkinStatePersistenceError, SkinStatePersistenceKey,
-    SkinStatePersistenceStore, ThemeTokens, WorkspaceDelta,
+    SkinStatePersistenceStore, ThemeTokens, WorkspaceDelta, WorkspaceState,
 };
 #[cfg(target_arch = "wasm32")]
-use dnatreecalc_skins::FLOW_ID;
+use dnatreecalc_skins::{FLOW_ID, WORKBOOK_ID};
 #[cfg(target_arch = "wasm32")]
 use leptos::mount::mount_to;
 #[cfg(target_arch = "wasm32")]
@@ -212,6 +212,56 @@ pub fn mount_dnatreecalc(element_id: &str) -> Result<(), JsValue> {
     let local_storage = window
         .local_storage()?
         .ok_or_else(|| JsValue::from_str("localStorage unavailable"))?;
+
+    // Opt-in (`?wb=1`): mount a strict-Excel workbook driven through the clean
+    // `dnacalc-host-core` spine (Phase 0 keystone) — a two-sheet demo workbook
+    // with live formulas, viewable and editable in BOTH the Notebook and the
+    // Workbook (sheet-mode) lenses. Distinct from `?grid=1`, which attaches a
+    // demo grid to the legacy tree session. Early-returns its own mount.
+    let workbook_demo = window
+        .location()
+        .search()
+        .map(|search| search.contains("wb=1"))
+        .unwrap_or(false);
+    if workbook_demo {
+        let workspace = RwSignal::new(WorkspaceState::default());
+        let latest_delta = RwSignal::new(WorkspaceDelta::unchanged(0));
+        let selection = RwSignal::new(SelectionState::with_primary(None));
+        let shared = SharedSkinStateHandle::new(SharedSkinState::default());
+        let skin_state_store: Arc<dyn SkinStatePersistenceStore> = Arc::new(
+            BrowserLocalStorageSkinStateStore::new(local_storage.clone()),
+        );
+        let dispatcher = Arc::new(
+            WorkbookHostDispatcher::new_demo(workspace, latest_delta, selection, Some(shared))
+                .map_err(|error| JsValue::from_str(&error.to_string()))?,
+        );
+        web_sys::console::log_1(
+            &"?wb=1 host-core workbook demo mounted -- switch between the Notebook and Workbook lenses"
+                .into(),
+        );
+        let dispatch: Arc<dyn Dispatcher> = dispatcher;
+        let preview: Option<Arc<dyn dnatreecalc_skin_framework::PreviewService>> = None;
+        let registry = Arc::new(build_default_registry());
+        let mount_handle = mount_to(host_element.clone(), move || {
+            view! {
+                <WorkspaceShell
+                    workspace=workspace.read_only()
+                    latest_delta=latest_delta.read_only()
+                    selection=selection
+                    shared=shared
+                    skin_state_store=skin_state_store.clone()
+                    dispatch=dispatch.clone()
+                    registry=registry.clone()
+                    initial_skin=WORKBOOK_ID
+                    tokens=ThemeTokens::light()
+                    preview=preview.clone()
+                />
+            }
+        });
+        std::mem::forget(mount_handle);
+        return Ok(());
+    }
+
     let workspace_document_store: Arc<dyn WorkspaceDocumentStore> = Arc::new(
         BrowserLocalStorageWorkspaceDocumentStore::new(local_storage.clone()),
     );

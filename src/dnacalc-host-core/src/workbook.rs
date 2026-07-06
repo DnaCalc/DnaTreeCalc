@@ -22,7 +22,9 @@
 //! `WorkspaceIntent`-level dispatch in `crate::lib` needs to resolve
 //! `EnterGridCell { grid: NodeId, .. }` to an engine sheet node.
 
-use dnacalc_skin_ir::{GridAuthoredCellProjection, NodeId};
+use std::collections::BTreeMap;
+
+use dnacalc_skin_ir::{GridAuthoredCellProjection, NodeId, NodeKey, WorkspaceState};
 use oxcalc_core::consumer::{
     GridBackingSeed, GridCellEntryOutcome, OxCalcDocumentContext, OxCalcDocumentError,
     OxCalcTreeGridView, OxCalcTreeWorkspaceCreate, OxCalcTreeWorkspaceId, SheetEnumerationRow,
@@ -32,7 +34,7 @@ use oxcalc_core::grid::geometry::GridRect;
 use oxcalc_core::structural::TreeNodeId;
 use oxfunc_core::value::CalcValue;
 
-use crate::grid_publication::grid_authored_cell_projection;
+use crate::grid_publication::{grid_authored_cell_projection, grid_projection_for};
 
 /// The stable `NodeId` a workbook session projects for a sheet's grid-backed
 /// node — the same `sheet:{node}` string this session already uses as the
@@ -334,6 +336,74 @@ impl WorkbookSession {
             .ok_or(WorkbookSessionError::SheetNotGridBacked { node: sheet })
     }
 
+    /// The full-workspace projection: every grid-backed sheet's windowed
+    /// [`GridProjection`], the workbook's complete defined-name catalog, and
+    /// its calc-mode/recalc state, assembled into one [`WorkspaceState`] a skin
+    /// (or the app's initial mount) can render directly.
+    ///
+    /// For each enumerated sheet the window is the bounding box of the view's
+    /// currently-populated cells (min/max row/col across `grid_view().cells`),
+    /// or `1..=1` when the sheet is empty — the same "match the cells actually
+    /// projected" window `dnatreecalc-host`'s `authored_cells_for` derives, so
+    /// every projected cell finds its authored record. The grid is keyed by its
+    /// stable [`sheet_grid_node_id`] and carries `grid_node_key =
+    /// NodeKey::from_engine_id(sheet.0)`.
+    ///
+    /// `profile` is `"strict-excel-grid"` (the workbook model family). Unlike a
+    /// windowed poll, this is the whole workbook at once — intended for the
+    /// initial mount / demo seed, not the hot per-edit path.
+    ///
+    /// [`GridProjection`]: dnacalc_skin_ir::GridProjection
+    pub fn snapshot(&self) -> Result<WorkspaceState, WorkbookSessionError> {
+        let mut grids = BTreeMap::new();
+        for row in self.sheets()? {
+            let sheet = row.node_id;
+            let view = self
+                .context
+                .grid_view(&self.workspace_id, sheet)?
+                .ok_or(WorkbookSessionError::SheetNotGridBacked { node: sheet })?;
+
+            // The authored window is the bounding box of the view's populated
+            // cells (or 1..=1 when empty), so the authored lookup lines up
+            // exactly with the cells the projection carries.
+            let (top_row, left_col, bottom_row, right_col) = view
+                .cells
+                .iter()
+                .fold(None, |acc: Option<(u32, u32, u32, u32)>, cell| {
+                    let (r, c) = (cell.address.row, cell.address.col);
+                    Some(match acc {
+                        None => (r, c, r, c),
+                        Some((tr, lc, br, rc)) => (tr.min(r), lc.min(c), br.max(r), rc.max(c)),
+                    })
+                })
+                .unwrap_or((1, 1, 1, 1));
+
+            let authored = self
+                .grid_authored_cells(sheet, top_row, left_col, bottom_row, right_col)?
+                .into_iter()
+                .map(|cell| ((cell.row, cell.col), cell))
+                .collect::<BTreeMap<(u32, u32), _>>();
+
+            let grid_node_id = sheet_grid_node_id(sheet);
+            let projection = grid_projection_for(
+                &view,
+                grid_node_id.clone(),
+                NodeKey::from_engine_id(sheet.0),
+                &authored,
+            );
+            grids.insert(grid_node_id, projection);
+        }
+
+        Ok(WorkspaceState {
+            workspace_id: self.workspace_id().as_str().to_string(),
+            profile: "strict-excel-grid".to_string(),
+            grids,
+            defined_names: self.defined_names()?,
+            workbook_calc: Some(self.workbook_calc_projection(None)?),
+            ..Default::default()
+        })
+    }
+
     /// Add a root Calculation tree-node participant directly on the
     /// underlying context (H4 test-only seam): the engine's
     /// `DefinedNameCollidesWithTreeNode` rejection (D2 §4.3 rule 4 / V8) only
@@ -419,6 +489,139 @@ mod tests {
             GridEditabilityProjection::SpillDisplay {
                 anchor: GridCellRefProjection { row: 1, col: 1 }
             }
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // Full-workspace snapshot.
+    // ------------------------------------------------------------------
+
+    use crate::demo::build_demo_workbook;
+    use dnacalc_skin_ir::NodeValueProjection;
+
+    /// `snapshot()` over the demo workbook projects both sheets keyed by their
+    /// stable `sheet_grid_node_id`, carries the computed value and authored
+    /// source text for a dependent formula (`Sheet1!B1 = A1*10 = 10`, authored
+    /// `"=A1*10"` — leading `=` included, the exact engine convention), fills
+    /// `workbook_calc`, and leaves `defined_names` empty.
+    #[test]
+    fn snapshot_of_demo_workbook_projects_grids_values_and_calc_state() {
+        let session = build_demo_workbook().unwrap();
+        let sheets = session.sheets().unwrap();
+        let sheet1 = sheets[0].node_id;
+        let sheet2 = sheets[1].node_id;
+
+        let state = session.snapshot().unwrap();
+
+        assert_eq!(state.profile, "strict-excel-grid");
+        assert_eq!(state.workspace_id, "workbook:demo");
+
+        // Two grids, keyed by the stable sheet grid node ids.
+        assert_eq!(state.grids.len(), 2, "one grid per sheet");
+        let grid1_id = sheet_grid_node_id(sheet1);
+        let grid2_id = sheet_grid_node_id(sheet2);
+        assert!(state.grids.contains_key(&grid1_id), "Sheet1 grid present");
+        assert!(state.grids.contains_key(&grid2_id), "Sheet2 grid present");
+
+        let grid1 = &state.grids[&grid1_id];
+        assert_eq!(grid1.grid_node_key, NodeKey::from_engine_id(sheet1.0));
+
+        // Sheet1!B1 = A1*10 = 10, authored "=A1*10".
+        let b1 = grid1
+            .cells
+            .iter()
+            .find(|cell| cell.row == 1 && cell.col == 2)
+            .expect("B1 is projected");
+        assert_eq!(
+            b1.value,
+            NodeValueProjection::Number {
+                raw: "10".to_string(),
+                display: "10".to_string(),
+            },
+            "B1's computed value is 10"
+        );
+        let authored = b1.authored.as_ref().expect("B1 carries authored metadata");
+        assert_eq!(
+            authored.source_text.as_deref(),
+            Some("=A1*10"),
+            "the engine returns the formula source text with its leading `=`"
+        );
+        assert!(
+            b1.provenance.is_some(),
+            "a snapshot cell carries its published provenance"
+        );
+
+        // Cross-sheet formula on Sheet2: A1 = Sheet1!A1 + Sheet1!A5 = 6.
+        let grid2 = &state.grids[&grid2_id];
+        let s2a1 = grid2
+            .cells
+            .iter()
+            .find(|cell| cell.row == 1 && cell.col == 1)
+            .expect("Sheet2!A1 is projected");
+        assert_eq!(
+            s2a1.value,
+            NodeValueProjection::Number {
+                raw: "6".to_string(),
+                display: "6".to_string(),
+            },
+            "Sheet2!A1 = Sheet1!A1 + Sheet1!A5 = 6"
+        );
+
+        // Calc state is present; no defined names authored in the demo.
+        let calc = state.workbook_calc.expect("workbook_calc is Some");
+        assert_eq!(calc.sheets.len(), 2, "one calc summary row per sheet");
+        assert!(
+            state.defined_names.entries.is_empty(),
+            "the demo authors no defined names"
+        );
+    }
+
+    /// Live-recalc heartbeat at the host-core layer: editing `Sheet1!A1` and
+    /// taking a fresh `snapshot()` shows the dependent `B1 = A1*10` recomputed
+    /// (7 -> 70), proving the projection reflects the current engine state, not
+    /// a stale capture.
+    #[test]
+    fn snapshot_reflects_a_live_edit_and_its_dependent_recalc() {
+        let mut session = build_demo_workbook().unwrap();
+        let sheet1 = session.sheets().unwrap()[0].node_id;
+
+        // Baseline: B1 = A1*10 = 1*10 = 10.
+        let before = session.snapshot().unwrap();
+        let grid1_id = sheet_grid_node_id(sheet1);
+        let b1_before = before.grids[&grid1_id]
+            .cells
+            .iter()
+            .find(|cell| cell.row == 1 && cell.col == 2)
+            .expect("B1 projected")
+            .value
+            .clone();
+        assert_eq!(
+            b1_before,
+            NodeValueProjection::Number {
+                raw: "10".to_string(),
+                display: "10".to_string(),
+            }
+        );
+
+        // Edit A1 = 7 through the universal entry verb; under Automatic mode the
+        // dependent B1 recomputes immediately.
+        session.enter_grid_cell(sheet1, 1, 1, "7").unwrap();
+
+        let after = session.snapshot().unwrap();
+        let b1_after = after.grids[&grid1_id]
+            .cells
+            .iter()
+            .find(|cell| cell.row == 1 && cell.col == 2)
+            .expect("B1 projected")
+            .value
+            .clone();
+        assert_eq!(
+            b1_after,
+            NodeValueProjection::Number {
+                raw: "70".to_string(),
+                display: "70".to_string(),
+            },
+            "a fresh snapshot shows B1 = A1*10 = 70 after editing A1 to 7"
         );
     }
 }

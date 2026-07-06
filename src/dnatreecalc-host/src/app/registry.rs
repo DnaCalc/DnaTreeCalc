@@ -2,7 +2,7 @@ use dnatreecalc_skin_framework::SkinRegistry;
 use dnatreecalc_skins::{
     Bench, CaptureLens, ConsoleCompanion, DependencyInspector, FlowLens, FormulaTree, LedgerLens,
     LensCompanion, NotebookLens, OutlineTable, SheetLens, TransportLens, TreeLens, TripleEditor,
-    ValueBoard,
+    ValueBoard, WorkbookLens,
 };
 
 /// Build the default skin registry.
@@ -28,6 +28,9 @@ pub fn build_default_registry() -> SkinRegistry {
     // browser-harness rule (§E.0) has a real route to mount and assert
     // against; the notebook's editing loop (N2+) still lands later.
     registry.register(NotebookLens::new());
+    // K1: the strict-Excel workbook (sheet-mode) lens — the second of the two
+    // front-ends this push surfaces, driven through the clean host-core spine.
+    registry.register(WorkbookLens::new());
     // Walking-skeleton legacy skins.
     registry.register(TripleEditor::new());
     registry.register(FormulaTree::new());

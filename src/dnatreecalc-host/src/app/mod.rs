@@ -9,6 +9,7 @@ mod projection;
 mod registry;
 mod session;
 mod templates;
+mod workbook_dispatcher;
 mod worker_proxy;
 
 pub use dispatcher::HostDispatcher;
@@ -25,6 +26,7 @@ pub use session::{
     DnaTreeWorkspaceDocument, TreeWorkspaceCollectionDependencyProjection, TreeWorkspaceSession,
     TreeWorkspaceSessionError,
 };
+pub use workbook_dispatcher::WorkbookHostDispatcher;
 pub use worker_proxy::{
     DeliverOutcome, HostSessionExecutor, SessionExecutor, SubmitDecision, WorkerProxyCore,
 };

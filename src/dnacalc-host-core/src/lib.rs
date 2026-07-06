@@ -40,6 +40,7 @@
 pub mod calc;
 pub mod command;
 pub mod defined_names;
+pub mod demo;
 pub mod grid_publication;
 pub mod present;
 pub mod workbook;
@@ -52,7 +53,11 @@ pub use command::{HostCommand, HostCommandOutcome, ProjectionPublisher, Recordin
 pub use defined_names::{
     DefinedNameTargetIntentInput, NAMES_BACKING_SHEET, present_defined_name_rejection,
 };
-pub use grid_publication::grid_authored_cell_projection;
+pub use demo::build_demo_workbook;
+pub use grid_publication::{
+    grid_authored_cell_projection, grid_overlay_bundle_for, grid_projection_for,
+    grid_value_projection,
+};
 pub use present::present_grid_entry_rejection;
 pub use workbook::{
     WorkbookSession, WorkbookSessionError, parse_sheet_grid_node_id, sheet_grid_node_id,
@@ -60,7 +65,7 @@ pub use workbook::{
 
 use dnacalc_skin_ir::{
     DefinedNameTargetIntent, GridEntryOutcomeProjection, IntentError, IntentReceipt,
-    NodeValueProjection, WorkspaceDelta, WorkspaceDeltaChange, WorkspaceIntent,
+    NodeValueProjection, WorkspaceDelta, WorkspaceDeltaChange, WorkspaceIntent, WorkspaceState,
 };
 use oxcalc_core::consumer::GridCellEntryOutcome;
 use oxfunc_core::value::CalcValue;
@@ -118,6 +123,24 @@ impl DocumentSession {
         match self {
             DocumentSession::RichTree(_) => "RichTree",
             DocumentSession::Workbook(_) => "Workbook",
+        }
+    }
+
+    /// The full read-side [`WorkspaceState`] projection for the open document.
+    ///
+    /// A `Workbook` session projects its whole workspace (every grid-backed
+    /// sheet, the defined-name catalog, and calc state) via
+    /// [`WorkbookSession::snapshot`]; a `RichTree` session is a Leptos-free
+    /// seam placeholder here (the real tree session lives in
+    /// `dnatreecalc-host`) and projects the empty default. The workbook arm
+    /// falls back to `WorkspaceState::default()` on the internal-invariant
+    /// error `snapshot()` can surface, so the mount surface is infallible: an
+    /// initial projection never fails a caller, it degrades to empty.
+    #[must_use]
+    pub fn snapshot(&self) -> WorkspaceState {
+        match self {
+            DocumentSession::Workbook(session) => session.snapshot().unwrap_or_default(),
+            DocumentSession::RichTree(_) => WorkspaceState::default(),
         }
     }
 
@@ -421,30 +444,13 @@ fn grid_cell_entered_receipt(
     })
 }
 
-/// A minimal `CalcValue` -> `NodeValueProjection` rendering for the
-/// `GridCellEntered` receipt payload (H6's own scope: the entry receipt's
-/// literal/formula value, not the full windowed grid-value projection that
-/// `dnatreecalc-host`'s skin layer owns). Deliberately narrow, matching
-/// `grid_publication::grid_authored_cell_projection`'s literal-text
-/// convention: numbers/text/logical/empty render structurally, anything else
-/// (arrays, references, rich) falls back to a Debug-derived error/text
-/// rendering so no value silently disappears from the receipt.
+/// A `CalcValue` -> `NodeValueProjection` rendering for the `GridCellEntered`
+/// receipt payload (H6's entry receipt's literal/formula value). Routes through
+/// the single grid-value projection host-core owns
+/// ([`grid_publication::grid_value_projection`]) so the entry-receipt path and
+/// the full snapshot path can never disagree about a value's shape.
 fn calc_value_projection(value: &CalcValue) -> NodeValueProjection {
-    use oxfunc_core::value::CoreValue;
-    match value.core() {
-        CoreValue::Number(number) => NodeValueProjection::Number {
-            raw: number.to_string(),
-            display: number.to_string(),
-        },
-        CoreValue::Text(text) => NodeValueProjection::Text(text.to_string_lossy()),
-        CoreValue::Logical(logical) => NodeValueProjection::Logical {
-            value: *logical,
-            display: if *logical { "TRUE" } else { "FALSE" }.to_string(),
-        },
-        CoreValue::Empty => NodeValueProjection::Empty,
-        CoreValue::Missing => NodeValueProjection::Missing,
-        other => NodeValueProjection::Error(format!("{other:?}")),
-    }
+    grid_publication::grid_value_projection(value)
 }
 
 /// A stable, human-readable kind name for a `WorkspaceIntent`, used in the
