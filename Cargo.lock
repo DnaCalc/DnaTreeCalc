@@ -1157,11 +1157,19 @@ name = "oxcalc-core"
 version = "0.1.0"
 dependencies = [
  "js-sys",
+ "oxdoc-model",
  "oxfml_core",
  "oxfunc_core",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
+]
+
+[[package]]
+name = "oxdoc-model"
+version = "0.1.0"
+dependencies = [
+ "serde",
 ]
 
 [[package]]

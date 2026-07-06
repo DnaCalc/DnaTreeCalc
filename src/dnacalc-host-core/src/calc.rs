@@ -55,6 +55,10 @@ pub fn value_provenance_projection(
             ValueProvenanceProjection::Stale { since_tick_id }
         }
         PublishedValueProvenance::FileCached => ValueProvenanceProjection::FileCached,
+        // W062 R6.2 added `Degraded` (a cache-less ingest-degraded `#NAME?`).
+        // The host renders it like a retained, non-engine value for now; a
+        // distinct degraded affordance is front-end (R7) work, not modeled here.
+        PublishedValueProvenance::Degraded => ValueProvenanceProjection::FileCached,
     }
 }
 
