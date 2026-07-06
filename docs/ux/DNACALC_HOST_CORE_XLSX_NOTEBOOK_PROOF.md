@@ -425,12 +425,31 @@ existing** (dtc-hj2.5), never on upstream implementations landing.
 
 **Ask ranking (verified against code):**
 
+> **Superseded-by-native-verbs update (2026-07-06, OxCalc W062 R6.7, bead
+> `calc-5kqg.64`):** every ask below is now answered by a landed,
+> consumer-level OxCalc verb. W011 was paused pending these; W062 R5/R6 have
+> now shipped all of them on OxCalc `main` (HEAD `03bc5058` at the time of
+> this note). Each mapping was verified directly against
+> `src/oxcalc-core/src/consumer.rs` (grepped, not assumed) rather than taken
+> from OxCalc's own docs. W011 resumes in R7, with two additional
+> real-multi-sheet-xlsx prerequisites recorded below (`calc-5kqg.65`,
+> `calc-5kqg.66`) beyond what the original fixture-scoped asks anticipated.
+
 - **(b) is the first hard blocker for general workbooks:** a public
   `bind_grid_formula(source_text, channel, address, bounds) ->
   Result<GridFormulaCell, _>` wrapping the existing `pub(super)`
   `bind_grid_formula_for_transform` recipe (key =
   `BoundFormula.formula_template_identity.key`). Small, additive, independent
   of the CTRO rework's semantics. Nothing in W011's fixture waits on it.
+
+  **SUPERSEDED.** Landed as `OxCalcDocumentContext::bind_grid_formula`
+  (`consumer.rs:5084`, tagged "W062 R5.1, D4 §3" in its own doc comment at
+  `consumer.rs:5065`) — signature:
+  `bind_grid_formula(&self, workspace_id, node_id, address: &ExcelGridCellAddress, source_text: &str, channel: FormulaChannelKind) -> Result<Option<BoundGridFormula>, OxCalcDocumentError>`.
+  This is now the one public binding authority (D4 C10: "the only key mint");
+  W011's `FormulaEditingNotYetSupported` rejection for `=`-prefixed edit
+  content is liftable.
+
 - **(e) defined-name seeding is the second hard blocker, immediately behind
   (b) — ask upstream to land them together.** There is no consumer-level way
   to seed defined names (`GridOptimizedSheet::set_defined_name` /
@@ -449,20 +468,89 @@ existing** (dtc-hj2.5), never on upstream implementations landing.
   (workbook- and sheet-scoped, plus dynamic) or consumer-level verbs, wired
   to the existing sheet setters. OxDoc already models the name catalog
   (`DefinedNameSpec`), so host-side name extraction at open is purely local.
+
+  **SUPERSEDED.** Landed as a family of consumer-level verbs (W062 R5.4, D4
+  §4): `set_workbook_defined_name(&mut self, workspace_id, node_id, name, target: GridRect) -> Result<(), OxCalcDocumentError>`
+  (`consumer.rs:6992`) and `set_sheet_defined_name(&mut self, workspace_id, sheet_node, name, target: GridRect) -> Result<(), OxCalcDocumentError>`
+  (`consumer.rs:7014`) for seeding (workbook- and sheet-scoped static names,
+  with sheet-scoped shadowing workbook-scoped per R3.5 precedence), plus
+  `document_defined_names(&self, workspace_id, node_id) -> Result<Vec<DefinedNameReadout>, OxCalcDocumentError>`
+  (`consumer.rs:7151`) for readout. dtc-hj2.14's pending name-fixture lane
+  (`TheInput -> Sheet1!A1`, `D1 = =TheInput*2`) can now activate.
+
 - **(a) neutral ingest API — de-scoped for W011:** the host implements
   `struct OxDocGridIngest` (in dnacalc-host-core) as an
   `oxdoc_model::OxCalcIngestSink`, accumulating one `GridBackingSeed` per
   sheet and calling `set_node_grid`. The long-term OxCalc-owned ingest lane
   (new OxCalc→oxdoc-model dependency edge; axis state; feature-rendered
   regions) is raised for owner ratification, not waited on.
+
+  **Also now superseded, beyond the original scope of this ask:** OxCalc grew
+  its own `oxdoc-model`-consuming ingest module (`oxcalc-core/src/
+  oxdoc_ingest.rs`, W062 R6.1-R6.5) plus a consumer-level load verb,
+  `load_workbook_model` (W062 R6.5, `calc-5kqg.62`, landed `be8ef7ee`). The
+  host-side `OxDocGridIngest` shim this ask originally scoped for W011 is no
+  longer the load path R7 should build on; W011's host-side ingest can be
+  replaced by the upstream verb directly.
+
 - **(c) authored readout metadata — local fallback:** host keeps its own
   authored mirror keyed by `ExcelGridCellAddress`, updated at seed time and on
   every applied edit. The upstream ask (extend `OxCalcTreeGridCellReadout`
   with `authored: Option<GridAuthoredCell>` + derived per-cell editability) is
   needed for cells the host did not author — post-W011.
+
+  **SUPERSEDED.** Landed as `OxCalcDocumentContext::grid_authored_view`
+  (W062 R5.5, D4 §5, tagged in its own doc comment at `consumer.rs:4849`) —
+  signature: `grid_authored_view(&self, workspace_id, node_id, window: Option<GridRect>) -> Result<Option<Vec<GridAuthoredCellReadout>>, OxCalcDocumentError>`,
+  reading `GridInputState` directly (per-cell kind/source_text/channel, plus
+  verb-enforced editability per contract C11) rather than the host's own
+  authored mirror. The host-side local-fallback mirror this ask worked
+  around is no longer needed for cells the engine authored.
+
 - **(d) WorkbookModelOutput production — downgraded:** host assembles output
   itself (see "Save path"). Upstream ask becomes an "authored cells changed
   since epoch" readout, only if the mirror proves fragile.
+
+  **SUPERSEDED** (upgraded beyond the "if the mirror proves fragile"
+  downgrade — the full ask now has two landed verbs): `workbook_authored_delta(&self, workspace_id, since: &WorkspaceRevisionId) -> Result<WorkbookAuthoredDelta, OxCalcDocumentError>`
+  (W062 R5.7, `consumer.rs:7439`) gives the "authored cells changed since
+  epoch" readout directly (diffs grid-input snapshots only, per D1 C6), and
+  `project_workbook_model_output(&self, workspace_id) -> Result<oxdoc_model::WorkbookModelOutput, OxCalcDocumentError>`
+  (W062 R6.6, `calc-5kqg.63`, landed `03bc5058`, at `consumer.rs:7509`)
+  round-trips Tier A from the model plus Tier B verbatim, with formula cached
+  values read fresh from publication (C12) — this is the full
+  `WorkbookModelOutput` production ask, not just the delta readout. **Caveat
+  inherited from R6.6 (not yet closed):** `project_workbook_model_output`
+  still typed-errors (`OxCalcDocumentError::UnprojectableTierACollections`,
+  `consumer.rs:7502-7508`) on any sheet carrying authored Tier-A
+  *collections* — merged regions, table overlays, defined names, repeated
+  regions — so it is safe for the W011 fixture class (no such collections)
+  but not yet for a general workbook; closing that gap is `calc-5kqg.66`
+  (below). The host's own "Save path" whole-model-projection recipe (this
+  doc, above) can be replaced by `project_workbook_model_output` directly
+  once `.66` lands; until then it is usable as-is for collection-free
+  workbooks.
+
+**The full W011 xlsx round trip is now proven at the fixture level.** OxCalc
+W062 R6.6's acceptance test *is* the W011 five-step contract, run
+constant-free against the real verbs above (no hand-keyed
+`W011_FIXTURE_NORMAL_FORM_KEY`): load a two-cell workbook via
+`load_workbook_model` -> `enter_grid_cell` literal edit -> recalc ->
+`project_workbook_model_output` -> `workbook_authored_delta` reports exactly
+the one changed cell -> reload the projected stream into a fresh
+`OxCalcDocumentContext` and confirm authored views and published values both
+agree. W011 (R7) resumes against this proven surface, with two additional
+prerequisites recorded during R6 for **real** multi-sheet/collection-bearing
+`.xlsx` files (beyond the two-cell fixture this doc's asks originally
+scoped for): **`calc-5kqg.65`** (cross-sheet reference *evaluation* is
+unwired for freshly-loaded sheets — a loaded `Sheet2!B1 = Sheet1!A1+10`
+currently publishes `#VALUE!` rather than the resolved value; cross-sheet
+*edit propagation* already works) and **`calc-5kqg.66`** (Tier-A collection
+projection — merges/tables/defined-names/repeated-regions — is the typed
+`UnprojectableTierACollections` gap called out above). Iteration-calc
+settings (OxDoc `WorkbookHeader` gap, filed as an OxDoc-repo handover,
+`OxDoc/docs/handovers/W062-INGEST-UPSTREAM-GAPS.md`) round out the
+real-multi-feature-xlsx prerequisite set for R7.
 
 **Local fallback boundaries.** The W011 fixture's single formula is hand-keyed
 behind one named const, `W011_FIXTURE_NORMAL_FORM_KEY =
