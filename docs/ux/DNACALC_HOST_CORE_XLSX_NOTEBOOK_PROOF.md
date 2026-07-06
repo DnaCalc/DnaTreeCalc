@@ -519,17 +519,15 @@ existing** (dtc-hj2.5), never on upstream implementations landing.
   (W062 R6.6, `calc-5kqg.63`, landed `03bc5058`, at `consumer.rs:7509`)
   round-trips Tier A from the model plus Tier B verbatim, with formula cached
   values read fresh from publication (C12) — this is the full
-  `WorkbookModelOutput` production ask, not just the delta readout. **Caveat
-  inherited from R6.6 (not yet closed):** `project_workbook_model_output`
-  still typed-errors (`OxCalcDocumentError::UnprojectableTierACollections`,
-  `consumer.rs:7502-7508`) on any sheet carrying authored Tier-A
-  *collections* — merged regions, table overlays, defined names, repeated
-  regions — so it is safe for the W011 fixture class (no such collections)
-  but not yet for a general workbook; closing that gap is `calc-5kqg.66`
-  (below). The host's own "Save path" whole-model-projection recipe (this
-  doc, above) can be replaced by `project_workbook_model_output` directly
-  once `.66` lands; until then it is usable as-is for collection-free
-  workbooks.
+  `WorkbookModelOutput` production ask, not just the delta readout. **Now
+  general (R6.66, `calc-5kqg.66`, landed):** `project_workbook_model_output`
+  re-emits authored Tier-A *collections* — merged regions (`MergedCellRegions`),
+  table overlays (`TableOverlay`), defined names + their Tier-B metadata half
+  (`DefinedName`), and repeated/shared-formula regions (`SharedFormulaRegion`) —
+  so it round-trips a collection-bearing workbook, not just the W011 fixture
+  class; the former `UnprojectableTierACollections` typed refusal is removed. The
+  host's own "Save path" whole-model-projection recipe (this doc, above) can now
+  be replaced by `project_workbook_model_output` directly.
 
 **The full W011 xlsx round trip is now proven at the fixture level.** OxCalc
 W062 R6.6's acceptance test *is* the W011 five-step contract, run
@@ -539,18 +537,18 @@ constant-free against the real verbs above (no hand-keyed
 `project_workbook_model_output` -> `workbook_authored_delta` reports exactly
 the one changed cell -> reload the projected stream into a fresh
 `OxCalcDocumentContext` and confirm authored views and published values both
-agree. W011 (R7) resumes against this proven surface, with two additional
+agree. W011 (R7) resumes against this proven surface. Two additional
 prerequisites recorded during R6 for **real** multi-sheet/collection-bearing
 `.xlsx` files (beyond the two-cell fixture this doc's asks originally
-scoped for): **`calc-5kqg.65`** (cross-sheet reference *evaluation* is
-unwired for freshly-loaded sheets — a loaded `Sheet2!B1 = Sheet1!A1+10`
-currently publishes `#VALUE!` rather than the resolved value; cross-sheet
-*edit propagation* already works) and **`calc-5kqg.66`** (Tier-A collection
-projection — merges/tables/defined-names/repeated-regions — is the typed
-`UnprojectableTierACollections` gap called out above). Iteration-calc
-settings (OxDoc `WorkbookHeader` gap, filed as an OxDoc-repo handover,
-`OxDoc/docs/handovers/W062-INGEST-UPSTREAM-GAPS.md`) round out the
-real-multi-feature-xlsx prerequisite set for R7.
+scoped for) have both **landed**: **`calc-5kqg.65`** (cross-sheet reference
+*evaluation* for freshly-loaded sheets — a loaded `Sheet2!B1 = Sheet1!A1+10`
+now resolves rather than publishing `#VALUE!`; a general cross-sheet *range*
+`#REF!` gap was spun to `calc-5kqg.67`) and **`calc-5kqg.66`** (Tier-A
+collection projection — merges/tables/defined-names/repeated-regions — now
+round-trips; the `UnprojectableTierACollections` refusal is removed).
+Iteration-calc settings (OxDoc `WorkbookHeader` gap, filed as an OxDoc-repo
+handover, `OxDoc/docs/handovers/W062-INGEST-UPSTREAM-GAPS.md`) is the
+remaining real-multi-feature-xlsx prerequisite for R7.
 
 **Local fallback boundaries.** The W011 fixture's single formula is hand-keyed
 behind one named const, `W011_FIXTURE_NORMAL_FORM_KEY =
