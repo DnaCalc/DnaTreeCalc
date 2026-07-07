@@ -190,6 +190,10 @@ impl DocumentSession {
                 DocumentSession::Workbook(session),
                 WorkspaceIntent::DeleteDefinedName { scope, name },
             ) => dispatch_delete_defined_name(session, &scope, &name),
+            (
+                DocumentSession::Workbook(session),
+                WorkspaceIntent::CreateNamedValue { name, value_text },
+            ) => dispatch_create_named_value(session, &name, &value_text),
             (DocumentSession::Workbook(session), WorkspaceIntent::SetCalcMode { mode }) => {
                 dispatch_set_calc_mode(session, mode)
             }
@@ -370,6 +374,23 @@ fn dispatch_delete_defined_name(
         Err(error) => return IntentReceipt::rejected(error),
     };
     match session.delete_defined_name(anchor, scope.clone(), name) {
+        Ok(()) => defined_names_changed_receipt(session),
+        Err(error) => IntentReceipt::rejected(present_defined_name_rejection(&error)),
+    }
+}
+
+/// Dispatch `CreateNamedValue` (N3's atomic `+ name`): host-core owns the whole
+/// named-value creation ([`WorkbookSession::create_named_value`] — allocate the
+/// `_names` backing cell, write the value, define the name workbook-wide), so
+/// the skin never guesses a backing cell. On success it surfaces the same
+/// `DefinedNamesChanged` receipt the other defined-name verbs produce; on any
+/// step's rejection, the typed defined-name rejection map.
+fn dispatch_create_named_value(
+    session: &mut WorkbookSession,
+    name: &str,
+    value_text: &str,
+) -> IntentReceipt {
+    match session.create_named_value(name, value_text) {
         Ok(()) => defined_names_changed_receipt(session),
         Err(error) => IntentReceipt::rejected(present_defined_name_rejection(&error)),
     }
@@ -1179,6 +1200,59 @@ mod tests {
         assert!(
             session.defined_names().unwrap().entries.is_empty(),
             "the rejected write leaves the projection's catalog unchanged"
+        );
+    }
+
+    /// N3: `CreateNamedValue` dispatches atomically — the receipt's
+    /// `DefinedNamesChanged` delta lists the new workbook-scoped name, and a
+    /// formula on the user's own sheet referencing it resolves. Host-core owns
+    /// the `_names` backing-cell allocation, so the skin dispatches a single
+    /// intent with no backing-cell guess (the fix for the `?wb=1` `+ name` bug).
+    #[test]
+    fn create_named_value_dispatches_and_defines_resolvable_workbook_name() {
+        let (mut document, grid) = workbook_with_one_sheet("workbook:n3-create-named-dispatch");
+
+        let receipt = document.dispatch(WorkspaceIntent::CreateNamedValue {
+            name: "rate".to_string(),
+            value_text: "0.065".to_string(),
+        });
+        assert!(receipt.accepted, "creating a named value is accepted");
+        match receipt.delta.changes.as_slice() {
+            [WorkspaceDeltaChange::DefinedNamesChanged(catalog)] => {
+                let rate = catalog
+                    .entries
+                    .iter()
+                    .find(|entry| entry.name == "rate")
+                    .expect("rate is listed in the catalog");
+                assert_eq!(rate.scope, DefinedNameScopeProjection::Workbook);
+            }
+            other => panic!("expected exactly one DefinedNamesChanged change, got {other:?}"),
+        }
+
+        // A formula on the user's own sheet resolves the workbook-wide name.
+        let entry = document.dispatch(WorkspaceIntent::EnterGridCell {
+            grid: grid.clone(),
+            row: 1,
+            col: 1,
+            text: "=rate*2".to_string(),
+        });
+        assert!(
+            entry.accepted,
+            "a formula referencing the new name is accepted"
+        );
+
+        let DocumentSession::Workbook(session) = &document else {
+            unreachable!("workbook session")
+        };
+        let sheet = workbook::parse_sheet_grid_node_id(&grid).unwrap();
+        let got = session
+            .grid_cell_value(sheet, 1, 1)
+            .unwrap()
+            .and_then(|v| v.as_number())
+            .expect("=rate*2 resolves to a number");
+        assert!(
+            (got - 0.13).abs() < 1e-9,
+            "=rate*2 resolves to 0.065*2 = 0.13, got {got}"
         );
     }
 

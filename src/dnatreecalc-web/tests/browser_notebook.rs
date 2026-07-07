@@ -327,10 +327,12 @@ fn click(element: &web_sys::Element) {
 }
 
 /// N3 acceptance (1), browser proof: filling `rate` / `0.065` and clicking
-/// Create dispatches `EnterGridCell` then `SetDefinedName`, in that order,
-/// via a live DOM click — not just the pure `commit_static_name` unit test.
+/// Create dispatches a single `CreateNamedValue` — the atomic host-core verb
+/// that owns `_names` backing-cell allocation (replacing the old two-intent
+/// `EnterGridCell` + `SetDefinedName` guess that could not resolve the backing
+/// grid on a host-core workbook) — via a live DOM click.
 #[wasm_bindgen_test]
-async fn create_name_button_dispatches_enter_then_set_defined_name_in_order() {
+async fn create_name_button_dispatches_single_create_named_value() {
     let dispatcher = RecordingDispatcher::new();
     let dispatch: Arc<dyn Dispatcher> = Arc::new(dispatcher.clone());
     let (host, open) = mount_name_form(
@@ -350,14 +352,13 @@ async fn create_name_button_dispatches_enter_then_set_defined_name_in_order() {
     next_tick().await;
 
     let intents = dispatcher.intents();
-    assert_eq!(intents.len(), 2, "exactly two intents dispatched");
+    assert_eq!(intents.len(), 1, "exactly one intent dispatched");
     match &intents[0] {
-        WorkspaceIntent::EnterGridCell { text, .. } => assert_eq!(text, "0.065"),
-        other => panic!("expected EnterGridCell first, got {other:?}"),
-    }
-    match &intents[1] {
-        WorkspaceIntent::SetDefinedName { name, .. } => assert_eq!(name, "rate"),
-        other => panic!("expected SetDefinedName second, got {other:?}"),
+        WorkspaceIntent::CreateNamedValue { name, value_text } => {
+            assert_eq!(name, "rate");
+            assert_eq!(value_text, "0.065");
+        }
+        other => panic!("expected CreateNamedValue, got {other:?}"),
     }
     assert!(!open.get_untracked(), "a clean commit closes the form");
 }

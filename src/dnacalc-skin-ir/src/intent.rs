@@ -570,6 +570,24 @@ pub enum WorkspaceIntent {
         scope: DefinedNameScopeProjection,
         name: String,
     },
+    /// Create a workbook-scoped **named value** in one atomic, host-owned step
+    /// (the Notebook's `+ name` affordance, e.g. `rate = 0.065`). Host-core
+    /// finds-or-lazily-creates the `_names` backing sheet, writes `value_text`
+    /// into the next free append row (column A, interpreted as a literal or
+    /// formula through the universal entry verb), then defines `name` at
+    /// **Workbook** scope pointing at that single cell.
+    ///
+    /// Owning the whole flow host-side is what lets a skin create a named value
+    /// without guessing the engine's real `_names` sheet address: a skin has no
+    /// session handle to resolve the lazily-created sheet's opaque `sheet:{id}`
+    /// grid id, so the older two-intent `EnterGridCell{grid:"_names"}` +
+    /// `SetDefinedName` flow could not name the backing cell correctly (it used
+    /// a symbolic `"_names"` grid the dispatcher rejects). Redefinition and the
+    /// tree-node-collision rejection follow `SetDefinedName`'s semantics (§A.4).
+    CreateNamedValue {
+        name: String,
+        value_text: String,
+    },
     /// Add a new grid-backed sheet to the workbook (Phase 1 Part A,
     /// sheet-lifecycle). `name` is the authored display name; `None` lets the
     /// host pick the next default (`Sheet{n+1}`, computed from the current
@@ -1140,6 +1158,15 @@ mod serde_round_trip_tests {
             ],
         };
         assert_eq!(round_trip(&delta), delta);
+    }
+
+    #[test]
+    fn create_named_value_intent_round_trips() {
+        let intent = WorkspaceIntent::CreateNamedValue {
+            name: "rate".to_string(),
+            value_text: "0.065".to_string(),
+        };
+        assert_eq!(round_trip(&intent), intent);
     }
 
     #[test]

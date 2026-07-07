@@ -96,6 +96,48 @@ impl WorkbookSession {
         Ok((names_sheet, next_row))
     }
 
+    /// Create a workbook-scoped named value atomically (N3's `+ name`
+    /// affordance, e.g. `rate = 0.065`) — the whole named-value creation
+    /// host-core owns so a skin never guesses the engine's real backing-cell
+    /// address (a skin has no session handle to resolve the lazily-created
+    /// `_names` sheet's opaque `sheet:{node}` grid id, which is why the older
+    /// skin-side two-intent `EnterGridCell{grid:"_names"}` + `SetDefinedName`
+    /// flow failed). Three steps, in order:
+    ///
+    /// 1. [`WorkbookSession::allocate_next_names_backing_cell`] — find-or-lazily-
+    ///    create the `_names` sheet and pick the next append row in column A.
+    /// 2. [`WorkbookSession::enter_grid_cell`] — write `value_text` into that
+    ///    cell through the universal entry verb (OxFml interprets a literal vs a
+    ///    leading-`=` formula; no host-side classification).
+    /// 3. [`WorkbookSession::set_defined_name`] at **Workbook** scope, anchored
+    ///    on the `_names` sheet, targeting the single `(row, 1)` cell.
+    ///
+    /// The engine's no-mutation-on-error contract holds **per verb**: a
+    /// mid-sequence failure (e.g. step 3 rejecting after step 2's write landed)
+    /// is possible but unlikely, and propagates to the caller — the receipt
+    /// surfaces the rejection rather than silently swallowing it.
+    pub fn create_named_value(
+        &mut self,
+        name: &str,
+        value_text: &str,
+    ) -> Result<(), WorkbookSessionError> {
+        let (names_sheet, row) = self.allocate_next_names_backing_cell()?;
+        self.enter_grid_cell(names_sheet, row, 1, value_text)?;
+        let target = DefinedNameTargetIntentInput::Static(GridRectProjection {
+            top_row: row,
+            left_col: 1,
+            bottom_row: row,
+            right_col: 1,
+        });
+        self.set_defined_name(
+            names_sheet,
+            DefinedNameScopeProjection::Workbook,
+            name,
+            target,
+        )?;
+        Ok(())
+    }
+
     /// Find the `_names` sheet by its display name, creating it (grid-backed,
     /// via [`WorkbookSession::add_sheet`]) the first time a name is created in
     /// this workbook (B.7: "created lazily"). An ordinary sheet by every
@@ -633,5 +675,112 @@ mod tests {
         // allocates row 3 — one past the highest of the two existing rows.
         let (_, row_c) = session.allocate_next_names_backing_cell().unwrap();
         assert_eq!(row_c, 3);
+    }
+
+    // ------------------------------------------------------------------
+    // N3 acceptance: atomic `create_named_value` (host-core owns the whole
+    // `+ name` named-value creation).
+    // ------------------------------------------------------------------
+
+    /// The `_names`-static backing row a name targets (its single cell's row).
+    fn named_static_row(catalog: &DefinedNamesProjection, name: &str) -> u32 {
+        match &catalog
+            .entries
+            .iter()
+            .find(|entry| entry.name == name)
+            .expect("name is in the catalog")
+            .target
+        {
+            DefinedNameTargetProjection::Static(rect) => rect.bottom_row,
+            other => panic!("expected a static target for {name}, got {other:?}"),
+        }
+    }
+
+    /// N3: `create_named_value` lazily creates the `_names` sheet, writes the
+    /// value into it, and defines the name workbook-wide — a formula on another
+    /// sheet referencing the name resolves (the end-to-end `+ name` contract).
+    #[test]
+    fn create_named_value_defines_workbook_name_resolvable_from_another_sheet() {
+        let (mut session, sheet1) = workbook_with_sheet("workbook:n3-create-named-value");
+        assert!(
+            session
+                .sheets()
+                .unwrap()
+                .iter()
+                .all(|row| row.display_name != NAMES_BACKING_SHEET),
+            "the _names sheet does not exist before the first named value"
+        );
+
+        session.create_named_value("rate", "0.065").unwrap();
+
+        // The _names sheet is created lazily, and the catalog lists `rate` at
+        // Workbook scope targeting a single static cell.
+        assert!(
+            session
+                .sheets()
+                .unwrap()
+                .iter()
+                .any(|row| row.display_name == NAMES_BACKING_SHEET),
+            "the _names sheet is created lazily on the first named value"
+        );
+        let catalog = session.defined_names().unwrap();
+        let rate = catalog
+            .entries
+            .iter()
+            .find(|entry| entry.name == "rate")
+            .expect("rate is in the catalog");
+        assert_eq!(rate.scope, DefinedNameScopeProjection::Workbook);
+        assert!(!rate.is_dynamic);
+
+        // A formula on Sheet1 referencing the workbook-wide name resolves.
+        session.enter_grid_cell(sheet1, 1, 1, "=rate*2").unwrap();
+        let got = session
+            .grid_cell_value(sheet1, 1, 1)
+            .unwrap()
+            .and_then(|v| v.as_number())
+            .expect("=rate*2 resolves to a number");
+        assert!(
+            (got - 0.13).abs() < 1e-9,
+            "=rate*2 resolves to 0.065*2 = 0.13, got {got}"
+        );
+    }
+
+    /// N3: a second `create_named_value` appends to the next `_names` row
+    /// rather than colliding with the first — both names resolve independently.
+    #[test]
+    fn create_named_value_second_appends_next_row_without_collision() {
+        let (mut session, sheet1) = workbook_with_sheet("workbook:n3-create-named-append");
+
+        session.create_named_value("rate", "0.065").unwrap();
+        session.create_named_value("years", "30").unwrap();
+
+        // Both names are in the catalog at distinct backing rows.
+        let catalog = session.defined_names().unwrap();
+        assert_ne!(
+            named_static_row(&catalog, "rate"),
+            named_static_row(&catalog, "years"),
+            "the second named value appends to a fresh row, not the first's"
+        );
+
+        // Both resolve from Sheet1 (proving neither write clobbered the other).
+        session.enter_grid_cell(sheet1, 1, 1, "=rate").unwrap();
+        session.enter_grid_cell(sheet1, 2, 1, "=years").unwrap();
+        let rate = session
+            .grid_cell_value(sheet1, 1, 1)
+            .unwrap()
+            .and_then(|v| v.as_number())
+            .expect("=rate resolves to a number");
+        assert!(
+            (rate - 0.065).abs() < 1e-9,
+            "=rate resolves to 0.065, got {rate}"
+        );
+        assert_eq!(
+            session
+                .grid_cell_value(sheet1, 2, 1)
+                .unwrap()
+                .and_then(|v| v.as_number()),
+            Some(30.0),
+            "=years resolves to 30"
+        );
     }
 }

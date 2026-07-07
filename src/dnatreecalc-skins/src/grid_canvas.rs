@@ -261,16 +261,16 @@ fn grid_cell_ref_label(row: u32, col: u32) -> String {
 /// mount and threaded through every cell's click/keyboard handling so they
 /// all observe and drive the same anchor.
 #[derive(Debug, Clone, Copy)]
-struct GridSelectionState {
-    anchor_row: RwSignal<u32>,
-    anchor_col: RwSignal<u32>,
+pub(crate) struct GridSelectionState {
+    pub(crate) anchor_row: RwSignal<u32>,
+    pub(crate) anchor_col: RwSignal<u32>,
     editing: RwSignal<bool>,
     feedback: RwSignal<EntryFeedback>,
     status_hint: RwSignal<Option<String>>,
 }
 
 impl GridSelectionState {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             anchor_row: RwSignal::new(1),
             anchor_col: RwSignal::new(1),
@@ -481,6 +481,26 @@ pub fn grid_surface(
     dispatch: Arc<dyn Dispatcher>,
     show_formulas: Signal<bool>,
 ) -> AnyView {
+    grid_surface_with_selection(
+        GridSelectionState::new(),
+        grid_id,
+        workspace,
+        dispatch,
+        show_formulas,
+    )
+}
+
+/// Like [`grid_surface`], but the caller supplies the [`GridSelectionState`] so
+/// it can also read and drive the selected cell — e.g. a formula bar mounted
+/// above the grid (K3) that shows the selected cell's source text and commits
+/// edits to the same anchor the in-grid editor observes.
+pub(crate) fn grid_surface_with_selection(
+    selection: GridSelectionState,
+    grid_id: NodeId,
+    workspace: ReadSignal<WorkspaceState>,
+    dispatch: Arc<dyn Dispatcher>,
+    show_formulas: Signal<bool>,
+) -> AnyView {
     // The sheet extent is fixed, so the canvas size is read once (untracked); the
     // scroll handler clamps windows to it.
     let (max_rows, max_cols) = workspace
@@ -490,11 +510,6 @@ pub fn grid_surface(
         .map_or((1, 1), |grid| (grid.max_rows, grid.max_cols));
     let canvas_height = f64::from(max_rows.min(GRID_VIRTUAL_CELL_CAP)) * GRID_ROW_HEIGHT_PX;
     let canvas_width = f64::from(max_cols.min(GRID_VIRTUAL_CELL_CAP)) * GRID_COL_WIDTH_PX;
-
-    // K2's single-anchor selection/edit state (§C.3): one per mounted
-    // surface, threaded into every cell's click handler and the keyboard
-    // model below.
-    let selection = GridSelectionState::new();
 
     // Reactive: only the windowed cells re-render when the projection changes; the
     // surrounding scroll box is created once, so scrollTop survives a re-scope.

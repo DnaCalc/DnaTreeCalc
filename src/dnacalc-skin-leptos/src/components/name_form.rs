@@ -4,15 +4,18 @@
 //! Three pieces, imitating N2's `cell_entry.rs` shape (pure classification fn
 //! + shared component + shared CSS):
 //!
-//! - [`NameForm`]: the `+ name` two-field inline form (name, body). On
-//!   commit it dispatches **two** intents in order — `EnterGridCell` at the
-//!   allocated `_names` backing cell, then `SetDefinedName{Static}` over it
-//!   (§B.3's Decision paragraph: two dispatched intents, two undo steps,
-//!   accepted v1) — or `SetDefinedName{Dynamic}` alone when the "advanced:
-//!   dynamic" flag is set (no backing cell for a dynamic name).
-//! - [`classify_name_commit`] / [`NameCommitResult`]: the duplicate-name
-//!   pre-check (see below) plus the receipt classification for the two-step
-//!   creation flow.
+//! - [`NameForm`]: the `+ name` two-field inline form (name, body). On commit
+//!   the static path dispatches a **single** atomic `CreateNamedValue` intent —
+//!   host-core owns the `_names` backing-cell allocation, the cell write, and
+//!   the Workbook-scope name definition, so the skin never guesses a backing
+//!   cell it has no session handle to resolve. (The older two-intent
+//!   `EnterGridCell{grid:"_names"}` + `SetDefinedName` flow used a symbolic
+//!   `"_names"` grid the dispatcher cannot resolve, so it failed under
+//!   `?wb=1` — host-owning the whole creation is the fix.) The "advanced:
+//!   dynamic" flag instead dispatches `SetDefinedName{Dynamic}` alone (no
+//!   backing cell for a dynamic name).
+//! - [`NameCommitResult`]: the duplicate-name pre-check (see below) plus the
+//!   receipt classification for the creation flow.
 //! - [`RenameNameForm`]: rename-inline, dispatching **only**
 //!   `RenameDefinedName` (acceptance 3 — no re-allocation, no `SetDefinedName`
 //!   involved in a rename).
@@ -51,9 +54,7 @@ use dnacalc_skin_ir::identity::NodeId;
 use dnacalc_skin_ir::intent::{
     DefinedNameTargetIntent, Dispatcher, IntentError, IntentReceipt, WorkspaceIntent,
 };
-use dnacalc_skin_ir::workspace::{
-    DefinedNameScopeProjection, DefinedNamesProjection, GridRectProjection,
-};
+use dnacalc_skin_ir::workspace::{DefinedNameScopeProjection, DefinedNamesProjection};
 
 /// The `_names` backing sheet's well-known grid id, as the notebook skin
 /// addresses it (§B.7/F.4: a hidden-in-notebook, ordinary, append-only
@@ -62,44 +63,6 @@ use dnacalc_skin_ir::workspace::{
 /// sees the engine's opaque `sheet:{u64}` address (§A.2), so this is the
 /// client-side name for the same sheet host-core resolves by display name.
 pub const NAMES_BACKING_GRID: &str = "_names";
-
-/// Compute the next free `_names` backing cell **client-side**, from the
-/// workspace's own [`DefinedNamesProjection`] mirror — the read-side twin of
-/// `dnacalc-host-core::WorkbookSession::allocate_next_names_backing_cell`
-/// (same policy: highest existing static target row on the `_names` grid,
-/// plus one; row 1 if none exist yet). Column A always (§B.7).
-///
-/// This is a **preview**, not a reservation: the skin has no session handle,
-/// only the [`Dispatcher`] seam (§A.5), so it cannot itself create the
-/// `_names` sheet or hold a lock on the next row. The host-core function of
-/// the same name is authoritative once dispatch resolves `EnterGridCell`
-/// against a lazily-created `_names` sheet (an H-track wiring note, not N3's
-/// scope — N3 owns the notebook-side call site and the host-core function,
-/// not the live dispatch plumbing connecting them).
-#[must_use]
-pub fn next_names_backing_cell(defined_names: &DefinedNamesProjection) -> (NodeId, u32, u32) {
-    let grid = NodeId::new(NAMES_BACKING_GRID);
-    let next_row = defined_names
-        .entries
-        .iter()
-        .filter_map(|entry| {
-            let DefinedNameScopeProjection::Sheet(scope_grid) = &entry.scope else {
-                return None;
-            };
-            if scope_grid.as_str() != NAMES_BACKING_GRID {
-                return None;
-            }
-            match &entry.target {
-                dnacalc_skin_ir::workspace::DefinedNameTargetProjection::Static(rect) => {
-                    Some(rect.bottom_row)
-                }
-                dnacalc_skin_ir::workspace::DefinedNameTargetProjection::Dynamic { .. } => None,
-            }
-        })
-        .max()
-        .map_or(1, |highest_row| highest_row + 1);
-    (grid, next_row, 1)
-}
 
 /// A duplicate-name check against the workspace's own name catalog (see the
 /// module doc's ENGINE-HONESTY note): `true` when `name` is already defined
@@ -116,8 +79,9 @@ pub fn name_already_defined(defined_names: &DefinedNamesProjection, name: &str) 
 /// when the pre-check passes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NameCommitResult {
-    /// Both intents were dispatched and accepted (or the single `SetDefinedName`
-    /// for a dynamic name).
+    /// The creation intent was dispatched and accepted — the atomic
+    /// `CreateNamedValue` for a static name, or `SetDefinedName{Dynamic}` for a
+    /// dynamic name.
     Committed,
     /// The client-side duplicate-name pre-check rejected the commit before any
     /// intent was dispatched — the honest non-engine rejection path (module
@@ -130,18 +94,20 @@ pub enum NameCommitResult {
     EngineRejected { message: String },
 }
 
-/// Commit a **static** name creation (§B.3's Name loop, the Decision
-/// paragraph): pre-check the name for a client-side duplicate, then dispatch
-/// `EnterGridCell` at the allocated `_names` cell followed by
-/// `SetDefinedName{Static}` over it — two intents, in that order, whenever the
-/// pre-check passes. Returns the classified result; the caller (the form
-/// component) reacts to it (stay open + show message on any rejection, close
-/// on `Committed`).
+/// Commit a **static** name creation (§B.3's Name loop): pre-check the name
+/// for a client-side duplicate, then dispatch a **single** atomic
+/// `CreateNamedValue` intent carrying the name and the typed value/body text.
+/// Host-core owns the whole named-value creation — it finds-or-lazily-creates
+/// the `_names` backing sheet, writes the value into the next append row, and
+/// defines the name at Workbook scope over that cell — so the skin never
+/// guesses a backing cell it has no session handle to resolve. Returns the
+/// classified result; the caller (the form component) reacts to it (stay open
+/// + show message on any rejection, close on `Committed`).
 ///
-/// Acceptance (1): the two intents are dispatched **in this order** — callers
-/// asserting against a `RecordingDispatcher`/`RecordingPublisher`-style log
-/// see `EnterGridCell` immediately followed by `SetDefinedName` for one
-/// commit.
+/// This replaces the older two-intent `EnterGridCell{grid:"_names"}` +
+/// `SetDefinedName{Static}` flow, whose symbolic `"_names"` grid the dispatcher
+/// cannot resolve (host-core's `_names` sheet has a real `sheet:{node}` grid
+/// id) — the bug this fix closes.
 pub fn commit_static_name(
     dispatch: &dyn Dispatcher,
     defined_names: &DefinedNamesProjection,
@@ -154,30 +120,12 @@ pub fn commit_static_name(
         };
     }
 
-    let (grid, row, col) = next_names_backing_cell(defined_names);
-
-    let enter_receipt = dispatch.dispatch(WorkspaceIntent::EnterGridCell {
-        grid: grid.clone(),
-        row,
-        col,
-        text: body_text.to_string(),
-    });
-    if !enter_receipt.accepted {
-        return engine_rejection_result(&enter_receipt);
-    }
-
-    let define_receipt = dispatch.dispatch(WorkspaceIntent::SetDefinedName {
-        scope: DefinedNameScopeProjection::Sheet(grid),
+    let receipt = dispatch.dispatch(WorkspaceIntent::CreateNamedValue {
         name: name.to_string(),
-        target: DefinedNameTargetIntent::Static(GridRectProjection {
-            top_row: row,
-            left_col: col,
-            bottom_row: row,
-            right_col: col,
-        }),
+        value_text: body_text.to_string(),
     });
-    if !define_receipt.accepted {
-        return engine_rejection_result(&define_receipt);
+    if !receipt.accepted {
+        return engine_rejection_result(&receipt);
     }
 
     NameCommitResult::Committed
@@ -503,7 +451,7 @@ pub const NAME_FORM_CSS: &str = r#"
 mod tests {
     use super::*;
     use dnacalc_skin_ir::dispatcher::RecordingDispatcher;
-    use dnacalc_skin_ir::workspace::DefinedNameProjection;
+    use dnacalc_skin_ir::workspace::{DefinedNameProjection, GridRectProjection};
 
     fn rect(row: u32, col: u32) -> GridRectProjection {
         GridRectProjection {
@@ -523,11 +471,13 @@ mod tests {
         }
     }
 
-    /// N3 acceptance (1): creating `rate = 0.065` dispatches `EnterGridCell`
-    /// then `SetDefinedName` with the allocated `_names` cell — recorded
-    /// order asserted.
+    /// N3 acceptance (1): creating `rate = 0.065` dispatches exactly one atomic
+    /// `CreateNamedValue` intent carrying the name and the typed value text.
+    /// Host-core owns the `_names` backing-cell allocation, so the skin no
+    /// longer emits the old two-intent `EnterGridCell` + `SetDefinedName` pair
+    /// (which guessed a backing cell the skin cannot resolve — the `?wb=1` bug).
     #[test]
-    fn commit_static_name_dispatches_enter_then_set_defined_name_in_order() {
+    fn commit_static_name_dispatches_single_create_named_value() {
         let dispatcher = RecordingDispatcher::new();
         let catalog = DefinedNamesProjection::default();
 
@@ -535,61 +485,13 @@ mod tests {
         assert_eq!(result, NameCommitResult::Committed);
 
         let intents = dispatcher.intents();
-        assert_eq!(intents.len(), 2, "exactly two intents dispatched");
+        assert_eq!(intents.len(), 1, "exactly one intent dispatched");
         match &intents[0] {
-            WorkspaceIntent::EnterGridCell {
-                grid,
-                row,
-                col,
-                text,
-            } => {
-                assert_eq!(grid, &NodeId::new(NAMES_BACKING_GRID));
-                assert_eq!((*row, *col), (1, 1), "first allocation lands on row 1");
-                assert_eq!(text, "0.065");
-            }
-            other => panic!("expected EnterGridCell first, got {other:?}"),
-        }
-        match &intents[1] {
-            WorkspaceIntent::SetDefinedName {
-                scope,
-                name,
-                target,
-            } => {
-                assert_eq!(
-                    scope,
-                    &DefinedNameScopeProjection::Sheet(NodeId::new(NAMES_BACKING_GRID))
-                );
+            WorkspaceIntent::CreateNamedValue { name, value_text } => {
                 assert_eq!(name, "rate");
-                assert_eq!(
-                    target,
-                    &DefinedNameTargetIntent::Static(rect(1, 1)),
-                    "SetDefinedName targets the exact cell EnterGridCell just wrote"
-                );
+                assert_eq!(value_text, "0.065", "the typed body is the named value");
             }
-            other => panic!("expected SetDefinedName second, got {other:?}"),
-        }
-    }
-
-    /// N3: the allocation appends past an existing name's backing row rather
-    /// than colliding with it.
-    #[test]
-    fn commit_static_name_appends_past_existing_names() {
-        let dispatcher = RecordingDispatcher::new();
-        let mut catalog = DefinedNamesProjection::default();
-        catalog.entries.push(static_name("existing", 1));
-
-        commit_static_name(&dispatcher, &catalog, "second", "1");
-
-        let intents = dispatcher.intents();
-        match &intents[0] {
-            WorkspaceIntent::EnterGridCell { row, col, .. } => {
-                assert_eq!(
-                    (*row, *col),
-                    (2, 1),
-                    "appends at row 2, not colliding with row 1"
-                );
-            }
-            other => panic!("expected EnterGridCell, got {other:?}"),
+            other => panic!("expected a single CreateNamedValue, got {other:?}"),
         }
     }
 
@@ -666,15 +568,6 @@ mod tests {
             }
             other => panic!("expected SetDefinedName, got {other:?}"),
         }
-    }
-
-    /// `next_names_backing_cell` on an empty catalog allocates row 1.
-    #[test]
-    fn next_names_backing_cell_starts_at_row_one() {
-        let catalog = DefinedNamesProjection::default();
-        let (grid, row, col) = next_names_backing_cell(&catalog);
-        assert_eq!(grid, NodeId::new(NAMES_BACKING_GRID));
-        assert_eq!((row, col), (1, 1));
     }
 
     /// `name_already_defined` checks across every scope, not just `_names`.

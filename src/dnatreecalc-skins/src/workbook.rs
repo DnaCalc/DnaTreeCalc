@@ -103,10 +103,10 @@ fn WorkbookView(cx: SkinContext<WorkbookState>) -> impl IntoView {
     let workspace = cx.workspace;
     let dispatch: Arc<dyn dnatreecalc_skin_framework::Dispatcher> = cx.dispatch.clone();
 
-    // K1b ships no show-formulas toggle for the workbook shell (K3 owns the
-    // formula bar); the grid still supports the mode end-to-end via the
-    // shared component, so wiring up a toggle later is additive.
-    let show_formulas = Signal::from(false);
+    // K3: the workbook shell now owns the show-formulas toggle (in the formula
+    // bar) — the grid renders `authored.source_text` instead of values when on.
+    let show_formulas_state = RwSignal::new(false);
+    let show_formulas = Signal::derive(move || show_formulas_state.get());
 
     let active_sheet: RwSignal<Option<NodeId>> = RwSignal::new(
         workspace
@@ -118,6 +118,34 @@ fn WorkbookView(cx: SkinContext<WorkbookState>) -> impl IntoView {
     // Which tab (if any) is being renamed inline, and the shared edit buffer.
     let renaming: RwSignal<Option<NodeId>> = RwSignal::new(None);
     let rename_buffer = RwSignal::new(String::new());
+
+    // K3: the selected cell (the SAME anchor the in-grid editor drives, lifted
+    // here so the formula bar reads and commits to it) and the formula bar's
+    // own edit buffer.
+    let selection = crate::grid_canvas::GridSelectionState::new();
+    let formula_buffer = RwSignal::new(String::new());
+
+    // Sync the formula-bar buffer to the selected cell's authored text whenever
+    // the selection or the active sheet changes (NOT on every recalc — reading
+    // the workspace untracked keeps typing in the bar from being clobbered).
+    Effect::new(move |_| {
+        let row = selection.anchor_row.get();
+        let col = selection.anchor_col.get();
+        let active = active_sheet.get();
+        let text = active
+            .and_then(|gid| {
+                let ws = workspace.get_untracked();
+                let grid = ws.grids.get(&gid)?;
+                let cell = grid.cells.iter().find(|c| c.row == row && c.col == col)?;
+                let authored = cell.authored.as_ref()?;
+                authored
+                    .source_text
+                    .clone()
+                    .or_else(|| authored.literal_text.clone())
+            })
+            .unwrap_or_default();
+        formula_buffer.set(text);
+    });
 
     // Keep the active sheet valid: snap to the first sheet whenever the current
     // one vanishes (a delete) or none is selected yet.
@@ -133,17 +161,29 @@ fn WorkbookView(cx: SkinContext<WorkbookState>) -> impl IntoView {
     });
 
     let grid_dispatch = dispatch.clone();
-    let grid_area = move || {
-        active_sheet.get().and_then(|gid| {
-            workspace.get_untracked().grids.contains_key(&gid).then(|| {
-                crate::grid_canvas::grid_surface(
-                    gid,
-                    workspace,
-                    grid_dispatch.clone(),
-                    show_formulas,
-                )
-            })
-        })
+
+    // K3 formula bar: commit the buffer to the selected cell (EnterGridCell —
+    // literal or formula, host-core interprets), leaving the anchor where it is.
+    let formula_dispatch = dispatch.clone();
+    let commit_formula = move || {
+        if let Some(gid) = active_sheet.get_untracked() {
+            let row = selection.anchor_row.get_untracked();
+            let col = selection.anchor_col.get_untracked();
+            let text = formula_buffer.get_untracked();
+            formula_dispatch.dispatch(WorkspaceIntent::EnterGridCell {
+                grid: gid,
+                row,
+                col,
+                text,
+            });
+        }
+    };
+    let formula_keydown = move |ev: leptos::ev::KeyboardEvent| {
+        if ev.key() == "Enter" {
+            ev.prevent_default();
+            ev.stop_propagation();
+            commit_formula();
+        }
     };
 
     let tab_dispatch = dispatch.clone();
@@ -310,7 +350,52 @@ fn WorkbookView(cx: SkinContext<WorkbookState>) -> impl IntoView {
     view! {
         <style>{css}</style>
         <section class="dtc-workbook" aria-label="Workbook">
-            <div class="dtc-workbook__grid">{grid_area}</div>
+            <div class="dtc-workbook__formula-bar">
+                <span class="dtc-workbook__namebox" aria-label="Cell reference">
+                    {move || cell_ref_label(selection.anchor_col.get(), selection.anchor_row.get())}
+                </span>
+                <span class="dtc-workbook__fx-mark" aria-hidden="true">"="</span>
+                <input
+                    class="dtc-workbook__formula-input"
+                    type="text"
+                    prop:value=move || formula_buffer.get()
+                    on:input=move |ev| formula_buffer.set(event_target_value(&ev))
+                    on:keydown=formula_keydown
+                    aria-label="Formula bar"
+                />
+                <button
+                    class="dtc-workbook__fx-toggle"
+                    class:dtc-workbook__fx-toggle--on=move || show_formulas_state.get()
+                    title="Toggle show formulas"
+                    on:click=move |_| show_formulas_state.update(|value| *value = !*value)
+                >"fx"</button>
+            </div>
+            <div class="dtc-workbook__grid">
+                <For
+                    each=move || workspace.get().sheets.clone()
+                    key=|sheet| sheet.grid_node_id.clone()
+                    children=move |sheet| {
+                        let gid = sheet.grid_node_id.clone();
+                        let vis_gid = gid.clone();
+                        view! {
+                            <div
+                                class="dtc-workbook__sheet"
+                                class:dtc-workbook__sheet--hidden=move || {
+                                    active_sheet.get().as_ref() != Some(&vis_gid)
+                                }
+                            >
+                                {crate::grid_canvas::grid_surface_with_selection(
+                                    selection,
+                                    gid,
+                                    workspace,
+                                    grid_dispatch.clone(),
+                                    show_formulas,
+                                )}
+                            </div>
+                        }
+                    }
+                />
+            </div>
             <div class="dtc-workbook__tabs" role="tablist">
                 {tabs}
                 <button class="dtc-workbook__tab-add" title="Add sheet" on:click=on_add>"+"</button>
@@ -319,7 +404,49 @@ fn WorkbookView(cx: SkinContext<WorkbookState>) -> impl IntoView {
     }
 }
 
+/// Render an A1-style cell reference label (`A1`, `B7`, `AA10`) from 1-based
+/// column/row for the formula bar's name box.
+fn cell_ref_label(col: u32, row: u32) -> String {
+    let mut n = col;
+    let mut letters = String::new();
+    while n > 0 {
+        let rem = ((n - 1) % 26) as u8;
+        letters.insert(0, (b'A' + rem) as char);
+        n = (n - 1) / 26;
+    }
+    if letters.is_empty() {
+        letters.push('A');
+    }
+    format!("{letters}{row}")
+}
+
 const WORKBOOK_CSS: &str = r#"
+.dtc-workbook__formula-bar {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 6px;
+  padding: 4px 8px; border-bottom: 1px solid var(--dtc-border, #d0d0d0);
+  background: var(--dtc-surface-muted, #f7f7f7);
+}
+.dtc-workbook__namebox {
+  min-width: 52px; padding: 3px 6px; font-size: 12px; font-weight: 600;
+  text-align: center; border: 1px solid var(--dtc-border, #d0d0d0);
+  border-radius: 3px; background: var(--dtc-surface, #fff); color: var(--dtc-text, #111);
+}
+.dtc-workbook__fx-mark { color: var(--dtc-text-muted, #999); font-style: italic; }
+.dtc-workbook__formula-input {
+  flex: 1 1 auto; min-width: 0; padding: 4px 8px; font-size: 13px;
+  font-family: var(--dtc-mono, ui-monospace, "SFMono-Regular", monospace);
+  border: 1px solid var(--dtc-border, #d0d0d0); border-radius: 3px;
+  background: var(--dtc-surface, #fff); color: var(--dtc-text, #111);
+}
+.dtc-workbook__fx-toggle {
+  flex: 0 0 auto; padding: 3px 9px; font-size: 12px; font-style: italic;
+  border: 1px solid var(--dtc-border, #d0d0d0); border-radius: 3px;
+  background: var(--dtc-surface, #fff); color: var(--dtc-text-muted, #888); cursor: pointer;
+}
+.dtc-workbook__fx-toggle--on {
+  background: var(--dtc-accent, #2563eb); color: #fff;
+  border-color: var(--dtc-accent, #2563eb);
+}
 .dtc-workbook {
   display: flex; flex-direction: column; height: 100%; min-height: 0;
   background: var(--dtc-surface); color: var(--dtc-text);
@@ -328,6 +455,8 @@ const WORKBOOK_CSS: &str = r#"
 .dtc-workbook__grid {
   flex: 1 1 auto; min-height: 0; overflow: auto; padding: 8px 12px;
 }
+.dtc-workbook__sheet { height: 100%; }
+.dtc-workbook__sheet--hidden { display: none; }
 .dtc-workbook__tabs {
   flex: 0 0 auto; display: flex; align-items: stretch; gap: 2px;
   padding: 3px 6px 0; border-top: 1px solid var(--dtc-border, #d0d0d0);

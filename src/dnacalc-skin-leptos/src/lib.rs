@@ -36,7 +36,6 @@ pub use components::cell_entry::{
 pub use components::name_form::{
     NAME_FORM_CSS, NAMES_BACKING_GRID, NameCommitResult, NameForm, NameFormFeedback,
     RenameNameForm, commit_dynamic_name, commit_rename, commit_static_name, name_already_defined,
-    next_names_backing_cell,
 };
 pub use in_memory_dispatcher::InMemoryDispatcher;
 pub use keybinding::{
