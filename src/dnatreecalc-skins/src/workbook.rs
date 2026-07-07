@@ -15,14 +15,16 @@
 //! `grid_canvas::grid_surface` — this shell only needs to concatenate the
 //! shared editor's [`dnatreecalc_skin_framework::CELL_ENTRY_CSS`] alongside
 //! `GRID_CANVAS_CSS` so the mounted `CellEntryEditor`/`EntryDiagnostics`
-//! render styled. No tabs (K4), no formula bar (K3) yet — `show_formulas`
-//! stays `false` until K3 gives the workbook shell a toggle to drive.
+//! render styled. K4 (§C.5) adds the Excel-style sheet-tab strip below the
+//! active sheet's grid — switch / add / rename / delete / move, dispatching the
+//! H7 sheet-lifecycle intents. The formula bar (K3) is still to come;
+//! `show_formulas` stays `false` until K3 gives the shell a toggle to drive.
 
 use std::sync::Arc;
 
 use dnatreecalc_skin_framework::{
-    SkinCapabilities, SkinCategory, SkinContext, SkinHandle, SkinId, SkinManifest, SkinState,
-    WorkspaceSkin,
+    NodeId, SkinCapabilities, SkinCategory, SkinContext, SkinHandle, SkinId, SkinManifest,
+    SkinState, WorkspaceIntent, WorkspaceSkin,
 };
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -86,9 +88,16 @@ impl WorkspaceSkin for WorkbookLens {
     }
 }
 
-/// Render every grid-backed sheet node through the shared grid canvas. Each
-/// surface is built once (untracked) so its scroll box persists across
-/// projection updates, exactly as the SheetLens read path does.
+/// Render the active sheet through the shared grid canvas, with an Excel-style
+/// tab strip (K4) below it. The tab strip is reactive over the workbook's
+/// `sheets` projection; each tab switches the active sheet, and the strip
+/// dispatches the H7 sheet-lifecycle intents (add / rename / delete / move) —
+/// the `WorkbookHostDispatcher` republishes the full snapshot on each accepted
+/// mutation, so the strip and the grid stay in step.
+///
+/// Only the active sheet's surface is mounted; it is rebuilt only when the
+/// active sheet changes (not on every edit), so scroll persists within a sheet
+/// while cell values keep updating through the shared component.
 #[component]
 fn WorkbookView(cx: SkinContext<WorkbookState>) -> impl IntoView {
     let workspace = cx.workspace;
@@ -98,15 +107,199 @@ fn WorkbookView(cx: SkinContext<WorkbookState>) -> impl IntoView {
     // formula bar); the grid still supports the mode end-to-end via the
     // shared component, so wiring up a toggle later is additive.
     let show_formulas = Signal::from(false);
-    let grid_surfaces = workspace
-        .get_untracked()
-        .grids
-        .keys()
-        .cloned()
-        .map(|grid_id| {
-            crate::grid_canvas::grid_surface(grid_id, workspace, dispatch.clone(), show_formulas)
+
+    let active_sheet: RwSignal<Option<NodeId>> = RwSignal::new(
+        workspace
+            .get_untracked()
+            .sheets
+            .first()
+            .map(|sheet| sheet.grid_node_id.clone()),
+    );
+    // Which tab (if any) is being renamed inline, and the shared edit buffer.
+    let renaming: RwSignal<Option<NodeId>> = RwSignal::new(None);
+    let rename_buffer = RwSignal::new(String::new());
+
+    // Keep the active sheet valid: snap to the first sheet whenever the current
+    // one vanishes (a delete) or none is selected yet.
+    Effect::new(move |_| {
+        let sheets = workspace.get().sheets;
+        let still_valid = active_sheet
+            .get_untracked()
+            .as_ref()
+            .is_some_and(|gid| sheets.iter().any(|sheet| &sheet.grid_node_id == gid));
+        if !still_valid {
+            active_sheet.set(sheets.first().map(|sheet| sheet.grid_node_id.clone()));
+        }
+    });
+
+    let grid_dispatch = dispatch.clone();
+    let grid_area = move || {
+        active_sheet.get().and_then(|gid| {
+            workspace.get_untracked().grids.contains_key(&gid).then(|| {
+                crate::grid_canvas::grid_surface(
+                    gid,
+                    workspace,
+                    grid_dispatch.clone(),
+                    show_formulas,
+                )
+            })
         })
-        .collect::<Vec<_>>();
+    };
+
+    let tab_dispatch = dispatch.clone();
+    let tabs = move || {
+        let sheets = workspace.get().sheets;
+        let active = active_sheet.get();
+        let renaming_now = renaming.get();
+        let count = sheets.len();
+        sheets
+            .into_iter()
+            .enumerate()
+            .map(|(index, sheet)| {
+                let gid = sheet.grid_node_id.clone();
+                let name = sheet.display_name.clone();
+                let is_active = active.as_ref() == Some(&gid);
+
+                if renaming_now.as_ref() == Some(&gid) {
+                    let commit_dispatch = tab_dispatch.clone();
+                    let commit_gid = gid.clone();
+                    let commit = move || {
+                        let new_name = rename_buffer.get_untracked().trim().to_string();
+                        if !new_name.is_empty() {
+                            commit_dispatch.dispatch(WorkspaceIntent::RenameSheet {
+                                grid: commit_gid.clone(),
+                                new_name,
+                            });
+                        }
+                        renaming.set(None);
+                    };
+                    let commit_on_key = commit.clone();
+                    let on_keydown = move |ev: leptos::ev::KeyboardEvent| {
+                        ev.stop_propagation();
+                        match ev.key().as_str() {
+                            "Enter" => {
+                                ev.prevent_default();
+                                commit_on_key();
+                            }
+                            "Escape" => {
+                                ev.prevent_default();
+                                renaming.set(None);
+                            }
+                            _ => {}
+                        }
+                    };
+                    return view! {
+                        <input
+                            class="dtc-workbook__tab-rename"
+                            type="text"
+                            prop:value=move || rename_buffer.get()
+                            on:input=move |ev| rename_buffer.set(event_target_value(&ev))
+                            on:keydown=on_keydown
+                            on:blur=move |_| commit()
+                            aria-label="Rename sheet"
+                        />
+                    }
+                    .into_any();
+                }
+
+                let select_dispatch = tab_dispatch.clone();
+                let select_gid = gid.clone();
+                let on_click = move |_| {
+                    active_sheet.set(Some(select_gid.clone()));
+                    select_dispatch.dispatch(WorkspaceIntent::SelectNode(Some(select_gid.clone())));
+                };
+                let rename_gid = gid.clone();
+                let rename_name = name.clone();
+                let on_dblclick = move |_| {
+                    rename_buffer.set(rename_name.clone());
+                    renaming.set(Some(rename_gid.clone()));
+                };
+
+                let move_left = (index > 0).then(|| {
+                    let move_dispatch = tab_dispatch.clone();
+                    let move_gid = gid.clone();
+                    view! {
+                        <button
+                            class="dtc-workbook__tab-move"
+                            title="Move sheet left"
+                            on:click=move |ev| {
+                                ev.stop_propagation();
+                                move_dispatch.dispatch(WorkspaceIntent::MoveSheet {
+                                    grid: move_gid.clone(),
+                                    new_position: index as u32 - 1,
+                                });
+                            }
+                        >"‹"</button>
+                    }
+                });
+                let move_right = (index + 1 < count).then(|| {
+                    let move_dispatch = tab_dispatch.clone();
+                    let move_gid = gid.clone();
+                    view! {
+                        <button
+                            class="dtc-workbook__tab-move"
+                            title="Move sheet right"
+                            on:click=move |ev| {
+                                ev.stop_propagation();
+                                move_dispatch.dispatch(WorkspaceIntent::MoveSheet {
+                                    grid: move_gid.clone(),
+                                    new_position: index as u32 + 1,
+                                });
+                            }
+                        >"›"</button>
+                    }
+                });
+                // A workbook keeps at least one sheet, so the close affordance
+                // only appears when a delete would leave one behind.
+                let delete = (count > 1).then(|| {
+                    let delete_dispatch = tab_dispatch.clone();
+                    let delete_gid = gid.clone();
+                    view! {
+                        <button
+                            class="dtc-workbook__tab-close"
+                            title="Delete sheet"
+                            on:click=move |ev| {
+                                ev.stop_propagation();
+                                delete_dispatch
+                                    .dispatch(WorkspaceIntent::DeleteSheet { grid: delete_gid.clone() });
+                            }
+                        >"×"</button>
+                    }
+                });
+
+                let class = if is_active {
+                    "dtc-workbook__tab dtc-workbook__tab--active"
+                } else {
+                    "dtc-workbook__tab"
+                };
+                view! {
+                    <div
+                        class=class
+                        role="tab"
+                        aria-selected=if is_active { "true" } else { "false" }
+                        on:click=on_click
+                        on:dblclick=on_dblclick
+                    >
+                        {move_left}
+                        <span class="dtc-workbook__tab-name">{name}</span>
+                        {move_right}
+                        {delete}
+                    </div>
+                }
+                .into_any()
+            })
+            .collect_view()
+    };
+
+    let add_dispatch = dispatch.clone();
+    let on_add = move |_| {
+        add_dispatch.dispatch(WorkspaceIntent::AddSheet { name: None });
+        // The dispatcher republishes synchronously, so the new sheet is already
+        // in the projection — open it.
+        if let Some(last) = workspace.get_untracked().sheets.last() {
+            active_sheet.set(Some(last.grid_node_id.clone()));
+        }
+    };
 
     let css = format!(
         "{}\n{}\n{WORKBOOK_CSS}",
@@ -117,7 +310,11 @@ fn WorkbookView(cx: SkinContext<WorkbookState>) -> impl IntoView {
     view! {
         <style>{css}</style>
         <section class="dtc-workbook" aria-label="Workbook">
-            {grid_surfaces}
+            <div class="dtc-workbook__grid">{grid_area}</div>
+            <div class="dtc-workbook__tabs" role="tablist">
+                {tabs}
+                <button class="dtc-workbook__tab-add" title="Add sheet" on:click=on_add>"+"</button>
+            </div>
         </section>
     }
 }
@@ -127,6 +324,39 @@ const WORKBOOK_CSS: &str = r#"
   display: flex; flex-direction: column; height: 100%; min-height: 0;
   background: var(--dtc-surface); color: var(--dtc-text);
   font: 13px/1.4 var(--dtc-font, system-ui, sans-serif);
-  padding: 8px 12px; overflow: auto;
+}
+.dtc-workbook__grid {
+  flex: 1 1 auto; min-height: 0; overflow: auto; padding: 8px 12px;
+}
+.dtc-workbook__tabs {
+  flex: 0 0 auto; display: flex; align-items: stretch; gap: 2px;
+  padding: 3px 6px 0; border-top: 1px solid var(--dtc-border, #d0d0d0);
+  background: var(--dtc-surface-muted, #f3f3f3); overflow-x: auto;
+}
+.dtc-workbook__tab {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 8px; cursor: pointer; user-select: none;
+  border: 1px solid var(--dtc-border, #d0d0d0); border-bottom: none;
+  border-radius: 4px 4px 0 0; background: var(--dtc-surface-muted, #eaeaea);
+  color: var(--dtc-text-muted, #555); font-size: 12px; white-space: nowrap;
+}
+.dtc-workbook__tab--active {
+  background: var(--dtc-surface, #fff); color: var(--dtc-text, #111);
+  font-weight: 600;
+}
+.dtc-workbook__tab-name { padding: 0 2px; }
+.dtc-workbook__tab-move, .dtc-workbook__tab-close, .dtc-workbook__tab-add {
+  border: none; background: transparent; cursor: pointer;
+  color: var(--dtc-text-muted, #888); font-size: 12px; line-height: 1;
+  padding: 2px 4px; border-radius: 3px;
+}
+.dtc-workbook__tab-move:hover, .dtc-workbook__tab-close:hover,
+.dtc-workbook__tab-add:hover {
+  background: var(--dtc-border, #ddd); color: var(--dtc-text, #111);
+}
+.dtc-workbook__tab-add { align-self: center; font-size: 15px; }
+.dtc-workbook__tab-rename {
+  padding: 4px 6px; margin: 0; font-size: 12px; width: 8ch;
+  border: 1px solid var(--dtc-accent, #2563eb); border-radius: 4px 4px 0 0;
 }
 "#;

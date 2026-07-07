@@ -121,6 +121,9 @@ pub fn workspace_state_from_model(model: &WorkspaceModel) -> WorkspaceState {
         // H5 compiler-forced field (this file is outside H5's owned scope):
         // the tree-model fixture projection has no CalcMode concept.
         workbook_calc: Default::default(),
+        // Phase 1 (H7) compiler-forced field: the tree model has no sheets; a
+        // workbook session's live projection fills this instead.
+        sheets: Vec::new(),
         clipboard: None,
         diagnostics: Vec::new(),
     }

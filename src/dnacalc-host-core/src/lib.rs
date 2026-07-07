@@ -196,6 +196,20 @@ impl DocumentSession {
             (DocumentSession::Workbook(session), WorkspaceIntent::Recalculate) => {
                 dispatch_recalculate(session)
             }
+            (DocumentSession::Workbook(session), WorkspaceIntent::AddSheet { name }) => {
+                dispatch_add_sheet(session, name)
+            }
+            (
+                DocumentSession::Workbook(session),
+                WorkspaceIntent::RenameSheet { grid, new_name },
+            ) => dispatch_rename_sheet(session, &grid, &new_name),
+            (DocumentSession::Workbook(session), WorkspaceIntent::DeleteSheet { grid }) => {
+                dispatch_delete_sheet(session, &grid)
+            }
+            (
+                DocumentSession::Workbook(session),
+                WorkspaceIntent::MoveSheet { grid, new_position },
+            ) => dispatch_move_sheet(session, &grid, new_position),
             (session, intent) => IntentReceipt::rejected(IntentError::UnsupportedByModel {
                 intent: workspace_intent_kind(&intent).to_string(),
                 model: session.model_name().to_string(),
@@ -401,6 +415,98 @@ fn dispatch_recalculate(session: &mut WorkbookSession) -> IntentReceipt {
     match session.recalculate() {
         Ok(outcome) => calc_state_changed_receipt(session, outcome.tick_id),
         Err(error) => IntentReceipt::rejected(present_calc_rejection(&error)),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Sheet-lifecycle dispatch (Phase 1 Part A): add/rename/delete/move sheets.
+// Mirrors the defined-name dispatch pattern — each verb succeeds into a
+// complete-replacement `SheetsChanged` delta built from a fresh read, or a
+// typed rejection.
+// ---------------------------------------------------------------------------
+
+/// Build the `SheetsChanged` delta carrying the workbook's complete,
+/// freshly-read sheet list (§A.3: complete-replacement patch, matching
+/// `DefinedNamesChanged`/`CalcStateChanged`).
+fn sheets_changed_receipt(session: &WorkbookSession) -> IntentReceipt {
+    match session.sheet_projections() {
+        Ok(sheets) => IntentReceipt::accepted().with_delta(WorkspaceDelta {
+            from_seq: 0,
+            to_seq: 0,
+            changes: vec![WorkspaceDeltaChange::SheetsChanged(sheets)],
+        }),
+        Err(error) => IntentReceipt::rejected(present_sheet_rejection(&error)),
+    }
+}
+
+/// Map a rejected sheet-lifecycle write to its typed [`IntentError`]. The
+/// engine's sheet errors (`SheetPositionOutOfRange`, `SheetHasNonMetaChildren`,
+/// a duplicate name, an unknown node) have no dedicated skin-IR variant yet, so
+/// they present as the documented `GenericEngineRejection` fallback — the same
+/// decision `present.rs` makes for unmapped engine errors, never a panic.
+fn present_sheet_rejection(error: &WorkbookSessionError) -> IntentError {
+    IntentError::GenericEngineRejection {
+        debug: format!("{error:?}"),
+    }
+}
+
+/// The next default sheet name (`Sheet{n+1}`) for an `AddSheet { name: None }`,
+/// computed from the current sheet count (a fresh workbook with no sheets
+/// yields `Sheet1`).
+fn default_sheet_name(session: &WorkbookSession) -> String {
+    let count = session.sheets().map(|rows| rows.len()).unwrap_or(0);
+    format!("Sheet{}", count + 1)
+}
+
+fn dispatch_add_sheet(session: &mut WorkbookSession, name: Option<String>) -> IntentReceipt {
+    let name = name.unwrap_or_else(|| default_sheet_name(session));
+    match session.add_sheet(name) {
+        Ok(_node) => sheets_changed_receipt(session),
+        Err(error) => IntentReceipt::rejected(present_sheet_rejection(&error)),
+    }
+}
+
+fn dispatch_rename_sheet(
+    session: &mut WorkbookSession,
+    grid: &dnacalc_skin_ir::NodeId,
+    new_name: &str,
+) -> IntentReceipt {
+    let sheet = match resolve_sheet_node(grid) {
+        Ok(sheet) => sheet,
+        Err(error) => return IntentReceipt::rejected(error),
+    };
+    match session.rename_sheet(sheet, new_name) {
+        Ok(()) => sheets_changed_receipt(session),
+        Err(error) => IntentReceipt::rejected(present_sheet_rejection(&error)),
+    }
+}
+
+fn dispatch_delete_sheet(
+    session: &mut WorkbookSession,
+    grid: &dnacalc_skin_ir::NodeId,
+) -> IntentReceipt {
+    let sheet = match resolve_sheet_node(grid) {
+        Ok(sheet) => sheet,
+        Err(error) => return IntentReceipt::rejected(error),
+    };
+    match session.delete_sheet(sheet) {
+        Ok(()) => sheets_changed_receipt(session),
+        Err(error) => IntentReceipt::rejected(present_sheet_rejection(&error)),
+    }
+}
+
+fn dispatch_move_sheet(
+    session: &mut WorkbookSession,
+    grid: &dnacalc_skin_ir::NodeId,
+    new_position: u32,
+) -> IntentReceipt {
+    let sheet = match resolve_sheet_node(grid) {
+        Ok(sheet) => sheet,
+        Err(error) => return IntentReceipt::rejected(error),
+    };
+    match session.move_sheet(sheet, new_position) {
+        Ok(()) => sheets_changed_receipt(session),
+        Err(error) => IntentReceipt::rejected(present_sheet_rejection(&error)),
     }
 }
 
@@ -1200,6 +1306,199 @@ mod tests {
                 .iter()
                 .any(|change| matches!(change, WorkspaceDeltaChange::GridChanged(_))),
             "a no-op Recalculate emits no GridChanged"
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // Phase 1 Part A acceptance: sheet-lifecycle intents end-to-end.
+    // ------------------------------------------------------------------
+
+    use dnacalc_skin_ir::SheetProjection;
+
+    /// The projected sheet list, read through the full snapshot (the same
+    /// surface a future tab strip mounts from).
+    fn projected_sheets(document: &DocumentSession) -> Vec<SheetProjection> {
+        document.snapshot().sheets
+    }
+
+    /// Phase 1 Part A: `AddSheet` lists the new sheet in the projection, in
+    /// order; a second `AddSheet` with no name defaults to a fresh unique name
+    /// computed from the current sheet count.
+    #[test]
+    fn add_sheet_intent_lists_sheets_in_order_and_defaults_unique_name() {
+        let mut document =
+            DocumentSession::Workbook(WorkbookSession::create("workbook:p1a-add").unwrap());
+
+        let receipt = document.dispatch(WorkspaceIntent::AddSheet {
+            name: Some("Budget".to_string()),
+        });
+        assert!(receipt.accepted, "adding a named sheet is accepted");
+        match receipt.delta.changes.as_slice() {
+            [WorkspaceDeltaChange::SheetsChanged(sheets)] => {
+                assert_eq!(sheets.len(), 1);
+                assert_eq!(sheets[0].display_name, "Budget");
+                assert_eq!(sheets[0].position, 0);
+            }
+            other => panic!("expected exactly one SheetsChanged change, got {other:?}"),
+        }
+
+        // A second AddSheet with no name defaults to a fresh unique name.
+        let receipt = document.dispatch(WorkspaceIntent::AddSheet { name: None });
+        assert!(receipt.accepted, "a defaulted AddSheet is accepted");
+        let sheets = projected_sheets(&document);
+        assert_eq!(sheets.len(), 2, "the snapshot lists both sheets in order");
+        assert_eq!(sheets[0].display_name, "Budget");
+        assert_eq!(sheets[0].position, 0);
+        assert_eq!(
+            sheets[1].display_name, "Sheet2",
+            "the defaulted name is fresh and unique (Sheet{{count+1}})"
+        );
+        assert_eq!(sheets[1].position, 1);
+    }
+
+    /// Phase 1 Part A: `RenameSheet` shows the new display name in the
+    /// projection while preserving the sheet's stable grid identity.
+    #[test]
+    fn rename_sheet_intent_updates_projection_display_name() {
+        let mut document =
+            DocumentSession::Workbook(WorkbookSession::create("workbook:p1a-rename").unwrap());
+        let _ = document.dispatch(WorkspaceIntent::AddSheet {
+            name: Some("Sheet1".to_string()),
+        });
+        let grid = projected_sheets(&document)[0].grid_node_id.clone();
+
+        let receipt = document.dispatch(WorkspaceIntent::RenameSheet {
+            grid: grid.clone(),
+            new_name: "Revenue".to_string(),
+        });
+        assert!(receipt.accepted, "renaming a sheet is accepted");
+
+        let sheets = projected_sheets(&document);
+        assert_eq!(sheets.len(), 1);
+        assert_eq!(sheets[0].display_name, "Revenue");
+        assert_eq!(
+            sheets[0].grid_node_id, grid,
+            "the stable grid identity is preserved across the rename"
+        );
+    }
+
+    /// Phase 1 Part A: `MoveSheet` reorders the projection.
+    #[test]
+    fn move_sheet_intent_changes_order() {
+        let mut document =
+            DocumentSession::Workbook(WorkbookSession::create("workbook:p1a-move").unwrap());
+        let _ = document.dispatch(WorkspaceIntent::AddSheet {
+            name: Some("First".to_string()),
+        });
+        let _ = document.dispatch(WorkspaceIntent::AddSheet {
+            name: Some("Second".to_string()),
+        });
+        let names_before: Vec<_> = projected_sheets(&document)
+            .iter()
+            .map(|s| s.display_name.clone())
+            .collect();
+        assert_eq!(names_before, vec!["First", "Second"]);
+        let second_grid = projected_sheets(&document)[1].grid_node_id.clone();
+
+        // Move "Second" to position 0.
+        let receipt = document.dispatch(WorkspaceIntent::MoveSheet {
+            grid: second_grid,
+            new_position: 0,
+        });
+        assert!(receipt.accepted, "moving a sheet is accepted");
+
+        let names_after: Vec<_> = projected_sheets(&document)
+            .iter()
+            .map(|s| s.display_name.clone())
+            .collect();
+        assert_eq!(
+            names_after,
+            vec!["Second", "First"],
+            "the projection order reflects the move"
+        );
+    }
+
+    /// Phase 1 Part A: `DeleteSheet` removes the sheet from the projection, and
+    /// a cross-sheet formula referencing the deleted sheet now yields a
+    /// non-numeric (`#REF!`-shaped) value.
+    #[test]
+    fn delete_sheet_intent_removes_from_projection_and_breaks_cross_sheet_reference() {
+        // Sheet1 (A1=1, A5=5); Sheet2!A1 = Sheet1!A1 + Sheet1!A5 = 6.
+        let mut session = WorkbookSession::create("workbook:p1a-delete").unwrap();
+        let sheet1 = session.add_sheet("Sheet1").unwrap();
+        let sheet2 = session.add_sheet("Sheet2").unwrap();
+        session.enter_grid_cell(sheet1, 1, 1, "1").unwrap();
+        session.enter_grid_cell(sheet1, 5, 1, "5").unwrap();
+        session
+            .enter_grid_cell(sheet2, 1, 1, "=Sheet1!A1+Sheet1!A5")
+            .unwrap();
+        assert_eq!(
+            session
+                .grid_cell_value(sheet2, 1, 1)
+                .unwrap()
+                .and_then(|v| v.as_number()),
+            Some(6.0),
+            "Sheet2!A1 = 6 before the delete"
+        );
+        let sheet1_grid = sheet_grid_node_id(sheet1);
+        let mut document = DocumentSession::Workbook(session);
+
+        let receipt = document.dispatch(WorkspaceIntent::DeleteSheet {
+            grid: sheet1_grid.clone(),
+        });
+        assert!(receipt.accepted, "deleting a sheet is accepted");
+        let sheets = projected_sheets(&document);
+        assert!(
+            !sheets.iter().any(|s| s.grid_node_id == sheet1_grid),
+            "Sheet1 is gone from the projection"
+        );
+        assert!(
+            sheets.iter().any(|s| s.display_name == "Sheet2"),
+            "Sheet2 remains in the projection"
+        );
+
+        // The cross-sheet reference to the deleted sheet no longer resolves to
+        // a plain number (a #REF!-shaped error); don't over-assert the exact
+        // error shape.
+        let DocumentSession::Workbook(session) = &document else {
+            unreachable!("workbook session")
+        };
+        let after = session.grid_cell_value(sheet2, 1, 1).unwrap().unwrap();
+        assert!(
+            after.as_number().is_none(),
+            "Sheet2!A1 no longer resolves to a plain number once Sheet1 is deleted, got {after:?}"
+        );
+    }
+
+    /// Phase 1 Part A cross-sheet integrity: adding a sheet leaves an existing
+    /// cross-sheet formula (`=Sheet1!A1+Sheet1!A5`) evaluating.
+    #[test]
+    fn add_sheet_preserves_existing_cross_sheet_formula() {
+        let mut session = WorkbookSession::create("workbook:p1a-add-preserves").unwrap();
+        let sheet1 = session.add_sheet("Sheet1").unwrap();
+        let sheet2 = session.add_sheet("Sheet2").unwrap();
+        session.enter_grid_cell(sheet1, 1, 1, "1").unwrap();
+        session.enter_grid_cell(sheet1, 5, 1, "5").unwrap();
+        session
+            .enter_grid_cell(sheet2, 1, 1, "=Sheet1!A1+Sheet1!A5")
+            .unwrap();
+        let mut document = DocumentSession::Workbook(session);
+
+        let receipt = document.dispatch(WorkspaceIntent::AddSheet {
+            name: Some("Sheet3".to_string()),
+        });
+        assert!(receipt.accepted, "adding a third sheet is accepted");
+
+        let DocumentSession::Workbook(session) = &document else {
+            unreachable!("workbook session")
+        };
+        assert_eq!(
+            session
+                .grid_cell_value(sheet2, 1, 1)
+                .unwrap()
+                .and_then(|v| v.as_number()),
+            Some(6.0),
+            "the existing cross-sheet formula still evaluates to 6 after adding a sheet"
         );
     }
 }

@@ -53,6 +53,15 @@ pub struct WorkspaceState {
     /// (a plain tree session has no `CalcMode` concept).
     #[serde(default)]
     pub workbook_calc: Option<WorkbookCalcProjection>,
+    /// Every grid-backed sheet's stable identity, display name, and order
+    /// (Phase 1 Part A, sheet-lifecycle): one [`SheetProjection`] per
+    /// grid-backed sheet, in sheet order, so a future tab strip renders
+    /// directly from the projection. Default-empty for a pre-sheet-lifecycle
+    /// mirror or a `RichTree` session that carries no workbook sheets.
+    /// Complete-replacement on every `SheetsChanged` delta (§A.3), matching
+    /// `defined_names`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sheets: Vec<SheetProjection>,
     pub clipboard: Option<ClipboardProjection>,
     pub diagnostics: Vec<String>,
 }
@@ -1110,6 +1119,21 @@ pub enum GridEntryOutcomeProjection {
 pub struct GridEntryDiagnosticProjection {
     pub message: String,
     pub span: Option<(u32, u32)>,
+}
+
+/// One grid-backed sheet's tab-strip identity (Phase 1 Part A,
+/// sheet-lifecycle): the sheet's stable grid [`NodeId`] (the same
+/// `sheet:{node}` address `EnterGridCell`/`SetDefinedName` already use, §A.2 —
+/// never the raw engine `TreeNodeId`), its authored display name, and its
+/// 0-based position in sheet order. Carries no cells or calc state — those are
+/// the windowed [`GridProjection`] and [`WorkbookCalcProjection`] respectively;
+/// this is only the identity row a tab strip renders. `WorkspaceState::sheets`
+/// and the `WorkspaceDeltaChange::SheetsChanged` payload share this one type.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SheetProjection {
+    pub grid_node_id: NodeId,
+    pub display_name: String,
+    pub position: u32,
 }
 
 /// The complete defined-name catalog for a workbook session (H4, §A.3): the

@@ -24,7 +24,9 @@
 
 use std::collections::BTreeMap;
 
-use dnacalc_skin_ir::{GridAuthoredCellProjection, NodeId, NodeKey, WorkspaceState};
+use dnacalc_skin_ir::{
+    GridAuthoredCellProjection, NodeId, NodeKey, SheetProjection, WorkspaceState,
+};
 use oxcalc_core::consumer::{
     GridBackingSeed, GridCellEntryOutcome, OxCalcDocumentContext, OxCalcDocumentError,
     OxCalcTreeGridView, OxCalcTreeWorkspaceCreate, OxCalcTreeWorkspaceId, SheetEnumerationRow,
@@ -187,6 +189,64 @@ impl WorkbookSession {
     /// display name, normalized key, position, and grid-backed flag.
     pub fn sheets(&self) -> Result<Vec<SheetEnumerationRow>, WorkbookSessionError> {
         Ok(self.context.sheets(&self.workspace_id)?)
+    }
+
+    /// Rename a sheet in place (Phase 1 Part A), preserving its stable node
+    /// identity — cross-sheet references keyed on the sheet node heal across
+    /// the rename. Thin wrapper over the engine's `rename_sheet` verb.
+    pub fn rename_sheet(
+        &mut self,
+        sheet: TreeNodeId,
+        new_name: &str,
+    ) -> Result<(), WorkbookSessionError> {
+        self.context
+            .rename_sheet(&self.workspace_id, sheet, new_name)?;
+        Ok(())
+    }
+
+    /// Delete a sheet from the workbook (Phase 1 Part A). Thin wrapper over the
+    /// engine's `delete_sheet` verb; the returned `DeletedSheetFact` is
+    /// workspace history (undo restores the sheet), not projection state, so
+    /// this discards it — the next [`WorkbookSession::sheet_projections`] read
+    /// is authoritative.
+    pub fn delete_sheet(&mut self, sheet: TreeNodeId) -> Result<(), WorkbookSessionError> {
+        self.context.delete_sheet(&self.workspace_id, sheet)?;
+        Ok(())
+    }
+
+    /// Move a sheet to a new 0-based sheet-order position (Phase 1 Part A).
+    /// Thin wrapper over the engine's `move_sheet` verb (`new_position` maps to
+    /// the engine's `usize` sheet-position; an out-of-range position is the
+    /// engine's own typed rejection).
+    pub fn move_sheet(
+        &mut self,
+        sheet: TreeNodeId,
+        new_position: u32,
+    ) -> Result<(), WorkbookSessionError> {
+        self.context
+            .move_sheet(&self.workspace_id, sheet, new_position as usize)?;
+        Ok(())
+    }
+
+    /// The workbook's grid-backed sheets as tab-strip identity rows (Phase 1
+    /// Part A): one [`SheetProjection`] per grid-backed sheet, in sheet order,
+    /// mapping each enumeration row's stable node id to its
+    /// [`sheet_grid_node_id`] address. Non-grid-backed enumeration rows (none
+    /// in the current shape, where every sheet is grid-backed at creation) are
+    /// filtered out, so the projection is exactly the set a tab strip renders.
+    ///
+    /// [`SheetProjection`]: dnacalc_skin_ir::SheetProjection
+    pub fn sheet_projections(&self) -> Result<Vec<SheetProjection>, WorkbookSessionError> {
+        Ok(self
+            .sheets()?
+            .into_iter()
+            .filter(|row| row.grid_backed)
+            .map(|row| SheetProjection {
+                grid_node_id: sheet_grid_node_id(row.node_id),
+                display_name: row.display_name,
+                position: row.sheet_position as u32,
+            })
+            .collect())
     }
 
     /// Build a strict-Excel cell address in a sheet's own grid namespace.
@@ -400,6 +460,7 @@ impl WorkbookSession {
             grids,
             defined_names: self.defined_names()?,
             workbook_calc: Some(self.workbook_calc_projection(None)?),
+            sheets: self.sheet_projections()?,
             ..Default::default()
         })
     }

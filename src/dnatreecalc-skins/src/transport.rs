@@ -240,6 +240,12 @@ fn pulse_change_summary(change: &WorkspaceDeltaChange) -> String {
         WorkspaceDeltaChange::CalcStateChanged(projection) => {
             format!("calc mode: {:?}", projection.mode)
         }
+        // Phase 1 (H7): minimal arm forced by adding SheetsChanged to the shared
+        // WorkspaceDeltaChange enum (this file is outside the workbook lane's
+        // owned scope — the compiler-forced exhaustiveness tripwire).
+        WorkspaceDeltaChange::SheetsChanged(sheets) => {
+            counted(sheets.len(), "sheet updated", "sheets updated")
+        }
     }
 }
 

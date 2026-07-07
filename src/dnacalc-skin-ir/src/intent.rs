@@ -6,8 +6,8 @@ use crate::workspace::{
     DefinedNameScopeProjection, DefinedNamesProjection, DependencyKindProjection,
     GridAuthoredCellProjection, GridCellRefProjection, GridEntryDiagnosticProjection,
     GridEntryOutcomeProjection, GridOverlayBundle, GridProjection, GridRectProjection,
-    InitialNodeContentProjection, NodeValueProjection, ScenarioProjection, SweepProjection,
-    WorkbookCalcProjection,
+    InitialNodeContentProjection, NodeValueProjection, ScenarioProjection, SheetProjection,
+    SweepProjection, WorkbookCalcProjection,
 };
 use serde::{Deserialize, Serialize};
 
@@ -570,6 +570,34 @@ pub enum WorkspaceIntent {
         scope: DefinedNameScopeProjection,
         name: String,
     },
+    /// Add a new grid-backed sheet to the workbook (Phase 1 Part A,
+    /// sheet-lifecycle). `name` is the authored display name; `None` lets the
+    /// host pick the next default (`Sheet{n+1}`, computed from the current
+    /// sheet count). The new sheet is grid-backed at creation, so it appears in
+    /// the next `SheetsChanged` projection ready for cell entry.
+    AddSheet {
+        name: Option<String>,
+    },
+    /// Rename a sheet in place (Phase 1 Part A), preserving its stable grid
+    /// identity — `grid` is the sheet's stable grid [`NodeId`], and cross-sheet
+    /// references keyed on the sheet's node id heal across the rename.
+    RenameSheet {
+        grid: NodeId,
+        new_name: String,
+    },
+    /// Delete a sheet from the workbook (Phase 1 Part A). Dependents in other
+    /// sheets that reference the deleted sheet re-resolve to a `#REF!`-shaped
+    /// error; the sheet's node id is never reused.
+    DeleteSheet {
+        grid: NodeId,
+    },
+    /// Move a sheet to a new 0-based position in sheet order (Phase 1 Part A).
+    /// `new_position` must be within `0..sheet_count`; an out-of-range position
+    /// is a typed rejection, never a panic.
+    MoveSheet {
+        grid: NodeId,
+        new_position: u32,
+    },
 }
 
 /// The target payload for [`WorkspaceIntent::SetDefinedName`]: a static grid
@@ -952,6 +980,12 @@ pub enum WorkspaceDeltaChange {
     /// same whole-collection-replacement shape `DefinedNamesChanged` uses
     /// (small, workbook-wide, not windowed).
     CalcStateChanged(WorkbookCalcProjection),
+    /// The workbook's sheet set changed (Phase 1 Part A: add/rename/delete/
+    /// move): complete replacement of `WorkspaceState::sheets`, the same
+    /// whole-collection-replacement shape `DefinedNamesChanged`/`CalcStateChanged`
+    /// use — the sheet list is small (one workbook, not a windowed grid), so
+    /// there is no windowing story to preserve here.
+    SheetsChanged(Vec<SheetProjection>),
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -1104,6 +1138,73 @@ mod serde_round_trip_tests {
                 WorkspaceDeltaChange::ScenarioRemoved("scenario-1".to_string()),
                 WorkspaceDeltaChange::SweepRemoved("sweep-1".to_string()),
             ],
+        };
+        assert_eq!(round_trip(&delta), delta);
+    }
+
+    #[test]
+    fn add_sheet_intent_round_trips() {
+        let named = WorkspaceIntent::AddSheet {
+            name: Some("Budget".to_string()),
+        };
+        assert_eq!(round_trip(&named), named);
+        let defaulted = WorkspaceIntent::AddSheet { name: None };
+        assert_eq!(round_trip(&defaulted), defaulted);
+    }
+
+    #[test]
+    fn rename_sheet_intent_round_trips() {
+        let intent = WorkspaceIntent::RenameSheet {
+            grid: NodeId::new("sheet:3"),
+            new_name: "Revenue".to_string(),
+        };
+        assert_eq!(round_trip(&intent), intent);
+    }
+
+    #[test]
+    fn delete_sheet_intent_round_trips() {
+        let intent = WorkspaceIntent::DeleteSheet {
+            grid: NodeId::new("sheet:5"),
+        };
+        assert_eq!(round_trip(&intent), intent);
+    }
+
+    #[test]
+    fn move_sheet_intent_round_trips() {
+        let intent = WorkspaceIntent::MoveSheet {
+            grid: NodeId::new("sheet:2"),
+            new_position: 0,
+        };
+        assert_eq!(round_trip(&intent), intent);
+    }
+
+    #[test]
+    fn sheet_projection_round_trips() {
+        let projection = SheetProjection {
+            grid_node_id: NodeId::new("sheet:7"),
+            display_name: "Sheet1".to_string(),
+            position: 0,
+        };
+        assert_eq!(round_trip(&projection), projection);
+    }
+
+    #[test]
+    fn sheets_changed_delta_round_trips() {
+        let delta = WorkspaceDelta {
+            from_seq: 3,
+            to_seq: 4,
+            changes: vec![WorkspaceDeltaChange::SheetsChanged(vec![
+                SheetProjection {
+                    grid_node_id: NodeId::new("sheet:1"),
+                    display_name: "Sheet1".to_string(),
+                    position: 0,
+                },
+                SheetProjection {
+                    grid_node_id: NodeId::new("sheet:2"),
+                    display_name: "Sheet2".to_string(),
+                    position: 1,
+                },
+            ])],
         };
         assert_eq!(round_trip(&delta), delta);
     }

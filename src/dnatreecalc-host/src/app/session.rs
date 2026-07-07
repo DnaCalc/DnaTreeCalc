@@ -5395,6 +5395,9 @@ impl TreeWorkspaceSession {
             // H5 compiler-forced field (this file is outside H5's owned
             // scope): the RichTree session has no CalcMode concept.
             workbook_calc: Default::default(),
+            // Phase 1 (H7) compiler-forced field: the RichTree session has no
+            // sheets; the workbook session's live projection fills this.
+            sheets: Vec::new(),
             clipboard: None,
             diagnostics,
         };
