@@ -425,6 +425,7 @@ dependencies = [
 name = "dnatreecalc-web"
 version = "0.1.0"
 dependencies = [
+ "dnacalc-skin-ir",
  "dnatreecalc-host",
  "dnatreecalc-shell",
  "dnatreecalc-skin-framework",
@@ -443,6 +444,7 @@ dependencies = [
 name = "dnatreecalc-worker"
 version = "0.1.0"
 dependencies = [
+ "dnacalc-skin-ir",
  "dnatreecalc-host",
  "dnatreecalc-skin-framework",
  "serde",

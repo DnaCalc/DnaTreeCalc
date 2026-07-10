@@ -43,6 +43,7 @@ pub mod defined_names;
 pub mod demo;
 pub mod grid_publication;
 pub mod persistence;
+pub mod skin_protocol;
 pub mod present;
 pub mod workbook;
 
@@ -61,6 +62,7 @@ pub use grid_publication::{
 };
 pub use present::present_grid_entry_rejection;
 pub use persistence::LocalFileSkinStatePersistenceStore;
+pub use skin_protocol::SkinProtocolSession;
 pub use workbook::{
     WorkbookSession, WorkbookSessionError, parse_sheet_grid_node_id, sheet_grid_node_id,
 };

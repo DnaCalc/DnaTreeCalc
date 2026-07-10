@@ -7,6 +7,7 @@
 //! boundary: the main thread sends [`WorkerInbound`], the worker replies
 //! [`WorkerOutbound`].
 
+use dnacalc_skin_ir::{SkinIntentEnvelope, SkinIntentReceipt, SkinSnapshot};
 use dnatreecalc_host::app::DnaTreeWorkspaceDocument;
 use dnatreecalc_skin_framework::{IntentEnvelope, SelectionState, SessionResponse, WorkspaceState};
 use serde::{Deserialize, Serialize};
@@ -22,6 +23,8 @@ pub enum WorkerInbound {
     },
     /// A sequence-stamped intent to run against the session.
     Intent { envelope: IntentEnvelope },
+    /// Shared host-neutral envelope used by in-process, worker, and native transports.
+    SharedIntent { envelope: SkinIntentEnvelope },
 }
 
 /// Worker → main thread.
@@ -35,6 +38,13 @@ pub enum WorkerOutbound {
     },
     /// The result of an [`WorkerInbound::Intent`].
     Response { response: Box<SessionResponse> },
+    /// Shared protocol initialization projection.
+    SharedReady { snapshot: Box<SkinSnapshot> },
+    /// Typed shared protocol receipt.
+    SharedResponse {
+        receipt: Box<SkinIntentReceipt>,
+        snapshot: Option<Box<SkinSnapshot>>,
+    },
     /// The worker could not build or run (carries a human-readable reason). The
     /// main thread surfaces this and may fall back to in-process dispatch.
     Failed { message: String },

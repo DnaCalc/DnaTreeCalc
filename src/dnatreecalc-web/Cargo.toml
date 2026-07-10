@@ -9,6 +9,7 @@ publish.workspace = true
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+dnacalc-skin-ir = { path = "../dnacalc-skin-ir" }
 dnatreecalc-host = { path = "../dnatreecalc-host" }
 dnatreecalc-shell = { path = "../dnatreecalc-shell" }
 dnatreecalc-skin-framework = { path = "../dnatreecalc-skin-framework" }

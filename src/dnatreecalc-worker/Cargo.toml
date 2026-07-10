@@ -11,6 +11,7 @@ crate-type = ["rlib"]
 # Shared worker-boundary message types only — the worker runtime lives in
 # dnatreecalc-web (trunk builds the web crate itself as the no-modules worker).
 [dependencies]
+dnacalc-skin-ir = { path = "../dnacalc-skin-ir" }
 dnatreecalc-host = { path = "../dnatreecalc-host" }
 dnatreecalc-skin-framework = { path = "../dnatreecalc-skin-framework" }
 serde = { workspace = true }

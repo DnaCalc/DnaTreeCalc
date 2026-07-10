@@ -278,6 +278,10 @@ fn on_worker_message(runtime_id: u64, event: MessageEvent) {
                     post_intent(&runtime.worker, envelope);
                 }
             }
+            WorkerOutbound::SharedReady { .. } | WorkerOutbound::SharedResponse { .. } => {
+                // The current legacy proxy does not submit shared envelopes yet;
+                // shared responses are consumed by the shared-protocol client lane.
+            }
             WorkerOutbound::Failed { message } => {
                 web_sys::console::error_1(&JsValue::from_str(&format!(
                     "dnatreecalc worker: {message}"

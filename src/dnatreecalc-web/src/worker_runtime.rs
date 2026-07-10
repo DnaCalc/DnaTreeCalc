@@ -14,6 +14,11 @@
 use std::cell::RefCell;
 use std::sync::{Arc, Mutex};
 
+use dnacalc_skin_ir::{
+    ExtensionPlacementProjection, HostCapabilityProjection, HostKindProjection, IntentEnvelope,
+    RuntimeProfileProjection, SkinIntent, SkinIntentDiagnostic, SkinIntentReceipt,
+    SkinShellProjection, SkinSnapshot,
+};
 use dnatreecalc_host::app::{
     DnaTreeWorkspaceDocument, HostSessionExecutor, SessionExecutor, TreeWorkspaceSession,
 };
@@ -70,6 +75,84 @@ fn handle_message(event: MessageEvent) {
                 }),
             })
         }
+        Ok(WorkerInbound::SharedIntent { envelope }) => {
+            let intent_id = envelope.intent_id.clone();
+            if let Err(error) = envelope.validate() {
+                post(&WorkerOutbound::SharedResponse {
+                    receipt: Box::new(SkinIntentReceipt::Rejected {
+                        intent_id,
+                        diagnostic: SkinIntentDiagnostic {
+                            code: "skin_protocol_invalid".into(),
+                            message: format!("{error:?}"),
+                            recoverable: true,
+                        },
+                    }),
+                    snapshot: None,
+                });
+                return;
+            }
+            let SkinIntent::TreeWorkspace(intent) = envelope.intent else {
+                post(&WorkerOutbound::SharedResponse {
+                    receipt: Box::new(SkinIntentReceipt::Rejected {
+                        intent_id,
+                        diagnostic: SkinIntentDiagnostic {
+                            code: "unsupported_intent_family".into(),
+                            message: "worker session accepts tree workspace intents".into(),
+                            recoverable: true,
+                        },
+                    }),
+                    snapshot: None,
+                });
+                return;
+            };
+            STATE.with(|state| match state.borrow().as_ref() {
+                Some(state) => {
+                    let response = state.executor.execute(IntentEnvelope { seq: 0, intent });
+                    let workspace = state.executor.snapshot();
+                    let revision = workspace.projection_seq;
+                    let receipt = if response.receipt.accepted {
+                        SkinIntentReceipt::Applied {
+                            intent_id,
+                            snapshot_revision: revision,
+                        }
+                    } else {
+                        SkinIntentReceipt::Rejected {
+                            intent_id,
+                            diagnostic: SkinIntentDiagnostic {
+                                code: "workspace_intent_rejected".into(),
+                                message: response.receipt.error.map_or_else(
+                                    || "intent rejected".into(),
+                                    |error| error.to_string(),
+                                ),
+                                recoverable: true,
+                            },
+                        }
+                    };
+                    let snapshot = Some(Box::new(SkinSnapshot::tree_workspace(
+                        SkinShellProjection {
+                            host_kind: HostKindProjection::TreeCalc,
+                            title: "DNA TreeCalc".into(),
+                            active_document_id: envelope.document_id,
+                            status_text: None,
+                            command_palette_open: false,
+                            persistence: Default::default(),
+                        },
+                        HostCapabilityProjection::treecalc_references(
+                            RuntimeProfileProjection::BrowserWasm,
+                            ExtensionPlacementProjection::Unavailable,
+                        ),
+                        workspace,
+                    )));
+                    post(&WorkerOutbound::SharedResponse {
+                        receipt: Box::new(receipt),
+                        snapshot,
+                    });
+                }
+                None => post(&WorkerOutbound::Failed {
+                    message: "intent arrived before the worker was initialized".into(),
+                }),
+            })
+        }
         Err(error) => post(&WorkerOutbound::Failed {
             message: format!("could not decode a worker message: {error}"),
         }),
@@ -95,6 +178,31 @@ fn init_session(document: DnaTreeWorkspaceDocument) {
             post(&WorkerOutbound::Ready {
                 snapshot: Box::new(snapshot),
                 selection: None,
+            });
+            let shared_snapshot = SkinSnapshot::tree_workspace(
+                SkinShellProjection {
+                    host_kind: HostKindProjection::TreeCalc,
+                    title: "DNA TreeCalc".into(),
+                    active_document_id: None,
+                    status_text: None,
+                    command_palette_open: false,
+                    persistence: Default::default(),
+                },
+                HostCapabilityProjection::treecalc_references(
+                    RuntimeProfileProjection::BrowserWasm,
+                    ExtensionPlacementProjection::Unavailable,
+                ),
+                STATE.with(|state| {
+                    state
+                        .borrow()
+                        .as_ref()
+                        .expect("stored worker state")
+                        .executor
+                        .snapshot()
+                }),
+            );
+            post(&WorkerOutbound::SharedReady {
+                snapshot: Box::new(shared_snapshot),
             });
         }
         Err(message) => post(&WorkerOutbound::Failed { message }),
