@@ -22,12 +22,14 @@
 
 pub mod command;
 pub mod dispatcher;
+pub mod formula;
 pub mod identity;
 pub mod intent;
 pub mod keychord;
 pub mod manifest;
 pub mod permissions;
 pub mod preview;
+pub mod protocol;
 pub mod selection;
 pub mod session_channel;
 pub mod state;
@@ -40,6 +42,24 @@ pub const SKIN_IR_PROTOCOL_SCHEMA: &str = "dnacalc.skin_ir.v1";
 
 pub use command::{CommandCatalogProjection, CommandIntentKindProjection, CommandMetaProjection};
 pub use dispatcher::RecordingDispatcher;
+pub use formula::{
+    ArrayCellFormatProjection, ArrayPreviewProjection, ArrayShapeProjection,
+    ArrayWindowCellProjection, ArrayWindowError, ArrayWindowProjection, AverageRuleProjection,
+    BridgeHealthProjection, CalcValueProjection, CfIconProjection, ColorScaleRuleProjection,
+    ColorScaleStopProjection, ComparisonDetailProjection, ComparisonOutcomeProjection,
+    ComparisonSurface, CompletionItemProjection, CompletionKindProjection, CompletionSurface,
+    ConditionalFormattingRuleProjection, ConditionalFormattingThresholdProjection,
+    ConditionalFormattingTypedRuleProjection, CoreValueProjection, DataBarDirectionProjection,
+    DataBarFillProjection, DataBarRuleProjection, DiagnosticSeverityProjection,
+    DiagnosticStageProjection, EditorMetricsProjection, FormattingSurface, FormulaAssistSurface,
+    FormulaDiagnosticProjection, FormulaDrillNodeProjection, FormulaDrillNodeStateProjection,
+    FormulaDrillPhaseProjection, FormulaDrillPhaseStateProjection, FormulaDrillSurface,
+    FormulaEditorSurface, FormulaEntryModeProjection, FormulaResultSurface, FormulaStatusSurface,
+    FunctionHelpSurface, IconSetRuleProjection, MAX_ARRAY_WINDOW_CELLS, OneFormulaIntent,
+    OneFormulaProjection, PresentationHintProjection, RankRuleProjection, ScenarioPolicyProjection,
+    SignatureHelpParameterProjection, SignatureHelpSurface, SyntaxRunProjection,
+    SyntaxTokenRoleProjection,
+};
 pub use identity::{NodeId, NodeKey, SkinId, SkinMountSlot};
 pub use intent::{
     AuthoringScope, ClipboardPayloadKind, DefinedNameTargetIntent, DependencyDeltaProjection,
@@ -52,6 +72,13 @@ pub use keychord::{KeyChord, KeybindingError, KeybindingOverrideMap, SkinVerb};
 pub use manifest::{CapabilityError, SkinCapabilities, SkinCategory, SkinManifest};
 pub use permissions::Persona;
 pub use preview::{PreviewError, PreviewService};
+pub use protocol::{
+    ExtensionPlacementProjection, HostCapabilityProjection, HostKindProjection,
+    PersistenceProjection, RecentDocumentProjection, ReferenceCapabilityProjection,
+    RuntimeProfileProjection, SKIN_IR_SCHEMA_VERSION, SkinDocumentProjection, SkinIntent,
+    SkinIntentDiagnostic, SkinIntentEnvelope, SkinIntentReceipt, SkinProtocolError,
+    SkinShellIntent, SkinShellProjection, SkinSnapshot,
+};
 pub use selection::{SelectionState, TableCellSelection};
 pub use session_channel::{
     FrameMetric, IntentEnvelope, PendingIntentQueue, PendingRun, ResyncReason, SessionResponse,
