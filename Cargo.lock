@@ -325,6 +325,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "dnacalc-formula-skin-leptos"
+version = "0.1.0"
+dependencies = [
+ "dnacalc-skin-ir",
+ "leptos",
+ "wasm-bindgen",
+ "wasm-bindgen-test",
+ "web-sys",
+]
+
+[[package]]
 name = "dnacalc-formula-ux-core"
 version = "0.1.0"
 dependencies = [

@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "src/dnacalc-host-core",
     "src/dnacalc-formula-ux-core",
+    "src/dnacalc-formula-skin-leptos",
     "src/dnacalc-skin-ir",
     "src/dnacalc-skin-leptos",
     "src/dnatreecalc-host",
