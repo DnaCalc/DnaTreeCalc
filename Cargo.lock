@@ -325,6 +325,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "dnacalc-formula-ux-core"
+version = "0.1.0"
+dependencies = [
+ "dnacalc-skin-ir",
+ "oxfml_core",
+ "oxfunc_core",
+]
+
+[[package]]
 name = "dnacalc-host-core"
 version = "0.1.0"
 dependencies = [

@@ -1,0 +1,14 @@
+[package]
+name = "dnacalc-formula-ux-core"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+dnacalc-skin-ir = { path = "../dnacalc-skin-ir" }
+oxfml_core.workspace = true
+oxfunc_core.workspace = true
+
+[lints]
+workspace = true
