@@ -64,8 +64,6 @@ pub use state::{
     SkinStatePersistenceStore, WorkspaceRecalcMode,
 };
 
-#[cfg(not(target_arch = "wasm32"))]
-pub use state::LocalFileSkinStatePersistenceStore;
 pub use workspace::{
     ActiveNodeDetailProjection, ActiveSelectionDetailProjection, ActiveTableCellDetailProjection,
     AuthoringScopeExpansionError, BindingDiagnosticProjection, CalcModeProjection,

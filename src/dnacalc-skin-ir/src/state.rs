@@ -1,9 +1,6 @@
 use std::collections::{BTreeMap, HashSet};
 use std::sync::Mutex;
 
-#[cfg(not(target_arch = "wasm32"))]
-use std::path::{Path, PathBuf};
-
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
@@ -177,85 +174,6 @@ impl SkinStatePersistenceStore for InMemorySkinStatePersistenceStore {
     ) -> Result<(), SkinStatePersistenceError> {
         self.insert(key.clone(), record.clone())
     }
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-pub struct LocalFileSkinStatePersistenceStore {
-    root: PathBuf,
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-impl LocalFileSkinStatePersistenceStore {
-    #[must_use]
-    pub fn new(root: impl Into<PathBuf>) -> Self {
-        Self { root: root.into() }
-    }
-
-    #[must_use]
-    pub fn root(&self) -> &Path {
-        &self.root
-    }
-
-    fn path_for(&self, key: &SkinStatePersistenceKey) -> PathBuf {
-        self.root
-            .join(safe_path_component(&key.skin_id))
-            .join(key.slot.stable_id())
-            .join(format!("{}.json", safe_path_component(&key.workspace_id)))
-    }
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-impl SkinStatePersistenceStore for LocalFileSkinStatePersistenceStore {
-    fn load(
-        &self,
-        key: &SkinStatePersistenceKey,
-    ) -> Result<Option<PersistedSkinStateRecord>, SkinStatePersistenceError> {
-        let path = self.path_for(key);
-        match std::fs::read_to_string(&path) {
-            Ok(text) => serde_json::from_str(&text)
-                .map(Some)
-                .map_err(|error| SkinStatePersistenceError::Deserialize(error.to_string())),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
-            Err(error) => Err(SkinStatePersistenceError::Store {
-                operation: "reading local skin state",
-                detail: error.to_string(),
-            }),
-        }
-    }
-
-    fn save(
-        &self,
-        key: &SkinStatePersistenceKey,
-        record: &PersistedSkinStateRecord,
-    ) -> Result<(), SkinStatePersistenceError> {
-        let path = self.path_for(key);
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(|error| SkinStatePersistenceError::Store {
-                operation: "creating local skin state directory",
-                detail: error.to_string(),
-            })?;
-        }
-        let text = serde_json::to_string_pretty(record)
-            .map_err(|error| SkinStatePersistenceError::Serialize(error.to_string()))?;
-        std::fs::write(path, text).map_err(|error| SkinStatePersistenceError::Store {
-            operation: "writing local skin state",
-            detail: error.to_string(),
-        })
-    }
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-fn safe_path_component(value: &str) -> String {
-    value
-        .chars()
-        .map(|ch| {
-            if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.') {
-                ch
-            } else {
-                '_'
-            }
-        })
-        .collect()
 }
 
 /// Cross-skin shared state stored under the `skins.shared` meta-namespace

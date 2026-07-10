@@ -346,31 +346,6 @@ fn registry_mount_migrates_and_garbage_collects_nodekey_state() {
     );
 }
 
-#[cfg(not(target_arch = "wasm32"))]
-#[test]
-fn local_file_skin_state_store_roundtrips_records() {
-    let root = std::env::temp_dir().join(format!(
-        "dnatreecalc-skin-state-test-{}",
-        std::process::id()
-    ));
-    let _ = std::fs::remove_dir_all(&root);
-    let store = crate::state::LocalFileSkinStatePersistenceStore::new(&root);
-    let key = SkinStatePersistenceKey::new(
-        SkinId::new("persisted-test"),
-        SkinMountSlot::RightInspector,
-        "workspace:file",
-    );
-    let record = PersistedSkinStateRecord::new(7, serde_json::json!({ "ok": true }));
-
-    crate::state::SkinStatePersistenceStore::save(&store, &key, &record)
-        .expect("save local file record");
-    let loaded = crate::state::SkinStatePersistenceStore::load(&store, &key)
-        .expect("load local file record")
-        .expect("record should exist");
-    assert_eq!(loaded, record);
-    std::fs::remove_dir_all(&root).expect("cleanup local file store");
-}
-
 #[test]
 fn theme_tokens_emit_skin_css_custom_properties() {
     let light = ThemeTokens::light();
