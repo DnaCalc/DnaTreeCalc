@@ -1,0 +1,14 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "DNA TreeCalc",
+  "version": "0.1.0",
+  "identifier": "com.dnakode.dnatreecalc",
+  "build": { "beforeDevCommand": "powershell -NoProfile -Command \"Set-Location ../dnatreecalc-web; trunk build index.html --dist ../../dist\"", "frontendDist": "../../dist" },
+  "app": {
+    "windows": [
+      { "title": "DNA TreeCalc", "width": 1200, "height": 800 }
+    ],
+    "security": { "csp": null }
+  },
+  "bundle": { "active": false, "icon": ["icons/icon.ico"] }
+}
