@@ -816,6 +816,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "dnacalc-extension-host-core"
+version = "0.1.0"
+dependencies = [
+ "oxfml_core",
+ "oxfunc_core",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "dnacalc-formula-skin-leptos"
 version = "0.1.0"
 dependencies = [
