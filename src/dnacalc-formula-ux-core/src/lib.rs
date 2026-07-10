@@ -483,6 +483,8 @@ pub fn project_drill(trace: &FormulaDrillTrace) -> FormulaDrillSurface {
             let projected = ArrayPreviewProjection {
                 total_rows: shape.rows,
                 total_cols: shape.cols,
+                row_offset: 0,
+                col_offset: 0,
                 rows,
                 truncated: preview.truncated || limit < shape.rows.saturating_mul(shape.cols),
             };

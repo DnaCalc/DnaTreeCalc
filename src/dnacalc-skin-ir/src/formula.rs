@@ -476,6 +476,10 @@ pub struct FormulaDrillNodeProjection {
 pub struct ArrayPreviewProjection {
     pub total_rows: usize,
     pub total_cols: usize,
+    #[serde(default)]
+    pub row_offset: usize,
+    #[serde(default)]
+    pub col_offset: usize,
     pub rows: Vec<Vec<String>>,
     pub truncated: bool,
 }
@@ -493,7 +497,15 @@ impl ArrayPreviewProjection {
         if rows.checked_mul(cols).ok_or(ArrayWindowError::Overflow)? > MAX_ARRAY_WINDOW_CELLS {
             return Err(ArrayWindowError::TooLarge);
         }
-        if rows > self.total_rows || cols > self.total_cols {
+        let row_end = self
+            .row_offset
+            .checked_add(rows)
+            .ok_or(ArrayWindowError::Overflow)?;
+        let col_end = self
+            .col_offset
+            .checked_add(cols)
+            .ok_or(ArrayWindowError::Overflow)?;
+        if row_end > self.total_rows || col_end > self.total_cols {
             return Err(ArrayWindowError::OutsideArray);
         }
         Ok(())
@@ -790,6 +802,8 @@ mod tests {
         let preview = ArrayPreviewProjection {
             total_rows: 2,
             total_cols: 2,
+            row_offset: 0,
+            col_offset: 0,
             rows: vec![vec!["1".into(), "2".into()], vec!["3".into()]],
             truncated: true,
         };
@@ -858,6 +872,8 @@ mod tests {
         let preview = ArrayPreviewProjection {
             total_rows: 2,
             total_cols: 2,
+            row_offset: 0,
+            col_offset: 0,
             rows: vec![vec!["1".into(), "2".into()]],
             truncated: true,
         };
