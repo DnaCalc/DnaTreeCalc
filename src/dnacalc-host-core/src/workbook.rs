@@ -33,6 +33,7 @@ use oxcalc_core::consumer::{
 };
 use oxcalc_core::grid::coords::{ExcelGridBounds, ExcelGridCellAddress};
 use oxcalc_core::grid::geometry::GridRect;
+use oxcalc_core::grid::machine::GridEngineValidationMode;
 use oxcalc_core::structural::TreeNodeId;
 use oxfunc_core::value::CalcValue;
 
@@ -116,7 +117,15 @@ impl WorkbookSession {
     ///
     /// The `workspace_id` is the caller-chosen stable document identity.
     pub fn create(workspace_id: impl Into<String>) -> Result<Self, WorkbookSessionError> {
-        let mut context = OxCalcDocumentContext::default();
+        // Engine validation spend is an explicit choice (OxCalc O-20, no
+        // Default on purpose). The interactive host samples the dual-engine
+        // oracle: every 16th recalc (and always the first recalc of a fresh
+        // backing) also runs the brute-force reference engine and compares —
+        // a live correctness heartbeat without paying the full-sheet oracle
+        // sweep on every keystroke. Suites/CI use DualValidated.
+        let mut context = OxCalcDocumentContext::new(
+            GridEngineValidationMode::DualValidatedSampled { one_in: 16 },
+        );
         let workspace_id = context.create_workspace(
             OxCalcTreeWorkspaceCreate::new(workspace_id)
                 .with_root_symbol(WORKBOOK_ROOT_SYMBOL)

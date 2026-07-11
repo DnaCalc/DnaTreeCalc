@@ -57,6 +57,7 @@ use oxcalc_core::dependency::{
     TreeReferenceCollectionDependency, TreeReferenceCollectionFamily,
 };
 use oxcalc_core::grid::geometry::GridRect;
+use oxcalc_core::grid::machine::GridEngineValidationMode;
 use oxcalc_core::recalc::NodeCalcState;
 use oxcalc_core::recalc::{OverlayEntry, OverlayKind};
 use oxcalc_core::structural::TreeNodeId;
@@ -7235,7 +7236,13 @@ fn context_for_profile_id(profile: &str) -> OxCalcDocumentContext {
         derivation_trace_enabled: true,
         ..OxCalcTreeRuntimePolicy::default()
     };
-    OxCalcDocumentContext::new(
+    // Engine validation spend is an explicit choice (OxCalc O-20, no Default
+    // on purpose). The interactive host samples the dual-engine oracle: every
+    // 16th recalc (and always the first of a fresh backing) also runs the
+    // reference engine and compares — a live correctness heartbeat without a
+    // full oracle sweep per keystroke. Suites/CI use DualValidated.
+    OxCalcDocumentContext::with_options(
+        GridEngineValidationMode::DualValidatedSampled { one_in: 16 },
         OxCalcDocumentContextOptions::new()
             .with_runtime_policy(runtime_policy)
             .with_host_capabilities(OxCalcTreeHostCapabilitySnapshot {
