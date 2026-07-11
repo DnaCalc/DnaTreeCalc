@@ -36,7 +36,7 @@ use dnatreecalc_skin_framework::{
 use dnatreecalc_skins::{
     BENCH_ID, CAPTURE_ID, DEPENDENCY_INSPECTOR_ID, FLOW_ID, FORMULA_TREE_ID, LEDGER_ID,
     NOTEBOOK_ID, OUTLINE_TABLE_ID, SHEET_ID, TRANSPORT_ID, TREE_ID, TRIPLE_EDITOR_ID,
-    VALUE_BOARD_ID,
+    VALUE_BOARD_ID, WORKBOOK_ID,
 };
 use leptos::prelude::*;
 
@@ -45,7 +45,9 @@ fn default_registry_ships_triple_editor_and_outline_table() {
     let registry = build_default_registry();
     // N1 registers the read-only Notebook lens after the ATLAS suite (§E.3),
     // one more than the pre-N1 count.
-    assert_eq!(registry.len(), 15);
+    // K1 registers the strict-Excel Workbook (sheet-mode) lens after the
+    // Notebook, one more again.
+    assert_eq!(registry.len(), 16);
 
     let ids = registry.ids();
     // The ATLAS suite occupies the first seven Ctrl+N slots in canonical
@@ -68,6 +70,7 @@ fn default_registry_ships_triple_editor_and_outline_table() {
     assert!(ids.contains(&VALUE_BOARD_ID));
     assert!(ids.contains(&DEPENDENCY_INSPECTOR_ID));
     assert!(ids.contains(&NOTEBOOK_ID));
+    assert!(ids.contains(&WORKBOOK_ID));
 
     let flow = registry.get(FLOW_ID).expect("flow lens must be registered");
     assert_eq!(flow.manifest().display_name, "Flow");
