@@ -1,0 +1,49 @@
+# dnacalc-bridge — the formula workbench (SHELL_SPEC.md §2/§6, TP tier).
+#
+# Layering law (tested in CI gates, not aspirational): this crate depends on
+# `dnacalc-skin-ir` + `dnacalc-strand` + Leptos ONLY. No `ox*` crate (P-gate),
+# no host crate, no `dnacalc-shell`. The bridge renders host truth verbatim
+# and emits semantic `BridgeEvent`s — it never constructs intents itself.
+[package]
+name = "dnacalc-bridge"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+dnacalc-skin-ir = { path = "../dnacalc-skin-ir" }
+dnacalc-strand = { path = "../dnacalc-strand" }
+
+# Same target split as `dnacalc-skin-leptos`: native builds (unit tests,
+# check/clippy lanes) compile against the ssr feature; browser builds get csr.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+leptos = { version = "0.8.17", default-features = false, features = ["ssr"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+leptos = { version = "0.8.17", default-features = false, features = ["csr"] }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen = "=0.2.117"
+wasm-bindgen-test = "=0.3.67"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = [
+    "Document",
+    "Element",
+    "Event",
+    "EventInit",
+    "HtmlElement",
+    "HtmlTextAreaElement",
+    "KeyboardEvent",
+    "KeyboardEventInit",
+    "Node",
+    "NodeList",
+    "Window",
+] }
+
+[lints]
+workspace = true

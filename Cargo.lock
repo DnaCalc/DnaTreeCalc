@@ -991,6 +991,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "dnacalc-arch-gates"
+version = "0.1.0"
+
+[[package]]
 name = "dnacalc-bench-core"
 version = "0.1.0"
 dependencies = [
@@ -1025,6 +1029,21 @@ dependencies = [
  "oxfunc_core",
  "roxmltree",
  "serde",
+ "serde_json",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "wasm-bindgen-test",
+ "web-sys",
+]
+
+[[package]]
+name = "dnacalc-bridge"
+version = "0.1.0"
+dependencies = [
+ "dnacalc-skin-ir",
+ "dnacalc-strand",
+ "js-sys",
+ "leptos",
  "serde_json",
  "wasm-bindgen",
  "wasm-bindgen-futures",

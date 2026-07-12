@@ -90,7 +90,7 @@ pub const WORKSPACE_ROOT_ENV: &str = "DNACALC_GATES_WORKSPACE_ROOT";
 /// (`SHELL_SPEC.md` section 2) — neither crate existed under `src/` as of
 /// this writing. Add each the day it lands (check with `ls src` /
 /// `cargo tree -p <name>` first, same as the two seeded above).
-pub const TP_CRATES: &[&str] = &["dnacalc-strand", "dnacalc-skin-leptos", "dnacalc-shell"];
+pub const TP_CRATES: &[&str] = &["dnacalc-strand", "dnacalc-skin-leptos", "dnacalc-shell", "dnacalc-bridge"];
 
 /// One resolved `cargo tree` run for a single crate: the crate name it was
 /// run for, plus every non-empty stdout line, trimmed of trailing `\r` and

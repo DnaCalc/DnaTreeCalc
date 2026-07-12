@@ -6,6 +6,7 @@ members = [
     "src/dnacalc-formula-skin-leptos",
     "src/dnatreecalc-desktop",
     "src/dnacalc-extension-host-core",
+    "src/dnacalc-bridge",
     "src/dnacalc-shell",
     "src/dnacalc-skin-ir",
     "src/dnacalc-skin-leptos",
