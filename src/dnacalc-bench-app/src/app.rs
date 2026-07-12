@@ -412,10 +412,12 @@ pub fn BenchApp(
     // a real `SkinShellIntent` over `BenchHost::dispatch_shell_intent`, which
     // routes through the same `OneCalcSessionHost` seam every other OneCalc
     // host surface uses. Re-projects `persistence` afterward so any
-    // capability/`current_path` change becomes visible immediately (a
-    // pre-existing, out-of-scope gap: `dirty` itself does not clear on Save
-    // in the Bench flow today — see the NOTE on
-    // `persistence_tracks_real_dirty_state_on_edit` in `adapter.rs`).
+    // capability/`current_path` change becomes visible immediately. Note the
+    // projected `dirty` bit tracks uncommitted *editor* edits (raw vs
+    // committed text) and is cleared by a commit, not by Save (see
+    // `persistence_tracks_real_dirty_state_across_edit_and_commit` in
+    // `adapter.rs`); a Save issued with a pending uncommitted edit therefore
+    // still projects `dirty` until that edit is committed.
     let on_shell_intent = Callback::new(move |intent: SkinShellIntent| {
         let _ = with_bench_host(host_id, |host| host.dispatch_shell_intent(intent));
         if let Some(next) = with_bench_host(host_id, |host| shell_persistence_from_host(host)) {

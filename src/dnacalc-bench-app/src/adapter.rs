@@ -18,13 +18,15 @@ use dnacalc_bench_core::{DispatchOutcome, OneCalcSessionHost};
 use dnacalc_bench_host::adapters::oxfml::NativeOxfmlHostSession;
 use dnacalc_bench_host::app::host_mount::{HostMountTarget, bootstrap_editor_bridge};
 use dnacalc_bench_host::app::preview_state::preview_minimal_host_state;
-use dnacalc_bench_host::app::reducer::apply_skin_intent_to_host_state;
+use dnacalc_bench_host::app::reducer::{
+    apply_editor_command_to_active_formula_space, apply_skin_intent_to_host_state,
+};
 use dnacalc_bench_host::services::home_shell_view_model::build_home_shell_view_model;
 use dnacalc_bench_host::services::live_edit::{
     apply_live_editor_input, flush_pending_runtime_recalc, refresh_active_formula_space,
 };
 use dnacalc_bench_host::state::OneCalcHostState;
-use dnacalc_bench_host::ui::editor::commands::{EditorInputEvent, EditorInputKind};
+use dnacalc_bench_host::ui::editor::commands::{EditorCommand, EditorInputEvent, EditorInputKind};
 
 use dnacalc_bridge::BridgeEvent;
 use dnacalc_skin_ir::formula::{OneFormulaIntent, OneFormulaProjection};
@@ -182,10 +184,23 @@ impl BenchHost {
             // the initial projection already carries in full for the demo
             // formulas — an honest no-op rather than a fabricated page.
             BridgeEvent::ArrayWindowRequested { .. } => false,
-            // CommitRequested → record the committed text and flush any pending
-            // (debounced) runtime pass so the result is final.
+            // CommitRequested → mark the active formula space committed and
+            // flush any pending (debounced) runtime pass so the result is
+            // final. The commit mark goes through the SAME reducer path the
+            // legacy `home_shell` UI drives (`EditorCommand::CommitEntry`), so
+            // `FormulaSpaceState.committed_cell_text`/`proofed_cell_text` are
+            // set to the just-committed `raw_entered_cell_text`. Without this,
+            // `FormulaSpaceState::live_state()` could never resolve to
+            // `Committed` in the Bench flow, leaving the persistence-projected
+            // `dirty` bit (read by the Shell's mast dirty-dot, bead dtc-lfz.3)
+            // stuck `true` for the rest of the session after the first edit.
+            // `committed_text` still mirrors it for `RevertRequested`.
             BridgeEvent::CommitRequested => {
                 self.committed_text = self.projection().raw_entered_cell_text;
+                apply_editor_command_to_active_formula_space(
+                    &mut self.state,
+                    EditorCommand::CommitEntry,
+                );
                 flush_pending_runtime_recalc(&*self.bridge, &mut self.state).unwrap_or(false);
                 true
             }
@@ -457,12 +472,17 @@ mod tests {
     }
 
     /// `persistence()` reflects REAL host truth (bead dtc-lfz.3), not a
-    /// hardcoded constant: a fresh empty formula space is not dirty, and an
-    /// uncommitted edit makes it dirty. On native, `can_save`/`can_open` are
-    /// real (a real file-persistence seam exists — see
-    /// `dispatch_shell_intent_save_writes_the_real_workspace_file` below).
+    /// hardcoded constant, across the full edit → commit lifecycle: a fresh
+    /// empty formula space is not dirty, an uncommitted edit makes it dirty,
+    /// and a commit clears it again. That last leg exercises the fix where
+    /// `BenchHost::apply(CommitRequested)` marks the active formula space's
+    /// `committed_cell_text`/`proofed_cell_text` (via the same reducer path
+    /// the legacy home_shell `EditorCommand::CommitEntry` drives) so
+    /// `FormulaSpaceState::live_state()` resolves to `Committed`. On native,
+    /// `can_save`/`can_open` are real (a real file-persistence seam exists —
+    /// see the save-coverage NOTE at the foot of this module).
     #[test]
-    fn persistence_tracks_real_dirty_state_on_edit() {
+    fn persistence_tracks_real_dirty_state_across_edit_and_commit() {
         let mut host = BenchHost::new();
         let initial = host.persistence();
         assert!(!initial.dirty, "a fresh empty formula space is not dirty");
@@ -483,21 +503,13 @@ mod tests {
             "an uncommitted edit must flip the persistence-projected dirty bit"
         );
 
-        // NOTE (found while wiring dtc-lfz.3, out of this bead's scope to
-        // fix): `BenchHost::apply(CommitRequested)` never sets
-        // `FormulaSpaceState.committed_cell_text` — it only records
-        // `BenchHost`'s own private `committed_text` field (used solely by
-        // `RevertRequested`) — so `live_state()` can never resolve to
-        // `Committed` in the Bench product's flow, and `persistence().dirty`
-        // stays `true` for the rest of the session after the first edit,
-        // even past a commit. Asserting the opposite here would be
-        // asserting a bug as correct (this repo's fail-until-fixed test
-        // policy forbids that), so this test only proves the edit->dirty
-        // half; see the flagged follow-up for the commit->clean half.
+        // Committing marks the active formula space committed (raw ==
+        // committed == proofed), so `live_state()` resolves to `Committed`
+        // and the persistence-projected `dirty` bit clears.
         host.apply(BridgeEvent::CommitRequested);
         assert!(
-            host.persistence().dirty,
-            "known gap: commit does not clear dirty in the Bench flow today (see NOTE above)"
+            !host.persistence().dirty,
+            "a commit must clear the persistence-projected dirty bit"
         );
     }
 
