@@ -3,7 +3,7 @@ $PSNativeCommandUseErrorActionPreference = $true
 
 Push-Location (Join-Path $PSScriptRoot "..\..")
 try {
-    cargo test -p dnaonecalc-host
+    cargo test -p dnacalc-bench-host
     Write-Host "run-host-acceptance-full: ok"
 }
 finally {

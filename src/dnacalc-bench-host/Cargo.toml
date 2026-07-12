@@ -1,0 +1,37 @@
+[package]
+name = "dnacalc-bench-host"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["shell-ui"]
+shell-ui = ["dep:leptos", "dep:dnacalc-formula-skin-leptos"]
+seam-tests = []
+
+[dependencies]
+serde.workspace = true
+serde_json = { workspace = true, features = ["arbitrary_precision"] }
+roxmltree = "0.21"
+web-sys = { version = "0.3", features = ["Clipboard", "Navigator", "HtmlTextAreaElement", "HtmlInputElement", "HtmlElement", "HtmlAnchorElement", "InputEvent", "KeyboardEvent", "KeyboardEventInit", "MouseEvent", "MouseEventInit", "Event", "EventInit", "EventTarget", "Window", "Document", "Element", "Node", "NodeList", "CssStyleDeclaration", "DomRect", "Blob", "BlobPropertyBag", "Url", "File", "FileList", "FileReader", "Storage"] }
+wasm-bindgen = "=0.2.117"
+oxfml_core.workspace = true
+oxfunc_core.workspace = true
+dnacalc-skin-ir = { path = "../dnacalc-skin-ir" }
+dnacalc-formula-ux-core = { path = "../dnacalc-formula-ux-core" }
+dnacalc-formula-skin-leptos = { path = "../dnacalc-formula-skin-leptos", optional = true }
+dnacalc-extension-host-core = { path = "../dnacalc-extension-host-core" }
+dnacalc-bench-core = { path = "../dnacalc-bench-core" }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+leptos = { version = "0.8.17", default-features = false, features = ["ssr"], optional = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+leptos = { version = "0.8.17", default-features = false, features = ["csr"], optional = true }
+js-sys = "0.3"
+wasm-bindgen-futures = "0.4"
+
+[dev-dependencies]
+wasm-bindgen-test = "=0.3.67"

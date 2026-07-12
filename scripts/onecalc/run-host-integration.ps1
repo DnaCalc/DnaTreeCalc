@@ -23,7 +23,7 @@ try {
 
     foreach ($check in $checks) {
         Write-Host "run-host-integration: $check"
-        cargo test -p dnaonecalc-host $check -- --exact
+        cargo test -p dnacalc-bench-host $check -- --exact
     }
 
     Write-Host "run-host-integration: ok"

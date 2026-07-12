@@ -1,3 +1,5 @@
+> **Historical archive.** DnaOneCalc was merged into this repo and its crates renamed to `dnacalc-bench-*` (D5); docs below are preserved as imported. Current program authority: [`docs/ux/redesign/REDESIGN_PROGRAM.md`](../ux/redesign/REDESIGN_PROGRAM.md).
+
 # DnaOneCalc
 
 `DnaOneCalc` is the single-formula proving host in the DNA Calc program.

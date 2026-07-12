@@ -1,9 +1,12 @@
+# STALE (dtc-tsc.2): the smoke CLI flags this script drives were removed from the
+# host bin upstream before the D5 import (bin now exposes verify-*/audit-formula-drill
+# only), so every invocation exits 2 at 'unknown command'. Kept for the marker record.
 $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $true
 
 Push-Location (Join-Path $PSScriptRoot "..\..")
 try {
-    $output = cargo run -p dnaonecalc-host -- --shell-smoke 2>&1 | Out-String
+    $output = cargo run -p dnacalc-bench-host -- --shell-smoke 2>&1 | Out-String
 
     $requiredMarkers = @(
         "shell_regions=formula,result,diagnostics",

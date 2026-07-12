@@ -991,6 +991,48 @@ dependencies = [
 ]
 
 [[package]]
+name = "dnacalc-bench-core"
+version = "0.1.0"
+dependencies = [
+ "dnacalc-skin-ir",
+ "serde_json",
+]
+
+[[package]]
+name = "dnacalc-bench-desktop"
+version = "0.1.0"
+dependencies = [
+ "dnacalc-bench-host",
+ "rfd",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+]
+
+[[package]]
+name = "dnacalc-bench-host"
+version = "0.1.0"
+dependencies = [
+ "dnacalc-bench-core",
+ "dnacalc-extension-host-core",
+ "dnacalc-formula-skin-leptos",
+ "dnacalc-formula-ux-core",
+ "dnacalc-skin-ir",
+ "js-sys",
+ "leptos",
+ "oxfml_core",
+ "oxfunc_core",
+ "roxmltree",
+ "serde",
+ "serde_json",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "wasm-bindgen-test",
+ "web-sys",
+]
+
+[[package]]
 name = "dnacalc-extension-host-core"
 version = "0.1.0"
 dependencies = [
@@ -1049,48 +1091,6 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.18",
-]
-
-[[package]]
-name = "dnaonecalc-core"
-version = "0.1.0"
-dependencies = [
- "dnacalc-skin-ir",
- "serde_json",
-]
-
-[[package]]
-name = "dnaonecalc-desktop"
-version = "0.1.0"
-dependencies = [
- "dnaonecalc-host",
- "rfd",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
-]
-
-[[package]]
-name = "dnaonecalc-host"
-version = "0.1.0"
-dependencies = [
- "dnacalc-extension-host-core",
- "dnacalc-formula-skin-leptos",
- "dnacalc-formula-ux-core",
- "dnacalc-skin-ir",
- "dnaonecalc-core",
- "js-sys",
- "leptos",
- "oxfml_core",
- "oxfunc_core",
- "roxmltree",
- "serde",
- "serde_json",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "wasm-bindgen-test",
- "web-sys",
 ]
 
 [[package]]

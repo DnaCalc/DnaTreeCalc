@@ -1,7 +1,7 @@
 /// Inline CSS for the walking-skeleton shell + the built-in skins.
 ///
 /// Inlining keeps the WASM bundle self-contained (no external stylesheet
-/// fetch) and matches DnaOneCalc's pattern. The active `ThemeTokens`
+/// fetch) and matches dnacalc-bench-host's pattern. The active `ThemeTokens`
 /// object injects CSS custom properties into `.dtc-shell`; this stylesheet
 /// consumes those variables so skins can share one presentation token surface.
 pub const SHELL_CSS: &str = r#"

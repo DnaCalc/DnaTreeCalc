@@ -1,0 +1,9 @@
+[package]
+name = "dnacalc-bench-core"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+dnacalc-skin-ir = { path = "../dnacalc-skin-ir" }
+serde_json.workspace = true

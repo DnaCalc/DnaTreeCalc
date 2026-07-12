@@ -4,7 +4,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
-$desktopCrateRoot = Join-Path $repoRoot "src\dnaonecalc-desktop"
+$desktopCrateRoot = Join-Path $repoRoot "src\dnacalc-bench-desktop"
 
 Push-Location $desktopCrateRoot
 try {

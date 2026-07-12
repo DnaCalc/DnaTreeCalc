@@ -1,3 +1,6 @@
+# NOTE (dtc-tsc.2): the 'cargo test-browser*' aliases lived in the old repo's
+# .cargo/config.toml, which was intentionally not imported; the workspace harness
+# (wasm-bindgen-test-runner + geckodriver, see .cargo/config.toml) is the supported path.
 param(
     [switch]$Live
 )
@@ -17,9 +20,9 @@ $driverDir = Split-Path -Parent $driverPath
 $env:PATH = "$driverDir;$env:PATH"
 
 if ($Live) {
-    cargo test-browser-live -p dnaonecalc-host
+    cargo test-browser-live -p dnacalc-bench-host
 } else {
-    cargo test-browser -p dnaonecalc-host
+    cargo test-browser -p dnacalc-bench-host
 }
 
 exit $LASTEXITCODE

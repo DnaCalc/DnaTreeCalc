@@ -29,16 +29,16 @@ function Get-ContentType([string]$path) {
 }
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
-$hostCrateRoot = Join-Path $repoRoot "src\dnaonecalc-host"
+$hostCrateRoot = Join-Path $repoRoot "src\dnacalc-bench-host"
 $previewRoot = Join-Path $repoRoot "target\onecalc-preview"
 $bindgenPath = & (Join-Path $PSScriptRoot "ensure-wasm-bindgen-runner.ps1") -PrintCliPath
 
-cargo build --lib --target wasm32-unknown-unknown -p dnaonecalc-host
+cargo build --lib --target wasm32-unknown-unknown -p dnacalc-bench-host
 if ($LASTEXITCODE -ne 0) {
     throw "cargo build failed"
 }
 
-$wasmPath = Join-Path $repoRoot "target\wasm32-unknown-unknown\debug\dnaonecalc_host.wasm"
+$wasmPath = Join-Path $repoRoot "target\wasm32-unknown-unknown\debug\dnacalc_bench_host.wasm"
 if (-not (Test-Path $wasmPath)) {
     throw "Expected wasm output not found: $wasmPath"
 }

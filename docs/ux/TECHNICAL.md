@@ -62,7 +62,7 @@ DnaTreeCalc/
 ├── Cargo.toml                          # workspace manifest
 ├── README.md
 ├── src/
-│   ├── dnatreecalc-host/               # the main host crate (analogous to dnaonecalc-host)
+│   ├── dnatreecalc-host/               # the main host crate (analogous to dnacalc-bench-host)
 │   │   ├── Cargo.toml
 │   │   └── src/
 │   │       ├── lib.rs                  # WASM entry: mount_treecalc(element_id)

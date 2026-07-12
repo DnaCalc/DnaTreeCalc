@@ -14,11 +14,11 @@ members = [
     "src/dnatreecalc-skins",
     "src/dnatreecalc-web",
     "src/dnatreecalc-worker",
-    # Consolidated DnaOneCalc bench crates (D5 import, dtc-tsc.1). Names kept
-    # unchanged this phase; rename to dnacalc-bench-* is dtc-tsc.2.
-    "src/dnaonecalc-core",
-    "src/dnaonecalc-host",
-    "src/dnaonecalc-desktop",
+    # Bench crates (D5): imported from DnaOneCalc in dtc-tsc.1, renamed
+    # dnaonecalc-* -> dnacalc-bench-* in dtc-tsc.2. Source repo is archived.
+    "src/dnacalc-bench-core",
+    "src/dnacalc-bench-host",
+    "src/dnacalc-bench-desktop",
 ]
 
 [workspace.package]

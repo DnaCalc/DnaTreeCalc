@@ -1,3 +1,6 @@
+# STALE (dtc-tsc.2): the smoke CLI flags this script drives were removed from the
+# host bin upstream before the D5 import (bin now exposes verify-*/audit-formula-drill
+# only), so every invocation exits 2 at 'unknown command'. Kept for the marker record.
 $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $true
 
@@ -6,9 +9,9 @@ try {
     $checks = @(
         @{
             Name = "h1-smoke"
-            Command = @("cargo", "run", "-p", "dnaonecalc-host", "--", "--h1-smoke")
+            Command = @("cargo", "run", "-p", "dnacalc-bench-host", "--", "--h1-smoke")
             RequiredMarkers = @(
-                "dnaonecalc-host h1 smoke"
+                "dnacalc-bench-host h1 smoke"
                 "host_profile=OC-H1"
                 "edit_accept=trigger:edit_accept;packet_kind:edit_accept_recalc"
                 "manual_recalc=trigger:manual;packet_kind:manual_recalc"
@@ -18,9 +21,9 @@ try {
         }
         @{
             Name = "h1-retained-smoke"
-            Command = @("cargo", "run", "-p", "dnaonecalc-host", "--", "--h1-retained-smoke")
+            Command = @("cargo", "run", "-p", "dnacalc-bench-host", "--", "--h1-retained-smoke")
             RequiredMarkers = @(
-                "dnaonecalc-host h1 retained smoke"
+                "dnacalc-bench-host h1 retained smoke"
                 "scenario_id=scenario-onecalc-h1-retained"
                 "scenario_run_id=scenario-run-onecalc-h1-retained-edit-accept-recalc-"
                 "reopened=host_profile:OC-H1;formula_text_version:2;worksheet_value:Number(6)"
@@ -28,9 +31,9 @@ try {
         }
         @{
             Name = "h1-compare-smoke"
-            Command = @("cargo", "run", "-p", "dnaonecalc-host", "--", "--h1-compare-smoke")
+            Command = @("cargo", "run", "-p", "dnacalc-bench-host", "--", "--h1-compare-smoke")
             RequiredMarkers = @(
-                "dnaonecalc-host h1 compare smoke"
+                "dnacalc-bench-host h1 compare smoke"
                 "comparison=same_scenario:true"
                 "formula_version_changed:true"
                 "formula_text_changed:true"

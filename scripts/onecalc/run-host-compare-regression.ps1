@@ -12,7 +12,7 @@ try {
 
     foreach ($check in $checks) {
         Write-Host "run-host-compare-regression: $check"
-        cargo test -p dnaonecalc-host $check -- --exact
+        cargo test -p dnacalc-bench-host $check -- --exact
     }
 
     Write-Host "run-host-compare-regression: live Windows capture remains a separate gate"
