@@ -427,8 +427,19 @@ the OneFormula document's own intent surface (`OneFormulaIntent`, distinct from 
 the F-gate keeps OneCalc's dependency graph free of `oxcalc*`); filed here because the shape is
 expected to graduate into the shared host/Skin-IR contract once generalized.
 
-#### `format-authoring-verbs` — CF rule + font/fill write verbs on the OneFormula document · new · M · high-leverage
-> Write-side counterpart to `FormattingSurface`'s read model: `SetFontAttributes{scope, font}`,
+#### `format-authoring-verbs` — CF rule + font/fill write verbs on the OneFormula document · RESOLVED 2026-07-13 · M · high-leverage
+> **RESOLVED (2026-07-13, bead dtc-lfz.13) — NOT an engine ask.** Ground-truthing the source showed
+> OxFml already fully evaluates the typed CF model and applies font/fill (`oxfml_core::publication`),
+> and the bench-host↔OxFml seam (`FormulaFormattingRequest`) already carries them; the host already
+> had every setter (`set_active_font_color` / `set_active_fill_color` / `add|remove|update_active_
+> conditional_formatting_rule`). OxFml is deliberately stateless about formatting, so there was no
+> engine verb to add. The write verbs landed **host/Skin-IR-side**: `OneFormulaIntent::SetFontAttributes`
+> / `SetFillAttributes` / `SetConditionalFormatRule{rule_index, rule: ConditionalFormatRuleAuthoring}` /
+> `RemoveConditionalFormatRule`, routed through the bench-host reducer into the existing setters and
+> wired into the Bench format panel. The cell-value/operator CF slice + font/fill are LIVE; typed-
+> visualization CF authoring (colour scale / data bar / icon set / rank / average) is a follow-on
+> editor (the read side already renders them).
+> Original ask (retained for history): Write-side counterpart to `FormattingSurface`'s read model: `SetFontAttributes{scope, font}`,
 > `SetFillAttributes{scope, fill}`, `SetConditionalFormatRule{scope, rule: CfRule}` /
 > `RemoveConditionalFormatRule`, dispatched as `OneFormulaIntent`. Today only `SetNumberFormat` /
 > `SetScenarioPolicy` exist as write verbs; CF rules and font/fill are read-only (BENCH_SPEC §7
@@ -444,8 +455,15 @@ expected to graduate into the shared host/Skin-IR contract once generalized.
   works (the existing `SetNumberFormat` verb is live); CF-rule and font/fill authoring stay
   display-only in the Bench format panel until these verbs land — no faked authoring.
 
-#### `locale-authoring-verb` — set the OneFormula document's locale / date system · new · S · enriching
-> `SetLocale{locale_language_tag}` (and/or `SetDate1904{bool}`) dispatched as `OneFormulaIntent`, so the
+#### `locale-authoring-verb` — set the OneFormula document's locale / date system · RESOLVED 2026-07-13 · S · enriching
+> **RESOLVED (2026-07-13, bead dtc-lfz.13) — NOT an engine ask.** OxFml already renders every locale
+> profile (20+, `oxfunc_core::locale_format::from_bcp47_language_tag`) and the 1904 date system, and
+> the bench-host seam already carried `language_tag` + `date1904`; the host already had
+> `set_workspace_locale_preset` / `set_active_date1904`. The verbs landed host/Skin-IR-side:
+> `OneFormulaIntent::SetLocale{locale_language_tag}` + `SetDate1904{bool}`, wired into the Bench panel's
+> locale selector + date-system toggle. LIVE. `SetLocale` is workspace-scoped (matches the read model,
+> which mirrors the ambient app context).
+> Original ask (retained for history): `SetLocale{locale_language_tag}` (and/or `SetDate1904{bool}`) dispatched as `OneFormulaIntent`, so the
 > host re-renders values through OxFml under the chosen locale. Today `FormattingSurface` exposes
 > `locale_language_tag` + `date1904` READ-ONLY and `OneFormulaIntent` carries no locale write verb, so the
 > Bench panel's locale section is display-only. Distinct from `locale-presentation-layer` (chrome

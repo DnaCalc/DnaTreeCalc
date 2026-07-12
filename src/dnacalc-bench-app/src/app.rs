@@ -21,7 +21,9 @@ use dnacalc_shell::{
 };
 use dnacalc_skin_ir::IntentReceipt;
 use dnacalc_skin_ir::SkinVerb;
-use dnacalc_skin_ir::formula::{FormulaResultSurface, OneFormulaIntent, OneFormulaProjection};
+use dnacalc_skin_ir::formula::{
+    ConditionalFormatRuleAuthoring, FormulaResultSurface, OneFormulaIntent, OneFormulaProjection,
+};
 use dnacalc_skin_ir::intent::{Dispatcher, WorkspaceDelta, WorkspaceIntent};
 use dnacalc_skin_ir::protocol::{HostCapabilityProjection, PersistenceProjection, SkinShellIntent};
 use dnacalc_skin_ir::selection::SelectionState;
@@ -92,14 +94,35 @@ impl BridgeSurface for BenchBridgeSurface {
 struct BenchFormatSurface {
     projection: RwSignal<OneFormulaProjection>,
     on_set_number_format: Callback<Option<String>>,
+    on_set_font_color: Callback<Option<String>>,
+    on_set_fill_color: Callback<Option<String>>,
+    on_set_cf_rule: Callback<(Option<usize>, ConditionalFormatRuleAuthoring)>,
+    on_remove_cf_rule: Callback<usize>,
+    on_set_locale: Callback<String>,
+    on_set_date1904: Callback<bool>,
 }
 
 impl InspectorSurface for BenchFormatSurface {
     fn mount(&self, _ctx: StageContext) -> AnyView {
         let projection = self.projection;
         let on_set_number_format = self.on_set_number_format;
+        let on_set_font_color = self.on_set_font_color;
+        let on_set_fill_color = self.on_set_fill_color;
+        let on_set_cf_rule = self.on_set_cf_rule;
+        let on_remove_cf_rule = self.on_remove_cf_rule;
+        let on_set_locale = self.on_set_locale;
+        let on_set_date1904 = self.on_set_date1904;
         view! {
-            <FormatPanel projection=projection on_set_number_format=on_set_number_format />
+            <FormatPanel
+                projection=projection
+                on_set_number_format=on_set_number_format
+                on_set_font_color=on_set_font_color
+                on_set_fill_color=on_set_fill_color
+                on_set_cf_rule=on_set_cf_rule
+                on_remove_cf_rule=on_remove_cf_rule
+                on_set_locale=on_set_locale
+                on_set_date1904=on_set_date1904
+            />
         }
         .into_any()
     }
@@ -455,6 +478,56 @@ pub fn BenchApp(
         }
     });
 
+    // The remaining format-authoring sinks (bead dtc-lfz.13): font/fill
+    // colour, cell-value CF rules, locale, and the date system. Each is a
+    // real write verb + host re-render, exactly like `on_set_number_format`
+    // above — the effective display/colours always come back from OxFml's
+    // publication surface, never a skin-side formatter. `reproject_after`
+    // (Copy — it captures only the `u64` host id and two `RwSignal`s)
+    // refreshes the projection + persistence so the live preview, Result
+    // stage, and mast dirty-dot all track the edit.
+    let reproject_after = move |changed: bool| {
+        if changed {
+            if let Some(next) = with_bench_host(host_id, |host| host.projection()) {
+                projection.set(next);
+            }
+            if let Some(next) = with_bench_host(host_id, |host| shell_persistence_from_host(host)) {
+                persistence.set(next);
+            }
+        }
+    };
+    let on_set_font_color = Callback::new(move |color: Option<String>| {
+        let changed =
+            with_bench_host(host_id, |host| host.set_font_color(color)).unwrap_or(false);
+        reproject_after(changed);
+    });
+    let on_set_fill_color = Callback::new(move |color: Option<String>| {
+        let changed =
+            with_bench_host(host_id, |host| host.set_fill_color(color)).unwrap_or(false);
+        reproject_after(changed);
+    });
+    let on_set_cf_rule = Callback::new(
+        move |(index, rule): (Option<usize>, ConditionalFormatRuleAuthoring)| {
+            let changed =
+                with_bench_host(host_id, |host| host.set_cf_rule(index, rule)).unwrap_or(false);
+            reproject_after(changed);
+        },
+    );
+    let on_remove_cf_rule = Callback::new(move |index: usize| {
+        let changed =
+            with_bench_host(host_id, |host| host.remove_cf_rule(index)).unwrap_or(false);
+        reproject_after(changed);
+    });
+    let on_set_locale = Callback::new(move |tag: String| {
+        let changed = with_bench_host(host_id, |host| host.set_locale(tag)).unwrap_or(false);
+        reproject_after(changed);
+    });
+    let on_set_date1904 = Callback::new(move |enabled: bool| {
+        let changed =
+            with_bench_host(host_id, |host| host.set_date1904(enabled)).unwrap_or(false);
+        reproject_after(changed);
+    });
+
     // Shell verbs the Bench product owns (SHELL_SPEC §5 forwards these through
     // `on_shell_verb`): F8 toggles the X-Ray, ']'/'[' walk the evaluation ring.
     let on_shell_verb = Callback::new(move |verb: SkinVerb| match verb {
@@ -531,6 +604,12 @@ pub fn BenchApp(
     composition.inspector_surface = Some(Arc::new(BenchFormatSurface {
         projection,
         on_set_number_format,
+        on_set_font_color,
+        on_set_fill_color,
+        on_set_cf_rule,
+        on_remove_cf_rule,
+        on_set_locale,
+        on_set_date1904,
     }));
 
     let stages = StageRegistry::new().with_stage(Arc::new(BenchResultStage {

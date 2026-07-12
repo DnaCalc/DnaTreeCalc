@@ -8,29 +8,34 @@
 //! the host's rendered projection string; the panel never turns a number into
 //! text itself (the layering law).
 //!
-//! Authoring status this phase:
+//! Authoring status (all LIVE as of bead dtc-lfz.13 — the write verbs route
+//! through the OneFormula host into OxFml's publication surface, which already
+//! evaluates the typed CF model + applies font/fill + renders every locale):
 //! - **Number format: LIVE.** The preset gallery and code entry author through
 //!   `OneFormulaIntent::SetNumberFormat` (wired in `app.rs` via
 //!   [`crate::adapter::BenchHost::set_number_format`], which re-renders the
 //!   result through host truth). The live preview is that re-rendered string.
-//! - **Conditional formatting: DISPLAY-ONLY.** The typed CF rules already on
-//!   the surface (ColorScale / DataBar / IconSet / Rank / Average) render with
-//!   their thresholds, and per-cell CF outcomes render off the array window's
-//!   `ArrayCellFormatProjection`. Rule authoring DEGRADES honestly — the write
-//!   verbs are an S1 ask (BENCH_SPEC §8); until they land the panel shows an
-//!   honest "authoring arrives with the write verbs" affordance, never a fake
-//!   editor.
-//! - **Font / fill: DISPLAY-ONLY**, degrading the same way as CF.
-//! - **Locale: READ-ONLY.** `locale_language_tag` + the date1904 indicator
-//!   render from the surface; there is no locale write verb on the OneFormula
-//!   document yet, so the panel says so honestly rather than faking a switch.
+//! - **Conditional formatting: LIVE (cell-value slice) + DISPLAY (typed).** The
+//!   typed CF rules already on the surface (ColorScale / DataBar / IconSet /
+//!   Rank / Average) render with their thresholds, and per-cell CF outcomes
+//!   render off the array window's `ArrayCellFormatProjection`. Authoring the
+//!   operator-driven cell-value rules (`SetConditionalFormatRule` /
+//!   `RemoveConditionalFormatRule`) is LIVE; typed-visualization authoring is a
+//!   follow-on editor.
+//! - **Font / fill: LIVE.** Colour pickers author `SetFontAttributes` /
+//!   `SetFillAttributes`; the effective colour always comes back from OxFml.
+//! - **Locale: LIVE.** The locale selector + date-system toggle author
+//!   `SetLocale` / `SetDate1904`; the result re-renders through host truth.
+//!
+//! The layering law still holds throughout: the panel only chooses which code
+//! / verb to author — every display string it shows is the host's projection.
 
 use leptos::prelude::*;
 
 use dnacalc_skin_ir::formula::{
-    ArrayWindowProjection, ConditionalFormattingThresholdProjection,
-    ConditionalFormattingTypedRuleProjection, FormattingSurface, FormulaResultSurface,
-    OneFormulaProjection, RankRuleProjection,
+    ArrayWindowProjection, ConditionalFormatRuleAuthoring,
+    ConditionalFormattingThresholdProjection, ConditionalFormattingTypedRuleProjection,
+    FormattingSurface, FormulaResultSurface, OneFormulaProjection, RankRuleProjection,
 };
 
 // ---------------------------------------------------------------------------
@@ -321,24 +326,38 @@ fn colour_chip(label: &'static str, colour: Option<String>) -> AnyView {
 }
 
 /// The formatting / CF / locale panel (BENCH_SPEC §7). Renders host truth off
-/// `projection`; the number-format controls author through
-/// `on_set_number_format` (LIVE), CF / font / fill / locale display honestly.
+/// `projection`; every control authors through a real write verb (number
+/// format, font/fill colour, cell-value CF rules, locale, date system) and the
+/// result re-renders through host truth — never a skin-side formatter.
 #[component]
 pub fn FormatPanel(
     /// The live OneFormula projection — the panel reads the FormattingSurface
     /// and the result (for the host-rendered preview + per-cell CF outcomes).
     projection: RwSignal<OneFormulaProjection>,
-    /// Authors a number-format code (or `None` for General) and re-renders
-    /// the result through host truth. Wired in `app.rs` to
-    /// `BenchHost::set_number_format`.
+    /// Authors a number-format code (or `None` for General). Wired in `app.rs`
+    /// to `BenchHost::set_number_format`.
     on_set_number_format: Callback<Option<String>>,
+    /// Authors the font colour (hex `#RRGGBB`, or `None` to clear) —
+    /// `BenchHost::set_font_color`.
+    on_set_font_color: Callback<Option<String>>,
+    /// Authors the fill colour — `BenchHost::set_fill_color`.
+    on_set_fill_color: Callback<Option<String>>,
+    /// Authors a cell-value CF rule: `None` index appends, `Some(i)` replaces —
+    /// `BenchHost::set_cf_rule`.
+    on_set_cf_rule: Callback<(Option<usize>, ConditionalFormatRuleAuthoring)>,
+    /// Removes the CF rule at the given index — `BenchHost::remove_cf_rule`.
+    on_remove_cf_rule: Callback<usize>,
+    /// Switches the workspace locale (BCP-47 tag) — `BenchHost::set_locale`.
+    on_set_locale: Callback<String>,
+    /// Flips the date system (1900 / 1904) — `BenchHost::set_date1904`.
+    on_set_date1904: Callback<bool>,
 ) -> impl IntoView {
     view! {
         <div class="dna-format" data-testid="format-panel">
             {number_format_section(projection, on_set_number_format)}
-            {conditional_formatting_section(projection)}
-            {font_fill_section(projection)}
-            {locale_section(projection)}
+            {conditional_formatting_section(projection, on_set_cf_rule, on_remove_cf_rule)}
+            {font_fill_section(projection, on_set_font_color, on_set_fill_color)}
+            {locale_section(projection, on_set_locale, on_set_date1904)}
         </div>
     }
 }
@@ -420,7 +439,23 @@ fn number_format_section(
     .into_any()
 }
 
-fn conditional_formatting_section(projection: RwSignal<OneFormulaProjection>) -> AnyView {
+/// The Excel cell-value CF operators OxFml evaluates today. `between`
+/// takes two thresholds; every other operator takes one.
+pub const CF_OPERATORS: [(&str, &str); 7] = [
+    ("greater than", "greaterThan"),
+    ("≥", "greaterThanOrEqual"),
+    ("less than", "lessThan"),
+    ("≤", "lessThanOrEqual"),
+    ("equal to", "equal"),
+    ("not equal to", "notEqual"),
+    ("between", "between"),
+];
+
+fn conditional_formatting_section(
+    projection: RwSignal<OneFormulaProjection>,
+    on_set_cf_rule: Callback<(Option<usize>, ConditionalFormatRuleAuthoring)>,
+    on_remove_cf_rule: Callback<usize>,
+) -> AnyView {
     view! {
         <section class="dna-format__section" data-format-section="cf">
             <h4 class="dna-format__title">"Conditional formatting"</h4>
@@ -440,7 +475,7 @@ fn conditional_formatting_section(projection: RwSignal<OneFormulaProjection>) ->
                     rules
                         .into_iter()
                         .enumerate()
-                        .map(|(index, rule)| cf_rule_view(index, &rule))
+                        .map(|(index, rule)| cf_rule_view(index, &rule, on_remove_cf_rule))
                         .collect_view()
                         .into_any()
                 }
@@ -461,15 +496,135 @@ fn conditional_formatting_section(projection: RwSignal<OneFormulaProjection>) ->
                         }
                     })
             }}
-            <p class="dna-format__degrade" data-testid="cf-authoring-degrade">
-                "Rule authoring arrives with the write verbs — display-only this phase."
-            </p>
+            {cf_rule_editor(on_set_cf_rule)}
         </section>
     }
     .into_any()
 }
 
-fn cf_rule_view(index: usize, rule: &CfRuleDisplay) -> AnyView {
+/// A minimal cell-value rule editor (BENCH_SPEC §7): pick an operator,
+/// enter its threshold(s), optionally a font / fill colour, and author a
+/// new rule through `SetConditionalFormatRule`. Draft state lives in
+/// component-local signals; on add they build the authoring payload and
+/// reset. Typed-visualization rules author through a follow-on editor.
+fn cf_rule_editor(
+    on_set_cf_rule: Callback<(Option<usize>, ConditionalFormatRuleAuthoring)>,
+) -> AnyView {
+    let operator = RwSignal::new("greaterThan".to_string());
+    let threshold1 = RwSignal::new(String::new());
+    let threshold2 = RwSignal::new(String::new());
+    let font = RwSignal::new(String::new());
+    let fill = RwSignal::new(String::new());
+
+    let is_between = move || operator.with(|op| op == "between");
+
+    let add = move |_| {
+        let op = operator.get();
+        let mut thresholds = Vec::new();
+        let t1 = threshold1.get();
+        if !t1.trim().is_empty() {
+            thresholds.push(t1.trim().to_string());
+        }
+        if op == "between" {
+            let t2 = threshold2.get();
+            if !t2.trim().is_empty() {
+                thresholds.push(t2.trim().to_string());
+            }
+        }
+        let non_empty = |value: String| (!value.trim().is_empty()).then_some(value);
+        let rule = ConditionalFormatRuleAuthoring {
+            rule_kind: "cell_value".to_string(),
+            operator: Some(op),
+            thresholds,
+            font_color: non_empty(font.get()),
+            fill_color: non_empty(fill.get()),
+        };
+        on_set_cf_rule.run((None, rule));
+        threshold1.set(String::new());
+        threshold2.set(String::new());
+    };
+
+    view! {
+        <div class="dna-format__cf-editor" data-testid="cf-editor">
+            <span class="dna-format__subtitle">"Add a cell-value rule"</span>
+            <div class="dna-format__cf-editor-row">
+                <select
+                    class="dna-format__cf-operator"
+                    data-testid="cf-operator"
+                    prop:value=move || operator.get()
+                    on:change=move |ev| operator.set(event_target_value(&ev))
+                >
+                    {CF_OPERATORS
+                        .iter()
+                        .map(|(label, value)| {
+                            view! { <option value=*value>{*label}</option> }
+                        })
+                        .collect_view()}
+                </select>
+                <input
+                    type="text"
+                    class="dna-format__cf-threshold-input"
+                    data-testid="cf-threshold-1"
+                    placeholder="value"
+                    prop:value=move || threshold1.get()
+                    on:input=move |ev| threshold1.set(event_target_value(&ev))
+                />
+                {move || {
+                    is_between()
+                        .then(|| {
+                            view! {
+                                <input
+                                    type="text"
+                                    class="dna-format__cf-threshold-input"
+                                    data-testid="cf-threshold-2"
+                                    placeholder="and"
+                                    prop:value=move || threshold2.get()
+                                    on:input=move |ev| threshold2.set(event_target_value(&ev))
+                                />
+                            }
+                        })
+                }}
+            </div>
+            <div class="dna-format__cf-editor-row">
+                <label class="dna-format__cf-colour-pick">
+                    <span class="dna-format__author-label">"font"</span>
+                    <input
+                        type="color"
+                        data-testid="cf-font-colour"
+                        prop:value=move || {
+                            let value = font.get();
+                            if value.is_empty() { "#000000".to_string() } else { value }
+                        }
+                        on:change=move |ev| font.set(event_target_value(&ev))
+                    />
+                </label>
+                <label class="dna-format__cf-colour-pick">
+                    <span class="dna-format__author-label">"fill"</span>
+                    <input
+                        type="color"
+                        data-testid="cf-fill-colour"
+                        prop:value=move || {
+                            let value = fill.get();
+                            if value.is_empty() { "#ffffff".to_string() } else { value }
+                        }
+                        on:change=move |ev| fill.set(event_target_value(&ev))
+                    />
+                </label>
+                <button
+                    type="button"
+                    class="dna-format__cf-add"
+                    data-testid="cf-add-rule"
+                    on:click=add
+                >
+                    "Add rule"
+                </button>
+            </div>
+        </div>
+    }
+    .into_any()
+}
+
+fn cf_rule_view(index: usize, rule: &CfRuleDisplay, on_remove_cf_rule: Callback<usize>) -> AnyView {
     let thresholds = rule
         .thresholds
         .iter()
@@ -485,6 +640,15 @@ fn cf_rule_view(index: usize, rule: &CfRuleDisplay) -> AnyView {
             <div class="dna-format__cf-head">
                 <span class="dna-format__cf-kind">{rule.kind_label}</span>
                 {operator}
+                <button
+                    type="button"
+                    class="dna-format__cf-remove"
+                    data-testid=format!("cf-remove-{index}")
+                    title="Remove rule"
+                    on:click=move |_| on_remove_cf_rule.run(index)
+                >
+                    "×"
+                </button>
             </div>
             <ul class="dna-format__cf-thresholds">{thresholds}</ul>
             <div class="dna-format__cf-colours">
@@ -532,7 +696,11 @@ fn cf_cell_view(outcome: CfCellOutcome) -> AnyView {
     .into_any()
 }
 
-fn font_fill_section(projection: RwSignal<OneFormulaProjection>) -> AnyView {
+fn font_fill_section(
+    projection: RwSignal<OneFormulaProjection>,
+    on_set_font_color: Callback<Option<String>>,
+    on_set_fill_color: Callback<Option<String>>,
+) -> AnyView {
     view! {
         <section class="dna-format__section" data-format-section="font-fill">
             <h4 class="dna-format__title">"Font & fill"</h4>
@@ -550,15 +718,75 @@ fn font_fill_section(projection: RwSignal<OneFormulaProjection>) -> AnyView {
                     </div>
                 }
             }}
-            <p class="dna-format__degrade" data-testid="font-fill-degrade">
-                "Colour authoring arrives with the write verbs — display-only this phase."
-            </p>
+            {colour_authoring_row("font", "font-colour", projection, on_set_font_color, |surface| {
+                surface.font_color.clone()
+            })}
+            {colour_authoring_row("fill", "fill-colour", projection, on_set_fill_color, |surface| {
+                surface.fill_color.clone()
+            })}
         </section>
     }
     .into_any()
 }
 
-fn locale_section(projection: RwSignal<OneFormulaProjection>) -> AnyView {
+/// A live colour-authoring row: a `type=color` picker seeded from the
+/// current surface value plus a Clear button. `read` pulls the current
+/// colour off the FormattingSurface; the picker authors `Some(hex)` on
+/// change and Clear authors `None`. `default_hex` seeds the picker when
+/// the colour is currently absent (the picker widget has no empty state).
+fn colour_authoring_row(
+    label: &'static str,
+    testid: &'static str,
+    projection: RwSignal<OneFormulaProjection>,
+    on_set: Callback<Option<String>>,
+    read: fn(&FormattingSurface) -> Option<String>,
+) -> AnyView {
+    view! {
+        <div class="dna-format__author-row" data-author-row=testid>
+            <span class="dna-format__author-label">{label}</span>
+            <input
+                type="color"
+                class="dna-format__colour-input"
+                data-testid=testid
+                prop:value=move || {
+                    projection
+                        .with(|current| read(&current.formatting))
+                        .unwrap_or_else(|| "#000000".to_string())
+                }
+                on:change=move |ev| on_set.run(Some(event_target_value(&ev)))
+            />
+            <button
+                type="button"
+                class="dna-format__clear"
+                data-testid=format!("{testid}-clear")
+                on:click=move |_| on_set.run(None)
+            >
+                "Clear"
+            </button>
+        </div>
+    }
+    .into_any()
+}
+
+/// The locale presets the selector offers — all carry a real OxFml
+/// locale profile, so switching genuinely re-renders month / weekday
+/// names, separators, and `General`/date values through host truth.
+pub const LOCALE_PRESETS: [(&str, &str); 8] = [
+    ("English (US)", "en-US"),
+    ("English (UK)", "en-GB"),
+    ("German", "de-DE"),
+    ("French", "fr-FR"),
+    ("Spanish", "es-ES"),
+    ("Italian", "it-IT"),
+    ("Dutch", "nl-NL"),
+    ("Russian", "ru-RU"),
+];
+
+fn locale_section(
+    projection: RwSignal<OneFormulaProjection>,
+    on_set_locale: Callback<String>,
+    on_set_date1904: Callback<bool>,
+) -> AnyView {
     view! {
         <section class="dna-format__section" data-format-section="locale">
             <h4 class="dna-format__title">"Locale"</h4>
@@ -596,9 +824,33 @@ fn locale_section(projection: RwSignal<OneFormulaProjection>) -> AnyView {
                     </div>
                 }
             }}
-            <p class="dna-format__degrade" data-testid="locale-degrade">
-                "Locale switching arrives with a host write verb — read-only this phase."
-            </p>
+            <div class="dna-format__author-row">
+                <span class="dna-format__author-label">"locale"</span>
+                <select
+                    class="dna-format__locale-select"
+                    data-testid="locale-select"
+                    prop:value=move || {
+                        projection.with(|current| current.formatting.locale_language_tag.clone())
+                    }
+                    on:change=move |ev| on_set_locale.run(event_target_value(&ev))
+                >
+                    {LOCALE_PRESETS
+                        .iter()
+                        .map(|(label, tag)| {
+                            view! { <option value=*tag>{*label}</option> }
+                        })
+                        .collect_view()}
+                </select>
+            </div>
+            <label class="dna-format__date-toggle">
+                <input
+                    type="checkbox"
+                    data-testid="date1904-toggle"
+                    prop:checked=move || projection.with(|current| current.formatting.date1904)
+                    on:change=move |ev| on_set_date1904.run(event_target_checked(&ev))
+                />
+                <span>"1904 date system"</span>
+            </label>
         </section>
     }
     .into_any()
@@ -641,7 +893,20 @@ pub const FORMAT_PANEL_CSS: &str = "\
 .dna-format__locale-tag{font-family:'Recursive Mono','Cascadia Code',Consolas,ui-monospace,monospace;color:var(--dna-ink)}
 .dna-format__locale-tag--absent{color:var(--dna-ink-3);font-style:italic;font-family:inherit}
 .dna-format__locale-epoch{color:var(--dna-ink-2)}
-.dna-format__degrade{margin:0;font-size:11px;color:var(--dna-ink-3);font-style:italic}
+.dna-format__author-row{display:flex;align-items:center;gap:var(--dna-gap-2)}
+.dna-format__author-label{color:var(--dna-ink-3);min-width:3.5em}
+.dna-format__colour-input{width:28px;height:20px;padding:0;border:1px solid var(--dna-line);border-radius:var(--dna-radius-chip);background:var(--dna-paper);cursor:pointer}
+.dna-format__clear{font:inherit;font-size:11px;color:var(--dna-ink-2);background:var(--dna-paper-2);border:1px solid var(--dna-line);border-radius:var(--dna-radius-chip);padding:1px var(--dna-gap-2);cursor:pointer}
+.dna-format__locale-select,.dna-format__cf-operator{font:inherit;font-size:11px;color:var(--dna-ink);background:var(--dna-paper);border:1px solid var(--dna-line);border-radius:var(--dna-radius-chip);padding:2px var(--dna-gap-2)}
+.dna-format__date-toggle{display:flex;align-items:center;gap:var(--dna-gap-2);color:var(--dna-ink-2)}
+.dna-format__cf-editor{display:flex;flex-direction:column;gap:var(--dna-gap-2);padding:var(--dna-gap-2);background:var(--dna-paper-2);border-radius:var(--dna-radius-chip)}
+.dna-format__cf-editor-row{display:flex;flex-wrap:wrap;align-items:center;gap:var(--dna-gap-2)}
+.dna-format__cf-threshold-input{width:5em;font:inherit;font-family:'Recursive Mono','Cascadia Code',Consolas,ui-monospace,monospace;font-size:11px;color:var(--dna-ink);background:var(--dna-paper);border:1px solid var(--dna-line);border-radius:var(--dna-radius-chip);padding:2px var(--dna-gap-2)}
+.dna-format__cf-colour-pick{display:inline-flex;align-items:center;gap:var(--dna-gap-1)}
+.dna-format__cf-colour-pick input{width:24px;height:18px;padding:0;border:1px solid var(--dna-line);border-radius:var(--dna-radius-chip);cursor:pointer}
+.dna-format__cf-add{font:inherit;font-size:11px;color:var(--dna-accent-ink);background:var(--dna-accent-soft);border:1px solid var(--dna-accent);border-radius:var(--dna-radius-chip);padding:2px var(--dna-gap-3);cursor:pointer}
+.dna-format__cf-remove{margin-left:auto;font:inherit;font-size:13px;line-height:1;color:var(--dna-ink-3);background:transparent;border:none;cursor:pointer;padding:0 var(--dna-gap-1)}
+.dna-format__cf-remove:hover{color:var(--dna-danger-ink,var(--dna-ink))}
 ";
 
 #[cfg(test)]

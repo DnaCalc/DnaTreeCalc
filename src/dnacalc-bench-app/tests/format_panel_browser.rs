@@ -1,17 +1,17 @@
 //! Browser suite for the Bench formatting / CF / locale panel (BENCH_SPEC §7,
-//! bead dtc-lfz.5).
+//! beads dtc-lfz.5 + dtc-lfz.13).
 //!
-//! Two live-browser proofs:
+//! Live-browser proofs:
 //!   1. Mounted in the real [`BenchApp`], authoring a number format through the
 //!      panel's preset gallery re-renders the RESULT through host truth (the
 //!      displayed string changes with the format code — never a skin-side
 //!      formatter).
 //!   2. Mounted standalone over a hand-built projection, the panel RENDERS the
-//!      typed CF color-scale rule with its thresholds and the per-cell CF
-//!      outcomes off the array window, and reflects the locale read-only.
-//!
-//! Every assertion is a behaviour the pre-fix build did not have (there was no
-//! format panel at all), so the suite fails against pre-fix code.
+//!      typed CF color-scale rule with its thresholds, the per-cell CF outcomes
+//!      off the array window, and exposes the live authoring controls.
+//!   3. Mounted in the real app, authoring a font colour, a locale, and a
+//!      cell-value CF rule each round-trips through the OneFormula host and
+//!      re-renders the panel from host truth (bead dtc-lfz.13).
 
 #![cfg(target_arch = "wasm32")]
 
@@ -20,9 +20,10 @@ use dnacalc_bench_app::format_panel::FormatPanel;
 use dnacalc_shell::RuntimeContext;
 use dnacalc_skin_ir::formula::{
     ArrayCellFormatProjection, ArrayWindowCellProjection, ArrayWindowProjection,
-    ColorScaleRuleProjection, ColorScaleStopProjection, ConditionalFormattingRuleProjection,
-    ConditionalFormattingThresholdProjection, ConditionalFormattingTypedRuleProjection,
-    FormattingSurface, FormulaResultSurface, OneFormulaProjection,
+    ColorScaleRuleProjection, ColorScaleStopProjection, ConditionalFormatRuleAuthoring,
+    ConditionalFormattingRuleProjection, ConditionalFormattingThresholdProjection,
+    ConditionalFormattingTypedRuleProjection, FormattingSurface, FormulaResultSurface,
+    OneFormulaProjection,
 };
 use leptos::prelude::*;
 use wasm_bindgen::JsCast;
@@ -75,8 +76,18 @@ fn mount_panel(projection_value: OneFormulaProjection) -> web_sys::HtmlElement {
     let host = body_host();
     leptos::mount::mount_to(host.clone().unchecked_into(), move || {
         let projection = RwSignal::new(projection_value.clone());
-        let on_set_number_format = Callback::new(|_code: Option<String>| {});
-        view! { <FormatPanel projection=projection on_set_number_format=on_set_number_format /> }
+        view! {
+            <FormatPanel
+                projection=projection
+                on_set_number_format=Callback::new(|_: Option<String>| {})
+                on_set_font_color=Callback::new(|_: Option<String>| {})
+                on_set_fill_color=Callback::new(|_: Option<String>| {})
+                on_set_cf_rule=Callback::new(|_: (Option<usize>, ConditionalFormatRuleAuthoring)| {})
+                on_remove_cf_rule=Callback::new(|_: usize| {})
+                on_set_locale=Callback::new(|_: String| {})
+                on_set_date1904=Callback::new(|_: bool| {})
+            />
+        }
     })
     .forget();
     host
@@ -114,6 +125,29 @@ fn click(host: &web_sys::HtmlElement, selector: &str) {
         .unwrap_or_else(|| panic!("missing clickable {selector}"))
         .unchecked_into();
     button.click();
+}
+
+/// Set an `<input>` value and fire the given DOM event (`"input"` for text /
+/// colour typing, `"change"` for a committed colour pick).
+fn set_input(host: &web_sys::HtmlElement, selector: &str, value: &str, event_kind: &str) {
+    let input: web_sys::HtmlInputElement = query(host, selector)
+        .unwrap_or_else(|| panic!("missing input {selector}"))
+        .unchecked_into();
+    input.set_value(value);
+    input
+        .dispatch_event(&web_sys::Event::new(event_kind).unwrap())
+        .unwrap();
+}
+
+/// Pick a `<select>` option by value and fire `change`.
+fn select_option(host: &web_sys::HtmlElement, selector: &str, value: &str) {
+    let select: web_sys::HtmlSelectElement = query(host, selector)
+        .unwrap_or_else(|| panic!("missing select {selector}"))
+        .unchecked_into();
+    select.set_value(value);
+    select
+        .dispatch_event(&web_sys::Event::new("change").unwrap())
+        .unwrap();
 }
 
 /// §7 — authoring a number format through the panel re-renders the result via
@@ -254,17 +288,23 @@ async fn cf_color_scale_rule_shows_rule_and_per_cell_outcomes() {
         "the green-scaled cell carries its resolved fill"
     );
 
-    // CF authoring degrades honestly — display-only affordance present.
+    // CF authoring is LIVE — the cell-value rule editor is present, and the
+    // honest-degrade note is gone.
     assert!(
-        query(&host, "[data-testid=\"cf-authoring-degrade\"]").is_some(),
-        "CF authoring degrades with an honest note, never a fake editor"
+        query(&host, "[data-testid=\"cf-editor\"]").is_some(),
+        "the CF rule editor is present (authoring is live, not a fake-degrade)"
+    );
+    assert!(
+        query(&host, "[data-testid=\"cf-authoring-degrade\"]").is_none(),
+        "the CF honest-degrade note is gone now that authoring is live"
     );
 }
 
-/// §7 — the locale section reflects the surface read-only: the language tag and
-/// the date1904 epoch, plus the honest read-only note.
+/// §7 — the locale section reflects the surface and exposes live authoring
+/// controls: the language tag, the date1904 epoch, the selector, and the date
+/// toggle. The old read-only note is gone.
 #[wasm_bindgen_test]
-async fn locale_section_reflects_the_surface_read_only() {
+async fn locale_section_reflects_the_surface_and_authors_live() {
     let projection = OneFormulaProjection {
         formatting: FormattingSurface {
             locale_language_tag: "af-ZA".to_string(),
@@ -287,8 +327,76 @@ async fn locale_section_reflects_the_surface_read_only() {
         query(&host, "[data-date1904=\"true\"]").is_some(),
         "the 1904 date-system indicator reflects the surface"
     );
+    // Authoring is LIVE — the selector + date toggle are present, the
+    // read-only note is gone.
     assert!(
-        query(&host, "[data-testid=\"locale-degrade\"]").is_some(),
-        "locale switching degrades to a read-only note (no write verb yet)"
+        query(&host, "[data-testid=\"locale-select\"]").is_some(),
+        "the locale selector is present (switching is live, not read-only)"
+    );
+    assert!(
+        query(&host, "[data-testid=\"date1904-toggle\"]").is_some(),
+        "the date-system toggle is present"
+    );
+    assert!(
+        query(&host, "[data-testid=\"locale-degrade\"]").is_none(),
+        "the locale read-only note is gone now that authoring is live"
+    );
+}
+
+/// §7 (bead dtc-lfz.13) — authoring a font colour, a locale, and a cell-value
+/// CF rule each round-trips through the OneFormula host and re-renders the
+/// panel from host truth (never a skin-side edit). Fail-pre-fix: these controls
+/// did not exist, and the verbs they author did not exist in `OneFormulaIntent`.
+#[wasm_bindgen_test]
+async fn font_locale_and_cf_authoring_round_trip_through_host() {
+    let host = mount_app();
+    next_tick().await;
+    set_textarea(&host, "=1234.5");
+    settle().await;
+
+    // Font colour: author through the picker; the panel swatch (read off the
+    // projection's FormattingSurface) reflects the round-tripped value.
+    set_input(&host, "[data-testid=\"font-colour\"]", "#d02a23", "change");
+    settle().await;
+    assert!(
+        query(&host, "[data-testid=\"font-fill\"] [data-colour=\"#d02a23\"]").is_some(),
+        "the authored font colour round-trips into the panel swatch via host truth"
+    );
+
+    // Locale: select German; the read-model tag flips to a de-* tag.
+    select_option(&host, "[data-testid=\"locale-select\"]", "de-DE");
+    settle().await;
+    let tag = query(&host, "[data-testid=\"format-locale\"]")
+        .expect("locale renders")
+        .get_attribute("data-locale-tag")
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    assert!(
+        tag.starts_with("de"),
+        "authoring the locale flips the read-model tag through the host; got {tag:?}"
+    );
+
+    // CF: none authored yet.
+    assert!(
+        query(&host, "[data-cf-rule]").is_none(),
+        "no CF rule before authoring"
+    );
+    // Author a cell-value rule (default operator greaterThan) with a threshold
+    // and a fill colour, then add it.
+    set_input(&host, "[data-testid=\"cf-threshold-1\"]", "100", "input");
+    set_input(&host, "[data-testid=\"cf-fill-colour\"]", "#006600", "change");
+    click(&host, "[data-testid=\"cf-add-rule\"]");
+    settle().await;
+    assert!(
+        query(&host, "[data-cf-rule=\"0\"]").is_some(),
+        "the authored CF rule round-trips into the panel from host truth"
+    );
+
+    // Remove it through the per-rule remove control.
+    click(&host, "[data-testid=\"cf-remove-0\"]");
+    settle().await;
+    assert!(
+        query(&host, "[data-cf-rule]").is_none(),
+        "removing the rule round-trips through the host"
     );
 }

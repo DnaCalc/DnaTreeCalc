@@ -50,6 +50,26 @@ impl dnacalc_bench_core::OneCalcSessionHost for crate::state::OneCalcHostState {
                 | dnacalc_skin_ir::OneFormulaIntent::RequestDrillArrayWindow {
                     formula_space_id,
                     ..
+                }
+                | dnacalc_skin_ir::OneFormulaIntent::SetFontAttributes {
+                    formula_space_id, ..
+                }
+                | dnacalc_skin_ir::OneFormulaIntent::SetFillAttributes {
+                    formula_space_id, ..
+                }
+                | dnacalc_skin_ir::OneFormulaIntent::SetLocale {
+                    formula_space_id, ..
+                }
+                | dnacalc_skin_ir::OneFormulaIntent::SetDate1904 {
+                    formula_space_id, ..
+                }
+                | dnacalc_skin_ir::OneFormulaIntent::SetConditionalFormatRule {
+                    formula_space_id,
+                    ..
+                }
+                | dnacalc_skin_ir::OneFormulaIntent::RemoveConditionalFormatRule {
+                    formula_space_id,
+                    ..
                 } => formula_space_id,
             };
             let id = crate::domain::ids::FormulaSpaceId::new(formula_space_id.clone());

@@ -602,6 +602,87 @@ pub enum OneFormulaIntent {
         row_count: usize,
         col_count: usize,
     },
+    /// Author the font attributes on the active formula's format
+    /// surface. `font_color` is a hex `#RRGGBB`; `None` (or an empty
+    /// string) clears it back to inherit / default. The OneFormula
+    /// format model carries font *colour* today — the read
+    /// [`FormattingSurface`] mirrors only `font_color`; bold / italic /
+    /// size would extend this verb and the surface together, out of
+    /// this slice.
+    SetFontAttributes {
+        formula_space_id: String,
+        font_color: Option<String>,
+    },
+    /// Author the fill (background) colour on the active formula's
+    /// format surface. `fill_color` is a hex `#RRGGBB`; `None` (or an
+    /// empty string) clears it back to inherit / default.
+    SetFillAttributes {
+        formula_space_id: String,
+        fill_color: Option<String>,
+    },
+    /// Switch the locale the active formula renders under.
+    /// `locale_language_tag` is a BCP-47 tag (e.g. `"en-US"`,
+    /// `"de-DE"`); the host resolves it to a locale profile so month /
+    /// weekday names, separators, currency symbol, and `General`
+    /// rendering all flip. Workspace-scoped — it matches the read
+    /// model's [`FormattingSurface::locale_language_tag`], which
+    /// reflects the ambient app context; `formula_space_id` addresses
+    /// the active document for uniformity even though the effect is
+    /// ambient.
+    SetLocale {
+        formula_space_id: String,
+        locale_language_tag: String,
+    },
+    /// Set the active formula's date system: `false` = 1900 (default),
+    /// `true` = 1904 (Mac legacy). Shifts how date serials render.
+    SetDate1904 {
+        formula_space_id: String,
+        date1904: bool,
+    },
+    /// Author a conditional-formatting rule on the active formula's
+    /// result hero. `rule_index` `None` appends a new rule; `Some(i)`
+    /// replaces the rule already at index `i`. The payload is the
+    /// honest cell-value operator slice OxFml evaluates today (see
+    /// [`ConditionalFormatRuleAuthoring`]); typed visualization rules
+    /// (colour scale / data bar / icon set / rank / average) author
+    /// through a richer follow-on editor.
+    SetConditionalFormatRule {
+        formula_space_id: String,
+        rule_index: Option<usize>,
+        rule: ConditionalFormatRuleAuthoring,
+    },
+    /// Remove the conditional-formatting rule at `rule_index` from the
+    /// active formula's result hero. An honest no-op when the index is
+    /// out of range.
+    RemoveConditionalFormatRule {
+        formula_space_id: String,
+        rule_index: usize,
+    },
+}
+
+/// The authoring payload for [`OneFormulaIntent::SetConditionalFormatRule`]
+/// — the minimal honest slice OxFml evaluates today: operator-driven
+/// cell-value / text / predicate rules with optional whole-rule font /
+/// fill overrides. Distinct from the read-model
+/// [`ConditionalFormattingRuleProjection`] (a display shape carrying
+/// typed thresholds): this is the *write* shape, which the host maps
+/// 1:1 onto its `FormulaConditionalFormattingRule` with `typed_rule:
+/// None`. Typed visualization rules author through a richer follow-on.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ConditionalFormatRuleAuthoring {
+    /// Rule-kind label OxFml matches on (`"cell_value"`, `"text"`,
+    /// `"dates"`, `"blanks"`, `"errors"`, `"expression"`, …).
+    pub rule_kind: String,
+    /// Canonical Excel CF operator name (`"greaterThan"`, `"between"`,
+    /// `"equal"`, `"containsText"`, …); `None` for predicate-only kinds.
+    pub operator: Option<String>,
+    /// Threshold operands in operator order (one; two for `between`);
+    /// empty for predicate-only kinds.
+    pub thresholds: Vec<String>,
+    /// Hex `#RRGGBB` font colour applied when the rule fires.
+    pub font_color: Option<String>,
+    /// Hex `#RRGGBB` fill colour applied when the rule fires.
+    pub fill_color: Option<String>,
 }
 
 impl OneFormulaIntent {
@@ -900,5 +981,91 @@ mod tests {
             serde_json::json!([["1", "2"]])
         );
         assert_eq!(value["state"], "evaluated");
+    }
+
+    #[test]
+    fn format_authoring_intents_round_trip() {
+        use OneFormulaIntent as I;
+
+        // Each new write verb round-trips losslessly (fail-pre-fix:
+        // these variants did not exist before dtc-r8d5).
+        let cases = vec![
+            I::SetFontAttributes {
+                formula_space_id: "f1".into(),
+                font_color: Some("#D02A23".into()),
+            },
+            I::SetFillAttributes {
+                formula_space_id: "f1".into(),
+                fill_color: None,
+            },
+            I::SetLocale {
+                formula_space_id: "f1".into(),
+                locale_language_tag: "de-DE".into(),
+            },
+            I::SetDate1904 {
+                formula_space_id: "f1".into(),
+                date1904: true,
+            },
+            I::SetConditionalFormatRule {
+                formula_space_id: "f1".into(),
+                rule_index: None,
+                rule: ConditionalFormatRuleAuthoring {
+                    rule_kind: "cell_value".into(),
+                    operator: Some("greaterThan".into()),
+                    thresholds: vec!["100".into()],
+                    font_color: Some("#FFFFFF".into()),
+                    fill_color: Some("#006600".into()),
+                },
+            },
+            I::RemoveConditionalFormatRule {
+                formula_space_id: "f1".into(),
+                rule_index: 2,
+            },
+        ];
+        for intent in cases {
+            let json = serde_json::to_value(&intent).unwrap();
+            let back: OneFormulaIntent = serde_json::from_value(json).unwrap();
+            assert_eq!(intent, back);
+        }
+
+        // The `kind` tags are the stable snake_case wire contract.
+        assert_eq!(
+            serde_json::to_value(I::SetFontAttributes {
+                formula_space_id: "f1".into(),
+                font_color: Some("#D02A23".into()),
+            })
+            .unwrap(),
+            serde_json::json!({
+                "kind": "set_font_attributes",
+                "formula_space_id": "f1",
+                "font_color": "#D02A23"
+            })
+        );
+        assert_eq!(
+            serde_json::to_value(I::SetConditionalFormatRule {
+                formula_space_id: "f1".into(),
+                rule_index: Some(0),
+                rule: ConditionalFormatRuleAuthoring {
+                    rule_kind: "cell_value".into(),
+                    operator: Some("between".into()),
+                    thresholds: vec!["1".into(), "9".into()],
+                    font_color: None,
+                    fill_color: Some("#FFE9A8".into()),
+                },
+            })
+            .unwrap(),
+            serde_json::json!({
+                "kind": "set_conditional_format_rule",
+                "formula_space_id": "f1",
+                "rule_index": 0,
+                "rule": {
+                    "rule_kind": "cell_value",
+                    "operator": "between",
+                    "thresholds": ["1", "9"],
+                    "font_color": null,
+                    "fill_color": "#FFE9A8"
+                }
+            })
+        );
     }
 }

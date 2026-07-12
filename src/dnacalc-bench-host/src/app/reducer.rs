@@ -183,8 +183,74 @@ fn apply_one_formula_skin_intent(
             formula_space.effective_display_summary = None;
             true
         }
+        dnacalc_skin_ir::OneFormulaIntent::SetFontAttributes {
+            formula_space_id,
+            font_color,
+        } => with_active_formula_space(state, formula_space_id, |state| {
+            set_active_font_color(state, font_color.unwrap_or_default())
+        }),
+        dnacalc_skin_ir::OneFormulaIntent::SetFillAttributes {
+            formula_space_id,
+            fill_color,
+        } => with_active_formula_space(state, formula_space_id, |state| {
+            set_active_fill_color(state, fill_color.unwrap_or_default())
+        }),
+        dnacalc_skin_ir::OneFormulaIntent::SetDate1904 {
+            formula_space_id,
+            date1904,
+        } => with_active_formula_space(state, formula_space_id, |state| {
+            set_active_date1904(state, date1904)
+        }),
+        dnacalc_skin_ir::OneFormulaIntent::SetLocale {
+            formula_space_id,
+            locale_language_tag,
+        } => with_active_formula_space(state, formula_space_id, |state| {
+            // Workspace-scoped: the locale lives on the ambient app
+            // context (the read model's `FormattingSurface.locale_language_tag`
+            // mirrors `ambient.language_tag`), so `formula_space_id` only
+            // addresses the active document — the effect is ambient.
+            set_workspace_locale_preset(state, locale_language_tag)
+        }),
+        dnacalc_skin_ir::OneFormulaIntent::SetConditionalFormatRule {
+            formula_space_id,
+            rule_index,
+            rule,
+        } => with_active_formula_space(state, formula_space_id, |state| {
+            let host_rule = skin_cf_authoring_to_host(rule);
+            match rule_index {
+                Some(index) => {
+                    update_active_conditional_formatting_rule(state, index, host_rule)
+                }
+                None => add_active_conditional_formatting_rule(state, host_rule).is_some(),
+            }
+        }),
+        dnacalc_skin_ir::OneFormulaIntent::RemoveConditionalFormatRule {
+            formula_space_id,
+            rule_index,
+        } => with_active_formula_space(state, formula_space_id, |state| {
+            remove_active_conditional_formatting_rule(state, rule_index)
+        }),
         dnacalc_skin_ir::OneFormulaIntent::RequestResultArrayWindow { .. }
         | dnacalc_skin_ir::OneFormulaIntent::RequestDrillArrayWindow { .. } => false,
+    }
+}
+
+/// Map a Skin-IR CF authoring payload to the host CF rule — the reverse
+/// of `home_shell_view_model::project_skin_cf_rule`. The authoring slice
+/// carries the operator-driven cell_value / text / predicate rule OxFml
+/// evaluates today; typed visualization rules (colour scale / data bar /
+/// icon set / rank / average) author through a follow-on editor, so
+/// `typed_rule` is always `None` here.
+fn skin_cf_authoring_to_host(
+    rule: dnacalc_skin_ir::ConditionalFormatRuleAuthoring,
+) -> crate::state::FormulaConditionalFormattingRule {
+    crate::state::FormulaConditionalFormattingRule {
+        rule_kind: rule.rule_kind,
+        operator: rule.operator,
+        thresholds: rule.thresholds,
+        font_color: rule.font_color,
+        fill_color: rule.fill_color,
+        typed_rule: None,
     }
 }
 
@@ -2594,6 +2660,138 @@ mod tests {
             formula_space.formatting.scenario_policy,
             crate::persistence::ScenarioPolicy::Deterministic
         );
+    }
+
+    /// The format-authoring write verbs (dtc-g7oa) route into the
+    /// existing FormulaFormattingState setters. Fail-pre-fix: before the
+    /// routing arms existed these intents fell through to the catch-all
+    /// and never mutated state.
+    #[test]
+    fn skin_one_formula_authoring_intents_route_into_formatting_state() {
+        let formula_space_id = FormulaSpaceId::new("space-1");
+        let mut state = OneCalcHostState::default();
+        state.workspace_shell.active_formula_space_id = Some(formula_space_id.clone());
+        state
+            .formula_spaces
+            .insert(FormulaSpaceState::new(formula_space_id.clone(), "=42"));
+        let id = || formula_space_id.as_str().to_string();
+        let one = dnacalc_skin_ir::SkinIntent::OneFormula;
+
+        // Font + fill colours and the date system route into the state.
+        assert!(apply_skin_intent_to_host_state(
+            &mut state,
+            one(dnacalc_skin_ir::OneFormulaIntent::SetFontAttributes {
+                formula_space_id: id(),
+                font_color: Some("#D02A23".to_string()),
+            }),
+        ));
+        assert!(apply_skin_intent_to_host_state(
+            &mut state,
+            one(dnacalc_skin_ir::OneFormulaIntent::SetFillAttributes {
+                formula_space_id: id(),
+                fill_color: Some("#FFE9A8".to_string()),
+            }),
+        ));
+        assert!(apply_skin_intent_to_host_state(
+            &mut state,
+            one(dnacalc_skin_ir::OneFormulaIntent::SetDate1904 {
+                formula_space_id: id(),
+                date1904: true,
+            }),
+        ));
+        {
+            let fs = state.formula_spaces.get(&formula_space_id).unwrap();
+            assert_eq!(fs.formatting.font_color, "#D02A23");
+            assert_eq!(fs.formatting.fill_color, "#FFE9A8");
+            assert!(fs.formatting.date1904);
+        }
+
+        // Locale routes into the ambient app context (workspace-scoped);
+        // re-applying the same tag is an honest no-op.
+        assert!(apply_skin_intent_to_host_state(
+            &mut state,
+            one(dnacalc_skin_ir::OneFormulaIntent::SetLocale {
+                formula_space_id: id(),
+                locale_language_tag: "de-DE".to_string(),
+            }),
+        ));
+        assert!(!apply_skin_intent_to_host_state(
+            &mut state,
+            one(dnacalc_skin_ir::OneFormulaIntent::SetLocale {
+                formula_space_id: id(),
+                locale_language_tag: "de-DE".to_string(),
+            }),
+        ));
+
+        // CF: append two cell_value rules, replace #0, remove #1.
+        for (operator, threshold) in [("greaterThan", "100"), ("lessThan", "0")] {
+            assert!(apply_skin_intent_to_host_state(
+                &mut state,
+                one(dnacalc_skin_ir::OneFormulaIntent::SetConditionalFormatRule {
+                    formula_space_id: id(),
+                    rule_index: None,
+                    rule: dnacalc_skin_ir::ConditionalFormatRuleAuthoring {
+                        rule_kind: "cell_value".to_string(),
+                        operator: Some(operator.to_string()),
+                        thresholds: vec![threshold.to_string()],
+                        font_color: None,
+                        fill_color: Some("#FFCCCC".to_string()),
+                    },
+                }),
+            ));
+        }
+        assert_eq!(
+            state
+                .formula_spaces
+                .get(&formula_space_id)
+                .unwrap()
+                .formatting
+                .conditional_formatting_rules
+                .len(),
+            2
+        );
+        // Replace rule #0 with a `between` rule.
+        assert!(apply_skin_intent_to_host_state(
+            &mut state,
+            one(dnacalc_skin_ir::OneFormulaIntent::SetConditionalFormatRule {
+                formula_space_id: id(),
+                rule_index: Some(0),
+                rule: dnacalc_skin_ir::ConditionalFormatRuleAuthoring {
+                    rule_kind: "cell_value".to_string(),
+                    operator: Some("between".to_string()),
+                    thresholds: vec!["1".to_string(), "9".to_string()],
+                    font_color: None,
+                    fill_color: None,
+                },
+            }),
+        ));
+        // Remove rule #1.
+        assert!(apply_skin_intent_to_host_state(
+            &mut state,
+            one(dnacalc_skin_ir::OneFormulaIntent::RemoveConditionalFormatRule {
+                formula_space_id: id(),
+                rule_index: 1,
+            }),
+        ));
+        {
+            let rules = &state
+                .formula_spaces
+                .get(&formula_space_id)
+                .unwrap()
+                .formatting
+                .conditional_formatting_rules;
+            assert_eq!(rules.len(), 1);
+            assert_eq!(rules[0].operator.as_deref(), Some("between"));
+            assert_eq!(rules[0].thresholds, vec!["1".to_string(), "9".to_string()]);
+        }
+        // Out-of-range removal is an honest no-op.
+        assert!(!apply_skin_intent_to_host_state(
+            &mut state,
+            one(dnacalc_skin_ir::OneFormulaIntent::RemoveConditionalFormatRule {
+                formula_space_id: id(),
+                rule_index: 99,
+            }),
+        ));
     }
 
     #[test]

@@ -29,7 +29,9 @@ use dnacalc_bench_host::state::OneCalcHostState;
 use dnacalc_bench_host::ui::editor::commands::{EditorCommand, EditorInputEvent, EditorInputKind};
 
 use dnacalc_bridge::BridgeEvent;
-use dnacalc_skin_ir::formula::{OneFormulaIntent, OneFormulaProjection};
+use dnacalc_skin_ir::formula::{
+    ConditionalFormatRuleAuthoring, OneFormulaIntent, OneFormulaProjection,
+};
 use dnacalc_skin_ir::protocol::{
     HostCapabilityProjection, PersistenceProjection, SkinDocumentProjection, SkinIntent,
     SkinShellIntent,
@@ -262,6 +264,94 @@ impl BenchHost {
         changed
     }
 
+    /// Author the result hero's font colour (bead dtc-5xiw,
+    /// `SetFontAttributes`). `color` is a hex `#RRGGBB`; `None` clears it
+    /// back to inherit. Same two-step contract as
+    /// [`Self::set_number_format`] — the effective colour comes back from
+    /// OxFml's publication surface, never a skin-side decision.
+    pub fn set_font_color(&mut self, color: Option<String>) -> bool {
+        let formula_space_id = self.formula_space_id();
+        self.author_format(OneFormulaIntent::SetFontAttributes {
+            formula_space_id,
+            font_color: color,
+        })
+    }
+
+    /// Author the result hero's fill (background) colour
+    /// (`SetFillAttributes`). `color` is a hex `#RRGGBB`; `None` clears it.
+    pub fn set_fill_color(&mut self, color: Option<String>) -> bool {
+        let formula_space_id = self.formula_space_id();
+        self.author_format(OneFormulaIntent::SetFillAttributes {
+            formula_space_id,
+            fill_color: color,
+        })
+    }
+
+    /// Switch the workspace locale (`SetLocale`); the result re-renders
+    /// its `General`/date value through OxFml under the new profile.
+    /// `language_tag` is a BCP-47 tag (`"en-US"`, `"de-DE"`, …).
+    pub fn set_locale(&mut self, language_tag: String) -> bool {
+        let formula_space_id = self.formula_space_id();
+        self.author_format(OneFormulaIntent::SetLocale {
+            formula_space_id,
+            locale_language_tag: language_tag,
+        })
+    }
+
+    /// Flip the active formula's date system (`SetDate1904`): `false` =
+    /// 1900 (default), `true` = 1904 (Mac legacy).
+    pub fn set_date1904(&mut self, date1904: bool) -> bool {
+        let formula_space_id = self.formula_space_id();
+        self.author_format(OneFormulaIntent::SetDate1904 {
+            formula_space_id,
+            date1904,
+        })
+    }
+
+    /// Author a conditional-formatting rule on the result hero
+    /// (`SetConditionalFormatRule`). `index` `None` appends; `Some(i)`
+    /// replaces the rule at `i`. OxFml evaluates the rule on the next
+    /// pass and re-renders the effective display / colours.
+    pub fn set_cf_rule(
+        &mut self,
+        index: Option<usize>,
+        rule: ConditionalFormatRuleAuthoring,
+    ) -> bool {
+        let formula_space_id = self.formula_space_id();
+        self.author_format(OneFormulaIntent::SetConditionalFormatRule {
+            formula_space_id,
+            rule_index: index,
+            rule,
+        })
+    }
+
+    /// Remove the conditional-formatting rule at `index` from the result
+    /// hero (`RemoveConditionalFormatRule`). Honest no-op out of range.
+    pub fn remove_cf_rule(&mut self, index: usize) -> bool {
+        let formula_space_id = self.formula_space_id();
+        self.author_format(OneFormulaIntent::RemoveConditionalFormatRule {
+            formula_space_id,
+            rule_index: index,
+        })
+    }
+
+    /// Shared authoring path for the format-write verbs: dispatch the
+    /// `OneFormulaIntent` and, when it changed host state, re-run the
+    /// OxFml pass so `effective_display_summary` (and any CF-applied
+    /// colours) recompute. The same two-step no-skin-side-formatting
+    /// contract [`Self::set_number_format`] documents; returns `true`
+    /// when the value actually changed (so the caller re-projects).
+    fn author_format(&mut self, intent: OneFormulaIntent) -> bool {
+        let changed = apply_skin_intent_to_host_state(
+            &mut self.state,
+            SkinIntent::OneFormula(intent),
+        );
+        if changed {
+            let _ = refresh_active_formula_space(&*self.bridge, &mut self.state);
+        }
+        changed
+    }
+
     /// Run the live OxFml editor pass over `text` with the caret at UTF-8 byte
     /// offset `caret`. This is the real analysis path: syntax runs,
     /// staged diagnostics, completion proposals, and (for a runtime-eligible
@@ -453,6 +543,62 @@ mod tests {
             !host.set_number_format(Some("#,##0.00".to_string())),
             "an unchanged code changes nothing"
         );
+    }
+
+    /// The font / fill / locale / date-system / CF authoring methods each
+    /// record on the FormattingSurface (and re-render through host truth,
+    /// like `set_number_format`). Fail-pre-fix: none of these adapter
+    /// methods existed before bead dtc-5xiw.
+    #[test]
+    fn format_authoring_methods_record_on_the_surface() {
+        let mut host = BenchHost::new();
+        host.apply(BridgeEvent::TextEdited {
+            text: "=1234.5".to_string(),
+            caret: 7,
+        });
+
+        assert!(host.set_font_color(Some("#D02A23".to_string())));
+        assert!(host.set_fill_color(Some("#FFE9A8".to_string())));
+        assert!(host.set_date1904(true));
+        {
+            let p = host.projection();
+            assert_eq!(p.formatting.font_color.as_deref(), Some("#D02A23"));
+            assert_eq!(p.formatting.fill_color.as_deref(), Some("#FFE9A8"));
+            assert!(p.formatting.date1904);
+        }
+        // Unchanged re-apply is an honest no-op.
+        assert!(!host.set_font_color(Some("#D02A23".to_string())));
+
+        // Locale switches the workspace tag; re-applying is a no-op.
+        assert!(host.set_locale("de-DE".to_string()));
+        assert!(!host.set_locale("de-DE".to_string()));
+        assert!(!host.projection().formatting.locale_language_tag.is_empty());
+
+        // CF: add a cell_value rule, confirm it lands, then remove it.
+        assert!(host.set_cf_rule(
+            None,
+            ConditionalFormatRuleAuthoring {
+                rule_kind: "cell_value".to_string(),
+                operator: Some("greaterThan".to_string()),
+                thresholds: vec!["100".to_string()],
+                font_color: None,
+                fill_color: Some("#006600".to_string()),
+            },
+        ));
+        {
+            let rules = host.projection().formatting.conditional_formatting_rules;
+            assert_eq!(rules.len(), 1);
+            assert_eq!(rules[0].operator.as_deref(), Some("greaterThan"));
+        }
+        assert!(host.remove_cf_rule(0));
+        assert!(
+            host.projection()
+                .formatting
+                .conditional_formatting_rules
+                .is_empty()
+        );
+        // Out-of-range removal is an honest no-op.
+        assert!(!host.remove_cf_rule(5));
     }
 
     /// A diagnostic-bearing formula surfaces staged diagnostics on the editor
