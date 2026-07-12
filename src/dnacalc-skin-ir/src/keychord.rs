@@ -139,6 +139,10 @@ pub enum SkinVerb {
     Open,
     /// Find / goto — opens the command deck in goto mode (Ctrl+F).
     FindGoto,
+    /// Toggle the Bench X-Ray drill panel (F8; BENCH_SPEC §9). Forwarded to
+    /// the product — Bench maps it to `OneFormulaIntent::ToggleFormulaDrill`;
+    /// products without an X-Ray surface ignore it.
+    FormulaXRay,
 }
 
 impl SkinVerb {
@@ -176,6 +180,7 @@ impl SkinVerb {
             Self::Save => "save",
             Self::Open => "open",
             Self::FindGoto => "find_goto",
+            Self::FormulaXRay => "formula_xray",
         }
     }
 
@@ -217,6 +222,7 @@ impl SkinVerb {
             "save" => Self::Save,
             "open" => Self::Open,
             "find_goto" => Self::FindGoto,
+            "formula_xray" => Self::FormulaXRay,
             _ => return None,
         })
     }

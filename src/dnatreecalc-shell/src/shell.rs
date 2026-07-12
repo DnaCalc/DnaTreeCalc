@@ -1028,7 +1028,8 @@ fn handle_shell_keydown(
         | SkinVerb::InspectorToggle
         | SkinVerb::Save
         | SkinVerb::Open
-        | SkinVerb::FindGoto => {}
+        | SkinVerb::FindGoto
+        | SkinVerb::FormulaXRay => {}
     }
 }
 

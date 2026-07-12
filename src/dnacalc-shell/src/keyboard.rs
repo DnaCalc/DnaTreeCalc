@@ -270,6 +270,16 @@ impl ShellKeyboardRegistry {
             Universal,
         );
         self.seed_binding(KeyChord::bare("["), SkinVerb::TraceBack, Primary, Universal);
+        // F8 toggles the Bench X-Ray drill panel (BENCH_SPEC §9). It is a
+        // function key, so the §5 guard-order exemption lets it fire from
+        // inside the Bridge edit buffer (like F9); products without an X-Ray
+        // surface receive the forwarded verb and ignore it.
+        self.seed_binding(
+            KeyChord::bare("F8"),
+            SkinVerb::FormulaXRay,
+            Primary,
+            Universal,
+        );
         self.seed_binding(KeyChord::bare("e"), SkinVerb::Explain, Primary, Universal);
         self.seed_binding(
             KeyChord::bare("ArrowLeft"),
@@ -572,6 +582,7 @@ pub fn verb_label(verb: SkinVerb) -> &'static str {
         SkinVerb::Save => "Save",
         SkinVerb::Open => "Open",
         SkinVerb::FindGoto => "Find / goto",
+        SkinVerb::FormulaXRay => "Formula X-Ray",
         SkinVerb::NameBox => "Name box",
         SkinVerb::TraceForward => "Trace forward",
         SkinVerb::TraceBack => "Trace back",
@@ -933,6 +944,7 @@ mod tests {
             "Universal|name_box|/|-",
             "Universal|trace_forward|]|-",
             "Universal|trace_back|[|-",
+            "Universal|formula_xray|F8|-",
             "Universal|explain|E|-",
             "Universal|fold|\u{2190}|-",
             "Universal|unfold|\u{2192}|-",
