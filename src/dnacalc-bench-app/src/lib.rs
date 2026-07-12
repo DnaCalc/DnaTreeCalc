@@ -13,6 +13,7 @@
 
 pub mod adapter;
 pub mod app;
+pub mod xray;
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
@@ -47,7 +48,9 @@ pub fn mount_bench(element_id: &str) -> Result<(), JsValue> {
 #[wasm_bindgen(start)]
 pub fn start() -> Result<(), JsValue> {
     std::panic::set_hook(Box::new(|info| {
-        web_sys::console::error_1(&JsValue::from_str(&format!("dnacalc-bench-app panic: {info}")));
+        web_sys::console::error_1(&JsValue::from_str(&format!(
+            "dnacalc-bench-app panic: {info}"
+        )));
     }));
     mount_bench("dnacalc-bench-app")
 }

@@ -20,7 +20,9 @@ use dnacalc_bench_host::app::host_mount::{HostMountTarget, bootstrap_editor_brid
 use dnacalc_bench_host::app::preview_state::preview_minimal_host_state;
 use dnacalc_bench_host::app::reducer::apply_skin_intent_to_host_state;
 use dnacalc_bench_host::services::home_shell_view_model::build_home_shell_view_model;
-use dnacalc_bench_host::services::live_edit::{apply_live_editor_input, flush_pending_runtime_recalc};
+use dnacalc_bench_host::services::live_edit::{
+    apply_live_editor_input, flush_pending_runtime_recalc,
+};
 use dnacalc_bench_host::state::OneCalcHostState;
 use dnacalc_bench_host::ui::editor::commands::{EditorInputEvent, EditorInputKind};
 
@@ -172,6 +174,21 @@ impl BenchHost {
         }
     }
 
+    /// Apply a sanctioned `OneFormulaIntent` request verb the X-Ray panel
+    /// constructs directly (BENCH_SPEC §3/§4 — `ToggleFormulaDrill`,
+    /// `RequestResultArrayWindow`, `RequestDrillArrayWindow`). The panel is a
+    /// TF surface, so it may construct these read/request verbs (the layering
+    /// law forbids only *the bridge* from constructing intents). Returns `true`
+    /// when host state may have changed. The bounded array-window transport is
+    /// not attached in this host adapter yet (see
+    /// `adapters::skin_session` — a documented degrade), so the window
+    /// requests are honestly issued but currently re-project nothing; the panel
+    /// renders the window the projection already carries.
+    #[must_use]
+    pub fn apply_intent(&mut self, intent: OneFormulaIntent) -> bool {
+        apply_skin_intent_to_host_state(&mut self.state, SkinIntent::OneFormula(intent))
+    }
+
     /// Run the live OxFml editor pass over `text` with the caret at UTF-8 byte
     /// offset `caret`. This is the real analysis path: syntax runs,
     /// staged diagnostics, completion proposals, and (for a runtime-eligible
@@ -264,6 +281,52 @@ mod tests {
         // …then revert restores exactly what was committed.
         host.apply(BridgeEvent::RevertRequested);
         assert_eq!(host.projection().raw_entered_cell_text, "=1+1");
+    }
+
+    /// The X-Ray toggle is a sanctioned request verb: `ToggleFormulaDrill`
+    /// flips `drill.expanded`, and a drill tree is projected from real OxFml
+    /// truth (BENCH_SPEC §4). The bounded array-window transport is a
+    /// documented host degrade, so a window request applies as an honest
+    /// no-op (`false`) rather than a fabricated page.
+    #[test]
+    fn apply_intent_toggles_drill_and_window_requests_no_op_honestly() {
+        let mut host = BenchHost::new();
+        host.apply(BridgeEvent::TextEdited {
+            text: "=SUM(1,2,3)".to_string(),
+            caret: 11,
+        });
+        assert!(!host.projection().drill.expanded, "drill starts collapsed");
+        let space_id = host.formula_space_id();
+
+        // Toggle open through the sanctioned request verb.
+        assert!(host.apply_intent(OneFormulaIntent::ToggleFormulaDrill {
+            formula_space_id: space_id.clone(),
+        }));
+        let drill = host.projection().drill;
+        assert!(drill.expanded, "ToggleFormulaDrill opened the panel");
+        assert!(
+            !drill.tree.is_empty(),
+            "a fresh document projects a real drill tree"
+        );
+        assert!(
+            drill.tree[0].node_id.starts_with("drill-node:"),
+            "drill rows carry stable, addressable node ids: {:?}",
+            drill.tree[0].node_id
+        );
+
+        // The window request is honest: it changes nothing (transport not
+        // attached in this host adapter) — never a fabricated page.
+        assert!(
+            !host.apply_intent(OneFormulaIntent::RequestDrillArrayWindow {
+                formula_space_id: space_id,
+                node_id: drill.tree[0].node_id.clone(),
+                row_offset: 0,
+                col_offset: 0,
+                row_count: 8,
+                col_count: 8,
+            }),
+            "the bounded array-window transport is an unattached-degrade no-op"
+        );
     }
 
     /// A diagnostic-bearing formula surfaces staged diagnostics on the editor
