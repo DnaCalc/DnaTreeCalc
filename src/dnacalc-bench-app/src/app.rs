@@ -17,13 +17,13 @@ use leptos::prelude::*;
 use dnacalc_bridge::{BridgeEvent, FormulaBridge};
 use dnacalc_shell::{
     BridgeSurface, InspectorSurface, ProfileTag, RuntimeContext, Shell, ShellComposition,
-    StageContext, StageHandle, StageId, StageRegistry, StageSurface,
+    ShellOverlaySlots, StageContext, StageHandle, StageId, StageRegistry, StageSurface,
 };
 use dnacalc_skin_ir::IntentReceipt;
 use dnacalc_skin_ir::SkinVerb;
 use dnacalc_skin_ir::formula::{FormulaResultSurface, OneFormulaIntent, OneFormulaProjection};
 use dnacalc_skin_ir::intent::{Dispatcher, WorkspaceDelta, WorkspaceIntent};
-use dnacalc_skin_ir::protocol::{PersistenceProjection, SkinShellIntent};
+use dnacalc_skin_ir::protocol::{HostCapabilityProjection, PersistenceProjection, SkinShellIntent};
 use dnacalc_skin_ir::selection::SelectionState;
 use dnacalc_skin_ir::state::{SharedSkinState, SharedStateChange, SharedStateOrigin};
 use dnacalc_skin_ir::workspace::WorkspaceState;
@@ -31,6 +31,7 @@ use dnacalc_skin_leptos::state_handles::SharedSkinStateHandle;
 use dnacalc_strand::{Density, Theme};
 
 use crate::adapter::BenchHost;
+use crate::extensions::{BenchExtensionsOverlaySurface, EXTENSIONS_CSS};
 use crate::format_panel::{FORMAT_PANEL_CSS, FormatPanel};
 use crate::xray::{RingStep, XRAY_CSS, XRayPanel, result_array_window_intent, ring_step};
 
@@ -372,6 +373,21 @@ pub fn BenchApp(
         .unwrap_or_default();
     let persistence = RwSignal::new(initial_persistence);
 
+    // The host's real `HostCapabilityProjection` (SHELL_SPEC §7 mechanism
+    // 18, bead dtc-lfz.6, G7 minimal slice) — threaded into the Shell's
+    // `host_capabilities` prop so the Strip's Feeds instrument and the
+    // Extensions overlay read runtime/placement honesty from host truth
+    // instead of the prior hardcoded-`Unavailable` (see
+    // `dnacalc_bench_host::extensions::honest_extension_placement_for`).
+    let initial_host_capabilities: HostCapabilityProjection =
+        with_bench_host(host_id, |host| host.host_capabilities()).unwrap_or_else(|| {
+            HostCapabilityProjection::onecalc_null_references(
+                dnacalc_skin_ir::RuntimeProfileProjection::NullTest,
+                dnacalc_skin_ir::ExtensionPlacementProjection::Unavailable,
+            )
+        });
+    let host_capabilities = RwSignal::new(initial_host_capabilities);
+
     // The current X-Ray ring node id (the enclosing-expression the ']'/'['
     // step-out/in verbs walk; the panel mirrors it as a highlighted row).
     let ring = RwSignal::new(None::<String>);
@@ -522,10 +538,20 @@ pub fn BenchApp(
         on_intent,
     }));
 
+    // Extensions manager v0 (BENCH_SPEC §6, bead dtc-lfz.6): mounted through
+    // the shell's OVERLAY region, reached from the Strip's Feeds instrument.
+    // Additive — every other overlay slot (command deck, timeline) keeps its
+    // existing default.
+    let mut overlays = ShellOverlaySlots::default();
+    overlays.extensions = Some(Arc::new(BenchExtensionsOverlaySurface {
+        host_capabilities: host_capabilities.read_only(),
+    }));
+
     view! {
         <style>{BENCH_APP_CSS}</style>
         <style>{XRAY_CSS}</style>
         <style>{FORMAT_PANEL_CSS}</style>
+        <style>{EXTENSIONS_CSS}</style>
         <Shell
             composition=composition
             stages=stages
@@ -537,7 +563,9 @@ pub fn BenchApp(
             theme=Theme::CockpitLight
             density=Density::Working
             runtime=runtime
+            overlays=overlays
             host_persistence=persistence.read_only()
+            host_capabilities=host_capabilities.read_only()
             on_shell_intent=Some(on_shell_intent)
             on_shell_verb=Some(on_shell_verb)
         />

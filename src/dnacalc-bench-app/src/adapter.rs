@@ -28,7 +28,10 @@ use dnacalc_bench_host::ui::editor::commands::{EditorInputEvent, EditorInputKind
 
 use dnacalc_bridge::BridgeEvent;
 use dnacalc_skin_ir::formula::{OneFormulaIntent, OneFormulaProjection};
-use dnacalc_skin_ir::protocol::{PersistenceProjection, SkinDocumentProjection, SkinIntent, SkinShellIntent};
+use dnacalc_skin_ir::protocol::{
+    HostCapabilityProjection, PersistenceProjection, SkinDocumentProjection, SkinIntent,
+    SkinShellIntent,
+};
 
 /// The Bench product host: one `OneCalcHostState` + the native OxFml editor
 /// session driving it. `!Send` (the OxFml session transitively holds
@@ -96,6 +99,28 @@ impl BenchHost {
         build_home_shell_view_model(&self.state)
             .map(|view_model| view_model.skin_snapshot.shell.persistence)
             .unwrap_or_default()
+    }
+
+    /// The host's real `HostCapabilityProjection` (bead dtc-lfz.6, G7
+    /// minimal slice) — `runtime_profile` × `extension_placement` is the
+    /// legality matrix the extensions overlay/Strip instrument look up
+    /// (never re-derived skin-side); `home_shell_view_model` now projects
+    /// `extension_placement` honestly from `dnacalc-extension-host-core`'s
+    /// real per-runtime capability gate instead of a hardcoded value (see
+    /// `dnacalc_bench_host::extensions::honest_extension_placement_for`).
+    /// Falls back to the honest `NullTest`/`Unavailable` pair only if the
+    /// host has no active formula space (never in normal operation —
+    /// mirrors `projection()`'s and `persistence()`'s fallback).
+    #[must_use]
+    pub fn host_capabilities(&self) -> HostCapabilityProjection {
+        build_home_shell_view_model(&self.state)
+            .map(|view_model| view_model.skin_snapshot.host_capabilities)
+            .unwrap_or_else(|| {
+                HostCapabilityProjection::onecalc_null_references(
+                    dnacalc_skin_ir::RuntimeProfileProjection::NullTest,
+                    dnacalc_skin_ir::ExtensionPlacementProjection::Unavailable,
+                )
+            })
     }
 
     /// Dispatch a shell-level document-lifecycle intent (Save / SaveAs /
@@ -473,6 +498,30 @@ mod tests {
         assert!(
             host.persistence().dirty,
             "known gap: commit does not clear dirty in the Bench flow today (see NOTE above)"
+        );
+    }
+
+    /// bead dtc-lfz.6 (G7 minimal slice), desktop-runtime coverage: a real
+    /// `BenchHost` compiled and run natively (this test's own compile
+    /// target) reports its `HostCapabilityProjection.extension_placement`
+    /// as `InProcess` — genuine in-process catalog data, not the prior
+    /// hardcoded `Unavailable` that lied about desktop's real capability.
+    /// `native_unix`/`windows_desktop` both resolve to `InProcess` per
+    /// `dnacalc_extension_host_core::RuntimeProfile::capabilities()`, so
+    /// this assertion holds regardless of which native OS runs the suite —
+    /// what it proves is "native compile is NOT the browser-unavailable
+    /// case", which only the fix makes true (pre-fix this asserted
+    /// `Unavailable` unconditionally).
+    #[test]
+    fn desktop_runtime_host_capabilities_report_real_in_process_placement() {
+        use dnacalc_skin_ir::protocol::ExtensionPlacementProjection;
+
+        let host = BenchHost::new();
+        let capabilities = host.host_capabilities();
+        assert_eq!(
+            capabilities.extension_placement,
+            ExtensionPlacementProjection::InProcess,
+            "a native test run must report real in-process catalog placement, not Unavailable"
         );
     }
 

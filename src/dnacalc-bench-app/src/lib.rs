@@ -13,6 +13,7 @@
 
 pub mod adapter;
 pub mod app;
+pub mod extensions;
 pub mod format_panel;
 pub mod xray;
 

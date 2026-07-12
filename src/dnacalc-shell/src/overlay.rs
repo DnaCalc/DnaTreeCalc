@@ -31,6 +31,12 @@ pub enum ActiveOverlay {
     KeyboardAtlas,
     /// Timeline / revision drawer (Ctrl+H).
     Timeline,
+    /// Extensions manager v0 (BENCH_SPEC §2/§6, bead dtc-lfz.6) — reached
+    /// from the Strip's Feeds instrument (mechanism 18) when a product wires
+    /// `host_capabilities`. No dedicated chord this phase (a click-only
+    /// overlay is legitimate — SHELL_SPEC does not mandate a keyboard entry
+    /// point for every overlay).
+    Extensions,
 }
 
 /// A peek card (mechanism 06) — data model only in S0; rendering is a stub.
@@ -208,6 +214,10 @@ pub struct ShellOverlaySlots {
     pub command_deck: Option<Arc<dyn OverlaySurface>>,
     /// Timeline drawer (mechanism 19) lands with revision UX work.
     pub timeline: Option<Arc<dyn OverlaySurface>>,
+    /// Extensions manager v0 (BENCH_SPEC §6, bead dtc-lfz.6) — a product
+    /// mounts its provider-inventory overlay here; `None` renders the
+    /// honest not-mounted placeholder, never a fake catalog.
+    pub extensions: Option<Arc<dyn OverlaySurface>>,
 }
 
 #[cfg(test)]
@@ -226,6 +236,23 @@ mod tests {
         assert_eq!(model.active, Some(ActiveOverlay::KeyboardAtlas));
         model.open(ActiveOverlay::Timeline);
         assert_eq!(model.active, Some(ActiveOverlay::Timeline));
+    }
+
+    /// bead dtc-lfz.6: the Extensions overlay is a first-class member of the
+    /// one-at-a-time system — opening it replaces any other active overlay,
+    /// and it toggles closed on a second open, exactly like every other
+    /// `ActiveOverlay` variant (no special-cased behavior).
+    #[test]
+    fn extensions_overlay_participates_in_one_at_a_time_and_toggles() {
+        let mut model = OverlayModel::default();
+        model.open(ActiveOverlay::CommandDeck { goto_mode: false });
+        model.open(ActiveOverlay::Extensions);
+        assert_eq!(model.active, Some(ActiveOverlay::Extensions));
+        model.open(ActiveOverlay::Extensions);
+        assert_eq!(model.active, None, "reopening Extensions toggles it closed");
+        model.open(ActiveOverlay::Extensions);
+        assert_eq!(model.escape(), EscapeOutcome::ClosedOverlay);
+        assert_eq!(model.active, None);
     }
 
     #[test]

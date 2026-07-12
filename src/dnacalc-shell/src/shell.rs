@@ -14,7 +14,7 @@ use leptos::wasm_bindgen::JsCast;
 use dnacalc_skin_ir::intent::{Dispatcher, WorkspaceDelta, WorkspaceIntent};
 use dnacalc_skin_ir::keychord::{KeybindingOverrideMap, SkinVerb};
 use dnacalc_skin_ir::preview::PreviewService;
-use dnacalc_skin_ir::protocol::{PersistenceProjection, SkinShellIntent};
+use dnacalc_skin_ir::protocol::{HostCapabilityProjection, PersistenceProjection, SkinShellIntent};
 use dnacalc_skin_ir::selection::SelectionState;
 use dnacalc_skin_ir::state::{SharedSkinState, SharedStateChange, SharedStateOrigin};
 use dnacalc_skin_ir::workspace::{NodeCalcStateProjection, NodeView, WorkspaceState};
@@ -257,6 +257,7 @@ const STATIC_SHELL_CSS: &str = r#"
 }
 .dna-strip__slot { white-space: nowrap; }
 .dna-strip__slot--absent { opacity: 0.65; }
+.dna-strip__slot--clickable { cursor: pointer; text-decoration: underline dotted; }
 .dna-strip__slot--reserved { min-width: 8px; }
 .dna-strip__spacer { flex: 1; }
 .dna-overlay-backdrop {
@@ -377,6 +378,13 @@ pub fn Shell(
     /// `None` when the product has not wired it.
     #[prop(optional_no_strip)]
     on_shell_intent: Option<Callback<SkinShellIntent>>,
+    /// The host's real `HostCapabilityProjection` (SHELL_SPEC §7 mechanism
+    /// 18, bead dtc-lfz.6, G7 minimal slice) — feeds the Strip's Feeds
+    /// instrument honestly. `None` (the default) reproduces the prior
+    /// hardcoded-`Nothing` Feeds slot exactly, so existing mounts that do
+    /// not pass this prop keep compiling and rendering identically.
+    #[prop(optional)]
+    host_capabilities: Option<ReadSignal<HostCapabilityProjection>>,
 ) -> impl IntoView {
     let profile = composition.profile;
     let visible_stages_meta: Vec<(u8, &'static str)> = stages
@@ -729,7 +737,12 @@ pub fn Shell(
                     })}
             </div>
             <footer class="dna-strip" data-region="strip">
-                <StripView workspace=workspace shared=shared />
+                <StripView
+                    workspace=workspace
+                    shared=shared
+                    overlay=overlay
+                    host_capabilities=host_capabilities
+                />
             </footer>
             <OverlayLayer
                 overlay=overlay
@@ -1070,24 +1083,58 @@ fn InspectorPanel(
 
 /// The Strip (SHELL_SPEC §7): wired readouts, honest absences, and the
 /// reserved slots that render nothing.
+///
+/// The Feeds slot (mechanism 18, bead dtc-lfz.6) is the Extensions manager's
+/// documented Strip entry point (BENCH_SPEC §2/§6: "reached from Strip/
+/// Inspector") — clickable only when a product has wired
+/// `host_capabilities`, opening `ActiveOverlay::Extensions` through the same
+/// one-at-a-time `overlay` model every other overlay uses.
 #[component]
 fn StripView(
     workspace: ReadSignal<WorkspaceState>,
     shared: SharedSkinStateHandle,
+    overlay: RwSignal<OverlayModel>,
+    host_capabilities: Option<ReadSignal<HostCapabilityProjection>>,
 ) -> impl IntoView {
+    let feeds_wired = host_capabilities.is_some();
     view! {
         {StripSlot::ALL
             .iter()
             .map(|slot| {
                 let slot = *slot;
+                let caps = host_capabilities;
                 view! {
                     {move || {
                         let content = workspace
-                            .with(|ws| shared.with(|state| strip_slot_content(slot, ws, state)));
+                            .with(|ws| {
+                                shared
+                                    .with(|state| {
+                                        let caps = caps.map(|signal| signal.get());
+                                        strip_slot_content(slot, ws, state, caps.as_ref())
+                                    })
+                            });
+                        let feeds_clickable = feeds_wired && slot == StripSlot::Feeds;
                         match content {
                             StripSlotContent::Text(text) => {
+                                let class = if feeds_clickable {
+                                    "dna-strip__slot dna-strip__slot--clickable"
+                                } else {
+                                    "dna-strip__slot"
+                                };
                                 view! {
-                                    <span class="dna-strip__slot" data-slot=slot.stable_id()>
+                                    <span
+                                        class=class
+                                        data-slot=slot.stable_id()
+                                        data-clickable=if feeds_clickable { "true" } else { "false" }
+                                        on:click=move |_| {
+                                            if feeds_clickable {
+                                                overlay
+                                                    .update(|model| {
+                                                        model.open(ActiveOverlay::Extensions)
+                                                    });
+                                            }
+                                        }
+                                    >
                                         {text}
                                     </span>
                                 }
@@ -1210,6 +1257,29 @@ fn OverlayLayer(
                                                 <h2>"Timeline"</h2>
                                                 <p class="dna-overlay__placeholder">
                                                     "Revision drawer (mechanism 19) — placeholder this phase."
+                                                </p>
+                                            </div>
+                                        </div>
+                                    }
+                                        .into_any()
+                                }
+                            }
+                        }
+                        ActiveOverlay::Extensions => {
+                            match overlays.extensions.clone() {
+                                Some(surface) => surface.mount(overlay_context(false)).into_any(),
+                                None => {
+                                    view! {
+                                        <div class="dna-overlay-backdrop">
+                                            <div
+                                                class="dna-overlay"
+                                                role="dialog"
+                                                aria-label="Extensions"
+                                                data-overlay="extensions"
+                                            >
+                                                <h2>"Extensions"</h2>
+                                                <p class="dna-overlay__placeholder">
+                                                    "Extensions manager (bead dtc-lfz.6) — not mounted for this product."
                                                 </p>
                                             </div>
                                         </div>

@@ -37,6 +37,53 @@ pub enum OneCalcInvalidationAction {
     Recalculate,
 }
 
+/// Map the IR's `RuntimeProfileProjection` onto `extension-host-core`'s own
+/// `RuntimeProfile` — the two enums name the same runtime classes (this
+/// module's `current_shared_runtime_profile` and the IR's own inline cfg!
+/// derivation in `home_shell_view_model` agree variant-for-variant), so this
+/// is a plain 1:1 relabeling, never a semantic decision of its own.
+#[must_use]
+pub const fn to_extension_host_runtime_profile(
+    profile: dnacalc_skin_ir::RuntimeProfileProjection,
+) -> dnacalc_extension_host_core::RuntimeProfile {
+    use dnacalc_extension_host_core::RuntimeProfile as Ext;
+    use dnacalc_skin_ir::RuntimeProfileProjection as Ir;
+    match profile {
+        Ir::BrowserWasm => Ext::BrowserWasm,
+        Ir::HostedWeb => Ext::HostedWeb,
+        Ir::WindowsDesktop => Ext::WindowsDesktop,
+        Ir::WindowsHeadless => Ext::WindowsHeadless,
+        Ir::NativeUnix => Ext::NativeUnix,
+        Ir::NullTest => Ext::NullTest,
+    }
+}
+
+/// The G7-minimal-slice honest `ExtensionPlacementProjection` for a given IR
+/// runtime profile (bead dtc-lfz.6): derived from `extension-host-core`'s
+/// real per-runtime capability gate (the same gate `ExtensionCatalog::register`
+/// enforces), never a hardcoded value. `native_providers` wins (in-process,
+/// matching `HostCapabilityProjection::validate()`'s legal WindowsDesktop/
+/// Headless/NativeUnix pairing); otherwise `native_companion` (HostedWeb);
+/// otherwise honestly `Unavailable` (BrowserWasm/NullTest, and any profile
+/// with neither capability). Every branch here maps onto an
+/// `(runtime_profile, extension_placement)` pair `validate()` accepts —
+/// proven by this module's tests, so the projection this feeds can never
+/// fail `HostCapabilityProjection::validate()`.
+#[must_use]
+pub fn honest_extension_placement_for(
+    profile: dnacalc_skin_ir::RuntimeProfileProjection,
+) -> dnacalc_skin_ir::ExtensionPlacementProjection {
+    use dnacalc_skin_ir::ExtensionPlacementProjection as Placement;
+    let capabilities = to_extension_host_runtime_profile(profile).capabilities();
+    if capabilities.native_providers {
+        Placement::InProcess
+    } else if capabilities.native_companion {
+        Placement::NativeCompanion
+    } else {
+        Placement::Unavailable
+    }
+}
+
 #[must_use]
 pub const fn onecalc_invalidation_action(
     event: &dnacalc_extension_host_core::HostInvalidationEvent,
@@ -61,6 +108,76 @@ mod tests {
         let attachment = SharedExtensionAttachment::current();
         assert_eq!(attachment.profile, current_shared_runtime_profile());
         assert_eq!(attachment.capabilities, attachment.profile.capabilities());
+    }
+
+    /// bead dtc-lfz.6: every IR runtime profile maps onto a real
+    /// extension-host-core profile with matching capabilities, and the
+    /// resulting `(runtime_profile, extension_placement)` pair is one
+    /// `HostCapabilityProjection::validate()` actually accepts — proof this
+    /// projection can never be constructed in an illegal combination.
+    #[test]
+    fn honest_extension_placement_is_always_a_legal_pair() {
+        use dnacalc_skin_ir::RuntimeProfileProjection as Ir;
+        for profile in [
+            Ir::BrowserWasm,
+            Ir::HostedWeb,
+            Ir::WindowsDesktop,
+            Ir::WindowsHeadless,
+            Ir::NativeUnix,
+            Ir::NullTest,
+        ] {
+            let placement = honest_extension_placement_for(profile);
+            let capabilities = dnacalc_skin_ir::HostCapabilityProjection::onecalc_null_references(
+                profile, placement,
+            );
+            assert!(
+                capabilities.validate().is_ok(),
+                "{profile:?} -> {placement:?} must validate"
+            );
+        }
+    }
+
+    /// Browser/null-test runtimes have neither native nor companion
+    /// capability (per `RuntimeProfile::capabilities()`) — the honest
+    /// placement is `Unavailable`, never a fabricated `InProcess`.
+    #[test]
+    fn browser_and_null_test_are_honestly_unavailable() {
+        use dnacalc_skin_ir::ExtensionPlacementProjection as Placement;
+        use dnacalc_skin_ir::RuntimeProfileProjection as Ir;
+        assert_eq!(
+            honest_extension_placement_for(Ir::BrowserWasm),
+            Placement::Unavailable
+        );
+        assert_eq!(
+            honest_extension_placement_for(Ir::NullTest),
+            Placement::Unavailable
+        );
+    }
+
+    /// Windows desktop/headless and native Unix host native providers
+    /// in-process (real gate: `ExtensionCapabilities::native_providers`).
+    #[test]
+    fn desktop_and_native_unix_are_honestly_in_process() {
+        use dnacalc_skin_ir::ExtensionPlacementProjection as Placement;
+        use dnacalc_skin_ir::RuntimeProfileProjection as Ir;
+        for profile in [Ir::WindowsDesktop, Ir::WindowsHeadless, Ir::NativeUnix] {
+            assert_eq!(
+                honest_extension_placement_for(profile),
+                Placement::InProcess
+            );
+        }
+    }
+
+    /// Hosted-web reaches native extensions only through a companion
+    /// process (real gate: `ExtensionCapabilities::native_companion`).
+    #[test]
+    fn hosted_web_is_honestly_native_companion() {
+        use dnacalc_skin_ir::ExtensionPlacementProjection as Placement;
+        use dnacalc_skin_ir::RuntimeProfileProjection as Ir;
+        assert_eq!(
+            honest_extension_placement_for(Ir::HostedWeb),
+            Placement::NativeCompanion
+        );
     }
 
     #[test]

@@ -7,6 +7,7 @@
 //! phase (PARITY_TRUST_UX.md §5/§8: an absent feature renders as nothing,
 //! not as "no evidence").
 
+use dnacalc_skin_ir::protocol::{ExtensionPlacementProjection, HostCapabilityProjection};
 use dnacalc_skin_ir::state::{SharedSkinState, WorkspaceRecalcMode};
 use dnacalc_skin_ir::workspace::{CalcModeProjection, WorkspaceState};
 
@@ -71,11 +72,20 @@ pub enum StripSlotContent {
 
 /// Resolve one slot's content from the projections. Pure — the DOM strip
 /// maps this 1:1, so the render-nothing law is testable without a browser.
+///
+/// `host_capabilities` feeds only the `Feeds` slot (bead dtc-lfz.6, G7
+/// minimal slice): `None` (the default — no product has wired it) preserves
+/// the prior hardcoded `Nothing` for every other slot/product exactly;
+/// `Some` renders the honest runtime/placement macro-state the IR carries
+/// today. This is deliberately NOT per-topic RTD liveness/staleness (mech
+/// 18's fuller ask — that projection does not exist yet); it is the coarser
+/// `HostCapabilityProjection` truth, never fabricated per-provider detail.
 #[must_use]
 pub fn strip_slot_content(
     slot: StripSlot,
     workspace: &WorkspaceState,
     shared: &SharedSkinState,
+    host_capabilities: Option<&HostCapabilityProjection>,
 ) -> StripSlotContent {
     match slot {
         StripSlot::Calc => match &workspace.workbook_calc {
@@ -110,9 +120,15 @@ pub fn strip_slot_content(
             }
             None => StripSlotContent::Absent("no calc run yet"),
         },
-        // Feed health is G7: absent until then — the slot renders nothing
-        // rather than a fake OK (SHELL_SPEC §7).
-        StripSlot::Feeds => StripSlotContent::Nothing,
+        // Feed health is G7 (mechanism 18): a product that has not wired
+        // `host_capabilities` renders nothing rather than a fake OK
+        // (SHELL_SPEC §7, unchanged default). A wired product gets the
+        // honest macro-state; per-topic RTD liveness/staleness still awaits
+        // the fuller G7 projection.
+        StripSlot::Feeds => match host_capabilities {
+            None => StripSlotContent::Nothing,
+            Some(capabilities) => StripSlotContent::Text(feeds_summary_text(capabilities)),
+        },
         // Locale is a host capability, not a WorkspaceState projection.
         StripSlot::Locale => StripSlotContent::Absent("host locale capability not projected"),
         StripSlot::Revision => match &workspace.revision_history.current_revision_id {
@@ -137,6 +153,21 @@ fn short_revision(id: &str) -> &str {
     &id[..id.len().min(8)]
 }
 
+/// The Feeds slot's honest macro-state text (bead dtc-lfz.6): the
+/// `runtime_profile` × `extension_placement` legality pair the IR already
+/// carries, in the Strip's terse `label: value` house style (matching
+/// `calc: auto` / `dirty: 1` / `run: 12.3 ms`). Never a per-topic count —
+/// that data does not exist until the fuller G7 projection lands.
+#[must_use]
+fn feeds_summary_text(capabilities: &HostCapabilityProjection) -> String {
+    let state = match capabilities.extension_placement {
+        ExtensionPlacementProjection::Unavailable => "unavailable",
+        ExtensionPlacementProjection::InProcess => "in-process",
+        ExtensionPlacementProjection::NativeCompanion => "companion",
+    };
+    format!("ext: {state}")
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
@@ -159,7 +190,7 @@ mod tests {
     fn parity_and_feeds_render_nothing_and_only_they_do() {
         let (workspace, shared) = empty();
         for slot in StripSlot::ALL {
-            let content = strip_slot_content(slot, &workspace, &shared);
+            let content = strip_slot_content(slot, &workspace, &shared, None);
             match slot {
                 StripSlot::Parity | StripSlot::Feeds => {
                     assert_eq!(
@@ -186,7 +217,7 @@ mod tests {
         workspace.workbook_calc = Some(WorkbookCalcProjection::default());
         workspace.revision_history.current_revision_id = Some("abcdef0123456789".into());
         assert_eq!(
-            strip_slot_content(StripSlot::Parity, &workspace, &shared),
+            strip_slot_content(StripSlot::Parity, &workspace, &shared, None),
             StripSlotContent::Nothing
         );
     }
@@ -209,11 +240,11 @@ mod tests {
             ],
         });
         assert_eq!(
-            strip_slot_content(StripSlot::Calc, &workspace, &shared),
+            strip_slot_content(StripSlot::Calc, &workspace, &shared, None),
             StripSlotContent::Text("calc: manual".into())
         );
         assert_eq!(
-            strip_slot_content(StripSlot::Dirty, &workspace, &shared),
+            strip_slot_content(StripSlot::Dirty, &workspace, &shared, None),
             StripSlotContent::Text("dirty: 1".into())
         );
     }
@@ -223,7 +254,7 @@ mod tests {
         let (workspace, mut shared) = empty();
         shared.recalc_mode = WorkspaceRecalcMode::Manual;
         assert_eq!(
-            strip_slot_content(StripSlot::Calc, &workspace, &shared),
+            strip_slot_content(StripSlot::Calc, &workspace, &shared, None),
             StripSlotContent::Text("calc: manual".into())
         );
     }
@@ -232,7 +263,7 @@ mod tests {
     fn last_run_and_revision_wire_or_show_honest_absence() {
         let (mut workspace, shared) = empty();
         assert_eq!(
-            strip_slot_content(StripSlot::LastRun, &workspace, &shared),
+            strip_slot_content(StripSlot::LastRun, &workspace, &shared, None),
             StripSlotContent::Absent("no calc run yet")
         );
         let mut timings = BTreeMap::new();
@@ -252,13 +283,13 @@ mod tests {
             diagnostics: Vec::new(),
         });
         assert_eq!(
-            strip_slot_content(StripSlot::LastRun, &workspace, &shared),
+            strip_slot_content(StripSlot::LastRun, &workspace, &shared, None),
             StripSlotContent::Text("run: 12.3 ms".into())
         );
 
         workspace.revision_history.current_revision_id = Some("abcdef0123456789".into());
         assert_eq!(
-            strip_slot_content(StripSlot::Revision, &workspace, &shared),
+            strip_slot_content(StripSlot::Revision, &workspace, &shared, None),
             StripSlotContent::Text("rev: abcdef01".into())
         );
     }
@@ -268,9 +299,88 @@ mod tests {
         let (workspace, shared) = empty();
         for slot in [StripSlot::Locale, StripSlot::Zoom, StripSlot::AgentLight] {
             assert!(matches!(
-                strip_slot_content(slot, &workspace, &shared),
+                strip_slot_content(slot, &workspace, &shared, None),
                 StripSlotContent::Absent(_)
             ));
         }
+    }
+
+    fn capabilities(
+        runtime_profile: dnacalc_skin_ir::RuntimeProfileProjection,
+        extension_placement: ExtensionPlacementProjection,
+    ) -> HostCapabilityProjection {
+        HostCapabilityProjection::onecalc_null_references(runtime_profile, extension_placement)
+    }
+
+    /// bead dtc-lfz.6: a product that wires `host_capabilities` gets an
+    /// honest Feeds readout instead of `Nothing` — and the readout differs
+    /// by the real placement, never a fabricated single value regardless of
+    /// runtime.
+    #[test]
+    fn feeds_renders_honest_text_when_host_capabilities_is_wired() {
+        let (workspace, shared) = empty();
+
+        let browser_unavailable = capabilities(
+            dnacalc_skin_ir::RuntimeProfileProjection::BrowserWasm,
+            ExtensionPlacementProjection::Unavailable,
+        );
+        assert_eq!(
+            strip_slot_content(
+                StripSlot::Feeds,
+                &workspace,
+                &shared,
+                Some(&browser_unavailable)
+            ),
+            StripSlotContent::Text("ext: unavailable".into())
+        );
+
+        let desktop_in_process = capabilities(
+            dnacalc_skin_ir::RuntimeProfileProjection::WindowsDesktop,
+            ExtensionPlacementProjection::InProcess,
+        );
+        assert_eq!(
+            strip_slot_content(
+                StripSlot::Feeds,
+                &workspace,
+                &shared,
+                Some(&desktop_in_process)
+            ),
+            StripSlotContent::Text("ext: in-process".into())
+        );
+
+        let hosted_web_companion = capabilities(
+            dnacalc_skin_ir::RuntimeProfileProjection::HostedWeb,
+            ExtensionPlacementProjection::NativeCompanion,
+        );
+        assert_eq!(
+            strip_slot_content(
+                StripSlot::Feeds,
+                &workspace,
+                &shared,
+                Some(&hosted_web_companion)
+            ),
+            StripSlotContent::Text("ext: companion".into())
+        );
+    }
+
+    /// Wiring `host_capabilities` must never light up any OTHER slot or
+    /// change the still-reserved Parity slot — only Feeds reads it.
+    #[test]
+    fn wiring_host_capabilities_touches_only_the_feeds_slot() {
+        let (workspace, shared) = empty();
+        let caps = capabilities(
+            dnacalc_skin_ir::RuntimeProfileProjection::WindowsDesktop,
+            ExtensionPlacementProjection::InProcess,
+        );
+        assert_eq!(
+            strip_slot_content(StripSlot::Parity, &workspace, &shared, Some(&caps)),
+            StripSlotContent::Nothing,
+            "Parity stays reserved regardless of host_capabilities"
+        );
+        assert_eq!(
+            strip_slot_content(StripSlot::Locale, &workspace, &shared, Some(&caps)),
+            StripSlotContent::Absent("host locale capability not projected"),
+            "unrelated slots are unaffected by host_capabilities"
+        );
     }
 }

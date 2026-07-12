@@ -3174,8 +3174,8 @@ fn project_skin_snapshot(
                     .collect(),
             },
         },
-        dnacalc_skin_ir::HostCapabilityProjection::onecalc_null_references(
-            state.runtime_profile_override.unwrap_or_else(|| {
+        {
+            let runtime_profile = state.runtime_profile_override.unwrap_or_else(|| {
                 if cfg!(target_arch = "wasm32") {
                     dnacalc_skin_ir::RuntimeProfileProjection::BrowserWasm
                 } else if cfg!(target_os = "windows") {
@@ -3183,9 +3183,22 @@ fn project_skin_snapshot(
                 } else {
                     dnacalc_skin_ir::RuntimeProfileProjection::NativeUnix
                 }
-            }),
-            dnacalc_skin_ir::ExtensionPlacementProjection::Unavailable,
-        ),
+            });
+            // bead dtc-lfz.6 (G7 minimal slice): `extension_placement` is
+            // derived from the SAME `runtime_profile` this snapshot carries
+            // (never independently re-detected), through
+            // `extension-host-core`'s real per-runtime capability gate — so
+            // BrowserWasm honestly reports `Unavailable` and a desktop
+            // profile honestly reports `InProcess`, and the pair always
+            // satisfies `HostCapabilityProjection::validate()` (see
+            // `extensions::honest_extension_placement_for`'s tests). This
+            // replaces a prior hardcoded `Unavailable` that lied about
+            // desktop's real capability.
+            dnacalc_skin_ir::HostCapabilityProjection::onecalc_null_references(
+                runtime_profile,
+                crate::extensions::honest_extension_placement_for(runtime_profile),
+            )
+        },
         formula,
     )
 }
