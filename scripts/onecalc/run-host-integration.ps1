@@ -1,3 +1,7 @@
+# STALE (dtc-tsc.2): every test name in this script's filter list was removed from
+# the host upstream before the D5 import (dno-uh9y rework), so each `cargo test
+# <name> -- --exact` matches ZERO tests and exits 0 - the script's 'ok' is vacuous.
+# Re-point the filters at live tests before trusting it again.
 $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $true
 

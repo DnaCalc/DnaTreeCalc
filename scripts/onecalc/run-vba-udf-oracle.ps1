@@ -1,3 +1,6 @@
+# STALE (dtc-tsc.2): the `verify-vba-udf` bin command this script drives was removed
+# from the host upstream before the D5 import (bin dispatch: verify-formula /
+# verify-xml-cell / verify-batch / audit-formula-drill); every run exits 2.
 param(
     [string]$OutputRoot = "target\onecalc-verification\vba-udf"
 )
