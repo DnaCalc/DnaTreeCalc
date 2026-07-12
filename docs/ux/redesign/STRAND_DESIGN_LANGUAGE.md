@@ -73,9 +73,14 @@ never the raw surface tone. Established variants (light-paper / dark-paper):
 |---|---|---|---|
 | `teal-ink` | `#1B5F6B` (≈6.7:1) | `#4FC0D8` | accent text, eyebrows, command ids |
 | `green-ink` | `#2E6E5B` (≈6.0:1) | `#74C7AB` | value text, "fresh/match" readouts |
-| `ink-3` (meta) | `#5F7680` (≈4.8:1) | `#7D97A0` | kickers, captions, mono footnotes |
+| `ink-3` (meta) | `#5B717B` (≥4.5 on paper-2) | `#7D97A0` | kickers, captions, mono footnotes |
 | `prov-const` | `#2D6A8A` | `#7DB8D8` | constant-cell text |
 | `prov-ext` | `#A35400` | `#F0A35C` | external/volatile-cell text |
+| `red-ink` | `#D02A23` | `#E4625C` | error text (raw red fails AA on dark paper — the law applies to red too) |
+
+Canonical source: `src/dnacalc-strand` (the crate's `SANCTIONED_PAIRS` tests enforce this table;
+`theme.rs` comments record every derivation). This table mirrors the crate — on divergence, the
+crate wins and this table gets updated.
 
 Thresholds: ≥ 4.5:1 for text and small glyphs; ≥ 3:1 for large text, borders and meaningful
 non-text marks; chrome ink ≥ 4.5:1 on petrol. **Every sanctioned foreground/background pair is
