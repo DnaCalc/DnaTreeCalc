@@ -34,6 +34,11 @@ one-line shape. Every field is verbatim in
   references as chips, `Empty` distinct from `Unevaluated` — without parsing a debug string.
 - **Note:** must **not** add display formatting here (that is the resolver's job); `unit` is `expose`
   only if `EvalValue` already carries a hint, else omitted.
+- **Redesign G5:** consuming array-rich display everywhere, S2+ (no numbered mechanism cited for
+  this ask). Minimal slice: the variants above, as specified — workspace arrays still ship fully
+  materialized. Full shape: bound `Array{dims, cells}` to a windowed form outside OneFormula,
+  mirroring BENCH's `ArrayWindowProjection` (≤4096-cell cap) instead of full materialization. Honest
+  degrade until windowed: large workspace arrays ship in full or are truncated ad hoc per skin.
 
 #### `typed-invalidation-reasons` · expose · M
 > `enum InvalidationReason { UpstreamValueChanged{source:NodeKey}, StructuralRebindRequired,
@@ -77,13 +82,16 @@ one-line shape. Every field is verbatim in
 - **`drag-gesture-model`** · extend · M — `drop_legality(dragged: AuthoringScope, over: NodeKey,
   position: DropPosition) -> DropVerdict { legal, would_rebind, would_orphan, collision }` (reuses
   `legality-impact-preview`); `DropPosition`/`DropVerdict` types. Drag *state* stays skin-local; only
-  the verdict crosses. *Live drop-target validity during a drag.*
+  the verdict crosses. *Live drop-target validity during a drag.* **Redesign G8:** the drag-verdict
+  third of the command/keybinding/drag protocol ask (with `keybinding-registry` and the new
+  `serializable-command-catalog`); consuming grips, mech 13; this shape already matches the ask in
+  full. Degrades to no drag/drop vocabulary (today's state) until landed.
 
 ### Enriching / frontier
 - `rich-image-value-handles` · extend · M — `NodeValueProjection::Rich(RichValueRef)` / `::Image(ImageRef)`, opaque handles.
 - `comparative-multi-overlay-projection` · extend · M — `ComparativeProjection { basis, columns:[OverlayColumn{label, source, values}] }` — side-by-side scenario/sweep columns.
 - `frame-telemetry-hooks` · n/a · M — `FrameMetric { intent_seq, dispatch_to_delta_us, delta_apply_us, render_us, dropped }` into the replay sink. *Makes the 60fps goal falsifiable.*
-- `locale-presentation-layer` · n/a · M — `SkinContext.locale: LocaleTokens { dir: Ltr|Rtl, ui_strings }` — chrome strings + direction only (value formatting stays engine-owned).
+- `locale-presentation-layer` · n/a · M — `SkinContext.locale: LocaleTokens { dir: Ltr|Rtl, ui_strings }` — chrome strings + direction only (value formatting stays engine-owned). **Redesign G2:** the chrome/UI-string third of G2's formatting family (with `format-resolver-on-context` and `per-node-effective-format`); consuming Sheet & Model styling broadly, S3/S4; minimal slice is this direction+strings shape; degrades to English-only chrome (values still render correctly via the resolver) until landed.
 
 ---
 
@@ -100,6 +108,11 @@ one-line shape. Every field is verbatim in
   `Scalar` text (closes the raw-debug-text gap); profile-aware input gating.
 - **Note:** the resolver **must not** parse number-format codes host-side (that would re-implement
   OxFml semantics and risk divergence — constraint 7). `extend` because OxFml must expose `render`.
+- **Redesign G2:** consuming Sheet & Model styling, mech 05, S3/S4. Minimal slice: `resolve()` wired
+  for tree `number_format_code`, as specified. Full shape: the same seam serving grid cells once they
+  carry format (`per-node-effective-format`), locale-aware per `locale-presentation-layer`, with
+  CF-result-aware rendering. Honest degrade until then: grid cells render raw value text, not
+  `resolve()` output.
 
 #### `projection-delta-channel` — incremental delta alongside full snapshot · extend · L
 > `enum WorkspaceDelta { NodesChanged(Vec<NodeKey>), ValuesChanged(Vec<(NodeKey,NodeValueProjection)>),
@@ -126,6 +139,11 @@ one-line shape. Every field is verbatim in
 - **`per-node-effective-format`** · expose · M — `NodeView.effective_format: EffectiveFormat`;
   `NodeView.cf_results: Vec<CfResult{rule_id, matched, applied}>` (per-cell for arrays); also
   `validation_state`. *READ of evaluated results only — never re-evaluate rules host-side.*
+  **Redesign G2:** consuming Sheet & Model styling, mech 05, S3/S4; minimal slice is this
+  NodeView-scoped shape (tree only, as specified); full shape addresses the same `effective_format`/
+  `cf_results` fields by grid cell (`grid_publication.rs` carries none today; write-side CF/font/fill
+  authoring is the separate `format-authoring-verbs` ask); degrades to unstyled grid cells until the
+  grid extension lands.
 - **`full-derivation-trace`** · expose · L — `last_run.derivation_traces: Vec<DerivationTrace{node,
   template, hole_bindings, child_calls:[PreparedCall{kernel, arg_values, result}]}>` + read-only
   `EvaluateFragment(node, sub_expr_id)`. *FLOW's explain-stack.*
@@ -146,7 +164,10 @@ one-line shape. Every field is verbatim in
   surfaced verbatim.*
 - **`model-query-projection`** · extend · M — `query(QuerySpec{text_match, calc_state_filter,
   has_error, references, is_meta}) -> QueryResult{matches, total}`. *Find a node in a 100k tree; pairs
-  with virtualization.*
+  with virtualization.* **Redesign G4:** the server-side-query half of the viewport & LOD ask (with
+  `virtualization-window-projection`); consuming huge grids / agents-at-scale, mech 01, S3; minimal
+  slice is this tree query, as specified; full shape extends the same surface over grid ranges;
+  degrades to full-scan / no query on grids until extended.
 - **`host-worker-calc`** · n/a · L — the **host** runs the synchronous engine calc on a worker, pumping
   bounded slices per tick; `run_state` gains `Pending{token, started_value_epoch}`; dispatch returns
   immediately with `completion: Option<CompletionToken>`; host republishes on completion. *The engine
@@ -155,13 +176,53 @@ one-line shape. Every field is verbatim in
   required_intents:[IntentId], required_slots, min_profile, schema_version }`; host `negotiate(manifest)
   -> Result<MountGrant, CapabilityError>` checked before mount; mismatches fail loudly. *3rd-party
   skins rejected cleanly instead of panicking at render.*
+- **`unified-formula-authoring-surfaces`** · extend · L — `FormulaEditorSurface`, `CompletionSurface`,
+  `SignatureHelpSurface`, `FormulaDrillSurface` (today built only for the standalone OneFormula
+  document, `formula.rs`) become projections addressable from any authoring context: tree node
+  content, grid cell, table column formula, defined-name body; workspace formulas keep today's raw
+  text + `token_span` + dry-bind preview as the pre-migration baseline. *Token runs, staged
+  diagnostics, completions, signature help and partial-eval drill everywhere a formula is authored,
+  not only in the OneCalc bench.* **Redesign G1:** consuming Bridge-everywhere, mech 07/11, gates the
+  S1→S2 boundary — S1 ships OneFormula-only surfaces (BENCH_SPEC §3/§4), S2 generalizes them via this
+  ask; owned jointly with OxFml's editor services, which must themselves accept non-OneFormula
+  authoring contexts. Degrades to raw text + `token_span` (today's workspace formula experience)
+  until generalized.
+- **`grid-viewport-interest-pack`** · extend · L — honor `SetGridInterest` on the workbook
+  dispatcher (currently a no-op, `workbook_dispatcher.rs:161-168`); extend single-rect interest to
+  `Vec<GridRect>` with prefetch tiles around the visible window; `GridChanged` carries an intra-window
+  cell diff instead of reshipping the whole window. *Huge-grid pans/zooms stay O(changed) instead of
+  O(window).* **Redesign G4:** the grid-side half of the viewport & LOD ask (tree-side:
+  `virtualization-window-projection`, above); consuming huge grids / GPU path, mech 01, S3. Minimal
+  slice: wire `SetGridInterest` for real at a single rect, so the dispatcher stops silently dropping
+  it. Full shape: multi-rect interest + prefetch + diffed `GridChanged`. Degrades to accepted-but-
+  ignored interest calls and full-window reships on every change until landed.
+- **`extension-status-projection`** · new · L — surfaces `dnacalc-extension-host-core` state that
+  today stops at `ExtensionPlacementProjection` + `unavailable_families`: provider inventory
+  (id, kind: VBA/XLL/RTD/native, state: Available/Loading/Quarantined/Rejected/
+  Unavailable-on-this-runtime, diagnostics) and RTD topic liveness/staleness, keyed against
+  `RuntimeProfileProjection` so browser/desktop honesty is a lookup, not skin logic; trust +
+  quarantine states included. *Feed instruments in the Strip and any Extensions manager overlay;
+  function-to-provider attribution in an inspector.* **Redesign G7:** consuming any Strip + Bench
+  Extensions manager, mech 18, S1 minimal slice per BENCH_SPEC §6/§8. Minimal slice (S1): read-only
+  inventory + state + diagnostics, no lifecycle actions beyond host-exposed enable/disable. Full
+  shape: RTD topic liveness/staleness + trust/quarantine transitions surfaced live. Degrades to
+  catalog data available in-process on desktop and an honest unavailable-placeholder in browser,
+  with no per-provider status detail, until landed. Aligns with
+  `docs/ux/EXTENSION_ADAPTER_ARCHITECTURE.md`.
+- **`grid-dependency-projection`** · extend · L — extend the tree-only `DependencyGraphProjection`
+  to grid cells: precedents/dependents, cycle membership, and blast-radius counts addressed by grid
+  coordinate instead of only `NodeKey`. *Same shape agents/humans already get on the tree, for
+  Excel-strict grids.* **Redesign G9:** consuming Atlas + X-Ray + error triage on Excel-strict, mech
+  07/17, S3. Minimal slice: precedents/dependents for a single selected cell. Full shape: cycle +
+  blast-radius data matching the tree's. Degrades to X-Ray/error-triage working on tree nodes only,
+  no reference-graph affordance on grid cells, until landed. Relates to the U-DEP upstream lane.
 
 ### Enriching / frontier
 - `per-edge-cache-evidence` · extend · M — `last_run.scheduling: SchedulingReport { mode, edges:[EdgeEval{owner, cache:Hit|Miss|Bypassed, reused}], reuse_ratio }` (open question #6).
 - `table-cell-readback` · extend · L — `TableProjection.cells_view(table_id) -> TableCells { columns:[ColumnView{name, formula, effective_format}], rows:[[NodeValueProjection]] }` — read-only.
 - `series-projection` · extend · M — `series(scope) -> Series { points:[(label, NodeValueProjection)], unit }` — plottable feed for chart skins.
-- `virtualization-window-projection` · extend · L — `request_window(WindowSpec{anchor, before, after, expanded_set})` → only in-view `NodeView`s + values; off-window reference-only.
-- `keybinding-registry` · n/a · M — host resolves `KeyChord -> IntentId` per focused slot with a conflict policy; user overrides persist in audited SharedState; surfaced in command catalog.
+- `virtualization-window-projection` · extend · L — `request_window(WindowSpec{anchor, before, after, expanded_set})` → only in-view `NodeView`s + values; off-window reference-only. **Redesign G4:** the tree-side half of the viewport & LOD ask (grid-side: new `grid-viewport-interest-pack`, under Host-projection high-leverage below); consuming huge grids / GPU path / agents-at-scale, mech 01, S3; minimal slice is this windowed request, as specified; degrades to shipping all nodes until windowed.
+- `keybinding-registry` · n/a · M — host resolves `KeyChord -> IntentId` per focused slot with a conflict policy; user overrides persist in audited SharedState; surfaced in command catalog. **Redesign G8:** one third of the command/keybinding/drag protocol ask (with `drag-gesture-model` and the new `serializable-command-catalog`); consuming command deck + keyboard atlas, mech 08/10, S0; minimal slice is single-slot chord resolution; full shape adds per-slot scoping + conflict policy + overrides, as specified; degrades to today's Leptos-side chord resolution until landed.
 - `skin-error-isolation` · n/a · M — shell wraps each slot mount in an error boundary; a panicking skin shows a fallback in *its* slot without taking down others.
 - `empty-state-onboarding` · n/a · S — `NewWorkspace` seeds from a named `StarterTemplate`; command catalog exposes onboarding metadata.
 - `pinned-speculative-view` · extend · M — audited shared `pinned_speculations:[PinnedView{handle, label, basis_epoch}]` keeps a candidate alive (GC root) while exploring others.
@@ -246,6 +307,26 @@ one-line shape. Every field is verbatim in
   receipt, delta, value_epoch, persona, origin)`; `replay(log, fresh_workspace) -> WorkspaceState`.
   *Deterministic skin tests, repro bug reports, audit, the collab wire format. Replay re-issues intents
   through the same dispatcher — not inverse-undo.*
+- **`grid-interaction-pack`** · new · L — `SelectionState` gains a grid `Range{sheet, top_left,
+  bottom_right}` variant (today node + table-cell only); new `WorkspaceIntent` verbs for row/col
+  insert/delete/hide/resize/freeze, `FillSeries{range, source}`, grid-scoped `CopyGridRange`/
+  `PasteGridRange` (distinct from the node-keyed `clipboard-transfer-model`), `MergeCells`/
+  `UnmergeCells`, and a workbook `Undo`/`Redo` pair (today `UnsupportedByModel`, reusing
+  `revision-history-projection`'s DAG rather than a second history model). *The Sheet skin's baseline
+  editing loop — everything Excel users expect from a grid before it's usable.* **Redesign G3:**
+  consuming the Sheet skin's grid-editing completeness, mech 13/14/19, S3. Minimal slice: range
+  selection + fill + copy/paste over a single rect. Full shape: adds row/col structural ops, merged
+  regions, and workbook undo/redo. Degrades to node/table-cell selection only, no structural row/col
+  edits, no workbook-level undo (grid edits are one-shot and unreversible) until landed.
+- **`serializable-command-catalog`** · extend · M — `CommandMeta`/`CommandCatalogProjection` fields
+  (today `&'static str`, per `command-palette-metadata`) become owned, wire-safe types (`String` /
+  interned `CommandId(u32)`) so the catalog can cross a process boundary. *Unblocks remote/agent
+  skins and the collab wire format from needing to share the host's in-process palette.*
+  **Redesign G8:** the catalog third of the command/keybinding/drag protocol ask (with
+  `keybinding-registry` and `drag-gesture-model`); consuming command deck + surface tree/agents, mech
+  08/20, S0. Minimal slice: intern command ids, own titles/shortcuts as owned strings. Full shape
+  pairs with the other two, already-ledgered parts of G8. Degrades to in-process-only catalog access
+  (no remote/agent introspection) until landed.
 
 ### Enriching / frontier
 - `clipboard-transfer-model` · new · M — `WorkspaceState.clipboard: Clipboard { operation: Copy|Cut, payload: Values{content_kind,constant_input_text?,value} | Formula{source} | Format | Subtree{root}, plain_text? }`; `CopyToClipboard`/`CutToClipboard` populate, `PasteClipboardFormat` and authored-constant `PasteClipboardValues` are the first paste consumers, successful constant-value cut paste clears copied sources plus host clipboard in one transaction, and `PasteExternalClipboardText` imports platform-supplied clipboard text as authored content. Multi-item authored constants and TSV/newline plain text can paste one-to-one over an explicitly ordered multi-node target scope, while single-node paste preserves raw text; rich OS clipboard formats, computed-value literalization, formula rewrite paste, and PasteSubtree consume in the full model. Host-owned, distinct from OS clipboard access.
@@ -303,6 +384,12 @@ Surfaced while designing the [ATLAS suite](../skin-suite/). All host/skin-layer.
   reconstructed.
 - **Note:** keyed on `NodeKey` so positions survive rename/move; gc on node delete. Depends on
   `stable-node-identity` + `skinstate-persistence-exercised`.
+- **Redesign G10:** consuming Model layouts across devices, S4, optional (no numbered mechanism cited
+  for this ask). Minimal slice: this Canvas-scoped `CanvasSkinState`, as specified — positions travel
+  per-skin, per-workspace. Full shape: promote positions to a shareable document-level overlay
+  (crossing devices/collaborators) rather than skin-local `SkinState`. Degrades to layout positions
+  staying local to the device/skin instance that set them, per the deliberate scoping above, until
+  landed.
 
 #### `replay-authored-artifact` — recorded exploration as a shippable, editable asset · extend · M · frontier
 > On top of W5 `intent-log-replay`: a recorded `(intent, receipt, delta, revision)` exploration that
@@ -322,3 +409,46 @@ Surfaced while designing the [ATLAS suite](../skin-suite/). All host/skin-layer.
   every figure stays faithful and re-projects under scenario/revision.
 - **Note:** a model-card is a curated *view*; blocks reference nodes/scopes/series, never copy values.
   Depends on `richer-typed-value`, `series-projection`, `stable-node-identity`.
+- **Redesign G6:** consuming Notebook-as-protocol, S2 (no numbered mechanism cited for this ask — it
+  underwrites the Notebook stage directly). Minimal slice: block structure + cursor, as specified.
+  Full shape: prose/annotation text storage in the manifest/annotation layer — a distinct storage
+  concern from the block projection itself, not yet placed (`note-write`'s per-node `NoteContent` is
+  adjacent but not the same thing as manifest-level narrative prose). Degrades to Notebook staying a
+  convention over defined names + `_names` backing sheet, no block structure in the IR, until landed.
+
+---
+
+## BENCH-surfaced additions
+
+Surfaced while designing the [BENCH_SPEC](../redesign/BENCH_SPEC.md) OneCalc instrument. Scoped to
+the OneFormula document's own intent surface (`OneFormulaIntent`, distinct from `WorkspaceIntent` —
+the F-gate keeps OneCalc's dependency graph free of `oxcalc*`); filed here because the shape is
+expected to graduate into the shared host/Skin-IR contract once generalized.
+
+#### `format-authoring-verbs` — CF rule + font/fill write verbs on the OneFormula document · new · M · high-leverage
+> Write-side counterpart to `FormattingSurface`'s read model: `SetFontAttributes{scope, font}`,
+> `SetFillAttributes{scope, fill}`, `SetConditionalFormatRule{scope, rule: CfRule}` /
+> `RemoveConditionalFormatRule`, dispatched as `OneFormulaIntent`. Today only `SetNumberFormat` /
+> `SetScenarioPolicy` exist as write verbs; CF rules and font/fill are read-only (BENCH_SPEC §7
+> describes the panel's full intended shape, §8 flags the write-verb gap).
+- **Unlocks:** live CF-rule and font/fill authoring in the Bench formatting panel, not just
+  number-format and scenario-policy edits.
+- **Note:** graduates toward the shared `per-node-effective-format` / G2 shape once format authoring
+  generalizes past the OneFormula document to `AuthoringScope` (node/grid/subtree).
+- **Redesign (BENCH_SPEC §8, S1 kickoff ask):** consuming stage OneCalc Bench first, then Sheet &
+  Model styling generally, mech 05. Minimal slice (S1): CF rule authoring + font/fill set verbs
+  scoped to the OneFormula document only. Full shape: the same verbs generalized once G2 lands
+  broadly. Degrade until landed: the format panel is read + live-preview only; number format and
+  scenario policy remain the sole writable knobs.
+
+#### `reference-form-cycling` — F4 reference-form cycling in the editor service · extend · S · enriching
+> `CycleReferenceForm{editor_context, caret}` intent: OxFml's editor service cycles the reference
+> under the caret through relative → absolute → mixed-row → mixed-col forms (Excel's F4), returning
+> rewritten source text + new caret span.
+- **Unlocks:** F4 muscle memory in the Bench editor; one of BENCH_SPEC's keyboard atlas entries
+  (§9).
+- **Redesign (BENCH_SPEC §8, S1 kickoff ask):** consuming stage OneCalc Bench editor (F4 in the
+  atlas); no exit-acceptance criterion names it directly, so treat as tracked-not-blocking for S1.
+  Minimal slice: cycle a single reference token under the caret in the OneFormula editor service.
+  Full shape: extends to whichever contexts `unified-formula-authoring-surfaces` (G1) reaches.
+  Degrade until landed: F4 is a no-op; users retype reference forms manually.
