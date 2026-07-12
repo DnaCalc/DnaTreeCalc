@@ -25,6 +25,14 @@ members = [
     # Dev-only crate (dtc-tsc.3): pinned tests for the D5 crate-tier
     # dependency law (F/P/T0 gates). Never a dependency of any other member.
     "src/dnacalc-arch-gates",
+    # App skeletons (dtc-tsc.9): compose the S0 substrate into two runnable
+    # products, each with a browser (WASM/trunk) entry and a Tauri desktop
+    # shell. `dnacalc-bench-app` is TF (bench-host = oxfml+oxfunc, no oxcalc);
+    # `dnacalc-app` is the Calc app root (TC-adjacent via dnatreecalc-host).
+    "src/dnacalc-bench-app",
+    "src/dnacalc-bench-app-desktop",
+    "src/dnacalc-app",
+    "src/dnacalc-app-desktop",
 ]
 
 [workspace.package]

@@ -42,6 +42,43 @@ fn f_gate_bench_desktop_has_no_oxcalc() {
     assert_graph_excludes("F-gate", &tree, &["oxcalc"]);
 }
 
+/// F-gate — the Bench *app* crate (dtc-tsc.9). It composes the TP shell +
+/// bridge over the Bench host, so it inherits oxfml/oxfunc — but never
+/// oxcalc. This keeps the F-gate honest at the app-composition boundary,
+/// not just the host boundary.
+#[test]
+fn f_gate_bench_app_has_no_oxcalc() {
+    let tree = run_cargo_tree("dnacalc-bench-app");
+    assert_graph_excludes("F-gate", &tree, &["oxcalc"]);
+}
+
+/// F-gate — the Bench app's Tauri desktop shell (dtc-tsc.9).
+#[test]
+fn f_gate_bench_app_desktop_has_no_oxcalc() {
+    let tree = run_cargo_tree("dnacalc-bench-app-desktop");
+    assert_graph_excludes("F-gate", &tree, &["oxcalc"]);
+}
+
+/// F-gate positive control — the Bench *app* really composes the formula
+/// tier (oxfml present), so `f_gate_bench_app_has_no_oxcalc` cannot pass
+/// vacuously because the app stopped reaching the host at all.
+#[test]
+fn f_gate_positive_control_bench_app_has_oxfml() {
+    let tree = run_cargo_tree("dnacalc-bench-app");
+    assert_graph_includes("F-gate positive control", &tree, "oxfml");
+}
+
+/// Inverted control for the Calc app root (dtc-tsc.9) — `dnacalc-app` is
+/// TC-adjacent: it drives a real host-core workbook, so oxcalc IS in its
+/// graph by design. This is the opposite assertion from the Bench F-gate
+/// and proves the two products sit on opposite sides of the F-line (the
+/// Calc app is deliberately NOT F-gated and NOT a TP crate).
+#[test]
+fn calc_app_root_is_tc_adjacent_contains_oxcalc() {
+    let tree = run_cargo_tree("dnacalc-app");
+    assert_graph_includes("Calc app TC-adjacency control", &tree, "oxcalc");
+}
+
 /// F-gate positive control — `dnacalc-bench-host` must still depend on
 /// `oxfml*` (OxFml is allowed and is the whole point of the Bench tier;
 /// only OxCalc is forbidden). If this ever goes red, the F-gate above is

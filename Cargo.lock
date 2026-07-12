@@ -991,8 +991,61 @@ dependencies = [
 ]
 
 [[package]]
+name = "dnacalc-app"
+version = "0.1.0"
+dependencies = [
+ "dnacalc-bridge",
+ "dnacalc-host-core",
+ "dnacalc-shell",
+ "dnacalc-skin-ir",
+ "dnacalc-skin-leptos",
+ "dnacalc-strand",
+ "dnatreecalc-host",
+ "js-sys",
+ "leptos",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "wasm-bindgen-test",
+ "web-sys",
+]
+
+[[package]]
+name = "dnacalc-app-desktop"
+version = "0.1.0"
+dependencies = [
+ "tauri",
+ "tauri-build",
+]
+
+[[package]]
 name = "dnacalc-arch-gates"
 version = "0.1.0"
+
+[[package]]
+name = "dnacalc-bench-app"
+version = "0.1.0"
+dependencies = [
+ "dnacalc-bench-host",
+ "dnacalc-bridge",
+ "dnacalc-shell",
+ "dnacalc-skin-ir",
+ "dnacalc-skin-leptos",
+ "dnacalc-strand",
+ "js-sys",
+ "leptos",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "wasm-bindgen-test",
+ "web-sys",
+]
+
+[[package]]
+name = "dnacalc-bench-app-desktop"
+version = "0.1.0"
+dependencies = [
+ "tauri",
+ "tauri-build",
+]
 
 [[package]]
 name = "dnacalc-bench-core"

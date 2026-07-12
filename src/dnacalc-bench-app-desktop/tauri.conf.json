@@ -1,0 +1,17 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "DNA Bench",
+  "version": "0.1.0",
+  "identifier": "com.dnakode.dnacalc-bench-app",
+  "build": {
+    "beforeDevCommand": "powershell -NoProfile -Command \"Set-Location ../dnacalc-bench-app; trunk build index.html\"",
+    "frontendDist": "../dnacalc-bench-app/dist"
+  },
+  "app": {
+    "windows": [
+      { "title": "DNA Bench", "width": 1280, "height": 800 }
+    ],
+    "security": { "csp": null }
+  },
+  "bundle": { "active": false, "icon": ["icons/icon.ico"] }
+}

@@ -1,0 +1,2 @@
+# Tauri-build regenerates gen/schemas on every build.
+/gen/

@@ -1,0 +1,256 @@
+//! Browser suite for the DNA Calc app (SHELL_SPEC §10.1-10.4, D3 parity).
+//!
+//! Mounts the real [`CalcApp`] over the host-core demo workbook and proves, in
+//! the DOM, that the Calc composition mounts its full region set with a stage
+//! switcher, that stage switching is re-projection (the incoming stage mounts
+//! and reads shared continuity state), that the DEGRADE bridge edits a workbook
+//! cell via `EnterGridCell` with the three-way outcome rendered honestly, and
+//! that the atlas + deck open. Reserved parity/evidence slots render NOTHING.
+
+#![cfg(target_arch = "wasm32")]
+
+use dnacalc_app::app::CalcApp;
+use dnacalc_shell::RuntimeContext;
+use leptos::prelude::*;
+use wasm_bindgen::JsCast;
+use wasm_bindgen_test::*;
+
+wasm_bindgen_test_configure!(run_in_browser);
+
+async fn next_tick() {
+    let promise = js_sys::Promise::new(&mut |resolve, _reject| {
+        web_sys::window()
+            .expect("window")
+            .set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, 0)
+            .expect("setTimeout");
+    });
+    wasm_bindgen_futures::JsFuture::from(promise)
+        .await
+        .expect("tick");
+}
+
+fn mount() -> web_sys::HtmlElement {
+    let document = web_sys::window().unwrap().document().unwrap();
+    let host = document
+        .create_element("div")
+        .unwrap()
+        .dyn_into::<web_sys::HtmlElement>()
+        .unwrap();
+    document.body().unwrap().append_child(&host).unwrap();
+    leptos::mount::mount_to(host.clone().unchecked_into(), move || {
+        view! { <CalcApp runtime=RuntimeContext::Browser /> }
+    })
+    .forget();
+    host
+}
+
+fn query(host: &web_sys::HtmlElement, selector: &str) -> Option<web_sys::Element> {
+    host.query_selector(selector).unwrap()
+}
+
+fn shell_root(host: &web_sys::HtmlElement) -> web_sys::EventTarget {
+    host.query_selector(".dna-shell")
+        .unwrap()
+        .expect("shell root mounts")
+        .unchecked_into()
+}
+
+/// Set the DEGRADE editor's text and fire an input event (as a keystroke would).
+fn set_degrade_text(host: &web_sys::HtmlElement, text: &str) {
+    let area = query(host, ".dna-bridge--degrade .dna-bridge__input").expect("degrade textarea");
+    let area: &web_sys::HtmlTextAreaElement = area.unchecked_ref();
+    area.set_value(text);
+    area.dispatch_event(&web_sys::Event::new("input").unwrap())
+        .unwrap();
+}
+
+/// Fire Enter on the degrade textarea (its own handler emits CommitRequested).
+fn commit_degrade(host: &web_sys::HtmlElement) {
+    let area = query(host, ".dna-bridge--degrade .dna-bridge__input").expect("degrade textarea");
+    let init = web_sys::KeyboardEventInit::new();
+    init.set_key("Enter");
+    init.set_bubbles(true);
+    init.set_cancelable(true);
+    let event = web_sys::KeyboardEvent::new_with_keyboard_event_init_dict("keydown", &init).unwrap();
+    let target: web_sys::EventTarget = area.unchecked_into();
+    target.dispatch_event(&event).unwrap();
+}
+
+fn press_chord(target: &web_sys::EventTarget, key: &str, ctrl: bool, alt: bool, shift: bool) {
+    let init = web_sys::KeyboardEventInit::new();
+    init.set_key(key);
+    init.set_ctrl_key(ctrl);
+    init.set_alt_key(alt);
+    init.set_shift_key(shift);
+    init.set_bubbles(true);
+    init.set_cancelable(true);
+    let event = web_sys::KeyboardEvent::new_with_keyboard_event_init_dict("keydown", &init).unwrap();
+    target.dispatch_event(&event).unwrap();
+}
+
+/// §10.1 — the full Calc region set mounts (with the Registry rail and the
+/// stage switcher), and the reserved parity slot renders nothing.
+#[wasm_bindgen_test]
+fn calc_mounts_full_region_set_with_switcher() {
+    let host = mount();
+
+    for region in [
+        "mast",
+        "bridge",
+        "registry",
+        "stage-host",
+        "inspector",
+        "strip",
+    ] {
+        assert!(
+            query(&host, &format!("[data-region=\"{region}\"]")).is_some(),
+            "region {region} must mount in the Calc composition"
+        );
+    }
+
+    // Two stage tabs (Sheet, Model).
+    let tabs = host.query_selector_all("[data-stage-tab]").unwrap();
+    assert_eq!(tabs.length(), 2, "two stub stages compose the switcher");
+
+    let parity = query(&host, "[data-slot=\"parity\"]").expect("parity slot reserved in layout");
+    assert_eq!(parity.text_content().unwrap_or_default(), "");
+    assert_eq!(parity.child_element_count(), 0);
+}
+
+/// §10.1 — stage switching is re-projection: the incoming stage mounts and its
+/// shared-continuity readout is present (the shared state survives the switch,
+/// it is not reset to a fresh default).
+#[wasm_bindgen_test]
+async fn calc_stage_switch_reprojects_and_preserves_continuity_surface() {
+    let host = mount();
+    next_tick().await;
+
+    // Initial: the first visible stage (Sheet) mounts.
+    assert!(
+        query(&host, "[data-testid=\"calc-stage-sheet\"]").is_some(),
+        "the Sheet stage mounts first"
+    );
+    let before = query(&host, "[data-testid=\"calc-stage-sheet\"] .calc-stage__continuity")
+        .and_then(|el| el.get_attribute("data-selection"))
+        .expect("continuity readout on the Sheet stage");
+
+    // Switch to Model via its mast tab (a re-projection switch).
+    let model_tab = query(&host, "[data-stage-tab=\"model\"]").expect("model tab");
+    let target: web_sys::EventTarget = model_tab.unchecked_into();
+    target
+        .dispatch_event(&web_sys::MouseEvent::new("click").unwrap())
+        .unwrap();
+    next_tick().await;
+
+    // The Model stage is now mounted, the Sheet stage gone (re-projection).
+    assert!(
+        query(&host, "[data-testid=\"calc-stage-model\"]").is_some(),
+        "the Model stage mounts after the switch"
+    );
+    assert!(
+        query(&host, "[data-testid=\"calc-stage-sheet\"]").is_none(),
+        "switching is re-projection: only one stage mounts at a time"
+    );
+    // The shared continuity state survived the switch (same value the new
+    // stage reads back).
+    let after = query(&host, "[data-testid=\"calc-stage-model\"] .calc-stage__continuity")
+        .and_then(|el| el.get_attribute("data-selection"))
+        .expect("continuity readout on the Model stage");
+    assert_eq!(before, after, "continuity state survives the switch");
+}
+
+/// §10.2 — the DEGRADE bridge edits a workbook cell via `EnterGridCell`, and
+/// the host's three-way outcome (literal / formula / cleared) plus the typed
+/// rejection are each rendered honestly from the receipt.
+#[wasm_bindgen_test]
+async fn calc_degrade_edits_cell_with_honest_three_way_outcome() {
+    let host = mount();
+    next_tick().await;
+
+    // The bridge mounts in DEGRADE mode (no fake token colors).
+    assert!(
+        query(&host, ".dna-bridge--degrade").is_some(),
+        "Calc mounts the DEGRADE bridge (pre-G1 honest path)"
+    );
+    assert!(
+        query(&host, ".dna-bridge--degrade .dna-bridge__seg--role-function").is_none(),
+        "degrade mode never paints token-role classes"
+    );
+
+    // Literal.
+    set_degrade_text(&host, "42");
+    next_tick().await;
+    commit_degrade(&host);
+    next_tick().await;
+    let outcome = query(&host, "[data-testid=\"calc-outcome\"]").expect("outcome renders");
+    assert_eq!(outcome.get_attribute("data-outcome").as_deref(), Some("literal"));
+
+    // Formula (=A1+A5 over the demo workbook = 6).
+    set_degrade_text(&host, "=A1+A5");
+    next_tick().await;
+    commit_degrade(&host);
+    next_tick().await;
+    let outcome = query(&host, "[data-testid=\"calc-outcome\"]").expect("outcome renders");
+    assert_eq!(outcome.get_attribute("data-outcome").as_deref(), Some("formula"));
+
+    // Cleared (empty commit).
+    set_degrade_text(&host, "");
+    next_tick().await;
+    commit_degrade(&host);
+    next_tick().await;
+    let outcome = query(&host, "[data-testid=\"calc-outcome\"]").expect("outcome renders");
+    assert_eq!(outcome.get_attribute("data-outcome").as_deref(), Some("cleared"));
+
+    // Rejected (an unparseable formula) — typed rejection surfaces.
+    set_degrade_text(&host, "=1+");
+    next_tick().await;
+    commit_degrade(&host);
+    next_tick().await;
+    let outcome = query(&host, "[data-testid=\"calc-outcome\"]").expect("outcome renders");
+    assert_eq!(outcome.get_attribute("data-outcome").as_deref(), Some("rejected"));
+    assert!(
+        query(&host, ".dna-bridge__rejection").is_some(),
+        "the degrade editor underlines the entry rejection"
+    );
+}
+
+/// §10.3 — the keyboard atlas opens from the live registry.
+#[wasm_bindgen_test]
+async fn calc_atlas_opens_from_registry() {
+    let host = mount();
+    next_tick().await;
+    press_chord(&shell_root(&host), "/", true, false, false);
+    next_tick().await;
+    let atlas = query(&host, "[data-overlay=\"keyboard-atlas\"]").expect("atlas overlay opens");
+    assert!(atlas.query_selector("[data-atlas-row]").unwrap().is_some());
+}
+
+/// §10.4 — the command deck opens and lists at least 15 commands, and goto
+/// recognizes an A1 address.
+#[wasm_bindgen_test]
+async fn calc_command_deck_lists_commands_and_goto() {
+    let host = mount();
+    next_tick().await;
+    press_chord(&shell_root(&host), "k", true, false, false);
+    next_tick().await;
+    let deck = query(&host, "[data-overlay=\"command-deck\"]").expect("command deck opens");
+    let rows = deck.query_selector_all("[data-command-id]").unwrap();
+    assert!(
+        rows.length() >= 15,
+        "the deck surfaces >= 15 commands, got {}",
+        rows.length()
+    );
+
+    // Goto: an A1 address is recognized as a navigation entry.
+    let input = query(&host, ".dna-deck__input").expect("deck input");
+    let input: &web_sys::HtmlInputElement = input.unchecked_ref();
+    input.set_value("A1");
+    input
+        .dispatch_event(&web_sys::Event::new("input").unwrap())
+        .unwrap();
+    next_tick().await;
+    assert!(
+        query(&host, "[data-command-id=\"goto:a1:A1\"]").is_some(),
+        "the deck recognizes an A1 goto address"
+    );
+}

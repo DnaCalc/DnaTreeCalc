@@ -1,0 +1,23 @@
+# dnacalc-app-desktop — the DNA Calc Tauri desktop shell (dtc-tsc.9).
+#
+# TIER: Calc app root (desktop). A thin Tauri v2 wrapper whose window loads the
+# committed `dnacalc-app` WASM frontend (frontendDist below). Not TP; not
+# F-gated (the Calc product legitimately reaches the oxcalc engine).
+#
+# Tauri-config duplication with `dnacalc-bench-app-desktop` is recorded as DEBT
+# in the bead close note.
+[package]
+name = "dnacalc-app-desktop"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+
+[lints]
+workspace = true

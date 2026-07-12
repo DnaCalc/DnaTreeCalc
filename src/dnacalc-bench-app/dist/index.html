@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>DNA Bench</title>
+</head>
+<body>
+  <!--
+    Durable frontendDist placeholder so a fresh-checkout `cargo build` of
+    dnacalc-bench-app-desktop succeeds (Tauri's generate_context! reads this
+    directory at compile time). A real desktop launch serves the trunk build:
+        cd src/dnacalc-bench-app && trunk build index.html
+    which overwrites this directory with the compiled WASM bundle.
+  -->
+  <div id="dnacalc-bench-app">Build the WASM bundle with `trunk build` to run the Bench app.</div>
+</body>
+</html>

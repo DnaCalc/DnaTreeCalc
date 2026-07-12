@@ -1,0 +1,26 @@
+# dnacalc-bench-app-desktop — the DNA Bench Tauri desktop shell (dtc-tsc.9).
+#
+# TIER: TF app root (desktop). A thin Tauri v2 wrapper whose window loads the
+# committed `dnacalc-bench-app` WASM frontend (frontendDist below). It carries
+# no engine crate of its own; the F-gate (`f_gate_bench_app_desktop_has_no_oxcalc`)
+# asserts it stays oxcalc-free.
+#
+# Tauri-config duplication with `dnacalc-app-desktop` (build.rs, tauri.conf.json
+# shape, capabilities, icon) is DEBT recorded in the bead close note — the two
+# desktop shells are near-identical but each Tauri app needs its own identifier,
+# product name, and config, so there is no clean single-crate share yet.
+[package]
+name = "dnacalc-bench-app-desktop"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+
+[lints]
+workspace = true

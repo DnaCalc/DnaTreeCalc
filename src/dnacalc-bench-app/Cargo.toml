@@ -1,0 +1,62 @@
+# dnacalc-bench-app — the DNA Bench product skeleton (dtc-tsc.9).
+#
+# TIER: TF (formula tier). This app composes the TP shell + bridge over the
+# real `dnacalc-bench-host` OneFormula host, whose graph carries oxfml+oxfunc
+# (and, by the F-gate, NEVER oxcalc). It is therefore NOT a TP crate and is
+# NOT listed in `dnacalc-arch-gates::TP_CRATES`; instead the F-gate
+# (`f_gate_bench_app_has_no_oxcalc`) asserts it stays oxcalc-free.
+#
+# The crate is `cdylib + rlib`: the browser (trunk) build mounts the `cdylib`
+# via `start()`; native `cargo test`/`clippy` compile the `rlib` so the host
+# adapter logic is covered without a browser.
+[package]
+name = "dnacalc-bench-app"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+dnacalc-skin-ir = { path = "../dnacalc-skin-ir" }
+dnacalc-skin-leptos = { path = "../dnacalc-skin-leptos" }
+dnacalc-strand = { path = "../dnacalc-strand" }
+dnacalc-shell = { path = "../dnacalc-shell" }
+dnacalc-bridge = { path = "../dnacalc-bridge" }
+# No default features: the legacy `shell-ui` (leptos + formula-skin-leptos)
+# preview surface is not used; we drive the host's OneFormula projection
+# through its Leptos-free reducer/view-model seams only.
+dnacalc-bench-host = { path = "../dnacalc-bench-host", default-features = false }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+leptos = { version = "0.8.17", default-features = false, features = ["ssr"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+leptos = { version = "0.8.17", default-features = false, features = ["csr"] }
+wasm-bindgen = "=0.2.117"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = ["Window", "Document", "Element", "HtmlElement", "console"] }
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "=0.3.67"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = [
+    "Document",
+    "Element",
+    "Event",
+    "HtmlElement",
+    "HtmlTextAreaElement",
+    "InputEvent",
+    "InputEventInit",
+    "KeyboardEvent",
+    "KeyboardEventInit",
+    "Node",
+    "NodeList",
+    "Window",
+] }
+
+[lints]
+workspace = true
