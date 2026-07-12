@@ -21,6 +21,9 @@ members = [
     "src/dnacalc-bench-core",
     "src/dnacalc-bench-host",
     "src/dnacalc-bench-desktop",
+    # Dev-only crate (dtc-tsc.3): pinned tests for the D5 crate-tier
+    # dependency law (F/P/T0 gates). Never a dependency of any other member.
+    "src/dnacalc-arch-gates",
 ]
 
 [workspace.package]

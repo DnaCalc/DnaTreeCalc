@@ -1,0 +1,16 @@
+[package]
+name = "dnacalc-arch-gates"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Dev-only crate: pinned tests that make the D5 crate-tier dependency law (docs/ux/redesign/REDESIGN_PROGRAM.md, SHELL_SPEC.md section 9) executable via `cargo tree`. Never a dependency of any other workspace crate."
+
+# No runtime dependencies on purpose: this crate's entire job is to shell
+# out to `cargo tree` and parse plain text, so it depends on nothing but
+# std. That also keeps it trivially safe to have as a workspace member that
+# nothing else may ever depend on (see crate-level docs in src/lib.rs).
+[dependencies]
+
+[lints]
+workspace = true
