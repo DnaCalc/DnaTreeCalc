@@ -132,17 +132,74 @@ product, browser + Tauri); **Calc app** = TC host + TP presentation. The Bridge 
 is what lets one formula workbench serve both products.
 
 **Enforced gates** (pinned tests in the style of the existing no-Leptos `cargo tree` gate on
-`dnacalc-skin-ir`):
-- **F-gate (the OneCalc forcing function):** the Bench app's resolved dependency graph contains
-  no `oxcalc*` crate. Continuous, per-commit, stronger than the old repo boundary.
-- **P-gate:** every TP crate's graph contains no `ox*` crate (skins speak Skin IR only —
-  existing doctrine, now asserted per crate).
-- **T0-gate:** `dnacalc-skin-ir` stays free of Leptos and engines (exists today).
+`dnacalc-skin-ir`, all in `dnacalc-arch-gates`; see that crate's `src/lib.rs` doc comment,
+"Edge scope", for the exact `cargo tree -e <edges>` scope each gate below asserts and why it
+is not uniformly the whole graph):
+- **F-gate (the OneCalc forcing function):** `dnacalc-bench-host`, `dnacalc-bench-desktop`, and
+  `dnacalc-bench-app`'s resolved dependency graphs contain no `oxcalc*` crate, checked over
+  `normal,build` edges (dtc-1tk.4 finding H4a: widened from `normal`-only so a Tauri build
+  script can't smuggle an `oxcalc*` edge past the gate). Each of the three crates has its own
+  `oxfml*` positive control. Continuous, per-commit, stronger than the old repo boundary.
+  `dnacalc-bench-app-desktop` is deliberately not F-gated on its own — it carries zero
+  `dnacalc-*` crate edges (its WASM frontend is a static asset, not a Cargo dependency), so a
+  gate on it would be vacuous; its coverage lives in the `dnacalc-bench-app` gate.
+- **P-gate:** every TP crate's graph contains no `ox*` crate, checked over `normal` edges only
+  (skins speak Skin IR only — existing doctrine, now asserted per crate; see `TP_CRATES` in
+  `dnacalc-arch-gates/src/lib.rs`).
+- **T0-gate:** `dnacalc-skin-ir` stays free of Leptos and engines over `normal` edges (exists
+  today).
 
 Migration outline (S0 bead): subtree-import DnaOneCalc → `src/` + `docs/onecalc/`; retarget its
 path deps to workspace deps; rename `dnaonecalc-*` → `dnacalc-bench-*` in place; land the three
 gates; OneCalc's charter mission (Twin Oracle Workbench, OxFml/OxFunc proving) carries into the
 Bench tier unchanged.
+
+### Parity CI: what runs and how (dtc-1tk.3)
+
+SHELL_SPEC.md §9/§10 item 5 and this program's S0 definition of done (§5 above) require the
+parity gate to cover **both** targets — "browser build + headless browser tests + Tauri
+build" — not just the native host lane. `scripts/run-s0-gates.ps1` is that gate, and it is the
+single audited entry point; run it locally (or have an agent run it) with:
+
+```powershell
+pwsh -File scripts/run-s0-gates.ps1
+```
+
+It runs, in order, and prints a final `PASS`/`SKIPPED`/`FAIL` summary line per lane:
+
+1. **F/P/T0 dependency-tier gates** — `cargo test -p dnacalc-arch-gates` (native).
+2. **Strand contrast law** — `cargo test -p dnacalc-strand` (native).
+3. **wasm compile gate** — `cargo test --target wasm32-unknown-unknown --no-run -p
+   dnacalc-shell -p dnacalc-bridge -p dnacalc-app -p dnacalc-bench-app`. Always runs. These four
+   crates' `tests/browser.rs` DOM acceptance suites are `#![cfg(target_arch = "wasm32")]`, so
+   under a native-only `cargo test` they compile to zero tests and report a vacuous "ok" —
+   this step is what actually builds them for `wasm32-unknown-unknown` on every commit, catching
+   wasm-only compile rot (a stray import, a wasm-only `cfg` mistake) even on a machine with no
+   WebDriver installed.
+4. **Tauri build gate** — `cargo build -p dnacalc-bench-app-desktop -p dnacalc-app-desktop`.
+   Always runs.
+5. **Headless browser tests** — the same four wasm crates, actually executed in a live headless
+   browser via `wasm-bindgen-test-runner` (`.cargo/config.toml` pins `GECKODRIVER=geckodriver`).
+   Runs only when `geckodriver` or `msedgedriver` is found on `PATH`; otherwise this lane prints
+   and reports **SKIPPED** — it is never silently counted as a pass. The script's overall exit
+   code fails only on an actually-run `FAIL`; a `SKIPPED` lane does not fail it, but is always
+   visible in the summary so "parity CI didn't really run the browser target" can never hide
+   behind a green script.
+
+**Why a doc section instead of a committed `.github/workflows/*.yml`:** this workspace's
+`[workspace.dependencies]` (`Cargo.toml`) path-depend on three separate sibling repos —
+`../OxCalc`, `../OxFml`, `../OxFunc` — and the chain runs deeper still: `OxCalc`'s own
+`Cargo.toml` path-depends on a fourth sibling, `../OxDoc`. None of the four is a git submodule
+of this repo, none is vendored, and none is pinned to a ref anywhere `cargo` can read — they are
+plain sibling checkouts on the machine, each its own `github.com/DnaCalc/*` remote. A hosted CI
+runner starting from a bare checkout of this repo alone cannot resolve the workspace at all
+without first reconstructing that exact multi-repo sibling layout at matching commits — real
+infrastructure (checkout orchestration and commit-pinning across (at least) four repos, plus a
+runner image with the wasm32 target and a working Firefox+geckodriver pair) that is properly a
+follow-up bead once the multi-repo checkout story is decided, not something to invent blind
+inside this fix. Documenting the exact invocation here keeps "both targets, audited" true and
+runnable today; add `.github/workflows/s0-parity.yml` (calling the same
+`scripts/run-s0-gates.ps1`) once that sibling-checkout story exists.
 
 ## 6. Relationship to existing plans
 

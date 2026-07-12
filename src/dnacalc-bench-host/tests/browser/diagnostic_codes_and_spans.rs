@@ -30,7 +30,7 @@
 use wasm_bindgen::JsCast;
 use wasm_bindgen_test::*;
 
-use super::scaffold::{dispatch_input, mount_home_shell, wait_for};
+use super::scaffold::{dispatch_input, mount_home_shell};
 
 wasm_bindgen_test_configure!(run_in_browser);
 

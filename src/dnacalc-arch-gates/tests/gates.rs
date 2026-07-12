@@ -9,11 +9,22 @@
 //! worktree with a stale `Cargo.lock`).
 //!
 //! Every test here shells out to a real
-//! `cargo tree -p <crate> -e normal --prefix none --locked`; nothing is
-//! mocked. That is the point: a gate that does not actually resolve the
-//! real graph cannot catch a real regression.
+//! `cargo tree -p <crate> -e <edges> --prefix none --locked` (`<edges>` is
+//! `normal` for most gates, `normal,build` for the F-gate — see
+//! `src/lib.rs`'s "Edge scope" section); nothing is mocked. That is the
+//! point: a gate that does not actually resolve the real graph cannot catch
+//! a real regression.
 
-use dnacalc_arch_gates::{TP_CRATES, assert_graph_excludes, assert_graph_includes, run_cargo_tree};
+use dnacalc_arch_gates::{
+    TP_CRATES, assert_graph_excludes, assert_graph_includes, find_crate_prefixed, run_cargo_tree,
+    run_cargo_tree_with_edges,
+};
+
+/// The F-gate's edge scope (dtc-1tk.4 finding H4a): `normal,build`, so a
+/// Tauri build script cannot smuggle an `oxcalc*` edge past a `normal`-only
+/// scan. See `src/lib.rs`'s "Edge scope" section for the full rationale and
+/// why the P-gate/T0-gate/inverted control stay at plain `normal`.
+const F_GATE_EDGES: &str = "normal,build";
 
 /// T0-gate — `dnacalc-skin-ir` (the wire-protocol tier, T0) stays free of
 /// Leptos and of every engine (`ox*`) crate anywhere in its resolved
@@ -27,10 +38,12 @@ fn t0_gate_skin_ir_has_no_leptos_or_ox() {
 
 /// F-gate (the OneCalc forcing function) — the Bench app's browser host
 /// carries no `oxcalc*` crate. REDESIGN_PROGRAM.md D5: "F-gate: the Bench
-/// app's resolved dependency graph contains no `oxcalc*` crate."
+/// app's resolved dependency graph contains no `oxcalc*` crate." Checked
+/// over `normal,build` edges (dtc-1tk.4 finding H4a) so a `build.rs`
+/// dependency can't slip an `oxcalc*` edge past the gate.
 #[test]
 fn f_gate_bench_host_has_no_oxcalc() {
-    let tree = run_cargo_tree("dnacalc-bench-host");
+    let tree = run_cargo_tree_with_edges("dnacalc-bench-host", F_GATE_EDGES);
     assert_graph_excludes("F-gate", &tree, &["oxcalc"]);
 }
 
@@ -38,7 +51,7 @@ fn f_gate_bench_host_has_no_oxcalc() {
 /// host above; both compose the Bench app (SHELL_SPEC.md section 1).
 #[test]
 fn f_gate_bench_desktop_has_no_oxcalc() {
-    let tree = run_cargo_tree("dnacalc-bench-desktop");
+    let tree = run_cargo_tree_with_edges("dnacalc-bench-desktop", F_GATE_EDGES);
     assert_graph_excludes("F-gate", &tree, &["oxcalc"]);
 }
 
@@ -48,23 +61,29 @@ fn f_gate_bench_desktop_has_no_oxcalc() {
 /// not just the host boundary.
 #[test]
 fn f_gate_bench_app_has_no_oxcalc() {
-    let tree = run_cargo_tree("dnacalc-bench-app");
+    let tree = run_cargo_tree_with_edges("dnacalc-bench-app", F_GATE_EDGES);
     assert_graph_excludes("F-gate", &tree, &["oxcalc"]);
 }
 
-/// F-gate — the Bench app's Tauri desktop shell (dtc-tsc.9).
-#[test]
-fn f_gate_bench_app_desktop_has_no_oxcalc() {
-    let tree = run_cargo_tree("dnacalc-bench-app-desktop");
-    assert_graph_excludes("F-gate", &tree, &["oxcalc"]);
-}
+// NOTE (dtc-1tk.4 finding H4b): there is deliberately no
+// `f_gate_bench_app_desktop_has_no_oxcalc` test. `dnacalc-bench-app-desktop`
+// is a pure Tauri shell around `dnacalc-bench-app`'s built WASM, loaded as a
+// static `frontendDist` asset, not a Cargo path dependency — its resolved
+// `normal,build` graph carries **zero** `dnacalc-*` crate edges (verified:
+// `cargo tree -p dnacalc-bench-app-desktop -e normal,build --prefix none
+// --locked` lists only `tauri`/`tauri-build` and their transitive deps).
+// A gate on this crate would therefore always pass regardless of whether
+// `dnacalc-bench-app` ever grew an `oxcalc*` edge — vacuous by
+// construction. Its coverage is fully subsumed by
+// `f_gate_bench_app_has_no_oxcalc` above; do not re-add this test without
+// first re-verifying the crate has grown a real `dnacalc-*` edge.
 
 /// F-gate positive control — the Bench *app* really composes the formula
 /// tier (oxfml present), so `f_gate_bench_app_has_no_oxcalc` cannot pass
 /// vacuously because the app stopped reaching the host at all.
 #[test]
 fn f_gate_positive_control_bench_app_has_oxfml() {
-    let tree = run_cargo_tree("dnacalc-bench-app");
+    let tree = run_cargo_tree_with_edges("dnacalc-bench-app", F_GATE_EDGES);
     assert_graph_includes("F-gate positive control", &tree, "oxfml");
 }
 
@@ -87,8 +106,47 @@ fn calc_app_root_is_tc_adjacent_contains_oxcalc() {
 /// OxCalc.
 #[test]
 fn f_gate_positive_control_bench_host_has_oxfml() {
-    let tree = run_cargo_tree("dnacalc-bench-host");
+    let tree = run_cargo_tree_with_edges("dnacalc-bench-host", F_GATE_EDGES);
     assert_graph_includes("F-gate positive control", &tree, "oxfml");
+}
+
+/// F-gate positive control — `dnacalc-bench-desktop` (dtc-1tk.4 finding
+/// H4b). Before this test, `f_gate_bench_desktop_has_no_oxcalc` had no
+/// positive control of its own: the crate only reaches `oxfml*`
+/// transitively through its single edge to `dnacalc-bench-host`, so if that
+/// edge were ever accidentally dropped (e.g. a refactor that stubs the host
+/// out), the exclusion gate would keep passing vacuously — every "no
+/// oxcalc" gate needs its own "yes oxfml" control, not a borrowed one.
+#[test]
+fn f_gate_positive_control_bench_desktop_has_oxfml() {
+    let tree = run_cargo_tree_with_edges("dnacalc-bench-desktop", F_GATE_EDGES);
+    assert_graph_includes("F-gate positive control", &tree, "oxfml");
+}
+
+/// Regression guard for the F-gate edge-scope widening (dtc-1tk.4 finding
+/// H4a): `run_cargo_tree_with_edges(_, "normal,build")` must actually widen
+/// the resolved graph beyond `normal`-only, or the widening is a no-op and
+/// a build-dependency-only `oxcalc*` edge would still slip through
+/// undetected. `tauri-build` is a real `[build-dependencies]` entry on
+/// `dnacalc-bench-desktop` that never appears over `normal`-only edges —
+/// if this test ever fails, the F-gate has silently narrowed back to
+/// `normal` in effect even if `F_GATE_EDGES` still says `"normal,build"`.
+#[test]
+fn f_gate_edge_widening_captures_build_dependencies() {
+    let normal_only = run_cargo_tree("dnacalc-bench-desktop");
+    assert!(
+        find_crate_prefixed(&normal_only, "tauri-build").is_none(),
+        "test assumption broken: `tauri-build` should NOT appear over normal-only edges for \
+         dnacalc-bench-desktop; if it now does, pick a different known build-dependency to pin \
+         this regression guard on"
+    );
+
+    let widened = run_cargo_tree_with_edges("dnacalc-bench-desktop", F_GATE_EDGES);
+    assert!(
+        find_crate_prefixed(&widened, "tauri-build").is_some(),
+        "F-gate edge widening regressed: `-e {F_GATE_EDGES}` no longer surfaces a known \
+         build-dependency (tauri-build) on dnacalc-bench-desktop"
+    );
 }
 
 /// P-gate — every crate in [`TP_CRATES`] (the TP/Presentation tier)

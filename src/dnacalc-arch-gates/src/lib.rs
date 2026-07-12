@@ -11,13 +11,20 @@
 //! 1. **T0-gate** — `dnacalc-skin-ir` (the wire-protocol tier, T0) carries
 //!    no Leptos and no engine (`ox*`) crate anywhere in its resolved
 //!    graph.
-//! 2. **F-gate** (the OneCalc forcing function) — the Bench app's two host
-//!    crates, `dnacalc-bench-host` and `dnacalc-bench-desktop`, carry no
-//!    `oxcalc*` crate. `oxfml*`/`oxfunc*` are the point of the Bench tier
-//!    and stay allowed; a positive control asserts `oxfml*` really is
-//!    present in `dnacalc-bench-host`, so the gate cannot pass because the
-//!    Bench host quietly stopped depending on the formula engine
-//!    altogether.
+//! 2. **F-gate** (the OneCalc forcing function) — the Bench app's three
+//!    host/app crates, `dnacalc-bench-host`, `dnacalc-bench-desktop`, and
+//!    `dnacalc-bench-app`, carry no `oxcalc*` crate. `oxfml*`/`oxfunc*` are
+//!    the point of the Bench tier and stay allowed; one positive control
+//!    per crate asserts `oxfml*` really is present, so the gate cannot pass
+//!    because a Bench crate quietly stopped depending on the formula
+//!    engine altogether. `dnacalc-bench-app-desktop` (the Tauri shell that
+//!    wraps `dnacalc-bench-app`'s built WASM as a static `frontendDist`
+//!    asset) is deliberately **not** F-gated on its own: it carries zero
+//!    `dnacalc-*` crate edges at all (the frontend is loaded as a file, not
+//!    a Cargo dependency), so a gate on it would be vacuous by
+//!    construction — see the removed `f_gate_bench_app_desktop_has_no_oxcalc`
+//!    test note in `tests/gates.rs`; its coverage lives entirely in the
+//!    `dnacalc-bench-app` gate.
 //! 3. **P-gate** — every crate named in [`TP_CRATES`] (the TP/Presentation
 //!    tier) carries no `ox*` crate anywhere in its graph — skins speak
 //!    Skin IR only.
@@ -37,13 +44,45 @@
 //!
 //! Every gate shells out to:
 //! ```text
-//! cargo tree -p <crate> -e normal --prefix none --locked
+//! cargo tree -p <crate> -e <edges> --prefix none --locked
 //! ```
 //! from the workspace root (see [`workspace_root`]), then matches crate
 //! names **case-insensitively** against a forbidden or required prefix,
 //! restricted to the crate-name column of each line (see
 //! [`crate_name_of`]) so a path component (e.g. `..\OxCalc\...`) or a
 //! version string can never produce a false hit or a false miss.
+//!
+//! # Edge scope (dtc-1tk.4 finding H4a)
+//!
+//! `<edges>` is **not** uniformly `normal` across every gate; the scope is
+//! deliberately asymmetric and is spelled out here so prose never drifts
+//! from enforcement again:
+//!
+//! - **F-gate**: [`run_cargo_tree_with_edges`] with `"normal,build"`. A
+//!   Tauri desktop shell's `build.rs` (`dnacalc-bench-desktop`,
+//!   `dnacalc-bench-app-desktop`) is a plausible, concrete vector for an
+//!   `oxcalc*` edge that a plain `normal`-only scan would never see (a
+//!   build-dependency never appears on the `normal` edge kind), so the
+//!   F-gate widens to catch it. `tests/gates.rs`'s
+//!   `f_gate_edge_widening_captures_build_dependencies` pins that the
+//!   widening is actually effective — it would fail if `normal,build` ever
+//!   silently stopped covering build-dependencies.
+//! - **P-gate, T0-gate, inverted control**: [`run_cargo_tree`], i.e.
+//!   `normal` edges only (default features). This is a deliberate,
+//!   narrower scope, not an oversight: these gates assert what a *shipped*
+//!   TP/T0/TC crate's runtime graph contains, and a dev-only or
+//!   build-script-only dependency never ships in the artifact these tiers
+//!   produce. Widening every gate to `normal,build` (or `--all-features`)
+//!   would also start flagging legitimate build tooling (proc-macro
+//!   build-helpers, codegen crates) that carries no runtime risk, for no
+//!   real coverage gain on these particular tiers. If a TP/T0 crate ever
+//!   grows a `build.rs`, revisit this decision rather than assuming it
+//!   still holds.
+//!
+//! Neither scope covers non-default optional features (`--all-features` is
+//! not used); this crate makes no claim about an `ox*` edge that only
+//! exists behind a non-default Cargo feature nobody in this workspace
+//! currently enables.
 //!
 //! # Running these tests against a different checkout
 //!
@@ -86,10 +125,17 @@ pub const WORKSPACE_ROOT_ENV: &str = "DNACALC_GATES_WORKSPACE_ROOT";
 ///   time via `cargo tree -p dnacalc-skin-leptos -e normal --prefix none
 ///   --locked`).
 ///
-/// Deliberately **not** seeded yet: `dnacalc-shell`, `dnacalc-bridge`
-/// (`SHELL_SPEC.md` section 2) — neither crate existed under `src/` as of
-/// this writing. Add each the day it lands (check with `ls src` /
-/// `cargo tree -p <name>` first, same as the two seeded above).
+/// Since landed and added here (dtc-tsc.9), both verified `ox*`-free the
+/// same way:
+/// - `dnacalc-shell` (`SHELL_SPEC.md` section 2, the cockpit composition
+///   crate).
+/// - `dnacalc-bridge` (`SHELL_SPEC.md` section 2, the TP-pure formula
+///   bridge).
+///
+/// Appending a future TP crate is still a one-line change: add its name
+/// below once it exists under `src/` and passes `cargo tree -p <name> -e
+/// normal --prefix none --locked` clean, and nothing else in this crate
+/// needs to change.
 pub const TP_CRATES: &[&str] = &["dnacalc-strand", "dnacalc-skin-leptos", "dnacalc-shell", "dnacalc-bridge"];
 
 /// One resolved `cargo tree` run for a single crate: the crate name it was
@@ -145,6 +191,26 @@ fn is_workspace_manifest(path: &Path) -> bool {
 /// Run `cargo tree -p <crate_name> -e normal --prefix none --locked` from
 /// [`workspace_root`] and return its stdout as [`TreeOutput`].
 ///
+/// This is the `normal`-only scope used by the P-gate, T0-gate, and the
+/// inverted control — see "Edge scope" in the crate docs for why those
+/// gates deliberately do not widen to build/dev edges. The F-gate instead
+/// calls [`run_cargo_tree_with_edges`] with `"normal,build"`.
+///
+/// # Panics
+/// Same panic conditions as [`run_cargo_tree_with_edges`].
+#[must_use]
+pub fn run_cargo_tree(crate_name: &str) -> TreeOutput {
+    run_cargo_tree_with_edges(crate_name, "normal")
+}
+
+/// Run `cargo tree -p <crate_name> -e <edges> --prefix none --locked` from
+/// [`workspace_root`] and return its stdout as [`TreeOutput`].
+///
+/// `edges` is passed verbatim to `cargo tree -e` (e.g. `"normal"` or
+/// `"normal,build"`; see `cargo tree --help` for the full `-e` grammar).
+/// See "Edge scope" in the crate docs for which gate uses which value and
+/// why.
+///
 /// Uses `std::process::Command` directly with an argument array (no
 /// shell), so it behaves identically on Windows and Unix and needs no
 /// argument quoting.
@@ -156,7 +222,7 @@ fn is_workspace_manifest(path: &Path) -> bool {
 /// gate that cannot run `cargo tree` is not passing, it is broken, and
 /// must never be allowed to read as green.
 #[must_use]
-pub fn run_cargo_tree(crate_name: &str) -> TreeOutput {
+pub fn run_cargo_tree_with_edges(crate_name: &str, edges: &str) -> TreeOutput {
     let root = workspace_root();
     if !root.join("Cargo.toml").is_file() {
         panic!(
@@ -170,12 +236,12 @@ pub fn run_cargo_tree(crate_name: &str) -> TreeOutput {
     let output = Command::new("cargo")
         .current_dir(&root)
         .args([
-            "tree", "-p", crate_name, "-e", "normal", "--prefix", "none", "--locked",
+            "tree", "-p", crate_name, "-e", edges, "--prefix", "none", "--locked",
         ])
         .output()
         .unwrap_or_else(|e| {
             panic!(
-                "dnacalc-arch-gates: failed to spawn `cargo tree -p {crate_name} -e normal \
+                "dnacalc-arch-gates: failed to spawn `cargo tree -p {crate_name} -e {edges} \
                  --prefix none --locked` in workspace root {}: {e}",
                 root.display()
             )
@@ -183,7 +249,7 @@ pub fn run_cargo_tree(crate_name: &str) -> TreeOutput {
 
     if !output.status.success() {
         panic!(
-            "dnacalc-arch-gates: `cargo tree -p {crate_name} -e normal --prefix none --locked` \
+            "dnacalc-arch-gates: `cargo tree -p {crate_name} -e {edges} --prefix none --locked` \
              exited with {:?} in workspace root {}.\n--- stdout ---\n{}\n--- stderr ---\n{}\n\
              If this is a stale-lockfile or unresolved-path-dep error specific to an isolated \
              worktree checkout, rerun with {WORKSPACE_ROOT_ENV}=<a checkout where `cargo tree` \
@@ -295,7 +361,8 @@ pub fn assert_graph_includes(gate: &str, tree: &TreeOutput, required_prefix: &st
     assert!(
         find_crate_prefixed(tree, required_prefix).is_some(),
         "{gate} FAILED for `{}`: expected at least one crate starting with `{required_prefix}` \
-         but found none. Full `cargo tree -p {} -e normal --prefix none --locked` output:\n{}",
+         but found none. Full `cargo tree -p {}` output used for this gate (edges vary by gate \
+         -- see this crate's \"Edge scope\" docs):\n{}",
         tree.crate_name,
         tree.crate_name,
         tree.lines.join("\n")
