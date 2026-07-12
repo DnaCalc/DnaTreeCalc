@@ -1025,6 +1025,7 @@ version = "0.1.0"
 name = "dnacalc-bench-app"
 version = "0.1.0"
 dependencies = [
+ "dnacalc-bench-core",
  "dnacalc-bench-host",
  "dnacalc-bridge",
  "dnacalc-shell",

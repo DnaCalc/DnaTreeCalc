@@ -14,6 +14,7 @@ use leptos::wasm_bindgen::JsCast;
 use dnacalc_skin_ir::intent::{Dispatcher, WorkspaceDelta, WorkspaceIntent};
 use dnacalc_skin_ir::keychord::{KeybindingOverrideMap, SkinVerb};
 use dnacalc_skin_ir::preview::PreviewService;
+use dnacalc_skin_ir::protocol::{PersistenceProjection, SkinShellIntent};
 use dnacalc_skin_ir::selection::SelectionState;
 use dnacalc_skin_ir::state::{SharedSkinState, SharedStateChange, SharedStateOrigin};
 use dnacalc_skin_ir::workspace::{NodeCalcStateProjection, NodeView, WorkspaceState};
@@ -82,6 +83,17 @@ fn document_is_dirty(workspace: &WorkspaceState) -> bool {
         .workbook_calc
         .as_ref()
         .is_some_and(|calc| calc.sheets.iter().any(|sheet| sheet.dirty))
+}
+
+/// The mast dirty dot, OR-combining the tree-workspace calc projection with
+/// the host's `PersistenceProjection.dirty` (bead dtc-lfz.3) — a OneFormula/
+/// OneCalc host has no `workbook_calc` projection at all, so without this it
+/// could never show a dirty dot; a TreeCalc host with no `host_persistence`
+/// prop wired keeps today's workspace-only behavior (`persistence` is
+/// `None`). Either signal alone is sufficient; this never fabricates dirt
+/// beyond what one of the two projections actually reports.
+fn mast_dirty(workspace: &WorkspaceState, persistence: Option<&PersistenceProjection>) -> bool {
+    document_is_dirty(workspace) || persistence.is_some_and(|projection| projection.dirty)
 }
 
 /// SHELL_SPEC §7 red-error registry liveness: true when a node's calc-state
@@ -349,6 +361,22 @@ pub fn Shell(
     /// continuity halo entirely (Strand motion law).
     #[prop(optional)]
     reduced_motion: bool,
+    /// The host's advertised Save/Open/dirty capability (SHELL_SPEC §4,
+    /// bead dtc-lfz.3) — the same `PersistenceProjection` the wire protocol
+    /// already carries on `SkinShellProjection.persistence`. `None` (the
+    /// default) reproduces the prior hardcoded-`false` behavior exactly, so
+    /// existing mounts that do not pass this prop keep compiling and
+    /// rendering the same disabled-with-reason Save/Open they always have.
+    #[prop(optional)]
+    host_persistence: Option<ReadSignal<PersistenceProjection>>,
+    /// Where the command deck dispatches `SkinShellIntent::{Save, SaveAs,
+    /// Open, OpenRecent}` (bead dtc-lfz.3) once `host_persistence` advertises
+    /// the capability — the OneFormula/OneCalc host's own shell-intent
+    /// channel, distinct from `dispatch` above (which only carries
+    /// `WorkspaceIntent`, a closed set with no document-lifecycle member).
+    /// `None` when the product has not wired it.
+    #[prop(optional_no_strip)]
+    on_shell_intent: Option<Callback<SkinShellIntent>>,
 ) -> impl IntoView {
     let profile = composition.profile;
     let visible_stages_meta: Vec<(u8, &'static str)> = stages
@@ -554,7 +582,12 @@ pub fn Shell(
             }
         })
     });
-    let dirty = Memo::new(move |_| workspace.with(document_is_dirty));
+    let dirty = Memo::new(move |_| {
+        workspace.with(|ws| {
+            let persistence = host_persistence.map(|signal| signal.get());
+            mast_dirty(ws, persistence.as_ref())
+        })
+    });
     let persona_label = Memo::new(move |_| shared.with(|state| state.persona.stable_id()));
 
     view! {
@@ -707,6 +740,8 @@ pub fn Shell(
                 density_sig=density_sig
                 visible_stages=visible_stages_meta
                 controls=controls
+                host_persistence=host_persistence
+                on_shell_intent=on_shell_intent
             />
             <PeekLayer overlay=overlay />
         </div>
@@ -1075,6 +1110,8 @@ fn OverlayLayer(
     density_sig: RwSignal<Density>,
     visible_stages: Vec<(u8, &'static str)>,
     controls: ShellControls,
+    host_persistence: Option<ReadSignal<PersistenceProjection>>,
+    on_shell_intent: Option<Callback<SkinShellIntent>>,
 ) -> impl IntoView {
     let active = Memo::new(move |_| overlay.with(|model| model.active));
     // The deck reads the live keyboard registry (same overrides the dispatcher
@@ -1083,6 +1120,12 @@ fn OverlayLayer(
         let overrides = shared.get_untracked().keybinding_overrides;
         let keyboard = ShellKeyboardRegistry::with_overrides(catalog, runtime, &overrides)
             .unwrap_or_else(|_| ShellKeyboardRegistry::universal(catalog, runtime));
+        // Real host capability (SHELL_SPEC §4, bead dtc-lfz.3): `None` (no
+        // `host_persistence` prop wired) reproduces the old hardcoded-`false`
+        // behavior exactly; a wired signal's `can_save`/`can_open` drive the
+        // deck's Save/Open enablement directly — never re-derived or guessed
+        // here.
+        let persistence = host_persistence.map(|signal| signal.get_untracked());
         OverlayContext {
             shared,
             dispatch: dispatch.clone(),
@@ -1093,11 +1136,9 @@ fn OverlayLayer(
             theme: theme_sig.get_untracked(),
             density: density_sig.get_untracked(),
             visible_stages: visible_stages.clone(),
-            // S0: host persistence is not wired — save/open render
-            // disabled-with-reason (SHELL_SPEC §4). dtc-tsc.9 supplies real
-            // capability from HostCapabilityProjection.
-            host_can_save: false,
-            host_can_open: false,
+            host_can_save: persistence.as_ref().is_some_and(|p| p.can_save),
+            host_can_open: persistence.as_ref().is_some_and(|p| p.can_open),
+            shell_intent: on_shell_intent,
             controls,
         }
     };
@@ -1428,6 +1469,51 @@ mod tests {
         assert!(!document_is_dirty(&workspace));
         workspace.workbook_calc.as_mut().unwrap().sheets[0].dirty = true;
         assert!(document_is_dirty(&workspace));
+    }
+
+    /// The mast dirty dot OR-combines the workspace calc projection with the
+    /// host's `PersistenceProjection.dirty` (bead dtc-lfz.3): a OneFormula/
+    /// OneCalc host (no `workbook_calc` at all) can still light the dot from
+    /// `persistence` alone; a product with no `host_persistence` prop wired
+    /// (`None`) keeps exactly the old workspace-only behavior; either
+    /// signal alone is sufficient, and neither is fabricated from the other.
+    #[test]
+    fn mast_dirty_or_combines_workspace_and_persistence_projections() {
+        let clean_workspace = WorkspaceState::default();
+
+        // No persistence prop wired at all: identical to `document_is_dirty`.
+        assert!(!mast_dirty(&clean_workspace, None));
+
+        // Persistence wired but reports clean: still not dirty.
+        let clean_persistence = dnacalc_skin_ir::protocol::PersistenceProjection::default();
+        assert!(!mast_dirty(&clean_workspace, Some(&clean_persistence)));
+
+        // Persistence reports dirty on an otherwise-clean (no `workbook_calc`
+        // at all) workspace — e.g. the Bench/OneFormula product, which has
+        // no workbook_calc projection to derive a dot from any other way.
+        let dirty_persistence = dnacalc_skin_ir::protocol::PersistenceProjection {
+            dirty: true,
+            ..dnacalc_skin_ir::protocol::PersistenceProjection::default()
+        };
+        assert!(
+            mast_dirty(&clean_workspace, Some(&dirty_persistence)),
+            "a dirty PersistenceProjection alone must light the dot"
+        );
+
+        // Workspace calc projection reports dirty, persistence absent: the
+        // pre-existing tree-workspace path still works standalone.
+        let mut dirty_workspace = WorkspaceState::default();
+        dirty_workspace.workbook_calc = Some(WorkbookCalcProjection {
+            mode: dnacalc_skin_ir::workspace::CalcModeProjection::Automatic,
+            last_recalc_tick: None,
+            sheets: vec![SheetCalcSummaryProjection {
+                grid_node_id: NodeId::new("s1"),
+                dirty: true,
+            }],
+        });
+        assert!(mast_dirty(&dirty_workspace, None));
+        // Both clean: not dirty.
+        assert!(!mast_dirty(&clean_workspace, None));
     }
 
     #[test]

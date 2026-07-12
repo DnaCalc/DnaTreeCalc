@@ -256,6 +256,80 @@ mod tests {
         );
     }
 
+    /// Plain `Save` (no caller-supplied path — bead dtc-lfz.3) genuinely
+    /// writes the default per-user `workspace.json`, carrying the real
+    /// authored formula text, not a fabricated `Applied` receipt. This is
+    /// the exact `OneCalcSessionHost::dispatch` seam
+    /// `dnacalc-bench-app::adapter::BenchHost::dispatch_shell_intent` calls
+    /// through for the Bench product's command-deck Save entry, but proven
+    /// here at the host layer (which — unlike `dnacalc-bench-app` — does
+    /// not `forbid(unsafe_code)`, so it can use the same
+    /// `DNAONECALC_WORKSPACE_DIR` scratch-dir override
+    /// `persistence::workspace_storage`'s own tests use).
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn dispatch_save_writes_the_default_workspace_file() {
+        // The override env var is process-global; serialize against EVERY
+        // other test in the crate that touches it via the one shared lock
+        // (see its doc comment — two independent per-module locks do not
+        // actually serialize against each other).
+        let _guard = crate::persistence::WORKSPACE_DIR_ENV_LOCK.lock().unwrap();
+
+        let scratch = std::env::temp_dir().join(format!(
+            "dnacalc-bench-host-skin-session-save-test-{}",
+            std::process::id()
+        ));
+        if scratch.exists() {
+            let _ = std::fs::remove_dir_all(&scratch);
+        }
+        std::env::set_var("DNAONECALC_WORKSPACE_DIR", &scratch);
+
+        let mut session = dnacalc_bench_core::OneCalcSession::new(
+            crate::app::preview_state::preview_minimal_host_state(),
+        );
+        let edit_receipt = session.handle(dnacalc_skin_ir::SkinIntentEnvelope::new(
+            "edit-1",
+            None,
+            dnacalc_skin_ir::SkinIntent::OneFormula(dnacalc_skin_ir::OneFormulaIntent::EditText {
+                formula_space_id: "untitled-1".to_string(),
+                text: "=42".to_string(),
+                caret_offset: 3,
+            }),
+        ));
+        assert!(matches!(
+            edit_receipt,
+            dnacalc_skin_ir::SkinIntentReceipt::Applied { .. }
+        ));
+
+        let save_receipt = session.handle(dnacalc_skin_ir::SkinIntentEnvelope::new(
+            "save-1",
+            None,
+            dnacalc_skin_ir::SkinIntent::Shell(dnacalc_skin_ir::SkinShellIntent::Save),
+        ));
+        assert!(
+            matches!(
+                save_receipt,
+                dnacalc_skin_ir::SkinIntentReceipt::Applied { .. }
+            ),
+            "Save must be Applied, got {save_receipt:?}"
+        );
+
+        let path = crate::persistence::workspace_storage::workspace_storage_path()
+            .expect("scratch dir override resolves a path");
+        assert!(
+            path.exists(),
+            "Save must write the real workspace.json at {path:?}, not a fake receipt"
+        );
+        let written = std::fs::read_to_string(&path).expect("read back the saved file");
+        assert!(
+            written.contains("=42"),
+            "the saved file carries the authored formula text: {written}"
+        );
+
+        let _ = std::fs::remove_dir_all(&scratch);
+        std::env::remove_var("DNAONECALC_WORKSPACE_DIR");
+    }
+
     #[test]
     fn all_six_profiles_execute_the_same_serialized_session_contract() {
         let targets = [

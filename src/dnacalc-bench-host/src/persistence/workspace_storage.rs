@@ -683,12 +683,11 @@ mod tests {
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn workspace_disk_round_trip_via_env_override() {
-        use std::sync::Mutex;
-        // The override env var is process-global; serialise the
-        // disk-path tests through a mutex so concurrent test
-        // threads don't see each other's value.
-        static ENV_LOCK: Mutex<()> = Mutex::new(());
-        let _guard = ENV_LOCK.lock().unwrap();
+        // The override env var is process-global; serialise EVERY test in
+        // the crate that touches it (not just this module) through the one
+        // shared lock (bead dtc-lfz.3 found two independent per-module
+        // locks do not actually serialize against each other).
+        let _guard = crate::persistence::WORKSPACE_DIR_ENV_LOCK.lock().unwrap();
 
         // Use a scratch directory under `target/` so the test
         // never touches the user's real config dir.

@@ -38,6 +38,18 @@ pub use workspace_storage::{
 #[derive(Debug, Default, Clone, Copy)]
 pub struct LocalWorkspacePersistence;
 
+/// Shared serialization point for every test in this crate that redirects
+/// `DNAONECALC_WORKSPACE_DIR` (a process-global env var) to a scratch
+/// directory. `cargo test` runs test functions concurrently by default, so
+/// two tests in *different* modules each holding their own private
+/// `Mutex` would not actually serialize against each other and could race
+/// on the same env var (each pointing it at a different scratch dir mid-
+/// test). Every such test — in `persistence::workspace_storage` or
+/// elsewhere (e.g. `adapters::skin_session`) — must hold this ONE lock for
+/// the duration of its override.
+#[cfg(test)]
+pub(crate) static WORKSPACE_DIR_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[cfg(not(target_arch = "wasm32"))]
 pub fn save_workspace_to_path(
     state: &crate::state::OneCalcHostState,

@@ -22,6 +22,7 @@ use dnacalc_shell::{
 use dnacalc_skin_ir::IntentReceipt;
 use dnacalc_skin_ir::formula::{FormulaResultSurface, OneFormulaProjection};
 use dnacalc_skin_ir::intent::{Dispatcher, WorkspaceDelta, WorkspaceIntent};
+use dnacalc_skin_ir::protocol::{PersistenceProjection, SkinShellIntent};
 use dnacalc_skin_ir::selection::SelectionState;
 use dnacalc_skin_ir::state::{SharedSkinState, SharedStateChange, SharedStateOrigin};
 use dnacalc_skin_ir::workspace::WorkspaceState;
@@ -156,6 +157,24 @@ impl StageSurface for BenchResultStage {
     }
 }
 
+/// The `PersistenceProjection` the Bench `Shell` mount actually advertises
+/// (bead dtc-lfz.3): `can_save` and `dirty` are the host's real truth
+/// verbatim (see [`BenchHost::persistence`]) — Save needs no caller-supplied
+/// path, so a capable host genuinely writes `workspace.json` end-to-end.
+/// `can_open` is force-honest-false regardless of what the host's raw
+/// capability says: `SkinShellIntent::Open` still requires a path, and the
+/// Bench product has no file-picker/dialog seam anywhere yet to produce one
+/// (open with no path is a real, typed rejection every time — see
+/// `dispatch_shell_intent_open_without_a_path_is_a_typed_rejection_not_a_silent_noop`
+/// in `adapter.rs`), so advertising the raw value would enable a deck row
+/// that can never actually open anything. Follow-up: a Tauri dialog plugin /
+/// browser `<input type=file>` seam that resolves a path before dispatch.
+fn shell_persistence_from_host(host: &BenchHost) -> PersistenceProjection {
+    let mut persistence = host.persistence();
+    persistence.can_open = false;
+    persistence
+}
+
 fn core_value_label(core: &dnacalc_skin_ir::formula::CoreValueProjection) -> &'static str {
     use dnacalc_skin_ir::formula::CoreValueProjection as C;
     match core {
@@ -229,15 +248,43 @@ pub fn BenchApp(
     });
     let initial = with_bench_host(host_id, |host| host.projection()).unwrap_or_default();
     let projection = RwSignal::new(initial);
+    // The host's real Save/Open/dirty capability (SHELL_SPEC §4, bead
+    // dtc-lfz.3) — threaded into the Shell's `host_persistence` prop so the
+    // command deck's Save/Open track REAL host truth instead of the old
+    // hardcoded `false`, and the mast dirty-dot picks up edits even though
+    // Bench has no `workbook_calc` projection of its own.
+    let initial_persistence = with_bench_host(host_id, |host| shell_persistence_from_host(host))
+        .unwrap_or_default();
+    let persistence = RwSignal::new(initial_persistence);
 
     // The bridge-event sink: translate through the host adapter, then re-project
     // so the bridge remounts over fresh host truth.
     let on_event = Callback::new(move |event: BridgeEvent| {
         let changed = with_bench_host(host_id, |host| host.apply(event)).unwrap_or(false);
-        if changed
-            && let Some(next) = with_bench_host(host_id, |host| host.projection())
-        {
-            projection.set(next);
+        if changed {
+            if let Some(next) = with_bench_host(host_id, |host| host.projection()) {
+                projection.set(next);
+            }
+            if let Some(next) =
+                with_bench_host(host_id, |host| shell_persistence_from_host(host))
+            {
+                persistence.set(next);
+            }
+        }
+    });
+
+    // The command deck's Save/Open dispatch through here (bead dtc-lfz.3):
+    // a real `SkinShellIntent` over `BenchHost::dispatch_shell_intent`, which
+    // routes through the same `OneCalcSessionHost` seam every other OneCalc
+    // host surface uses. Re-projects `persistence` afterward so any
+    // capability/`current_path` change becomes visible immediately (a
+    // pre-existing, out-of-scope gap: `dirty` itself does not clear on Save
+    // in the Bench flow today — see the NOTE on
+    // `persistence_tracks_real_dirty_state_on_edit` in `adapter.rs`).
+    let on_shell_intent = Callback::new(move |intent: SkinShellIntent| {
+        let _ = with_bench_host(host_id, |host| host.dispatch_shell_intent(intent));
+        if let Some(next) = with_bench_host(host_id, |host| shell_persistence_from_host(host)) {
+            persistence.set(next);
         }
     });
 
@@ -277,6 +324,8 @@ pub fn BenchApp(
             theme=Theme::CockpitLight
             density=Density::Working
             runtime=runtime
+            host_persistence=persistence.read_only()
+            on_shell_intent=Some(on_shell_intent)
         />
     }
 }

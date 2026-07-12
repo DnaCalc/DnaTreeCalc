@@ -14,8 +14,12 @@
 //!    A serializable catalog is gap **G8** — this adapter is in-process only;
 //!    it invents no wire format.
 //! 2. **Shell-control commands** — stage switch, registry/inspector toggle,
-//!    theme/density switch, atlas/timeline open, persona switch, and the
-//!    honest disabled-until-host-support save/open.
+//!    theme/density switch, atlas/timeline open, persona switch, and
+//!    document-lifecycle save/open. Save/Open enablement tracks the host's
+//!    advertised `HostCapabilityProjection`/`PersistenceProjection`
+//!    capability (bead dtc-lfz.3): honestly disabled-with-reason when the
+//!    host has not wired persistence, and a real `SkinShellIntent` dispatch
+//!    over the Shell's `on_shell_intent` channel when it has.
 //! 3. **Goto** — defined names + sheet names + node display paths matched as
 //!    strings against [`WorkspaceState`], plus A1-style refs recognized as
 //!    **navigation sugar only** ([`parse_a1`]): a pure address *grammar*, not
@@ -32,6 +36,7 @@ use dnacalc_skin_ir::identity::NodeId;
 use dnacalc_skin_ir::intent::WorkspaceIntent;
 use dnacalc_skin_ir::keychord::SkinVerb;
 use dnacalc_skin_ir::permissions::Persona;
+use dnacalc_skin_ir::protocol::SkinShellIntent;
 use dnacalc_skin_ir::selection::SelectionState;
 use dnacalc_skin_ir::workspace::WorkspaceState;
 use dnacalc_strand::{Density, Theme};
@@ -97,6 +102,12 @@ pub enum DeckAction {
     OpenTimeline,
     SetTheme(Theme),
     SetDensity(Density),
+    /// Dispatch a `SkinShellIntent` through `OverlayContext::shell_intent`
+    /// (SHELL_SPEC §4, bead dtc-lfz.3) — Save/Open document lifecycle. Built
+    /// unconditionally on the entry regardless of `enabled`; `run_action` is
+    /// never called for a disabled command, so this only ever fires when the
+    /// host has actually advertised the capability.
+    EmitShellIntent(SkinShellIntent),
     /// Present for discoverability but not runnable here (host support
     /// absent); the disabled reason explains why.
     Inert,
@@ -305,7 +316,13 @@ pub fn static_commands(inputs: &DeckInputs) -> Vec<DeckCommand> {
         });
     }
 
-    // --- Document lifecycle: honest disabled-with-reason until host support ---
+    // --- Document lifecycle: real capability, honest disabled-with-reason
+    // otherwise (bead dtc-lfz.3). `enabled` tracks the host's *advertised*
+    // `host_can_save`/`host_can_open` (threaded from the product's own
+    // `HostCapabilityProjection`/`PersistenceProjection` through the Shell's
+    // `host_persistence` prop); the action always carries a real
+    // `SkinShellIntent` so a capable host genuinely saves/opens the instant
+    // it advertises `true` — never a fabricated success.
     commands.push(DeckCommand {
         id: "shell.save".to_string(),
         title: "Save".to_string(),
@@ -314,10 +331,7 @@ pub fn static_commands(inputs: &DeckInputs) -> Vec<DeckCommand> {
         enabled: inputs.host_can_save,
         disabled_reason: (!inputs.host_can_save)
             .then(|| "the host does not yet support saving".to_string()),
-        // A real save routes through a SkinShellIntent channel the host owns;
-        // that channel is not wired in S0, so the entry is always inert here.
-        // dtc-tsc.9 provides the seam that makes a "capable" host actually save.
-        action: DeckAction::Inert,
+        action: DeckAction::EmitShellIntent(SkinShellIntent::Save),
     });
     commands.push(DeckCommand {
         id: "shell.open".to_string(),
@@ -327,7 +341,14 @@ pub fn static_commands(inputs: &DeckInputs) -> Vec<DeckCommand> {
         enabled: inputs.host_can_open,
         disabled_reason: (!inputs.host_can_open)
             .then(|| "the host does not yet support opening".to_string()),
-        action: DeckAction::Inert,
+        // No path picker exists at the deck (or in the Bench product at all)
+        // yet, so this always dispatches with no requested path — a capable
+        // host either resolves a default/current location or returns a
+        // typed rejection asking for one; it is a real dispatch either way,
+        // never a silent no-op.
+        action: DeckAction::EmitShellIntent(SkinShellIntent::Open {
+            requested_path: None,
+        }),
     });
 
     commands
@@ -669,6 +690,16 @@ fn run_action(ctx: &OverlayContext, action: &DeckAction) {
         DeckAction::OpenTimeline => ctx.controls.open_timeline.run(()),
         DeckAction::SetTheme(theme) => ctx.controls.set_theme.run(*theme),
         DeckAction::SetDensity(density) => ctx.controls.set_density.run(*density),
+        DeckAction::EmitShellIntent(intent) => {
+            // `None` here means the product has not wired the shell-intent
+            // channel (`Shell`'s `on_shell_intent` prop) — never reached in
+            // practice since that also means `host_can_save`/`host_can_open`
+            // are `false`, so the entry is disabled and `run_action` is never
+            // called for it. No-op rather than panic if misused regardless.
+            if let Some(callback) = ctx.shell_intent {
+                callback.run(intent.clone());
+            }
+        }
         // Inert commands are always disabled, so this arm is unreachable in
         // practice; do nothing rather than panic if a caller misuses it.
         DeckAction::Inert => {}
@@ -1065,17 +1096,160 @@ mod tests {
     }
 
     #[test]
-    fn save_and_open_are_disabled_with_an_honest_reason() {
+    fn save_and_open_are_disabled_with_an_honest_reason_when_host_lacks_capability() {
         let ws = workspace();
         let sel = SelectionState::default();
         let registry = registry();
         let commands = static_commands(&inputs(&ws, &sel, &registry, Persona::Author));
-        for id in ["shell.save", "shell.open"] {
-            let command = commands.iter().find(|c| c.id == id).unwrap();
-            assert!(!command.enabled, "{id} must be disabled until host support");
-            assert!(command.disabled_reason.is_some());
-            assert_eq!(command.action, DeckAction::Inert);
-        }
+        let save = commands.iter().find(|c| c.id == "shell.save").unwrap();
+        assert!(!save.enabled, "shell.save must be disabled until host support");
+        assert!(save.disabled_reason.is_some());
+        assert_eq!(save.action, DeckAction::EmitShellIntent(SkinShellIntent::Save));
+
+        let open = commands.iter().find(|c| c.id == "shell.open").unwrap();
+        assert!(!open.enabled, "shell.open must be disabled until host support");
+        assert!(open.disabled_reason.is_some());
+        assert_eq!(
+            open.action,
+            DeckAction::EmitShellIntent(SkinShellIntent::Open {
+                requested_path: None
+            })
+        );
+    }
+
+    /// The other half of the "two states" acceptance (bead dtc-lfz.3): when
+    /// the host DOES advertise Save/Open capability, the deck entries flip
+    /// to enabled with no disabled reason — the SAME real `SkinShellIntent`
+    /// action as the disabled case (proving the action is wired
+    /// unconditionally; only enablement tracks the flag). This is the arm
+    /// `save_and_open_are_disabled_with_an_honest_reason_when_host_lacks_capability`
+    /// does not cover — together they prove enablement genuinely TRACKS the
+    /// advertised capability rather than being hardcoded false.
+    #[test]
+    fn save_and_open_enable_when_host_advertises_capability() {
+        let ws = workspace();
+        let sel = SelectionState::default();
+        let registry = registry();
+        let mut deck_inputs = inputs(&ws, &sel, &registry, Persona::Author);
+        deck_inputs.host_can_save = true;
+        deck_inputs.host_can_open = true;
+        let commands = static_commands(&deck_inputs);
+
+        let save = commands.iter().find(|c| c.id == "shell.save").unwrap();
+        assert!(save.enabled, "shell.save must enable once the host advertises can_save");
+        assert!(save.disabled_reason.is_none());
+        assert_eq!(save.action, DeckAction::EmitShellIntent(SkinShellIntent::Save));
+
+        let open = commands.iter().find(|c| c.id == "shell.open").unwrap();
+        assert!(open.enabled, "shell.open must enable once the host advertises can_open");
+        assert!(open.disabled_reason.is_none());
+        assert_eq!(
+            open.action,
+            DeckAction::EmitShellIntent(SkinShellIntent::Open {
+                requested_path: None
+            })
+        );
+    }
+
+    /// Mixed capability (can_save without can_open, and vice versa) proves
+    /// the two entries are governed independently — neither is derived from
+    /// the other, matching `PersistenceProjection`'s two independent fields.
+    #[test]
+    fn save_and_open_enablement_is_independent() {
+        let ws = workspace();
+        let sel = SelectionState::default();
+        let registry = registry();
+
+        let mut save_only = inputs(&ws, &sel, &registry, Persona::Author);
+        save_only.host_can_save = true;
+        save_only.host_can_open = false;
+        let commands = static_commands(&save_only);
+        assert!(commands.iter().find(|c| c.id == "shell.save").unwrap().enabled);
+        assert!(!commands.iter().find(|c| c.id == "shell.open").unwrap().enabled);
+
+        let mut open_only = inputs(&ws, &sel, &registry, Persona::Author);
+        open_only.host_can_save = false;
+        open_only.host_can_open = true;
+        let commands = static_commands(&open_only);
+        assert!(!commands.iter().find(|c| c.id == "shell.save").unwrap().enabled);
+        assert!(commands.iter().find(|c| c.id == "shell.open").unwrap().enabled);
+    }
+
+    /// `run_action` genuinely dispatches through `ctx.shell_intent` for
+    /// `EmitShellIntent` — proving the wiring is real, not merely a variant
+    /// that looks wired. Constructs a full `OverlayContext` (the Leptos
+    /// reactive types involved — `ReadSignal`/`RwSignal`/`Callback` — are
+    /// plain thread-local arena handles in this Leptos version and need no
+    /// mounted component/DOM to exercise).
+    #[test]
+    fn run_action_emit_shell_intent_calls_the_shell_intent_callback() {
+        use std::sync::{Arc as StdArc, Mutex};
+
+        use dnacalc_skin_ir::dispatcher::RecordingDispatcher;
+        use dnacalc_skin_ir::state::SharedSkinState;
+        use dnacalc_skin_leptos::state_handles::SharedSkinStateHandle;
+        use leptos::prelude::*;
+
+        use crate::overlay::{OverlayContext, ShellControls};
+
+        let received: StdArc<Mutex<Vec<SkinShellIntent>>> = StdArc::new(Mutex::new(Vec::new()));
+        let received_for_cb = received.clone();
+        let shell_intent_cb: Callback<SkinShellIntent> =
+            Callback::new(move |intent: SkinShellIntent| {
+                received_for_cb.lock().unwrap().push(intent);
+            });
+
+        let workspace = RwSignal::new(WorkspaceState::default());
+        let selection = RwSignal::new(SelectionState::default());
+        let shared = SharedSkinStateHandle::new(SharedSkinState::default());
+        let noop = Callback::new(move |_: ()| {});
+        let noop_u8 = Callback::new(move |_: u8| {});
+        let noop_theme = Callback::new(move |_: Theme| {});
+        let noop_density = Callback::new(move |_: Density| {});
+
+        let ctx = OverlayContext {
+            shared,
+            dispatch: StdArc::new(RecordingDispatcher::default()),
+            goto_mode: false,
+            workspace: workspace.read_only(),
+            selection: selection.read_only(),
+            keyboard: registry(),
+            theme: Theme::CockpitLight,
+            density: Density::Working,
+            visible_stages: Vec::new(),
+            host_can_save: true,
+            host_can_open: true,
+            shell_intent: Some(shell_intent_cb),
+            controls: ShellControls {
+                switch_stage: noop_u8,
+                toggle_registry: noop,
+                toggle_inspector: noop,
+                open_atlas: noop,
+                open_timeline: noop,
+                set_theme: noop_theme,
+                set_density: noop_density,
+                close: noop,
+            },
+        };
+
+        run_action(&ctx, &DeckAction::EmitShellIntent(SkinShellIntent::Save));
+        assert_eq!(*received.lock().unwrap(), vec![SkinShellIntent::Save]);
+
+        // The disabled/unwired case: `shell_intent` is `None` — `run_action`
+        // must not panic (mirrors the `Inert` no-op discipline above).
+        let mut ctx_unwired = ctx;
+        ctx_unwired.shell_intent = None;
+        run_action(
+            &ctx_unwired,
+            &DeckAction::EmitShellIntent(SkinShellIntent::Open {
+                requested_path: None,
+            }),
+        );
+        assert_eq!(
+            received.lock().unwrap().len(),
+            1,
+            "an unwired channel must not call back or panic"
+        );
     }
 
     #[test]

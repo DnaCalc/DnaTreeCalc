@@ -184,3 +184,48 @@ async fn bench_command_deck_lists_at_least_fifteen_commands() {
         rows.length()
     );
 }
+
+/// Bead dtc-lfz.3 — the command deck's Save/Open rows track the REAL
+/// `PersistenceProjection` the bench-host projects, not a hardcoded value.
+/// On the browser (wasm32) target, `home_shell_view_model` honestly reports
+/// `can_save = can_open = false` (no download/file-input adapter is wired
+/// at this layer yet) — proving the disabled-with-reason rendering is
+/// driven by that real, non-fabricated capability rather than a stub.
+#[wasm_bindgen_test]
+async fn bench_command_deck_save_open_are_honestly_disabled_on_browser() {
+    let host = mount();
+    next_tick().await;
+    press_chord(&shell_root(&host), "k", true, false, false);
+    next_tick().await;
+    let deck = query(&host, "[data-overlay=\"command-deck\"]").expect("command deck opens");
+
+    let save = deck
+        .query_selector("[data-command-id=\"shell.save\"]")
+        .unwrap()
+        .expect("save row present");
+    assert_eq!(
+        save.get_attribute("data-enabled").as_deref(),
+        Some("false"),
+        "browser has no real Save adapter wired yet — must render honestly disabled"
+    );
+    assert_eq!(
+        save.get_attribute("aria-disabled").as_deref(),
+        Some("true")
+    );
+    assert!(
+        save.get_attribute("title")
+            .unwrap_or_default()
+            .contains("does not yet support"),
+        "the disabled reason must be honest, not blank"
+    );
+
+    let open = deck
+        .query_selector("[data-command-id=\"shell.open\"]")
+        .unwrap()
+        .expect("open row present");
+    assert_eq!(
+        open.get_attribute("data-enabled").as_deref(),
+        Some("false"),
+        "browser has no real Open adapter wired yet — must render honestly disabled"
+    );
+}

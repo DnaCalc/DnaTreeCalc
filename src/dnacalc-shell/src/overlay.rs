@@ -13,6 +13,7 @@ use leptos::prelude::*;
 
 use dnacalc_skin_ir::identity::NodeKey;
 use dnacalc_skin_ir::intent::Dispatcher;
+use dnacalc_skin_ir::protocol::SkinShellIntent;
 use dnacalc_skin_ir::selection::SelectionState;
 use dnacalc_skin_ir::workspace::WorkspaceState;
 use dnacalc_skin_leptos::state_handles::SharedSkinStateHandle;
@@ -173,10 +174,22 @@ pub struct OverlayContext {
     /// Visible stages in slot order (1-based slot, title) — the deck's stage
     /// commands and their effective chords.
     pub visible_stages: Vec<(u8, &'static str)>,
-    /// Host persistence capability (SHELL_SPEC §4): false in S0, so the deck's
-    /// save/open render disabled-with-reason.
+    /// Host persistence capability (SHELL_SPEC §4), threaded from the
+    /// product's own `HostCapabilityProjection`/`PersistenceProjection`
+    /// (bead dtc-lfz.3). A product that has not wired a capability seam
+    /// leaves the `Shell`'s `host_persistence` prop `None`, which resolves
+    /// to `false` here — the deck's save/open render disabled-with-reason
+    /// exactly as before this field carried real truth.
     pub host_can_save: bool,
     pub host_can_open: bool,
+    /// Where the deck dispatches `SkinShellIntent::{Save, SaveAs, Open,
+    /// OpenRecent}` (bead dtc-lfz.3) — the OneFormula/OneCalc host's own
+    /// shell-intent channel, distinct from the tree-workspace `dispatch`
+    /// above. `None` when the product has not wired the channel; a deck
+    /// entry gated on `host_can_save`/`host_can_open` never reaches this in
+    /// that case (both are `false`), but `run_action` also no-ops rather
+    /// than panicking if it ever were reached while unwired.
+    pub shell_intent: Option<Callback<SkinShellIntent>>,
     pub controls: ShellControls,
 }
 

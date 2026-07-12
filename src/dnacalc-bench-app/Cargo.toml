@@ -29,6 +29,10 @@ dnacalc-bridge = { path = "../dnacalc-bridge" }
 # preview surface is not used; we drive the host's OneFormula projection
 # through its Leptos-free reducer/view-model seams only.
 dnacalc-bench-host = { path = "../dnacalc-bench-host", default-features = false }
+# Already a transitive dependency via `dnacalc-bench-host`; declared directly
+# so `adapter.rs` can dispatch `SkinShellIntent` through the real
+# `OneCalcSessionHost` seam (bead dtc-lfz.3, Save/Open capability wiring).
+dnacalc-bench-core = { path = "../dnacalc-bench-core" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 leptos = { version = "0.8.17", default-features = false, features = ["ssr"] }
