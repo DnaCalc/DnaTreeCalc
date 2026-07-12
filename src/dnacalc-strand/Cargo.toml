@@ -1,0 +1,19 @@
+[package]
+name = "dnacalc-strand"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# Framework-free token crate: no leptos, no `ox*` crate (SHELL_SPEC.md §2
+# P-gate). serde support is opt-in only, for hosts that want to ship
+# ThemeTokens/identity data over the wire.
+[features]
+default = []
+serde = ["dep:serde"]
+
+[dependencies]
+serde = { workspace = true, optional = true }
+
+[lints]
+workspace = true

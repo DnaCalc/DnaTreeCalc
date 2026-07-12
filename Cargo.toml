@@ -8,6 +8,7 @@ members = [
     "src/dnacalc-extension-host-core",
     "src/dnacalc-skin-ir",
     "src/dnacalc-skin-leptos",
+    "src/dnacalc-strand",
     "src/dnatreecalc-host",
     "src/dnatreecalc-skin-framework",
     "src/dnatreecalc-shell",
