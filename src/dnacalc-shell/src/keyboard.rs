@@ -352,7 +352,15 @@ impl ShellKeyboardRegistry {
         for (id, chord) in overrides.iter() {
             let verb = SkinVerb::from_stable_id(id)
                 .ok_or_else(|| ShellKeybindingError::UnknownVerb(id.clone()))?;
-            if runtime.is_browser() && is_hard_reserved(chord) {
+            // Same predicate as `register_stage_verb`: hard-reserved chords
+            // are rejected unconditionally in a browser runtime, and on
+            // desktop everything hard-reserved stays rejected EXCEPT the two
+            // spec-sanctioned desktop families (`is_desktop_sanctioned`).
+            // Gating this behind `runtime.is_browser()` alone (the prior
+            // bug, dtc-1tk.2) rejected nothing at all on desktop, so a
+            // persisted override could remap a shell verb onto F5, Ctrl+R,
+            // F11, Ctrl+L, Ctrl+W/T/N, or Ctrl+Tab.
+            if is_hard_reserved(chord) && (runtime.is_browser() || !is_desktop_sanctioned(chord)) {
                 return Err(ShellKeybindingError::HardReserved {
                     chord: chord.clone(),
                 });
@@ -434,7 +442,13 @@ impl ShellKeyboardRegistry {
             // SwitchLens — §5.1: "all rebindable except stage switching".
             return Err(ShellKeybindingError::NotRebindable);
         }
-        if self.runtime.is_browser() && is_hard_reserved(&chord) {
+        // Same predicate as `register_stage_verb` (and `with_overrides`
+        // above): browser rejects every hard-reserved chord; desktop
+        // rejects every hard-reserved chord except the two spec-sanctioned
+        // desktop families. Previously gated behind `self.runtime.is_browser()`
+        // alone, which rejected nothing on desktop (dtc-1tk.2).
+        if is_hard_reserved(&chord) && (self.runtime.is_browser() || !is_desktop_sanctioned(&chord))
+        {
             return Err(ShellKeybindingError::HardReserved { chord });
         }
         if let Some(occupied_by) = self.resolve(&chord)
@@ -752,6 +766,97 @@ mod tests {
                 Err(ShellKeybindingError::HardReserved { .. })
             ));
         }
+    }
+
+    #[test]
+    fn desktop_rebind_and_overrides_use_the_same_sanctioned_hard_reserved_predicate() {
+        // Bead dtc-1tk.2: `rebind_validated` and `with_overrides` gated
+        // hard-reserved rejection behind `runtime.is_browser()` alone, so on
+        // `RuntimeContext::Desktop` they rejected NOTHING at all — a user
+        // could rebind a shell verb onto F5, Ctrl+R, F11, Ctrl+L,
+        // Ctrl+W/T/N, or Ctrl+Tab. This mirrors
+        // `desktop_allows_only_the_sanctioned_hard_reserved_chords` (which
+        // only exercised `register_stage_verb`) for the two rebind entry
+        // points, and follows each acceptance all the way through
+        // `with_overrides` to a resolvable chord (not a vacuous `Ok(..)`).
+        let registry = ShellKeyboardRegistry::universal(bench_composition(), RuntimeContext::Desktop);
+        let current = KeybindingOverrideMap::new();
+
+        // Not sanctioned even on desktop: rebind_validated must still reject.
+        assert_eq!(
+            registry.rebind_validated(&current, SkinVerb::Explain, KeyChord::bare("F5")),
+            Err(ShellKeybindingError::HardReserved {
+                chord: KeyChord::bare("F5"),
+            }),
+            "F5 must stay rejected by rebind_validated even on desktop"
+        );
+        assert_eq!(
+            registry.rebind_validated(&current, SkinVerb::Explain, KeyChord::ctrl("r")),
+            Err(ShellKeybindingError::HardReserved {
+                chord: KeyChord::ctrl("r"),
+            }),
+            "Ctrl+R must stay rejected by rebind_validated even on desktop"
+        );
+
+        // Sanctioned on desktop: rebind_validated accepts, and the override
+        // it produces round-trips through with_overrides to a registry that
+        // actually resolves the new chord.
+        let with_ctrl_1 = registry
+            .rebind_validated(&current, SkinVerb::Explain, KeyChord::ctrl("1"))
+            .expect("Ctrl+1 is desktop-sanctioned and must be accepted");
+        let rebuilt = ShellKeyboardRegistry::with_overrides(
+            bench_composition(),
+            RuntimeContext::Desktop,
+            &with_ctrl_1,
+        )
+        .expect("with_overrides must accept the desktop-sanctioned override it just produced");
+        assert_eq!(rebuilt.resolve(&KeyChord::ctrl("1")), Some(SkinVerb::Explain));
+
+        let with_ctrl_pageup = registry
+            .rebind_validated(&current, SkinVerb::Explain, KeyChord::ctrl("PageUp"))
+            .expect("Ctrl+PageUp is desktop-sanctioned and must be accepted");
+        let rebuilt = ShellKeyboardRegistry::with_overrides(
+            bench_composition(),
+            RuntimeContext::Desktop,
+            &with_ctrl_pageup,
+        )
+        .expect("with_overrides must accept Ctrl+PageUp on desktop");
+        assert_eq!(
+            rebuilt.resolve(&KeyChord::ctrl("PageUp")),
+            Some(SkinVerb::Explain)
+        );
+
+        // The same two not-sanctioned chords, fed directly into
+        // with_overrides (the persisted-map path, rather than the live
+        // rebind_validated path), must also be rejected on desktop — this is
+        // the second call site the bug lived in.
+        let mut f5_override = KeybindingOverrideMap::new();
+        f5_override.set(SkinVerb::Recalculate, KeyChord::bare("F5"));
+        assert!(
+            matches!(
+                ShellKeyboardRegistry::with_overrides(
+                    bench_composition(),
+                    RuntimeContext::Desktop,
+                    &f5_override,
+                ),
+                Err(ShellKeybindingError::HardReserved { .. })
+            ),
+            "with_overrides must reject a persisted F5 override on desktop, not just in the browser"
+        );
+
+        let mut ctrl_r_override = KeybindingOverrideMap::new();
+        ctrl_r_override.set(SkinVerb::Recalculate, KeyChord::ctrl("r"));
+        assert!(
+            matches!(
+                ShellKeyboardRegistry::with_overrides(
+                    bench_composition(),
+                    RuntimeContext::Desktop,
+                    &ctrl_r_override,
+                ),
+                Err(ShellKeybindingError::HardReserved { .. })
+            ),
+            "with_overrides must reject a persisted Ctrl+R override on desktop"
+        );
     }
 
     #[test]

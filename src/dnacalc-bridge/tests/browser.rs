@@ -82,6 +82,18 @@ fn press_key(target: &web_sys::EventTarget, key: &str) {
     target.dispatch_event(&event).unwrap();
 }
 
+/// Dispatch a bubbling, cancelable Ctrl+`key` `keydown` on `target`.
+fn press_ctrl_key(target: &web_sys::EventTarget, key: &str) {
+    let init = web_sys::KeyboardEventInit::new();
+    init.set_key(key);
+    init.set_ctrl_key(true);
+    init.set_bubbles(true);
+    init.set_cancelable(true);
+    let event =
+        web_sys::KeyboardEvent::new_with_keyboard_event_init_dict("keydown", &init).unwrap();
+    target.dispatch_event(&event).unwrap();
+}
+
 fn empty_editor() -> FormulaEditorSurface {
     FormulaEditorSurface {
         source_text: String::new(),
@@ -275,5 +287,86 @@ async fn degrade_mode_renders_zero_token_role_classes() {
     assert!(
         matches!(observed.first(), Some(BridgeEvent::TextEdited { text, .. }) if text == "=NOT@PARSED="),
         "degrade typing must pass through verbatim, got {observed:?}"
+    );
+}
+
+/// Mount `FormulaBridge` nested one level inside a stand-in "shell root" div
+/// carrying its own `on:keydown` — modeling the composed Bench app, where
+/// the editor lives inside `.dna-shell`'s DOM subtree and the shell's real
+/// keydown dispatcher is an ancestor listener that only ever observes
+/// whatever the editor lets bubble.
+fn mount_inside_shell_stub(
+    editor: FormulaEditorSurface,
+    assist: FormulaAssistSurface,
+    sink: Arc<Mutex<Vec<BridgeEvent>>>,
+    bubbled: Arc<Mutex<Vec<String>>>,
+) -> web_sys::HtmlElement {
+    let host = fresh_host();
+    let on_event = Callback::new(move |event| sink.lock().unwrap().push(event));
+    leptos::mount::mount_to(host.clone().unchecked_into(), move || {
+        view! {
+            <div
+                data-testid="shell-stub"
+                on:keydown=move |ev: leptos::ev::KeyboardEvent| {
+                    bubbled.lock().unwrap().push(ev.key());
+                }
+            >
+                <FormulaBridge editor=editor.clone() assist=assist.clone() on_event=on_event />
+            </div>
+        }
+    })
+    .forget();
+    host
+}
+
+#[wasm_bindgen_test]
+fn f9_and_ctrl_k_bubble_past_the_editor_to_an_ancestor_shell_handler() {
+    // Bead dtc-1tk.1 / H1b: `on_keydown` used to call `ev.stop_propagation()`
+    // unconditionally for every keydown, so F9 (Recalculate) and Ctrl+K
+    // (command deck) — chords the editor never handles — could never reach
+    // the shell's own `.dna-shell` keydown dispatcher in the composed Bench
+    // app, defeating SHELL_SPEC §5's tested F-key exemption ("F9 must work
+    // from inside edit buffers"). This mounts the editor nested inside a
+    // stand-in shell root with its own ancestor `on:keydown`, exactly
+    // modeling that composition, and proves un-consumed chords now bubble.
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let bubbled = Arc::new(Mutex::new(Vec::new()));
+    let host = mount_inside_shell_stub(
+        empty_editor(),
+        FormulaAssistSurface::default(),
+        events.clone(),
+        bubbled.clone(),
+    );
+    let area = textarea(&host);
+
+    press_key(&area, "F9");
+    assert_eq!(
+        bubbled.lock().unwrap().as_slice(),
+        ["F9"],
+        "F9 must bubble past the editor to the shell (SHELL_SPEC §5 F-key exemption)"
+    );
+
+    press_ctrl_key(&area, "k");
+    assert_eq!(
+        bubbled.lock().unwrap().as_slice(),
+        ["F9", "k"],
+        "Ctrl+K must bubble past the editor to reach the shell's command-deck chord"
+    );
+
+    // Contrast: Escape IS consumed by the editor (host-side exact revert)
+    // and must NOT also bubble to the shell in the same keystroke — see the
+    // propagation-precedence note on `on_keydown` in dnacalc-bridge/src/editor.rs.
+    press_key(&area, "Escape");
+    assert_eq!(
+        bubbled.lock().unwrap().as_slice(),
+        ["F9", "k"],
+        "Escape is consumed locally by the editor's revert and must not bubble"
+    );
+    let observed = events.lock().unwrap();
+    assert!(
+        observed
+            .iter()
+            .any(|e| matches!(e, BridgeEvent::RevertRequested)),
+        "the editor must still have handled Escape itself, got {observed:?}"
     );
 }

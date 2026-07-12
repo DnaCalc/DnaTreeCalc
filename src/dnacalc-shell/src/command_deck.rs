@@ -724,6 +724,10 @@ fn command_deck_view(ctx: OverlayContext) -> AnyView {
     // gets its own clone without an Rc (which is not Send, as Leptos render
     // closures require).
     let ctx_for_rows = ctx.clone();
+    // A dedicated clone for the input's Escape handler (bead dtc-1tk.1 /
+    // H1a) — separate from `ctx_for_enter`, which `execute_first` already
+    // owns.
+    let ctx_for_escape = ctx.clone();
 
     view! {
         <div class="dna-overlay-backdrop">
@@ -743,9 +747,27 @@ fn command_deck_view(ctx: OverlayContext) -> AnyView {
                     prop:value=move || query.get()
                     on:input=move |ev| query.set(event_target_value(&ev))
                     on:keydown=move |ev: leptos::ev::KeyboardEvent| {
-                        if ev.key() == "Enter" {
-                            ev.prevent_default();
-                            execute_first();
+                        match ev.key().as_str() {
+                            "Enter" => {
+                                ev.prevent_default();
+                                execute_first();
+                            }
+                            "Escape" => {
+                                // The deck owns a pure-cancel Esc affordance: this
+                                // input is autofocused the instant the deck opens,
+                                // so a real Escape keydown targets it directly and
+                                // never reaches the shell's own keydown handler
+                                // (`event_target_is_text_entry` trips the §5
+                                // text-entry guard for a bare, unmodified Escape —
+                                // see shell.rs's `route_key` call). Closing here,
+                                // deck-local, runs NO command (unlike Enter) and
+                                // stops propagation so the shell's guard is never
+                                // even consulted for this keystroke.
+                                ev.prevent_default();
+                                ev.stop_propagation();
+                                ctx_for_escape.controls.close.run(());
+                            }
+                            _ => {}
                         }
                     }
                 />

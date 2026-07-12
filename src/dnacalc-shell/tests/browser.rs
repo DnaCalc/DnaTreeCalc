@@ -333,18 +333,45 @@ async fn keyboard_atlas_lists_every_live_chord_with_browser_tags_and_esc_closes(
     assert!(query(host, "[data-overlay=\"keyboard-atlas\"]").is_none());
     assert!(query(host, "[data-overlay=\"command-deck\"]").is_some());
 
-    // Esc closes the topmost overlay first.
-    press_chord(&root, "Escape", false, false, false);
+    // Esc closes the topmost overlay first — dispatched on the deck's own
+    // autofocused input, NOT the shell root (bead dtc-1tk.1 / H1a). A real
+    // Escape keydown targets whatever element has focus, and the deck input
+    // autofocuses the instant the deck opens; `event_target_is_text_entry`
+    // (shell.rs) only trips when the event's `target` actually is that
+    // input, so dispatching on `.dna-shell` instead (as this test used to)
+    // could never catch a regression in the deck's own Esc handling.
+    let deck_input = query(host, ".dna-deck__input").expect("deck input autofocuses on open");
+    press_chord(
+        &deck_input.clone().unchecked_into(),
+        "Escape",
+        false,
+        false,
+        false,
+    );
     next_tick().await;
-    assert!(query(host, "[data-overlay=\"command-deck\"]").is_none());
+    assert!(
+        query(host, "[data-overlay=\"command-deck\"]").is_none(),
+        "Esc on the focused deck input must close the deck (H1a)"
+    );
 
     // Ctrl+F opens the deck placeholder in goto mode.
     press_chord(&root, "f", true, false, false);
     next_tick().await;
     let deck = query(host, "[data-overlay=\"command-deck\"]").unwrap();
     assert_eq!(deck.get_attribute("data-goto-mode").unwrap(), "true");
-    press_chord(&root, "Escape", false, false, false);
+    let goto_input = query(host, ".dna-deck__input").expect("goto-mode deck input autofocuses too");
+    press_chord(
+        &goto_input.clone().unchecked_into(),
+        "Escape",
+        false,
+        false,
+        false,
+    );
     next_tick().await;
+    assert!(
+        query(host, "[data-overlay=\"command-deck\"]").is_none(),
+        "Esc on the focused goto-mode deck input must also close the deck"
+    );
 
     // No engine intents from any of this overlay traffic.
     assert!(mounted.dispatcher.intents().is_empty());

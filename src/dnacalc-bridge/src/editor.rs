@@ -160,8 +160,27 @@ pub fn FormulaBridge(
         on_event.run(text_edited_from_dom(text, caret16));
     };
 
+    // Propagation policy (bead dtc-1tk.1 / H1b): `stop_propagation()` is
+    // called ONLY on the branches below that actually consume the key —
+    // completion navigation (Up/Down/Enter/Esc while the popup is open),
+    // plain Enter (commit), and plain Escape (revert). Every other key,
+    // including F9 (Recalculate) and Ctrl+K (command deck) — the whole
+    // F-key-exemption class SHELL_SPEC §5 requires to work from inside edit
+    // buffers — falls through untouched and bubbles to the shell's own
+    // `.dna-shell` keydown handler in the composed Bench app.
+    //
+    // Precedence for Escape specifically: the editor's own Escape (exact
+    // revert, host-side) stops propagation deliberately, even though the
+    // shell's text-entry guard would already suppress a bare, unmodified
+    // Escape originating from this textarea (see
+    // `dnacalc-shell::shell::event_target_is_text_entry` /
+    // `keyboard::route_key`). One keystroke gets one effect: the editor has
+    // already fully handled it (closed the popup, or reverted the buffer),
+    // so it must not also reach the shell's overlay-Esc ladder in the same
+    // keystroke. This is belt-and-suspenders — it holds even if the guard's
+    // suppression rule ever changes — and it is the only place this handler
+    // stops propagation for a key it isn't exclusively responsible for.
     let on_keydown = move |ev: leptos::ev::KeyboardEvent| {
-        ev.stop_propagation();
         let key = ev.key();
         // Overlay-first grammar: while the completion popup is open it owns
         // Up/Down/Enter/Esc (Esc closes the topmost overlay before anything
@@ -170,16 +189,19 @@ pub fn FormulaBridge(
             match key.as_str() {
                 "ArrowDown" => {
                     ev.prevent_default();
+                    ev.stop_propagation();
                     let len = completion_items.with_value(Vec::len);
                     highlighted.update(|h| *h = completion_next(len, *h, 1));
                 }
                 "ArrowUp" => {
                     ev.prevent_default();
+                    ev.stop_propagation();
                     let len = completion_items.with_value(Vec::len);
                     highlighted.update(|h| *h = completion_next(len, *h, -1));
                 }
                 "Enter" => {
                     ev.prevent_default();
+                    ev.stop_propagation();
                     let applied = completion_items
                         .with_value(|items| completion_applied(items, highlighted.get_untracked()));
                     if let Some(event) = applied {
@@ -189,8 +211,12 @@ pub fn FormulaBridge(
                 }
                 "Escape" => {
                     ev.prevent_default();
+                    ev.stop_propagation();
                     completion_open.set(false);
                 }
+                // Anything else — F9, Ctrl+K, plain letters while the popup
+                // happens to be open — is not the popup's concern: let it
+                // bubble so the shell's guard-order exemptions still apply.
                 _ => {}
             }
             return;
@@ -200,15 +226,21 @@ pub fn FormulaBridge(
             // Shift+Enter stays a plain newline in the buffer.
             "Enter" if !ev.shift_key() => {
                 ev.prevent_default();
+                ev.stop_propagation();
                 edit_state.set(EditDiscipline::Selected);
                 on_event.run(BridgeEvent::CommitRequested);
             }
-            // Esc exact-reverts — host-side. The bridge only reports it.
+            // Esc exact-reverts — host-side. The bridge only reports it, but
+            // still stops propagation here — see the precedence note above.
             "Escape" => {
                 ev.prevent_default();
+                ev.stop_propagation();
                 edit_state.set(EditDiscipline::Selected);
                 on_event.run(BridgeEvent::RevertRequested);
             }
+            // Every other key — F9, Ctrl+K, and the rest of the F-key
+            // exemption class — is not consumed here and must bubble
+            // undisturbed.
             _ => {}
         }
     };

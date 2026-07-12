@@ -24,6 +24,20 @@ Overlays (float over everything, one at a time except Peeks):
 **Peek cards** (Alt+hover / `P` on selection; max 3 pinned) · **Extensions manager** (from
 Registry/Strip). Esc closes the topmost overlay before it does anything else.
 
+**Esc-vs-text-entry precedence (resolves the §5 guard tension):** an overlay that owns a
+focused text input — the command deck's query field is the only S0 case — handles Esc
+*locally*: the input's own keydown closes the overlay directly (no command runs) and stops
+propagation, so the keystroke never falls into the shell's §5 text-entry guard at all. The §5
+guard (`event_target_is_text_entry` first, F-key exemptions second, chord lookup third) governs
+everything else that lives inside a text-entry element — stage-level edit buffers in
+particular, where a bare Esc is `EscapeRevert`: the buffer's own keydown handler consumes it,
+reverts exactly, and stops propagation, so it never reaches `OverlayModel::escape()` while that
+buffer holds focus. Only once focus has moved off the buffer entirely does a later Esc fall
+through to the overlay ladder. One keystroke, one effect, in both cases — the difference is
+which handler owns that keystroke, not a violation of "Esc closes the topmost overlay before
+anything else" (that rule is about *overlay* Esc precedence over other overlay mechanics, not
+about reaching into a focused input that already claimed the keystroke).
+
 ## 2. Crate decomposition (tiers per D5)
 
 | Crate | Tier | Contents |
@@ -78,6 +92,13 @@ One universal verb table in `dnacalc-shell`, collision-tested (estate pattern). 
 verbs register under the focused stage; the guard order in every keydown handler is:
 `event_target_is_text_entry` first, F-key exemptions second (F9 must work from inside edit
 buffers), chord lookup third.
+
+Consequence for host-owned edit surfaces (e.g. the Bridge formula editor, SHELL_SPEC §6): their
+local keydown handler must call `stop_propagation()` only for the keys it actually consumes
+(completion navigation, Commit-Enter, Escape-revert) — every other key, F9 and Ctrl+K included,
+must bubble undisturbed to the shell's guard above so the F-key exemption and the modified-chord
+passthrough it already implements (`route_key`) can do their job. See §1's Esc-vs-text-entry
+precedence note for how this interacts with overlay Esc.
 
 ### 5.1 Universal verbs (defaults; all rebindable except stage switching)
 
