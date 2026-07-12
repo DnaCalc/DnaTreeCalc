@@ -71,7 +71,7 @@ never the raw surface tone. Established variants (light-paper / dark-paper):
 
 | Variant | On light `#FFFFFF` | On dark `#1A262B` | Used for |
 |---|---|---|---|
-| `teal-ink` | `#1B5F6B` (≈6.7:1) | `#4FC0D8` | accent text, eyebrows, command ids |
+| `teal-ink` | `#1B5F6B` (≈7.3:1) | `#4FC0D8` | accent text, eyebrows, command ids |
 | `green-ink` | `#2E6E5B` (≈6.0:1) | `#74C7AB` | value text, "fresh/match" readouts |
 | `ink-3` (meta) | `#5B717B` (≥4.5 on paper-2) | `#7D97A0` | kickers, captions, mono footnotes |
 | `prov-const` | `#2D6A8A` | `#7DB8D8` | constant-cell text |

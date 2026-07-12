@@ -4,7 +4,8 @@
 //! DOM, that the Bench composition mounts its region subset, that a formula is
 //! authored end-to-end over the real OxFml host (tokens + result + commit +
 //! revert), that the keyboard atlas and command deck open from the registry,
-//! and that the reserved parity/evidence slots render NOTHING.
+//! and that the reserved parity slot renders NOTHING (the Evidence slot is
+//! proven in the shell suite).
 
 #![cfg(target_arch = "wasm32")]
 

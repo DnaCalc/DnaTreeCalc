@@ -16,7 +16,7 @@ use dnacalc_skin_ir::keychord::{KeybindingOverrideMap, SkinVerb};
 use dnacalc_skin_ir::preview::PreviewService;
 use dnacalc_skin_ir::selection::SelectionState;
 use dnacalc_skin_ir::state::{SharedSkinState, SharedStateChange, SharedStateOrigin};
-use dnacalc_skin_ir::workspace::WorkspaceState;
+use dnacalc_skin_ir::workspace::{NodeCalcStateProjection, NodeView, WorkspaceState};
 use dnacalc_skin_leptos::state_handles::SharedSkinStateHandle;
 use dnacalc_strand::{Density, IdentityBadge, Theme, css_custom_properties};
 
@@ -82,6 +82,31 @@ fn document_is_dirty(workspace: &WorkspaceState) -> bool {
         .workbook_calc
         .as_ref()
         .is_some_and(|calc| calc.sheets.iter().any(|sheet| sheet.dirty))
+}
+
+/// SHELL_SPEC §7 red-error registry liveness: true when a node's calc-state
+/// projection reports a rejected-and-unrepaired formula or a cycle block, or
+/// the node carries binding diagnostics — the error signals a `NodeView`
+/// actually exposes at S0. Computed from the projection at render time;
+/// never stored (§7: "computed from projections, never stored").
+fn node_carries_error(node: &NodeView) -> bool {
+    matches!(
+        node.calc_state,
+        Some(NodeCalcStateProjection::RejectedPendingRepair | NodeCalcStateProjection::CycleBlocked)
+    ) || !node.binding_diagnostics.is_empty()
+}
+
+/// The registry-rail liveness dot class (SHELL_SPEC §7: green fresh, signal
+/// stale/volatile, red error — computed from projections, never stored).
+/// Error outranks stale; an entry with neither signal is fresh.
+fn liveness_dot_class(error: bool, stale: bool) -> &'static str {
+    if error {
+        "dna-liveness dna-liveness--error"
+    } else if stale {
+        "dna-liveness dna-liveness--stale"
+    } else {
+        "dna-liveness dna-liveness--fresh"
+    }
 }
 
 /// Region styles. Everything resolves through `--dna-*` tokens; the region
@@ -174,6 +199,7 @@ const STATIC_SHELL_CSS: &str = r#"
 .dna-liveness { width: 7px; height: 7px; border-radius: 50%; flex: none; }
 .dna-liveness--fresh { background: var(--dna-value-ink); }
 .dna-liveness--stale { background: var(--dna-amber); }
+.dna-liveness--error { background: var(--dna-red-ink); }
 .dna-registry__absent { font-size: 12px; color: var(--dna-ink-3); font-style: italic; }
 .dna-stage-host { flex: 1; min-width: 0; background: var(--dna-paper); overflow: auto; position: relative; }
 .dna-stage-host__mount { height: 100%; }
@@ -776,6 +802,12 @@ fn RegistryRail(workspace: ReadSignal<WorkspaceState>, collapsed: RwSignal<bool>
                             entries
                                 .into_iter()
                                 .map(|name| {
+                                    // Always fresh: DefinedNameProjection carries
+                                    // no backing NodeId (its `scope` names the
+                                    // sheet a name is scoped to, not a formula
+                                    // node), so no calc-state/binding-diagnostic
+                                    // signal exists to derive an error dot from
+                                    // at S0. Do not fabricate one.
                                     view! {
                                         <div class="dna-registry__entry">
                                             <span class="dna-liveness dna-liveness--fresh"></span>
@@ -798,8 +830,7 @@ fn RegistryRail(workspace: ReadSignal<WorkspaceState>, collapsed: RwSignal<bool>
                             let roots: Vec<_> = ws
                                 .root_paths
                                 .iter()
-                                .map(std::string::ToString::to_string)
-                                .filter(|label| matches(label))
+                                .filter(|id| matches(&id.to_string()))
                                 .collect();
                             if roots.is_empty() {
                                 return view! {
@@ -809,11 +840,17 @@ fn RegistryRail(workspace: ReadSignal<WorkspaceState>, collapsed: RwSignal<bool>
                             }
                             return roots
                                 .into_iter()
-                                .map(|label| {
+                                .map(|id| {
+                                    // A root IS a node here (unlike the
+                                    // grid-backed branch below), so its own
+                                    // calc-state/binding-diagnostics are a
+                                    // genuine, non-fabricated error signal.
+                                    let error = ws.nodes.get(id).is_some_and(node_carries_error);
+                                    let dot_class = liveness_dot_class(error, false);
                                     view! {
                                         <div class="dna-registry__entry">
-                                            <span class="dna-liveness dna-liveness--fresh"></span>
-                                            <span>{label}</span>
+                                            <span class=dot_class></span>
+                                            <span>{id.to_string()}</span>
                                         </div>
                                     }
                                 })
@@ -835,11 +872,16 @@ fn RegistryRail(workspace: ReadSignal<WorkspaceState>, collapsed: RwSignal<bool>
                                                 && summary.dirty
                                         })
                                     });
-                                let dot_class = if stale {
-                                    "dna-liveness dna-liveness--stale"
-                                } else {
-                                    "dna-liveness dna-liveness--fresh"
-                                };
+                                // No error signal available here: a grid-backed
+                                // sheet's `grid_node_id` lives in a distinct
+                                // NodeId namespace ("sheet:{n}",
+                                // `sheet_grid_node_id`) from `ws.nodes`'s tree
+                                // node ids, so there is no NodeView to read a
+                                // calc-state/binding-diagnostic off — and no
+                                // per-sheet aggregate error projection exists at
+                                // S0 either. Do not fabricate one; fresh/stale
+                                // only until that projection lands.
+                                let dot_class = liveness_dot_class(false, stale);
                                 view! {
                                     <div class="dna-registry__entry">
                                         <span class=dot_class></span>
@@ -861,14 +903,19 @@ fn RegistryRail(workspace: ReadSignal<WorkspaceState>, collapsed: RwSignal<bool>
                                 .into_any()
                         } else {
                             ws.tables
-                                .keys()
-                                .map(std::string::ToString::to_string)
-                                .filter(|label| matches(label))
-                                .map(|label| {
+                                .iter()
+                                .filter(|(id, _)| matches(&id.to_string()))
+                                .map(|(id, _table)| {
+                                    // `ws.tables` is keyed by the table's own
+                                    // backing NodeId, so its calc-state/
+                                    // binding-diagnostics are a genuine,
+                                    // non-fabricated error signal.
+                                    let error = ws.nodes.get(id).is_some_and(node_carries_error);
+                                    let dot_class = liveness_dot_class(error, false);
                                     view! {
                                         <div class="dna-registry__entry">
-                                            <span class="dna-liveness dna-liveness--fresh"></span>
-                                            <span>{label}</span>
+                                            <span class=dot_class></span>
+                                            <span>{id.to_string()}</span>
                                         </div>
                                     }
                                 })
@@ -1299,8 +1346,8 @@ fn PeekLayer(overlay: RwSignal<OverlayModel>) -> impl IntoView {
 mod tests {
     use dnacalc_skin_ir::identity::{NodeId, NodeKey};
     use dnacalc_skin_ir::workspace::{
-        NodeContentKind, NodeValueProjection, NodeView, SheetCalcSummaryProjection,
-        WorkbookCalcProjection,
+        BindingDiagnosticProjection, NodeContentKind, NodeValueProjection, NodeView,
+        SheetCalcSummaryProjection, SourceSpanProjection, WorkbookCalcProjection,
     };
 
     use super::*;
@@ -1391,5 +1438,65 @@ mod tests {
         assert!(css.contains("width: 268px"));
         let bench = shell_css(88);
         assert!(bench.contains("grid-template-rows: 40px 88px minmax(0, 1fr) 26px"));
+    }
+
+    /// SHELL_SPEC §7 red-error registry liveness (bead dtc-1tk.5): a node
+    /// carrying a rejected/cycle-blocked calc-state, or any binding
+    /// diagnostic, is an error signal; a clean node with neither is not.
+    #[test]
+    fn node_carries_error_reflects_calc_state_and_binding_diagnostics() {
+        let mut n = node("n1", "key-n1");
+        assert!(!node_carries_error(&n), "a clean projection carries no error");
+
+        n.calc_state = Some(NodeCalcStateProjection::Clean);
+        assert!(
+            !node_carries_error(&n),
+            "Clean calc-state alone is not an error signal"
+        );
+
+        n.calc_state = Some(NodeCalcStateProjection::RejectedPendingRepair);
+        assert!(node_carries_error(&n), "RejectedPendingRepair is an error");
+
+        n.calc_state = Some(NodeCalcStateProjection::CycleBlocked);
+        assert!(node_carries_error(&n), "CycleBlocked is an error");
+
+        n.calc_state = None;
+        assert!(!node_carries_error(&n));
+        n.binding_diagnostics.push(BindingDiagnosticProjection {
+            node: NodeId::new("n1"),
+            node_key: NodeKey::new("key-n1"),
+            message: "unresolved reference".to_string(),
+            span: SourceSpanProjection {
+                start_utf8: 0,
+                end_utf8: 1,
+            },
+        });
+        assert!(
+            node_carries_error(&n),
+            "a binding diagnostic is an error signal even with no calc-state"
+        );
+    }
+
+    /// The registry-rail dot class ranks error above stale above fresh, and
+    /// is never fabricated beyond those two booleans (SHELL_SPEC §7).
+    #[test]
+    fn liveness_dot_class_ranks_error_over_stale_over_fresh() {
+        assert_eq!(
+            liveness_dot_class(false, false),
+            "dna-liveness dna-liveness--fresh"
+        );
+        assert_eq!(
+            liveness_dot_class(false, true),
+            "dna-liveness dna-liveness--stale"
+        );
+        assert_eq!(
+            liveness_dot_class(true, false),
+            "dna-liveness dna-liveness--error"
+        );
+        assert_eq!(
+            liveness_dot_class(true, true),
+            "dna-liveness dna-liveness--error",
+            "error outranks stale"
+        );
     }
 }

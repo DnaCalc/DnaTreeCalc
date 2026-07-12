@@ -1,26 +1,30 @@
-//! Regression pin for the user-reported bug:
+//! Regression pin for the previously-reported bug:
 //!
 //!   "Type '=<SPACE>a<SPACE>a' and check the buffer."
 //!
-//! Status: PENDING upstream fix in OxFml. See
-//! `docs/handoffs/oxfml_inter_identifier_whitespace_gap.md`.
+//! Status: FIXED upstream in OxFml. The bench host consumes
+//! oxfml_core via a path dependency, so this repo picks up the
+//! fix automatically; the test below runs as a regression pin
+//! (mirrored in `buffer_integrity.rs`'s `case_eq_space_a_space_a`
+//! and its inter-identifier-whitespace siblings).
 //!
-//! Root cause: the upstream `EditorSyntaxSnapshot` for `= a a`
-//! contains tokens at offsets 0, 1, 2, 4 — but the space at
-//! offset 3 (between the two `a` identifiers) is unaccounted for
-//! in any token's `trailing_trivia` or the next token's
-//! `leading_trivia`. The host correctly concatenates the
-//! snapshot's text and produces `= aa` (4 chars), one short of
-//! the textarea's actual `= a a` (5 chars). The visible caret
-//! drifts past the rendered text.
+//! Root cause was the upstream `EditorSyntaxSnapshot` for `= a a`
+//! containing tokens at offsets 0, 1, 2, 4 — with the space at
+//! offset 3 (between the two `a` identifiers) unaccounted for in
+//! any token's `trailing_trivia` or the next token's
+//! `leading_trivia`. The host correctly concatenated the
+//! snapshot's text, producing `= aa` (4 chars), one short of the
+//! textarea's actual `= a a` (5 chars); the visible caret drifted
+//! past the rendered text.
 //!
 //! Same class as the leading-whitespace truncation fixed in
-//! OxFml commit 162f224. Both are violations of the implicit
+//! OxFml commit 162f224. Both were violations of the implicit
 //! contract that snapshot tokens + trivia tile the source text
 //! character-for-character.
 //!
-//! IMPORTANT: do NOT re-enable this test by adding host-side
-//! gap-fill logic. See `docs/OPERATIONS.md` §9 (Root-cause
+//! IMPORTANT for future agents: if this test starts failing after
+//! an OxFml update, the fix belongs UPSTREAM. Do NOT add host-side
+//! gap-fill logic. See `docs/onecalc/OPERATIONS.md` §9 (Root-cause
 //! Discipline) for why.
 
 #![cfg(target_arch = "wasm32")]

@@ -6,12 +6,13 @@
 //! the rendering-side contract the WS-14 home shell depends on.
 //!
 //! Each entry is its own `#[wasm_bindgen_test]` so a failure
-//! localises to a specific input. Inputs known to fail
-//! upstream (today: any input that the OxFml editor tokenizer
-//! drops or fails to tile) are marked `#[ignore = "..."]` with
-//! a reason naming the upstream surface and pointing at the
-//! relevant `docs/handoffs/...` file. Once an upstream fix
-//! lands, removing the `#[ignore]` is the regression gate.
+//! localises to a specific input. Every case below currently
+//! passes. Should a future input surface an upstream OxFml
+//! tokenizer gap (dropped or mistiled text), mark it
+//! `#[ignore = "..."]` with a reason naming the upstream surface
+//! and pointing at the relevant tracking doc; removing the
+//! `#[ignore]` once the upstream fix lands is the regression
+//! gate.
 //!
 //! Why parameterise this way: the user-reported `\n=aaa` and
 //! `= a a` bugs both surfaced because nobody had typed those
@@ -139,12 +140,9 @@ async fn case_eq_then_open_paren_only() {
 }
 
 // =============================================================
-// Cases that fail today (pending upstream OxFml fix)
-//
-// Each carries a reason string that names the upstream surface
-// and points at the relevant docs/handoffs/... file. Once the
-// upstream fix lands, removing the #[ignore] is the regression
-// gate.
+// Inter-identifier whitespace (formerly failing upstream; OxFml
+// fixed the tokenizer gap that dropped these spaces — see
+// repro_eq_space_a_space_a.rs for the pinned regression case).
 // =============================================================
 
 #[wasm_bindgen_test(async)]
@@ -160,7 +158,7 @@ async fn case_eq_space_a_space_b_space_c() {
 #[wasm_bindgen_test(async)]
 async fn case_a1_space_b1_no_eq() {
     // Cell-ref + space + identifier with no leading `=`. Same
-    // class — the inter-token whitespace is dropped.
+    // class — the inter-token whitespace used to be dropped.
     assert_overlay_matches_textarea_for("A1 B1").await;
 }
 

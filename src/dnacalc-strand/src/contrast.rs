@@ -58,7 +58,10 @@ const fn pair(theme: Theme, fg: &'static str, bg: &'static str, min_ratio: f64) 
 /// covering STRAND §2.1 at minimum:
 /// - `ink` / `ink-2` / `ink-3` vs `paper` and `paper-2`: >= 4.5:1 (>= 7.0:1
 ///   under `high-contrast`).
-/// - `accent-ink`, `value-ink`, `prov-const`, `prov-ext`, `red` vs `paper`:
+/// - `accent-ink`, `value-ink`, `prov-const`, `prov-ext`, `red` vs `paper`
+///   (every theme) and `paper-2` (`cockpit-light` and `high-contrast`, where
+///   `paper-2` is the tighter binding ground; `cockpit-dark`'s `paper-2` is
+///   darker than its `paper`, so it never binds and is not asserted here):
 ///   >= 4.5:1 (>= 7.0:1 under `high-contrast`).
 /// - `chrome-ink` vs `chrome` and `chrome-2`: >= 4.5:1 (>= 7.0:1 under
 ///   `high-contrast`).
@@ -80,10 +83,15 @@ pub const SANCTIONED_PAIRS: &[SanctionedPair] = &[
     pair(Theme::CockpitLight, "ink-3", "paper", 4.5),
     pair(Theme::CockpitLight, "ink-3", "paper-2", 4.5),
     pair(Theme::CockpitLight, "accent-ink", "paper", 4.5),
+    pair(Theme::CockpitLight, "accent-ink", "paper-2", 4.5),
     pair(Theme::CockpitLight, "value-ink", "paper", 4.5),
+    pair(Theme::CockpitLight, "value-ink", "paper-2", 4.5),
     pair(Theme::CockpitLight, "prov-const", "paper", 4.5),
+    pair(Theme::CockpitLight, "prov-const", "paper-2", 4.5),
     pair(Theme::CockpitLight, "prov-ext", "paper", 4.5),
+    pair(Theme::CockpitLight, "prov-ext", "paper-2", 4.5),
     pair(Theme::CockpitLight, "red", "paper", 4.5),
+    pair(Theme::CockpitLight, "red", "paper-2", 4.5),
     pair(Theme::CockpitLight, "chrome-ink", "chrome", 4.5),
     pair(Theme::CockpitLight, "chrome-ink", "chrome-2", 4.5),
     pair(Theme::CockpitLight, "chrome-ink-2", "chrome", 4.0),
@@ -117,10 +125,15 @@ pub const SANCTIONED_PAIRS: &[SanctionedPair] = &[
     pair(Theme::HighContrast, "ink-3", "paper", 7.0),
     pair(Theme::HighContrast, "ink-3", "paper-2", 7.0),
     pair(Theme::HighContrast, "accent-ink", "paper", 7.0),
+    pair(Theme::HighContrast, "accent-ink", "paper-2", 7.0),
     pair(Theme::HighContrast, "value-ink", "paper", 7.0),
+    pair(Theme::HighContrast, "value-ink", "paper-2", 7.0),
     pair(Theme::HighContrast, "prov-const", "paper", 7.0),
+    pair(Theme::HighContrast, "prov-const", "paper-2", 7.0),
     pair(Theme::HighContrast, "prov-ext", "paper", 7.0),
+    pair(Theme::HighContrast, "prov-ext", "paper-2", 7.0),
     pair(Theme::HighContrast, "red", "paper", 7.0),
+    pair(Theme::HighContrast, "red", "paper-2", 7.0),
     pair(Theme::HighContrast, "chrome-ink", "chrome", 7.0),
     pair(Theme::HighContrast, "chrome-ink", "chrome-2", 7.0),
     pair(Theme::HighContrast, "chrome-ink-2", "chrome", 7.0),

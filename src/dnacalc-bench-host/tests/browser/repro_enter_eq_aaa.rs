@@ -22,8 +22,8 @@
 //! after an OxFml update, the fix belongs UPSTREAM. Do NOT add
 //! host-side gap-fill logic that papers over a tokenizer
 //! truncation. That route was tried and reverted before the
-//! upstream fix landed; see `docs/OPERATIONS.md` §9 (Root-cause
-//! Discipline) for why.
+//! upstream fix landed; see `docs/onecalc/OPERATIONS.md` §9
+//! (Root-cause Discipline) for why.
 
 #![cfg(target_arch = "wasm32")]
 
