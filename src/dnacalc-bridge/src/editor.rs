@@ -20,14 +20,23 @@ use crate::diagnostics::DiagnosticsList;
 use crate::events::{BridgeEvent, BridgeEvents, EditDiscipline};
 use crate::readout::ReadoutRow;
 use crate::vm::{
-    RenderSegment, buffer_is_dirty, completion_applied, completion_next, editor_segments, is_stale,
-    role_class, selection_from_dom, severity_class, should_consume_undo_redo_locally,
-    text_edited_from_dom, utf8_to_utf16,
+    RenderSegment, buffer_is_dirty, completion_applied, completion_next, drill_state_id,
+    drill_state_label, editor_segments, is_stale, partial_eval, role_class, segment_lit_by_caret,
+    selection_from_dom, severity_class, should_consume_undo_redo_locally, text_edited_from_dom,
+    utf8_to_utf16,
 };
 
 /// Render one [`RenderSegment`] as a span in the token underlay. Shared with
-/// degrade mode, which only ever produces `role = None` segments.
+/// degrade mode, which only ever produces `role = None` segments (and never
+/// lights a caret token — reference X-Ray is a full-mode affordance).
 pub(crate) fn segment_view(segment: RenderSegment) -> impl IntoView {
+    segment_view_caret(segment, false)
+}
+
+/// Render one segment, optionally lit as the reference-X-Ray caret token
+/// (mechanism 07): `caret_lit` adds `dna-bridge__seg--caret` so the token the
+/// caret rests in is highlighted in the editor.
+pub(crate) fn segment_view_caret(segment: RenderSegment, caret_lit: bool) -> impl IntoView {
     let mut class = String::from("dna-bridge__seg");
     if let Some(role) = segment.role {
         class.push(' ');
@@ -37,11 +46,15 @@ pub(crate) fn segment_view(segment: RenderSegment) -> impl IntoView {
         class.push(' ');
         class.push_str(&severity_class(severity));
     }
+    if caret_lit {
+        class.push_str(" dna-bridge__seg--caret");
+    }
     view! {
         <span
             class=class
             data-span-start=segment.byte_start.to_string()
             data-span-end=segment.byte_end.to_string()
+            data-caret-lit=caret_lit.to_string()
         >
             {segment.text}
         </span>
@@ -84,6 +97,12 @@ pub fn FormulaBridge(
     let segments = editor_segments(&editor);
     let stale = is_stale(&editor);
     let caret = editor.caret_offset;
+
+    // Partial-evaluation pill (BENCH_SPEC §4): the drill node matched to the
+    // current non-empty selection span. Host truth only — the drill tree
+    // already carries every subexpression's evaluated value, so the pill is a
+    // read, never a mutation (Esc collapses the selection and it dismisses).
+    let pill = partial_eval(&drill, editor.selection_anchor, editor.selection_focus);
 
     // Local echo tracking: the underlay only paints while DOM text == host
     // text. `buffer` mirrors what the user sees; it starts equal to source.
@@ -280,7 +299,13 @@ pub fn FormulaBridge(
         }
     };
 
-    let token_spans = segments.into_iter().map(segment_view).collect_view();
+    let token_spans = segments
+        .into_iter()
+        .map(|segment| {
+            let lit = segment_lit_by_caret(&segment, caret);
+            segment_view_caret(segment, lit)
+        })
+        .collect_view();
 
     view! {
         <div
@@ -302,6 +327,30 @@ pub fn FormulaBridge(
                     }
                 }
             >
+                {pill.map(|pill| {
+                    let state_id = drill_state_id(pill.state);
+                    let state_label = drill_state_label(pill.state);
+                    view! {
+                        <div
+                            class="dna-bridge__pill"
+                            role="status"
+                            aria-label="Partial evaluation"
+                            data-pill-node=pill.node_id.clone()
+                        >
+                            <span class="dna-bridge__pill-expr">{pill.expression}</span>
+                            <span class="dna-bridge__pill-type">{pill.type_label}</span>
+                            {pill.shape.map(|shape| view! {
+                                <span class="dna-bridge__pill-shape">{shape}</span>
+                            })}
+                            {pill.value_preview.map(|value| view! {
+                                <span class="dna-bridge__pill-value">{value}</span>
+                            })}
+                            <span class="dna-bridge__pill-chip" data-state=state_id>
+                                {state_label}
+                            </span>
+                        </div>
+                    }
+                })}
                 <div class="dna-bridge__tokens" aria-hidden="true">{token_spans}</div>
                 <textarea
                     class="dna-bridge__input"

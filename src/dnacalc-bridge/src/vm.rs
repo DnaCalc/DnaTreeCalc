@@ -17,8 +17,8 @@ use std::collections::BTreeSet;
 use dnacalc_skin_ir::formula::{
     ArrayPreviewProjection, CompletionItemProjection, CompletionKindProjection,
     DiagnosticSeverityProjection, DiagnosticStageProjection, FormulaAssistSurface,
-    FormulaDiagnosticProjection, FormulaDrillNodeProjection, FormulaDrillSurface,
-    FormulaEditorSurface, SyntaxTokenRoleProjection,
+    FormulaDiagnosticProjection, FormulaDrillNodeProjection, FormulaDrillNodeStateProjection,
+    FormulaDrillSurface, FormulaEditorSurface, SyntaxTokenRoleProjection,
 };
 use dnacalc_skin_ir::identity::NodeId;
 use dnacalc_skin_ir::preview::PreviewService;
@@ -519,6 +519,136 @@ pub fn next_preview_window(preview: &ArrayPreviewProjection) -> Option<BridgeEve
             .saturating_sub(col_offset)
             .clamp(1, MAX_WINDOW_EDGE),
     })
+}
+
+// ---------------------------------------------------------------------------
+// Drill-node state vocabulary (X-Ray chips — BENCH_SPEC §4)
+// ---------------------------------------------------------------------------
+
+/// Stable id for a drill-node state (class names, test snapshots) — verbatim
+/// from the IR variant; the bridge never reclassifies a node's disposition.
+#[must_use]
+pub const fn drill_state_id(state: FormulaDrillNodeStateProjection) -> &'static str {
+    match state {
+        FormulaDrillNodeStateProjection::Pending => "pending",
+        FormulaDrillNodeStateProjection::Evaluated => "evaluated",
+        FormulaDrillNodeStateProjection::Bound => "bound",
+        FormulaDrillNodeStateProjection::Skipped => "skipped",
+        FormulaDrillNodeStateProjection::Opaque => "opaque",
+        FormulaDrillNodeStateProjection::Blocked => "blocked",
+        FormulaDrillNodeStateProjection::Error => "error",
+    }
+}
+
+/// Human label for a drill-node state chip (BENCH_SPEC §4 vocabulary).
+#[must_use]
+pub const fn drill_state_label(state: FormulaDrillNodeStateProjection) -> &'static str {
+    match state {
+        FormulaDrillNodeStateProjection::Pending => "Pending",
+        FormulaDrillNodeStateProjection::Evaluated => "Evaluated",
+        FormulaDrillNodeStateProjection::Bound => "Bound",
+        FormulaDrillNodeStateProjection::Skipped => "Skipped",
+        FormulaDrillNodeStateProjection::Opaque => "Opaque",
+        FormulaDrillNodeStateProjection::Blocked => "Blocked",
+        FormulaDrillNodeStateProjection::Error => "Error",
+    }
+}
+
+/// The chip class for a drill-node state (strand-token-backed in the panel CSS).
+#[must_use]
+pub fn drill_state_class(state: FormulaDrillNodeStateProjection) -> String {
+    format!("dna-xray__chip--{}", drill_state_id(state))
+}
+
+// ---------------------------------------------------------------------------
+// Partial-evaluation pill (BENCH_SPEC §4 — select subexpression → value/shape)
+// ---------------------------------------------------------------------------
+
+/// Deepest drill node whose source span *contains* the selection `[start,
+/// end)` (UTF-8 byte offsets). Children are tried before parents so the
+/// smallest containing subexpression wins — exactly the subexpression the
+/// user highlighted. Span-less nodes never match. Only a non-empty selection
+/// resolves (a collapsed caret uses [`drill_node_at_caret`] instead).
+#[must_use]
+pub fn drill_node_for_selection(
+    nodes: &[FormulaDrillNodeProjection],
+    start: usize,
+    end: usize,
+) -> Option<&FormulaDrillNodeProjection> {
+    if start >= end {
+        return None;
+    }
+    for node in nodes {
+        if let Some(hit) = drill_node_for_selection(&node.children, start, end) {
+            return Some(hit);
+        }
+        let contains = matches!(
+            (node.source_span_start, node.source_span_len),
+            (Some(s), Some(len)) if s <= start && end <= s.saturating_add(len)
+        );
+        if contains {
+            return Some(node);
+        }
+    }
+    None
+}
+
+/// The partial-evaluation pill's view-model (BENCH_SPEC §4): value, type, and
+/// shape of the drill node matched to the current selection span. This is a
+/// *read* of host truth — the drill tree already carries every subexpression's
+/// evaluated value, so the pill is non-destructive by construction (the whole
+/// point of the X-Ray: understand a subexpression without an Excel-F9 rewrite
+/// that would destroy the formula).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PartialEvalVm {
+    /// Stable, addressable node id (mechanism 20) — the same id the panel row
+    /// carries, so a pill and its drill row point at one node.
+    pub node_id: String,
+    pub expression: String,
+    pub value_preview: Option<String>,
+    pub shape: Option<String>,
+    /// The node's disposition/kind label used as the pill's "type" chip.
+    pub type_label: String,
+    pub state: FormulaDrillNodeStateProjection,
+}
+
+/// Build the pill for the current selection, or `None` when the selection is
+/// collapsed or matches no drill node. `anchor`/`focus` are the editor
+/// surface's own UTF-8 byte offsets (order-independent).
+#[must_use]
+pub fn partial_eval(
+    drill: &FormulaDrillSurface,
+    anchor: usize,
+    focus: usize,
+) -> Option<PartialEvalVm> {
+    let (start, end) = (anchor.min(focus), anchor.max(focus));
+    let node = drill_node_for_selection(&drill.tree, start, end)?;
+    Some(PartialEvalVm {
+        node_id: node.node_id.clone(),
+        expression: node
+            .expression_text
+            .clone()
+            .unwrap_or_else(|| node.label.clone()),
+        value_preview: node.value_preview.clone(),
+        shape: node
+            .array_preview
+            .as_ref()
+            .map(|p| shape_label(p.total_rows, p.total_cols)),
+        type_label: node
+            .kind
+            .clone()
+            .unwrap_or_else(|| drill_state_label(node.state).to_string()),
+        state: node.state,
+    })
+}
+
+/// Reference X-Ray (mechanism 07): true when `caret` (UTF-8 byte offset) sits
+/// inside a rendered segment's span, so the editor can light the token the
+/// caret rests in. Boundary caret (`caret == byte_end`) belongs to the *next*
+/// segment, matching how a text caret reads.
+#[must_use]
+pub fn segment_lit_by_caret(segment: &RenderSegment, caret: usize) -> bool {
+    segment.byte_start <= caret && caret < segment.byte_end
 }
 
 // ---------------------------------------------------------------------------

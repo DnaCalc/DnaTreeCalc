@@ -13,10 +13,11 @@
 use dnacalc_bridge::{
     ALL_COMPLETION_KINDS, BridgeEvent, EditDiscipline, buffer_is_dirty, completion_applied,
     completion_kind_glyph, completion_kind_id, completion_next, degrade_segments,
-    drill_node_at_caret, editor_segments, is_stale, is_undo_redo_chord, next_preview_window,
-    readout, role_class, role_id, segments_snapshot, segments_text, selection_from_dom,
-    severity_label, should_consume_undo_redo_locally, stage_label, text_edited_from_dom,
-    utf8_to_utf16, utf16_to_utf8,
+    drill_node_at_caret, drill_node_for_selection, drill_state_id, drill_state_label,
+    editor_segments, is_stale, is_undo_redo_chord, next_preview_window, partial_eval, readout,
+    role_class, role_id, segment_lit_by_caret, segments_snapshot, segments_text,
+    selection_from_dom, severity_label, should_consume_undo_redo_locally, stage_label,
+    text_edited_from_dom, utf8_to_utf16, utf16_to_utf8,
 };
 use dnacalc_skin_ir::formula::{
     ArrayPreviewProjection, CompletionItemProjection, CompletionSurface,
@@ -473,6 +474,203 @@ fn truncated_preview_pages_next_window_within_the_64_cap() {
         ..preview
     };
     assert_eq!(next_preview_window(&done), None);
+}
+
+// ---------------------------------------------------------------------------
+// Partial-evaluation pill (BENCH_SPEC §4): select subexpression -> value/shape
+// ---------------------------------------------------------------------------
+
+/// A nested drill tree over `=SUM(1,2,3)` for the pill/selection tests:
+/// FormulaRoot [0,11) ⊃ FunctionCall [1,10) ⊃ Argument [5,6) ⊃ Literal [5,6).
+fn nested_drill_tree() -> FormulaDrillSurface {
+    let literal = FormulaDrillNodeProjection {
+        node_id: "lit-1".into(),
+        label: "1 = 1".into(),
+        developer_label: None,
+        expression_text: Some("1".into()),
+        kind: Some("Literal".into()),
+        source_span_start: Some(5),
+        source_span_len: Some(1),
+        branch_disposition: None,
+        argument_name: None,
+        argument_role: None,
+        error_message: None,
+        value_preview: Some("1".into()),
+        array_preview: None,
+        state: FormulaDrillNodeStateProjection::Evaluated,
+        children: vec![],
+    };
+    let arg = FormulaDrillNodeProjection {
+        node_id: "arg-1".into(),
+        label: "number1: 1".into(),
+        developer_label: None,
+        expression_text: Some("1".into()),
+        kind: Some("Argument".into()),
+        source_span_start: Some(5),
+        source_span_len: Some(1),
+        branch_disposition: None,
+        argument_name: Some("number1".into()),
+        argument_role: Some("Number".into()),
+        error_message: None,
+        value_preview: None,
+        array_preview: None,
+        state: FormulaDrillNodeStateProjection::Bound,
+        children: vec![literal],
+    };
+    let call = FormulaDrillNodeProjection {
+        node_id: "call-1".into(),
+        label: "SUM".into(),
+        developer_label: None,
+        expression_text: Some("SUM(1,2,3)".into()),
+        kind: Some("FunctionCall".into()),
+        source_span_start: Some(1),
+        source_span_len: Some(9),
+        branch_disposition: None,
+        argument_name: None,
+        argument_role: None,
+        error_message: None,
+        value_preview: None,
+        array_preview: None,
+        state: FormulaDrillNodeStateProjection::Evaluated,
+        children: vec![arg],
+    };
+    let root = FormulaDrillNodeProjection {
+        node_id: "root-1".into(),
+        label: "Formula = 6".into(),
+        developer_label: None,
+        expression_text: Some("=SUM(1,2,3)".into()),
+        kind: Some("FormulaRoot".into()),
+        source_span_start: Some(0),
+        source_span_len: Some(11),
+        branch_disposition: None,
+        argument_name: None,
+        argument_role: None,
+        error_message: None,
+        value_preview: Some("6".into()),
+        array_preview: None,
+        state: FormulaDrillNodeStateProjection::Evaluated,
+        children: vec![call],
+    };
+    FormulaDrillSurface {
+        expanded: true,
+        tree: vec![root],
+        diagnostics: vec![],
+        phase_summaries: vec![],
+        document_is_fresh: true,
+    }
+}
+
+#[test]
+fn partial_eval_pill_matches_the_deepest_node_covering_the_selection() {
+    let drill = nested_drill_tree();
+
+    // Selecting the literal `1` (bytes [5,6)) resolves the innermost node.
+    let pill = partial_eval(&drill, 5, 6).expect("selection matches a node");
+    assert_eq!(pill.node_id, "lit-1", "deepest containing node wins");
+    assert_eq!(pill.expression, "1");
+    assert_eq!(pill.value_preview.as_deref(), Some("1"));
+    assert_eq!(pill.type_label, "Literal");
+    assert_eq!(pill.state, FormulaDrillNodeStateProjection::Evaluated);
+    assert_eq!(pill.shape, None, "a scalar node has no array shape");
+
+    // Widening the selection to the whole call resolves the call node.
+    let pill = partial_eval(&drill, 1, 10).expect("call selection matches");
+    assert_eq!(pill.node_id, "call-1");
+    assert_eq!(pill.expression, "SUM(1,2,3)");
+
+    // A selection that no node fully covers falls back to the enclosing node.
+    let pill = partial_eval(&drill, 5, 7).expect("enclosing node matches");
+    assert_eq!(pill.node_id, "call-1");
+
+    // A collapsed selection yields no pill (the readout row handles the caret).
+    assert_eq!(partial_eval(&drill, 5, 5), None);
+    // Order-independence: anchor after focus resolves the same span.
+    assert_eq!(
+        partial_eval(&drill, 6, 5).map(|p| p.node_id),
+        Some("lit-1".to_string())
+    );
+    // Direct span matcher agrees.
+    assert_eq!(
+        drill_node_for_selection(&drill.tree, 5, 6).map(|n| n.node_id.as_str()),
+        Some("lit-1")
+    );
+    assert_eq!(drill_node_for_selection(&drill.tree, 5, 5), None);
+}
+
+/// Pills carry array shape for a node whose value spills (mechanism 20: the
+/// pill's `node_id` equals the drill row's, so pill and row point at one node).
+#[test]
+fn partial_eval_pill_reports_array_shape_for_a_spilling_node() {
+    let mut drill = nested_drill_tree();
+    drill.tree[0].array_preview = Some(ArrayPreviewProjection {
+        total_rows: 21,
+        total_cols: 1,
+        row_offset: 0,
+        col_offset: 0,
+        rows: vec![vec!["ZAR".into()]],
+        truncated: true,
+    });
+    let pill = partial_eval(&drill, 0, 11).expect("root selection matches");
+    assert_eq!(pill.node_id, "root-1");
+    assert_eq!(pill.shape.as_deref(), Some("21\u{00D7}1"));
+}
+
+/// Reference X-Ray (mechanism 07): only the segment the caret rests in lights.
+#[test]
+fn caret_lights_only_the_token_it_rests_in() {
+    let editor = FormulaEditorSurface {
+        source_text: "=SUM".into(),
+        caret_offset: 2,
+        selection_anchor: 2,
+        selection_focus: 2,
+        syntax_runs: vec![
+            SyntaxRunProjection {
+                text: "=".into(),
+                span_start: 0,
+                span_len: 1,
+                role: SyntaxTokenRoleProjection::Operator,
+            },
+            SyntaxRunProjection {
+                text: "SUM".into(),
+                span_start: 1,
+                span_len: 3,
+                role: SyntaxTokenRoleProjection::Function,
+            },
+        ],
+        diagnostics: vec![],
+        metrics: Default::default(),
+        document_is_fresh: true,
+    };
+    let segments = editor_segments(&editor);
+    // caret 2 is inside `SUM` [1,4), not `=` [0,1).
+    let lit: Vec<bool> = segments
+        .iter()
+        .map(|s| segment_lit_by_caret(s, 2))
+        .collect();
+    assert_eq!(lit, vec![false, true]);
+    // At the boundary byte 1, the caret belongs to the *next* token.
+    assert!(!segment_lit_by_caret(&segments[0], 1));
+    assert!(segment_lit_by_caret(&segments[1], 1));
+    // Caret at 0 lights the leading operator.
+    assert!(segment_lit_by_caret(&segments[0], 0));
+}
+
+#[test]
+fn drill_state_vocabulary_is_total_and_stable() {
+    use FormulaDrillNodeStateProjection as S;
+    let all = [
+        (S::Pending, "pending", "Pending"),
+        (S::Evaluated, "evaluated", "Evaluated"),
+        (S::Bound, "bound", "Bound"),
+        (S::Skipped, "skipped", "Skipped"),
+        (S::Opaque, "opaque", "Opaque"),
+        (S::Blocked, "blocked", "Blocked"),
+        (S::Error, "error", "Error"),
+    ];
+    for (state, id, label) in all {
+        assert_eq!(drill_state_id(state), id);
+        assert_eq!(drill_state_label(state), label);
+    }
 }
 
 // ---------------------------------------------------------------------------

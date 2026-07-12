@@ -41,13 +41,15 @@ pub use diagnostics::DiagnosticsList;
 pub use editor::FormulaBridge;
 pub use events::{BridgeEvent, BridgeEvents, EditDiscipline};
 pub use vm::{
-    ALL_COMPLETION_KINDS, MAX_WINDOW_EDGE, ReadoutVm, RenderSegment, buffer_is_dirty,
-    completion_applied, completion_kind_class, completion_kind_glyph, completion_kind_id,
-    completion_next, degrade_segments, diagnostic_row, drill_node_at_caret, dry_bind_diagnostics,
-    dry_bind_preview, editor_segments, is_stale, is_undo_redo_chord, next_preview_window, readout,
-    role_class, role_id, segments_snapshot, segments_text, selection_from_dom, severity_class,
-    severity_id, severity_label, shape_label, should_consume_undo_redo_locally,
-    snap_to_char_boundary, stage_label, text_edited_from_dom, utf8_to_utf16, utf16_to_utf8,
+    ALL_COMPLETION_KINDS, MAX_WINDOW_EDGE, PartialEvalVm, ReadoutVm, RenderSegment,
+    buffer_is_dirty, completion_applied, completion_kind_class, completion_kind_glyph,
+    completion_kind_id, completion_next, degrade_segments, diagnostic_row, drill_node_at_caret,
+    drill_node_for_selection, drill_state_class, drill_state_id, drill_state_label,
+    dry_bind_diagnostics, dry_bind_preview, editor_segments, is_stale, is_undo_redo_chord,
+    next_preview_window, partial_eval, readout, role_class, role_id, segment_lit_by_caret,
+    segments_snapshot, segments_text, selection_from_dom, severity_class, severity_id,
+    severity_label, shape_label, should_consume_undo_redo_locally, snap_to_char_boundary,
+    stage_label, text_edited_from_dom, utf8_to_utf16, utf16_to_utf8,
 };
 
 use dnacalc_strand::REDUCED_MOTION_FLAG;
@@ -81,6 +83,7 @@ const BRIDGE_CSS_BODY: &str = "\
 .dna-bridge__seg--role-identifier{color:var(--dna-accent-ink)}
 .dna-bridge__seg--role-text{color:var(--dna-prov-const)}
 .dna-bridge__seg--role-trivia{color:var(--dna-ink-3)}
+.dna-bridge__seg--caret{background:var(--dna-accent-soft);border-radius:2px}
 .dna-bridge__seg--diag-error{text-decoration:underline wavy var(--dna-red-ink);text-underline-offset:3px}
 .dna-bridge__seg--diag-warning{text-decoration:underline wavy var(--dna-prov-ext);text-underline-offset:3px}
 .dna-bridge__seg--diag-info{text-decoration:underline dotted var(--dna-accent-ink);text-underline-offset:3px}
@@ -125,6 +128,14 @@ const BRIDGE_CSS_BODY: &str = "\
 .dna-bridge__dry-bind-stage{color:var(--dna-prov-ext);font-weight:600}
 .dna-bridge__dry-bind-span{color:var(--dna-ink-3);font-size:11px}
 .dna-bridge__drill-toggle{align-self:flex-start;font:inherit;font-size:12px;color:var(--dna-accent-ink);background:var(--dna-paper-2);border:1px solid var(--dna-line);border-radius:var(--dna-radius-chip);padding:0 var(--dna-gap-3);cursor:pointer}
+.dna-bridge__pill{position:absolute;z-index:12;top:calc(-1 * var(--dna-gap-5));left:var(--dna-gap-3);display:flex;align-items:baseline;gap:var(--dna-gap-3);background:var(--dna-paper);border:1px solid var(--dna-accent);border-radius:var(--dna-radius-chip);box-shadow:0 4px 14px var(--dna-line-soft);padding:var(--dna-gap-1) var(--dna-gap-3);font-size:12px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dna-bridge__pill-expr{font-family:'Recursive Mono','Cascadia Code',Consolas,ui-monospace,monospace;color:var(--dna-accent-ink);font-weight:600}
+.dna-bridge__pill-type{color:var(--dna-ink-3);text-transform:lowercase}
+.dna-bridge__pill-shape{color:var(--dna-ink-3)}
+.dna-bridge__pill-value{color:var(--dna-value-ink);font-weight:600}
+.dna-bridge__pill-chip{font-size:10px;text-transform:uppercase;letter-spacing:0.04em;border-radius:var(--dna-radius-chip);padding:0 var(--dna-gap-2);background:var(--dna-paper-2);color:var(--dna-ink-2)}
+.dna-bridge__pill-chip[data-state=\"error\"],.dna-bridge__pill-chip[data-state=\"blocked\"]{background:var(--dna-red-soft);color:var(--dna-red-ink)}
+.dna-bridge__pill-chip[data-state=\"evaluated\"]{background:var(--dna-accent-soft);color:var(--dna-accent-ink)}
 ";
 
 /// The bridge's component-scoped stylesheet. Assembled at call time so the
