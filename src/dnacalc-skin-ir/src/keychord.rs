@@ -116,6 +116,29 @@ pub enum SkinVerb {
     ClearContents,
     /// Begin editing the selection in place — Excel's `F2`.
     EditInPlace,
+
+    // --- Shell verbs (SHELL_SPEC.md §5.1, added additively for the redesign
+    // shell's registry; the estate grammar above is untouched). They live in
+    // this enum so a user rebind of a shell verb rides the same persisted,
+    // audited `KeybindingOverrideMap` as every other verb. ---
+    /// Open the command deck overlay (Ctrl+K; Ctrl+Shift+P mirror).
+    CommandDeck,
+    /// Open the keyboard atlas overlay (Ctrl+/; `?` when not editing).
+    KeyboardAtlas,
+    /// Open the timeline / revision drawer overlay (Ctrl+H).
+    Timeline,
+    /// Peek card for the selection (P; Alt+hover is pointer-side).
+    Peek,
+    /// Toggle the Registry rail (Ctrl+B; Alt+B alternate; Calc only).
+    RegistryToggle,
+    /// Toggle the Inspector panel (Ctrl+I; Alt+I alternate).
+    InspectorToggle,
+    /// Save the document (Ctrl+S; disabled with honest badge until host support).
+    Save,
+    /// Open a document (Ctrl+O; disabled with honest badge until host support).
+    Open,
+    /// Find / goto — opens the command deck in goto mode (Ctrl+F).
+    FindGoto,
 }
 
 impl SkinVerb {
@@ -144,6 +167,15 @@ impl SkinVerb {
             Self::Escape => "escape",
             Self::ClearContents => "clear_contents",
             Self::EditInPlace => "edit_in_place",
+            Self::CommandDeck => "command_deck",
+            Self::KeyboardAtlas => "keyboard_atlas",
+            Self::Timeline => "timeline",
+            Self::Peek => "peek",
+            Self::RegistryToggle => "registry_toggle",
+            Self::InspectorToggle => "inspector_toggle",
+            Self::Save => "save",
+            Self::Open => "open",
+            Self::FindGoto => "find_goto",
         }
     }
 
@@ -176,6 +208,15 @@ impl SkinVerb {
             "escape" => Self::Escape,
             "clear_contents" => Self::ClearContents,
             "edit_in_place" => Self::EditInPlace,
+            "command_deck" => Self::CommandDeck,
+            "keyboard_atlas" => Self::KeyboardAtlas,
+            "timeline" => Self::Timeline,
+            "peek" => Self::Peek,
+            "registry_toggle" => Self::RegistryToggle,
+            "inspector_toggle" => Self::InspectorToggle,
+            "save" => Self::Save,
+            "open" => Self::Open,
+            "find_goto" => Self::FindGoto,
             _ => return None,
         })
     }

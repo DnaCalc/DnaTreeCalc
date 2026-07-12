@@ -1017,6 +1017,18 @@ fn handle_shell_keydown(
         | SkinVerb::ClearContents
         | SkinVerb::EditInPlace
         | SkinVerb::Escape => {}
+        // --- Redesign-shell verbs (SHELL_SPEC §5.1): not part of this
+        // estate shell's grammar — its universal table never binds them, so
+        // they cannot resolve here; listed to keep the match exhaustive. ---
+        SkinVerb::CommandDeck
+        | SkinVerb::KeyboardAtlas
+        | SkinVerb::Timeline
+        | SkinVerb::Peek
+        | SkinVerb::RegistryToggle
+        | SkinVerb::InspectorToggle
+        | SkinVerb::Save
+        | SkinVerb::Open
+        | SkinVerb::FindGoto => {}
     }
 }
 

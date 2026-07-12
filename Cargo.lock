@@ -1074,6 +1074,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "dnacalc-shell"
+version = "0.1.0"
+dependencies = [
+ "dnacalc-skin-ir",
+ "dnacalc-skin-leptos",
+ "dnacalc-strand",
+ "js-sys",
+ "leptos",
+ "serde_json",
+ "thiserror 2.0.18",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "wasm-bindgen-test",
+ "web-sys",
+]
+
+[[package]]
 name = "dnacalc-skin-ir"
 version = "0.1.0"
 dependencies = [
@@ -1091,6 +1108,13 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.18",
+]
+
+[[package]]
+name = "dnacalc-strand"
+version = "0.1.0"
+dependencies = [
+ "serde",
 ]
 
 [[package]]

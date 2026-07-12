@@ -1,0 +1,46 @@
+[package]
+name = "dnacalc-shell"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# TP tier (SHELL_SPEC.md §2): presentation crate — no ox* crate may ever
+# appear in this dependency graph (P-gate). dnacalc-skin-leptos is admitted
+# alongside skin-ir + strand + Leptos because its own graph is ox*-free
+# (verified via `cargo tree -e normal`) and it owns the one audited
+# `SharedSkinStateHandle` chokepoint this shell must share with the estate.
+[dependencies]
+dnacalc-skin-ir = { path = "../dnacalc-skin-ir" }
+dnacalc-skin-leptos = { path = "../dnacalc-skin-leptos" }
+dnacalc-strand = { path = "../dnacalc-strand" }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+leptos = { version = "0.8.17", default-features = false, features = ["ssr"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+leptos = { version = "0.8.17", default-features = false, features = ["csr"] }
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+js-sys = "0.3"
+wasm-bindgen = "=0.2.117"
+wasm-bindgen-futures = "0.4"
+wasm-bindgen-test = "=0.3.67"
+web-sys = { version = "0.3", features = [
+    "Document",
+    "Element",
+    "Event",
+    "HtmlElement",
+    "KeyboardEvent",
+    "KeyboardEventInit",
+    "Node",
+    "NodeList",
+    "Window",
+] }
+
+[lints]
+workspace = true
