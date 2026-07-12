@@ -100,6 +100,24 @@ must bubble undisturbed to the shell's guard above so the F-key exemption and th
 passthrough it already implements (`route_key`) can do their job. See §1's Esc-vs-text-entry
 precedence note for how this interacts with overlay Esc.
 
+**Undo/Redo carve-out while a host edit buffer is dirty (owner-ratified 2026-07-12, bead
+dtc-lfz.2 — supersedes bead dtc-dpo item 1):** the rule above has one further, narrowly-scoped
+exception for Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z specifically. While a host edit buffer holds
+uncommitted keystrokes — its local text differs from the surface's committed `source_text`,
+i.e. it is *dirty* — those three chords are consumed locally instead of bubbling: the editor's
+keydown handler calls `stop_propagation()` (so the keystroke never reaches the shell's
+Undo/Redo verbs for that keydown) but deliberately never `prevent_default()` (the browser's own
+textarea undo/redo stack IS the effect the carve-out exists to produce; calling
+`prevent_default()` would silence that native undo while still hiding the chord from the shell,
+losing the effect entirely). Once the buffer is clean again — its text matches `source_text` —
+the carve-out lapses and Ctrl+Z/Y/Shift+Z fall back to the general rule above: they bubble
+undisturbed, and the shell's model Undo/Redo verbs fire, exactly as before this carve-out
+existed. This is narrower than it looks: Ctrl+K and F9 are unaffected by buffer dirtiness (they
+always bubble, per the rule above, editing or not); clipboard chords (Ctrl+X/C/V) are likewise
+unaffected — the owner chose the undo-only carve-out this phase, not a broader "capture
+everything while dirty" rule. See §1's Esc-vs-text-entry precedence note for the analogous
+one-keystroke-one-effect reasoning this carve-out follows.
+
 ### 5.1 Universal verbs (defaults; all rebindable except stage switching)
 
 | Verb | Primary | Browser-hard-reserved? | Browser alternate | Notes |

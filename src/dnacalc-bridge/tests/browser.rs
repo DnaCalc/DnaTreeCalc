@@ -82,8 +82,11 @@ fn press_key(target: &web_sys::EventTarget, key: &str) {
     target.dispatch_event(&event).unwrap();
 }
 
-/// Dispatch a bubbling, cancelable Ctrl+`key` `keydown` on `target`.
-fn press_ctrl_key(target: &web_sys::EventTarget, key: &str) {
+/// Dispatch a bubbling, cancelable Ctrl+`key` `keydown` on `target`. Returns
+/// the DOM dispatch result: `true` if no listener called `preventDefault()`,
+/// `false` if one did — the direct way to assert a consumed key still let
+/// the browser's own default action (e.g. native textarea undo) survive.
+fn press_ctrl_key(target: &web_sys::EventTarget, key: &str) -> bool {
     let init = web_sys::KeyboardEventInit::new();
     init.set_key(key);
     init.set_ctrl_key(true);
@@ -91,7 +94,22 @@ fn press_ctrl_key(target: &web_sys::EventTarget, key: &str) {
     init.set_cancelable(true);
     let event =
         web_sys::KeyboardEvent::new_with_keyboard_event_init_dict("keydown", &init).unwrap();
-    target.dispatch_event(&event).unwrap();
+    target.dispatch_event(&event).unwrap()
+}
+
+/// Dispatch a bubbling, cancelable Ctrl+Shift+`key` `keydown` on `target`
+/// (e.g. Ctrl+Shift+Z, the redo alternate). Returns the DOM dispatch result
+/// (see `press_ctrl_key`).
+fn press_ctrl_shift_key(target: &web_sys::EventTarget, key: &str) -> bool {
+    let init = web_sys::KeyboardEventInit::new();
+    init.set_key(key);
+    init.set_ctrl_key(true);
+    init.set_shift_key(true);
+    init.set_bubbles(true);
+    init.set_cancelable(true);
+    let event =
+        web_sys::KeyboardEvent::new_with_keyboard_event_init_dict("keydown", &init).unwrap();
+    target.dispatch_event(&event).unwrap()
 }
 
 fn empty_editor() -> FormulaEditorSurface {
@@ -368,5 +386,102 @@ fn f9_and_ctrl_k_bubble_past_the_editor_to_an_ancestor_shell_handler() {
             .iter()
             .any(|e| matches!(e, BridgeEvent::RevertRequested)),
         "the editor must still have handled Escape itself, got {observed:?}"
+    );
+}
+
+#[wasm_bindgen_test]
+fn ctrl_z_is_consumed_locally_while_dirty_and_bubbles_once_clean() {
+    // Bead dtc-lfz.2 / S1.1 (owner-ratified 2026-07-12): the H1b propagation
+    // fix above correctly lets un-consumed chords bubble (that's what makes
+    // Ctrl+K/F9 work from inside the editor) — but a side effect was that
+    // in-textarea Ctrl+Z also bubbled to the shell as workspace Undo,
+    // surprising in a text editor. The carve-out: while the local buffer
+    // holds uncommitted keystrokes (its text differs from the host's
+    // committed `source_text`), Ctrl+Z is consumed locally so the browser's
+    // own textarea undo fires on the user's typing instead. Once the buffer
+    // is clean again (matches source_text), Ctrl+Z resumes bubbling so the
+    // shell's model Undo fires, exactly as before this bead.
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let bubbled = Arc::new(Mutex::new(Vec::new()));
+    let editor = FormulaEditorSurface {
+        source_text: "=A1".to_string(),
+        document_is_fresh: true,
+        ..Default::default()
+    };
+    let host = mount_inside_shell_stub(
+        editor,
+        FormulaAssistSurface::default(),
+        events.clone(),
+        bubbled.clone(),
+    );
+    let area = textarea(&host);
+
+    // Dirty: the local buffer ("=A1X") no longer matches the committed
+    // source_text ("=A1") the surface carries.
+    type_text(&area, "=A1X");
+    let not_canceled = press_ctrl_key(&area, "z");
+    assert!(
+        bubbled.lock().unwrap().is_empty(),
+        "Ctrl+Z must NOT bubble to the shell while the buffer is dirty, got {:?}",
+        bubbled.lock().unwrap()
+    );
+    assert!(
+        not_canceled,
+        "the editor must not call preventDefault() when consuming Ctrl+Z — \
+         the browser's own textarea undo IS the effect this carve-out \
+         exists to produce, so the default action must survive"
+    );
+
+    // Clean: type the buffer back to exactly the committed source_text.
+    type_text(&area, "=A1");
+    press_ctrl_key(&area, "z");
+    assert_eq!(
+        bubbled.lock().unwrap().as_slice(),
+        ["z"],
+        "Ctrl+Z must bubble to the shell once the buffer is clean again, \
+         so the shell's model Undo verb fires"
+    );
+}
+
+#[wasm_bindgen_test]
+fn ctrl_y_and_ctrl_shift_z_are_also_consumed_locally_while_dirty_but_ctrl_k_is_not() {
+    // The carve-out covers the full undo/redo chord family SHELL_SPEC §5.1
+    // lists — Ctrl+Z (undo), Ctrl+Y (redo), and Ctrl+Shift+Z (also redo) —
+    // not just Ctrl+Z. Ctrl+K is explicitly unaffected by buffer dirtiness
+    // (the bead keeps it bubbling regardless), proving the carve-out is
+    // scoped to the undo/redo chords only, not "capture everything while
+    // dirty".
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let bubbled = Arc::new(Mutex::new(Vec::new()));
+    let editor = FormulaEditorSurface {
+        source_text: "=A1".to_string(),
+        document_is_fresh: true,
+        ..Default::default()
+    };
+    let host = mount_inside_shell_stub(
+        editor,
+        FormulaAssistSurface::default(),
+        events.clone(),
+        bubbled.clone(),
+    );
+    let area = textarea(&host);
+
+    type_text(&area, "=A1X"); // dirty
+    press_ctrl_key(&area, "y");
+    press_ctrl_shift_key(&area, "Z");
+    assert!(
+        bubbled.lock().unwrap().is_empty(),
+        "Ctrl+Y and Ctrl+Shift+Z must both be consumed locally while the \
+         buffer is dirty, got {:?}",
+        bubbled.lock().unwrap()
+    );
+
+    // Ctrl+K is unaffected by buffer dirtiness — always bubbles (unchanged
+    // from the H1b policy above).
+    press_ctrl_key(&area, "k");
+    assert_eq!(
+        bubbled.lock().unwrap().as_slice(),
+        ["k"],
+        "Ctrl+K must keep bubbling regardless of buffer dirtiness"
     );
 }

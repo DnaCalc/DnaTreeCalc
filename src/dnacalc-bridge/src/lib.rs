@@ -41,13 +41,13 @@ pub use diagnostics::DiagnosticsList;
 pub use editor::FormulaBridge;
 pub use events::{BridgeEvent, BridgeEvents, EditDiscipline};
 pub use vm::{
-    ALL_COMPLETION_KINDS, MAX_WINDOW_EDGE, ReadoutVm, RenderSegment, completion_applied,
-    completion_kind_class, completion_kind_glyph, completion_kind_id, completion_next,
-    degrade_segments, diagnostic_row, drill_node_at_caret, dry_bind_diagnostics, dry_bind_preview,
-    editor_segments, is_stale, next_preview_window, readout, role_class, role_id,
-    segments_snapshot, segments_text, selection_from_dom, severity_class, severity_id,
-    severity_label, shape_label, snap_to_char_boundary, stage_label, text_edited_from_dom,
-    utf8_to_utf16, utf16_to_utf8,
+    ALL_COMPLETION_KINDS, MAX_WINDOW_EDGE, ReadoutVm, RenderSegment, buffer_is_dirty,
+    completion_applied, completion_kind_class, completion_kind_glyph, completion_kind_id,
+    completion_next, degrade_segments, diagnostic_row, drill_node_at_caret, dry_bind_diagnostics,
+    dry_bind_preview, editor_segments, is_stale, is_undo_redo_chord, next_preview_window, readout,
+    role_class, role_id, segments_snapshot, segments_text, selection_from_dom, severity_class,
+    severity_id, severity_label, shape_label, should_consume_undo_redo_locally,
+    snap_to_char_boundary, stage_label, text_edited_from_dom, utf8_to_utf16, utf16_to_utf8,
 };
 
 use dnacalc_strand::REDUCED_MOTION_FLAG;

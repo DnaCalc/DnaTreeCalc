@@ -11,11 +11,12 @@
 //! assertions the (deliberately empty) fixture document cannot exercise.
 
 use dnacalc_bridge::{
-    ALL_COMPLETION_KINDS, BridgeEvent, EditDiscipline, completion_applied, completion_kind_glyph,
-    completion_kind_id, completion_next, degrade_segments, drill_node_at_caret, editor_segments,
-    is_stale, next_preview_window, readout, role_class, role_id, segments_snapshot, segments_text,
-    selection_from_dom, severity_label, stage_label, text_edited_from_dom, utf8_to_utf16,
-    utf16_to_utf8,
+    ALL_COMPLETION_KINDS, BridgeEvent, EditDiscipline, buffer_is_dirty, completion_applied,
+    completion_kind_glyph, completion_kind_id, completion_next, degrade_segments,
+    drill_node_at_caret, editor_segments, is_stale, is_undo_redo_chord, next_preview_window,
+    readout, role_class, role_id, segments_snapshot, segments_text, selection_from_dom,
+    severity_label, should_consume_undo_redo_locally, stage_label, text_edited_from_dom,
+    utf8_to_utf16, utf16_to_utf8,
 };
 use dnacalc_skin_ir::formula::{
     ArrayPreviewProjection, CompletionItemProjection, CompletionSurface,
@@ -605,4 +606,71 @@ fn role_ids_are_stable_and_total() {
         assert!(!role_id(role).is_empty());
         assert!(role_class(role).ends_with(role_id(role)));
     }
+}
+
+// ---------------------------------------------------------------------------
+// Undo/redo carve-out (bead dtc-lfz.2 / S1.1, owner-ratified 2026-07-12):
+// the "dirty" predicate + the chord recognizer + the combined decision the
+// editor's keydown handler gates `stop_propagation()` on.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn buffer_is_dirty_compares_local_buffer_against_committed_source() {
+    // Clean: buffer matches the host's committed source_text exactly,
+    // including the empty-vs-empty edge (a freshly mounted, untouched editor).
+    assert!(!buffer_is_dirty("", ""));
+    assert!(!buffer_is_dirty("=SUM(1,2)", "=SUM(1,2)"));
+    // Dirty: any divergence at all, not just a length change.
+    assert!(buffer_is_dirty("=SUM(1,2,3)", "=SUM(1,2)"));
+    assert!(buffer_is_dirty("", "=A1"));
+    assert!(buffer_is_dirty("=A1", ""));
+    // Same length, different content — the naive "did the length change?"
+    // check a weaker implementation might use would wrongly call this clean.
+    assert!(buffer_is_dirty("=A2", "=A1"));
+}
+
+#[test]
+fn is_undo_redo_chord_recognizes_ctrl_z_y_shift_z_case_insensitively() {
+    // Ctrl+Z / Ctrl+z (undo) and Ctrl+Y / Ctrl+y (redo): ctrl, no alt.
+    assert!(is_undo_redo_chord("z", true, false));
+    assert!(is_undo_redo_chord("Z", true, false));
+    assert!(is_undo_redo_chord("y", true, false));
+    assert!(is_undo_redo_chord("Y", true, false));
+    // Ctrl+Shift+Z arrives as key="Z" (Shift capitalizes on common layouts);
+    // shift itself doesn't disqualify — the recognizer doesn't need shift to
+    // decide whether the carve-out applies, only ctrl/alt/letter.
+    assert!(is_undo_redo_chord("Z", true, false));
+
+    // Not recognized: no Ctrl at all (plain typing of the letter).
+    assert!(!is_undo_redo_chord("z", false, false));
+    assert!(!is_undo_redo_chord("y", false, false));
+    // Not recognized: Alt held (never an undo/redo chord per SHELL_SPEC §5.1).
+    assert!(!is_undo_redo_chord("z", true, true));
+    assert!(!is_undo_redo_chord("y", true, true));
+    // Not recognized: any other letter, even with Ctrl (e.g. Ctrl+K, Ctrl+S).
+    assert!(!is_undo_redo_chord("k", true, false));
+    assert!(!is_undo_redo_chord("s", true, false));
+    assert!(!is_undo_redo_chord("x", true, false));
+}
+
+#[test]
+fn should_consume_undo_redo_locally_gates_the_chord_on_dirty() {
+    // The chord matches AND the buffer is dirty: consume locally.
+    assert!(should_consume_undo_redo_locally("z", true, false, true));
+    assert!(should_consume_undo_redo_locally("y", true, false, true));
+    assert!(should_consume_undo_redo_locally("Z", true, false, true));
+
+    // The chord matches but the buffer is CLEAN: must NOT consume — this is
+    // the exact case that must bubble so the shell's Undo/Redo verb fires.
+    assert!(!should_consume_undo_redo_locally("z", true, false, false));
+    assert!(!should_consume_undo_redo_locally("y", true, false, false));
+
+    // The buffer is dirty but the chord isn't an undo/redo chord: no effect
+    // on unrelated keys (Ctrl+K, Ctrl+S, plain letters) regardless of dirt.
+    assert!(!should_consume_undo_redo_locally("k", true, false, true));
+    assert!(!should_consume_undo_redo_locally("s", true, false, true));
+    assert!(!should_consume_undo_redo_locally("z", false, false, true));
+
+    // Dirty + Ctrl+Alt+Z: Alt disqualifies regardless of dirt.
+    assert!(!should_consume_undo_redo_locally("z", true, true, true));
 }

@@ -20,8 +20,9 @@ use crate::diagnostics::DiagnosticsList;
 use crate::events::{BridgeEvent, BridgeEvents, EditDiscipline};
 use crate::readout::ReadoutRow;
 use crate::vm::{
-    RenderSegment, completion_applied, completion_next, editor_segments, is_stale, role_class,
-    selection_from_dom, severity_class, text_edited_from_dom, utf8_to_utf16,
+    RenderSegment, buffer_is_dirty, completion_applied, completion_next, editor_segments, is_stale,
+    role_class, selection_from_dom, severity_class, should_consume_undo_redo_locally,
+    text_edited_from_dom, utf8_to_utf16,
 };
 
 /// Render one [`RenderSegment`] as a span in the token underlay. Shared with
@@ -86,10 +87,13 @@ pub fn FormulaBridge(
 
     // Local echo tracking: the underlay only paints while DOM text == host
     // text. `buffer` mirrors what the user sees; it starts equal to source.
+    // This is also the exact "dirty" predicate the undo/redo carve-out below
+    // gates on (bead dtc-lfz.2 / SHELL_SPEC §5) — one definition of "the
+    // buffer holds uncommitted keystrokes", not two.
     let buffer = RwSignal::new(source.clone());
     let echo_pending = {
         let source = source.clone();
-        Memo::new(move |_| buffer.get() != source)
+        Memo::new(move |_| buffer_is_dirty(&buffer.get(), &source))
     };
 
     let edit_state = RwSignal::new(EditDiscipline::Selected);
@@ -160,14 +164,16 @@ pub fn FormulaBridge(
         on_event.run(text_edited_from_dom(text, caret16));
     };
 
-    // Propagation policy (bead dtc-1tk.1 / H1b): `stop_propagation()` is
-    // called ONLY on the branches below that actually consume the key —
-    // completion navigation (Up/Down/Enter/Esc while the popup is open),
-    // plain Enter (commit), and plain Escape (revert). Every other key,
-    // including F9 (Recalculate) and Ctrl+K (command deck) — the whole
-    // F-key-exemption class SHELL_SPEC §5 requires to work from inside edit
-    // buffers — falls through untouched and bubbles to the shell's own
-    // `.dna-shell` keydown handler in the composed Bench app.
+    // Propagation policy (bead dtc-1tk.1 / H1b, extended by dtc-lfz.2 / S1.1):
+    // `stop_propagation()` is called ONLY on the branches below that actually
+    // consume the key — completion navigation (Up/Down/Enter/Esc while the
+    // popup is open), plain Enter (commit), plain Escape (revert), and now
+    // Ctrl+Z/Ctrl+Y/Ctrl+Shift+Z but ONLY while the buffer is dirty (see
+    // below). Every other key, including F9 (Recalculate) and Ctrl+K
+    // (command deck) — the whole F-key-exemption class SHELL_SPEC §5
+    // requires to work from inside edit buffers — falls through untouched
+    // and bubbles to the shell's own `.dna-shell` keydown handler in the
+    // composed Bench app.
     //
     // Precedence for Escape specifically: the editor's own Escape (exact
     // revert, host-side) stops propagation deliberately, even though the
@@ -178,8 +184,14 @@ pub fn FormulaBridge(
     // already fully handled it (closed the popup, or reverted the buffer),
     // so it must not also reach the shell's overlay-Esc ladder in the same
     // keystroke. This is belt-and-suspenders — it holds even if the guard's
-    // suppression rule ever changes — and it is the only place this handler
-    // stops propagation for a key it isn't exclusively responsible for.
+    // suppression rule ever changes.
+    //
+    // Undo/redo carve-out (owner-ratified 2026-07-12, bead dtc-lfz.2):
+    // Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z are TEXT-LOCAL WHILE THE BUFFER IS
+    // DIRTY — see the guarded match arm below. Clipboard (Ctrl+X/C/V) and
+    // every other modified chord are unaffected by buffer dirtiness; the
+    // owner chose the narrower undo-only carve-out, not a broader
+    // "capture everything while dirty" rule.
     let on_keydown = move |ev: leptos::ev::KeyboardEvent| {
         let key = ev.key();
         // Overlay-first grammar: while the completion popup is open it owns
@@ -238,9 +250,32 @@ pub fn FormulaBridge(
                 edit_state.set(EditDiscipline::Selected);
                 on_event.run(BridgeEvent::RevertRequested);
             }
-            // Every other key — F9, Ctrl+K, and the rest of the F-key
-            // exemption class — is not consumed here and must bubble
-            // undisturbed.
+            // Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z, but only while the buffer is
+            // dirty (bead dtc-lfz.2 / SHELL_SPEC §5 carve-out): consume the
+            // chord locally so the browser's own textarea undo/redo stack
+            // fires on the user's uncommitted typing. Deliberately NO
+            // `prevent_default()` here — that native undo/redo IS the
+            // effect this carve-out exists to produce; preventing the
+            // default would silence it while still stopping the shell from
+            // ever seeing the chord. `stop_propagation()` alone is correct:
+            // it keeps the keystroke out of the shell's Undo/Redo verbs for
+            // this one keydown without touching what the browser does with
+            // it. Once the buffer is clean this guard is false and the
+            // match falls through to the catch-all below, so the same chord
+            // bubbles untouched and the shell's model Undo/Redo fires,
+            // exactly as before this bead.
+            _ if should_consume_undo_redo_locally(
+                &key,
+                ev.ctrl_key() || ev.meta_key(),
+                ev.alt_key(),
+                echo_pending.get_untracked(),
+            ) =>
+            {
+                ev.stop_propagation();
+            }
+            // Every other key — F9, Ctrl+K, clipboard chords, and the rest
+            // of the F-key exemption class — is not consumed here and must
+            // bubble undisturbed.
             _ => {}
         }
     };

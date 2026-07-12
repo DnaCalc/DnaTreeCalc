@@ -553,6 +553,45 @@ pub fn is_stale(surface: &FormulaEditorSurface) -> bool {
     !surface.document_is_fresh
 }
 
+// ---------------------------------------------------------------------------
+// Undo/redo carve-out while the edit buffer is dirty (bead dtc-lfz.2 / S1.1,
+// owner-ratified 2026-07-12: SHELL_SPEC §5's carve-out clause).
+// ---------------------------------------------------------------------------
+
+/// "Dirty" exactly as the carve-out defines it: the local edit buffer's text
+/// differs from the host's last-committed `source_text`. This is the same
+/// comparison `FormulaBridge`'s echo-pending underlay-hiding logic already
+/// uses — one predicate for "dirty", not two definitions drifting apart.
+#[must_use]
+pub fn buffer_is_dirty(buffer: &str, source: &str) -> bool {
+    buffer != source
+}
+
+/// Is this keydown one of the three chords the undo/redo carve-out
+/// recognizes — Ctrl+Z (undo), Ctrl+Y (redo), Ctrl+Shift+Z (redo)? Matches
+/// the letter case-insensitively (`KeyboardEvent.key` capitalizes under
+/// Shift on common layouts, so Ctrl+Shift+Z arrives as `"Z"`); Alt
+/// disqualifies (never part of an undo/redo chord per SHELL_SPEC §5.1).
+/// Shift itself is irrelevant here — both Ctrl+Z and Ctrl+Shift+Z must be
+/// recognized, and the caller does not need to distinguish undo from redo to
+/// decide whether the carve-out applies.
+#[must_use]
+pub fn is_undo_redo_chord(key: &str, ctrl: bool, alt: bool) -> bool {
+    ctrl && !alt && (key.eq_ignore_ascii_case("z") || key.eq_ignore_ascii_case("y"))
+}
+
+/// The carve-out decision itself (SHELL_SPEC §5): consume an undo/redo chord
+/// locally — native textarea undo/redo, `stop_propagation()` only, NEVER
+/// `prevent_default()` (the browser's own undo/redo stack IS the effect) —
+/// only while the buffer is dirty. Once clean, or for any chord that isn't
+/// Ctrl+Z/Y/Shift+Z, the answer is `false` and the keydown handler must let
+/// the key fall through untouched so it bubbles to the shell exactly like
+/// every other unconsumed key (the general H1b rule, bead dtc-1tk.1).
+#[must_use]
+pub fn should_consume_undo_redo_locally(key: &str, ctrl: bool, alt: bool, dirty: bool) -> bool {
+    dirty && is_undo_redo_chord(key, ctrl, alt)
+}
+
 /// One diagnostic row's list metadata (shared by full-mode diagnostics and
 /// tests): `(severity label, stage label, message)` all verbatim from the IR.
 #[must_use]
