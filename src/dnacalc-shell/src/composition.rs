@@ -42,6 +42,18 @@ pub trait BridgeSurface: Send + Sync + 'static {
     fn mount(&self, ctx: StageContext) -> AnyView;
 }
 
+/// The typed extension point a product mounts into the Inspector's
+/// stage-specific slot (SHELL_SPEC §7: "a stage extends the Inspector only
+/// through [`InspectorSlotKind::StagePanel`]"). Bench mounts its
+/// formatting / CF / locale panel here (bead dtc-lfz.5). Until a surface is
+/// provided the Inspector renders the honest "no stage panel registered"
+/// absence — never a fake block. Mirrors [`BridgeSurface`]: the shell hands
+/// the same [`StageContext`] every stage receives; the concrete surface
+/// captures whatever product signals it needs.
+pub trait InspectorSurface: Send + Sync + 'static {
+    fn mount(&self, ctx: StageContext) -> AnyView;
+}
+
 /// Bridge region composition. The Bridge itself is present in every
 /// product (SHELL_SPEC §1); only its height profile and mounted surface
 /// vary.
@@ -89,6 +101,10 @@ pub struct ShellComposition {
     pub bridge_slot: BridgeSlot,
     pub registry: Option<RegistryComposition>,
     pub inspector: Option<InspectorComposition>,
+    /// The product's Inspector stage-panel surface, when one is mounted
+    /// (bead dtc-lfz.5). `None` renders the honest StagePanel absence.
+    /// Only meaningful when `inspector` is `Some`.
+    pub inspector_surface: Option<Arc<dyn InspectorSurface>>,
     pub strip: StripComposition,
 }
 
@@ -109,6 +125,7 @@ impl ShellComposition {
             },
             registry: None,
             inspector: Some(InspectorComposition {}),
+            inspector_surface: None,
             strip: StripComposition {},
         }
     }
@@ -129,6 +146,7 @@ impl ShellComposition {
             },
             registry: Some(RegistryComposition {}),
             inspector: Some(InspectorComposition {}),
+            inspector_surface: None,
             strip: StripComposition {},
         }
     }

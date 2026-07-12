@@ -23,8 +23,8 @@ use dnacalc_strand::{Density, IdentityBadge, Theme, css_custom_properties};
 
 use crate::command_deck::{COMMAND_DECK_CSS, CommandDeck};
 use crate::composition::{
-    CatalogComposition, INSPECTOR_WIDTH_PX, MAST_HEIGHT_PX, REGISTRY_WIDTH_PX, STRIP_HEIGHT_PX,
-    ShellComposition,
+    CatalogComposition, INSPECTOR_WIDTH_PX, InspectorSurface, MAST_HEIGHT_PX, REGISTRY_WIDTH_PX,
+    STRIP_HEIGHT_PX, ShellComposition,
 };
 use crate::inspector::{InspectorSlotContent, InspectorSlotKind, inspector_slot_content};
 use crate::keyboard::{
@@ -566,6 +566,8 @@ pub fn Shell(
     let switcher_composed = composition.mast.stage_switcher;
     let registry_composed = composition.registry.is_some();
     let inspector_composed = composition.inspector.is_some();
+    let inspector_surface = composition.inspector_surface.clone();
+    let inspector_ctx = stage_ctx.clone();
     let bridge_slot = composition.bridge_slot.clone();
     let bridge_ctx = stage_ctx.clone();
     let host_ctx = stage_ctx.clone();
@@ -720,6 +722,8 @@ pub fn Shell(
                                 workspace=workspace
                                 selection=selection
                                 collapsed=inspector_collapsed
+                                stage_panel=inspector_surface
+                                stage_ctx=inspector_ctx
                             />
                         }
                     })}
@@ -970,13 +974,68 @@ fn RegistryRail(workspace: ReadSignal<WorkspaceState>, collapsed: RwSignal<bool>
 }
 
 /// Inspector panel (SHELL_SPEC §7): typed slots, projection-fed; the
-/// reserved `Evidence` slot renders nothing at all.
+/// reserved `Evidence` slot renders nothing at all. A product may mount a
+/// stage-specific surface into the `StagePanel` slot (bead dtc-lfz.5, the
+/// designed extension point); absent one, that slot keeps its honest
+/// projection-fed absence.
 #[component]
 fn InspectorPanel(
     workspace: ReadSignal<WorkspaceState>,
     selection: ReadSignal<SelectionState>,
     collapsed: RwSignal<bool>,
+    /// The product's Inspector stage-panel surface, mounted exactly once
+    /// at the `StagePanel` slot. `None` leaves the honest absence.
+    stage_panel: Option<Arc<dyn InspectorSurface>>,
+    /// The same context every stage receives (SHELL_SPEC §3); handed to the
+    /// stage-panel surface at mount.
+    stage_ctx: StageContext,
 ) -> impl IntoView {
+    // Mount the stage-panel surface once (single-use `AnyView`); the loop
+    // takes it when it reaches the StagePanel slot.
+    let mut stage_panel_view = stage_panel.map(|surface| surface.mount(stage_ctx));
+
+    // One reactive typed slot (projection-fed), rendered for every kind that
+    // is not a mounted stage panel.
+    let typed_slot = move |kind: InspectorSlotKind| {
+        view! {
+            {move || {
+                let content = workspace
+                    .with(|ws| selection.with(|sel| inspector_slot_content(kind, ws, sel)));
+                match content {
+                    InspectorSlotContent::Block { title, lines } => view! {
+                        <section
+                            class="dna-inspector__block"
+                            data-inspector-slot=kind.stable_id()
+                        >
+                            <h3>{title}</h3>
+                            <ul>
+                                {lines
+                                    .into_iter()
+                                    .map(|line| view! { <li>{line}</li> })
+                                    .collect_view()}
+                            </ul>
+                        </section>
+                    }
+                    .into_any(),
+                    InspectorSlotContent::Absent { title, reason } => view! {
+                        <section
+                            class="dna-inspector__block dna-inspector__block--absent"
+                            data-inspector-slot=kind.stable_id()
+                        >
+                            <h3>{title}</h3>
+                            <p>{reason}</p>
+                        </section>
+                    }
+                    .into_any(),
+                    // Reserved slots render NOTHING — not an empty frame, not a
+                    // dash (PARITY_TRUST_UX §8).
+                    InspectorSlotContent::Nothing => ().into_any(),
+                }
+            }}
+        }
+        .into_any()
+    };
+
     view! {
         <aside
             class="dna-inspector"
@@ -989,47 +1048,20 @@ fn InspectorPanel(
                 .iter()
                 .map(|kind| {
                     let kind = *kind;
-                    view! {
-                        {move || {
-                            let content = workspace.with(|ws| {
-                                selection.with(|sel| inspector_slot_content(kind, ws, sel))
-                            });
-                            match content {
-                                InspectorSlotContent::Block { title, lines } => {
-                                    view! {
-                                        <section
-                                            class="dna-inspector__block"
-                                            data-inspector-slot=kind.stable_id()
-                                        >
-                                            <h3>{title}</h3>
-                                            <ul>
-                                                {lines
-                                                    .into_iter()
-                                                    .map(|line| view! { <li>{line}</li> })
-                                                    .collect_view()}
-                                            </ul>
-                                        </section>
-                                    }
-                                        .into_any()
-                                }
-                                InspectorSlotContent::Absent { title, reason } => {
-                                    view! {
-                                        <section
-                                            class="dna-inspector__block dna-inspector__block--absent"
-                                            data-inspector-slot=kind.stable_id()
-                                        >
-                                            <h3>{title}</h3>
-                                            <p>{reason}</p>
-                                        </section>
-                                    }
-                                        .into_any()
-                                }
-                                // Reserved slots render NOTHING — not an empty
-                                // frame, not a dash (PARITY_TRUST_UX §8).
-                                InspectorSlotContent::Nothing => ().into_any(),
+                    if kind == InspectorSlotKind::StagePanel {
+                        if let Some(surface_view) = stage_panel_view.take() {
+                            return view! {
+                                <section
+                                    class="dna-inspector__block"
+                                    data-inspector-slot="stage-panel"
+                                >
+                                    {surface_view}
+                                </section>
                             }
-                        }}
+                            .into_any();
+                        }
                     }
+                    typed_slot(kind)
                 })
                 .collect_view()}
         </aside>

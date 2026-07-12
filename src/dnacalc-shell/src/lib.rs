@@ -34,8 +34,9 @@ pub use command_deck::{
 };
 pub use composition::{
     BRIDGE_HEIGHT_ONE_ROW_PX, BRIDGE_HEIGHT_TWO_ROW_PX, BridgeSlot, BridgeSurface,
-    CatalogComposition, INSPECTOR_WIDTH_PX, InspectorComposition, MAST_HEIGHT_PX, MastComposition,
-    REGISTRY_WIDTH_PX, RegistryComposition, STRIP_HEIGHT_PX, ShellComposition, StripComposition,
+    CatalogComposition, INSPECTOR_WIDTH_PX, InspectorComposition, InspectorSurface, MAST_HEIGHT_PX,
+    MastComposition, REGISTRY_WIDTH_PX, RegistryComposition, STRIP_HEIGHT_PX, ShellComposition,
+    StripComposition,
 };
 pub use inspector::{InspectorSlotContent, InspectorSlotKind, inspector_slot_content};
 pub use keyboard::{

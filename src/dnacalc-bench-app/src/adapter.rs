@@ -21,7 +21,7 @@ use dnacalc_bench_host::app::preview_state::preview_minimal_host_state;
 use dnacalc_bench_host::app::reducer::apply_skin_intent_to_host_state;
 use dnacalc_bench_host::services::home_shell_view_model::build_home_shell_view_model;
 use dnacalc_bench_host::services::live_edit::{
-    apply_live_editor_input, flush_pending_runtime_recalc,
+    apply_live_editor_input, flush_pending_runtime_recalc, refresh_active_formula_space,
 };
 use dnacalc_bench_host::state::OneCalcHostState;
 use dnacalc_bench_host::ui::editor::commands::{EditorInputEvent, EditorInputKind};
@@ -189,6 +189,39 @@ impl BenchHost {
         apply_skin_intent_to_host_state(&mut self.state, SkinIntent::OneFormula(intent))
     }
 
+    /// Author a number format on the active formula (bead dtc-lfz.5,
+    /// BENCH_SPEC §7) and re-render the result through host truth so the
+    /// live preview reflects it immediately. Two real steps, no skin-side
+    /// formatting anywhere:
+    ///   1. `OneFormulaIntent::SetNumberFormat` records the code on the
+    ///      formula's `FormattingSurface` (the sanctioned write verb).
+    ///   2. `refresh_active_formula_space` re-runs the OxFml pass so the
+    ///      `effective_display_text` — the ONLY display string the result
+    ///      hero shows — is recomputed under the new format code. The
+    ///      display string always comes from the projection; the panel
+    ///      never formats a number itself (the layering law).
+    ///
+    /// `code` is `None` (or empty) for General. Returns `true` when the
+    /// code actually changed (so the caller re-projects); an unchanged code
+    /// is an honest no-op that skips the bridge pass.
+    pub fn set_number_format(&mut self, code: Option<String>) -> bool {
+        let formula_space_id = self.formula_space_id();
+        let changed = apply_skin_intent_to_host_state(
+            &mut self.state,
+            SkinIntent::OneFormula(OneFormulaIntent::SetNumberFormat {
+                formula_space_id,
+                number_format_code: code,
+            }),
+        );
+        if changed {
+            // Re-render `effective_display_summary` under the new format.
+            // A no active-value formula (empty / diagnostic) refreshes to a
+            // benign no-op; either way the projection is the source of truth.
+            let _ = refresh_active_formula_space(&*self.bridge, &mut self.state);
+        }
+        changed
+    }
+
     /// Run the live OxFml editor pass over `text` with the caret at UTF-8 byte
     /// offset `caret`. This is the real analysis path: syntax runs,
     /// staged diagnostics, completion proposals, and (for a runtime-eligible
@@ -326,6 +359,59 @@ mod tests {
                 col_count: 8,
             }),
             "the bounded array-window transport is an unattached-degrade no-op"
+        );
+    }
+
+    /// Authoring a number format re-renders the result's display string
+    /// through host truth (bead dtc-lfz.5, BENCH_SPEC §7). This is the
+    /// live-preview contract: the panel calls `set_number_format`, and the
+    /// projection's result Display text changes because the HOST re-rendered
+    /// `effective_display_summary` under the new code — never a skin-side
+    /// formatter. Fail-pre-fix: `set_number_format` did not exist before this
+    /// bead, and the re-render is the behaviour under test.
+    #[test]
+    fn set_number_format_rerenders_the_result_display_through_the_host() {
+        let mut host = BenchHost::new();
+        host.apply(BridgeEvent::TextEdited {
+            text: "=1234.5".to_string(),
+            caret: 7,
+        });
+        let before = match host.projection().result {
+            FormulaResultSurface::Display { text, .. } => text,
+            other => panic!("expected a scalar display for =1234.5, got {other:?}"),
+        };
+
+        // Apply a thousands-grouped format; the host re-renders the value.
+        assert!(
+            host.set_number_format(Some("#,##0.00".to_string())),
+            "a fresh format code is a real change"
+        );
+
+        let projection = host.projection();
+        assert_eq!(
+            projection.formatting.number_format_code.as_deref(),
+            Some("#,##0.00"),
+            "the write verb recorded the code on the FormattingSurface"
+        );
+        let after = match projection.result {
+            FormulaResultSurface::Display { text, .. } => text,
+            other => panic!("expected a scalar display after formatting, got {other:?}"),
+        };
+        assert_ne!(
+            before, after,
+            "the number-format change re-rendered the result via host projection \
+             (before={before:?}, after={after:?})"
+        );
+        assert!(
+            after.contains(','),
+            "the thousands separator is the format's signature and comes from host \
+             truth, not a skin formatter; got {after:?}"
+        );
+
+        // Re-applying the same code is an honest no-op (no phantom re-render).
+        assert!(
+            !host.set_number_format(Some("#,##0.00".to_string())),
+            "an unchanged code changes nothing"
         );
     }
 

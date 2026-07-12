@@ -16,8 +16,8 @@ use leptos::prelude::*;
 
 use dnacalc_bridge::{BridgeEvent, FormulaBridge};
 use dnacalc_shell::{
-    BridgeSurface, ProfileTag, RuntimeContext, Shell, ShellComposition, StageContext, StageHandle,
-    StageId, StageRegistry, StageSurface,
+    BridgeSurface, InspectorSurface, ProfileTag, RuntimeContext, Shell, ShellComposition,
+    StageContext, StageHandle, StageId, StageRegistry, StageSurface,
 };
 use dnacalc_skin_ir::IntentReceipt;
 use dnacalc_skin_ir::SkinVerb;
@@ -31,6 +31,7 @@ use dnacalc_skin_leptos::state_handles::SharedSkinStateHandle;
 use dnacalc_strand::{Density, Theme};
 
 use crate::adapter::BenchHost;
+use crate::format_panel::{FORMAT_PANEL_CSS, FormatPanel};
 use crate::xray::{RingStep, XRAY_CSS, XRayPanel, result_array_window_intent, ring_step};
 
 thread_local! {
@@ -75,6 +76,29 @@ impl BridgeSurface for BenchBridgeSurface {
                     />
                 }
             }}
+        }
+        .into_any()
+    }
+}
+
+/// The typed surface the shell mounts into the Inspector's StagePanel slot
+/// (bead dtc-lfz.5, BENCH_SPEC §7): the formatting / CF / locale panel over
+/// host truth. Holds only `Send + Sync` handles — the panel re-reads
+/// `projection` reactively, and authors number formats through the
+/// `on_set_number_format` callback (LIVE; CF / font / fill / locale are
+/// display-only this phase).
+#[derive(Clone)]
+struct BenchFormatSurface {
+    projection: RwSignal<OneFormulaProjection>,
+    on_set_number_format: Callback<Option<String>>,
+}
+
+impl InspectorSurface for BenchFormatSurface {
+    fn mount(&self, _ctx: StageContext) -> AnyView {
+        let projection = self.projection;
+        let on_set_number_format = self.on_set_number_format;
+        view! {
+            <FormatPanel projection=projection on_set_number_format=on_set_number_format />
         }
         .into_any()
     }
@@ -395,6 +419,24 @@ pub fn BenchApp(
         }
     });
 
+    // The format panel's number-format authoring sink (bead dtc-lfz.5): a
+    // real `SetNumberFormat` write plus a host re-render, so the live preview
+    // (and the Result stage) reflect the new format immediately through host
+    // truth — never a skin-side formatter. Re-projects `persistence` too, so
+    // the mast dirty-dot tracks the formatting edit.
+    let on_set_number_format = Callback::new(move |code: Option<String>| {
+        let changed =
+            with_bench_host(host_id, |host| host.set_number_format(code)).unwrap_or(false);
+        if changed {
+            if let Some(next) = with_bench_host(host_id, |host| host.projection()) {
+                projection.set(next);
+            }
+            if let Some(next) = with_bench_host(host_id, |host| shell_persistence_from_host(host)) {
+                persistence.set(next);
+            }
+        }
+    });
+
     // Shell verbs the Bench product owns (SHELL_SPEC §5 forwards these through
     // `on_shell_verb`): F8 toggles the X-Ray, ']'/'[' walk the evaluation ring.
     let on_shell_verb = Callback::new(move |verb: SkinVerb| match verb {
@@ -465,6 +507,13 @@ pub fn BenchApp(
         projection,
         on_event,
     }));
+    // Mount the formatting / CF / locale panel into the Inspector's StagePanel
+    // slot (bead dtc-lfz.5, BENCH_SPEC §7). One mount point; the Strip and
+    // overlay regions are untouched (sibling-agent territory).
+    composition.inspector_surface = Some(Arc::new(BenchFormatSurface {
+        projection,
+        on_set_number_format,
+    }));
 
     let stages = StageRegistry::new().with_stage(Arc::new(BenchResultStage {
         projection,
@@ -476,6 +525,7 @@ pub fn BenchApp(
     view! {
         <style>{BENCH_APP_CSS}</style>
         <style>{XRAY_CSS}</style>
+        <style>{FORMAT_PANEL_CSS}</style>
         <Shell
             composition=composition
             stages=stages
