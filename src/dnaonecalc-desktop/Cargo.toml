@@ -1,0 +1,15 @@
+[package]
+name = "dnaonecalc-desktop"
+version = "0.1.0"
+edition = "2021"
+description = "DNA OneCalc desktop shell (Tauri v2)"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+dnaonecalc-host = { path = "../dnaonecalc-host" }
+rfd = "0.15"
+tauri = { version = "2", features = [] }
+serde.workspace = true
+serde_json.workspace = true
