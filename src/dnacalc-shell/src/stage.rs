@@ -6,8 +6,8 @@
 //!
 //! - **Switching is re-projection, never re-load.** [`switch_stage`] writes
 //!   `SetActiveLens` through the audited shared-state chokepoint and touches
-//!   nothing else — it must not dispatch engine intents (tested with the
-//!   IR's `RecordingDispatcher`).
+//!   nothing else — it must not dispatch engine intents (proven by the
+//!   audit log: exactly one `SetActiveLens` change per switch, nothing else).
 //! - **Continuity:** `SharedSkinState.selection_set / focus_key /
 //!   collapsed_keys / pinned_keys / cleave` survive switches; the incoming
 //!   stage renders the continuity halo ([`continuity_halo`]; 160 ms,
@@ -209,7 +209,8 @@ pub fn resolve_active_stage(
 /// `SharedStateChange::SetActiveLens` (origin `Shell`). No dispatcher is
 /// even reachable from here — the signature takes none — which is the
 /// compile-time form of "stage switch must not dispatch engine intents";
-/// the behavioral test asserts it over a `RecordingDispatcher`-backed shell.
+/// the behavioral test proves it via the audit log (exactly one
+/// `SetActiveLens` change and nothing else).
 pub fn switch_stage(
     shared: &SharedSkinStateHandle,
     registry: &StageRegistry,
@@ -254,7 +255,6 @@ pub const fn continuity_halo(reduced_motion: bool) -> Option<HaloSpec> {
 mod tests {
     use std::collections::HashSet;
 
-    use dnacalc_skin_ir::dispatcher::RecordingDispatcher;
     use dnacalc_skin_ir::identity::NodeKey;
     use dnacalc_skin_ir::state::SharedSkinState;
 
@@ -338,16 +338,13 @@ mod tests {
     #[test]
     fn switch_stage_writes_only_the_audited_active_lens_change() {
         let shared = SharedSkinStateHandle::new(SharedSkinState::default());
-        // A dispatcher exists in the surrounding shell; the switch path must
-        // never touch it. `switch_stage` cannot even name it — assert the
-        // recording double stays empty across a switch performed next to it.
-        let dispatcher = RecordingDispatcher::new();
+        // `switch_stage` takes no dispatcher, so re-projection-only is enforced
+        // structurally: the ONLY write it can make is through `shared`. The
+        // audit-log assertion below is the real guard — exactly one
+        // `SetActiveLens` change and nothing else — which proves no other
+        // mutation (engine intent or otherwise) occurred on the switch path.
         let switched = switch_stage(&shared, &registry(), &ProfileTag::RichTree, 2);
         assert_eq!(switched, Some(StageId::Model));
-        assert!(
-            dispatcher.intents().is_empty(),
-            "stage switch is re-projection only; no engine intent may be dispatched"
-        );
         assert_eq!(shared.get_untracked().active_lens.as_deref(), Some("model"));
         let audit = shared.audit_log();
         assert_eq!(audit.len(), 1);

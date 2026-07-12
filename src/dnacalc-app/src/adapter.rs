@@ -137,7 +137,7 @@ mod tests {
     /// typed rejection flow through `interpret_receipt`.
     #[test]
     fn three_way_outcome_flows_from_the_real_engine() {
-        let mut session = build_demo_workbook().expect("demo workbook");
+        let session = build_demo_workbook().expect("demo workbook");
         let sheet1 = session.sheets().unwrap()[0].node_id;
         let grid = sheet_grid_node_id(sheet1);
         let mut document = DocumentSession::Workbook(session);
