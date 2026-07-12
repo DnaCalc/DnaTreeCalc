@@ -1,0 +1,9 @@
+[package]
+name = "dnaonecalc-core"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+dnacalc-skin-ir = { path = "../../../DnaTreeCalc/src/dnacalc-skin-ir" }
+serde_json = "1"

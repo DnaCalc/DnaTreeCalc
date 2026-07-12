@@ -1,0 +1,8 @@
+<verification-config>
+  <host-profile
+    profile-id="windows_excel_default"
+    requires-excel-observation="true" />
+  <capabilities
+    host-summary="windows_native_excel_default"
+    excel-observation-available="true" />
+</verification-config>

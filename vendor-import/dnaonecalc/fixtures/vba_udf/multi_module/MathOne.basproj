@@ -1,0 +1,10 @@
+<Project Sdk="OxVba.Sdk/0.1.0">
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+    <ProjectName>MathOne</ProjectName>
+  </PropertyGroup>
+  <ItemGroup>
+    <Module Include="Module1.bas" />
+    <Module Include="Module2.bas" />
+  </ItemGroup>
+</Project>

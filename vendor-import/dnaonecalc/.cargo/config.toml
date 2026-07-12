@@ -1,0 +1,6 @@
+[alias]
+test-browser = "test --target wasm32-unknown-unknown"
+test-browser-live = "test --target wasm32-unknown-unknown --features oxfml-live"
+
+[target.wasm32-unknown-unknown]
+runner = ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "../../scripts/run-wasm-bindgen-test-runner.ps1"]
