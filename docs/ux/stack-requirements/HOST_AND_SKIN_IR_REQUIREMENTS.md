@@ -203,11 +203,13 @@ one-line shape. Every field is verbatim in
   `RuntimeProfileProjection` so browser/desktop honesty is a lookup, not skin logic; trust +
   quarantine states included. *Feed instruments in the Strip and any Extensions manager overlay;
   function-to-provider attribution in an inspector.* **Redesign G7:** consuming any Strip + Bench
-  Extensions manager, mech 18, S1 minimal slice per BENCH_SPEC §6/§8. Minimal slice (S1): read-only
-  inventory + state + diagnostics, no lifecycle actions beyond host-exposed enable/disable. Full
-  shape: RTD topic liveness/staleness + trust/quarantine transitions surfaced live. Degrades to
-  catalog data available in-process on desktop and an honest unavailable-placeholder in browser,
-  with no per-provider status detail, until landed. Aligns with
+  Extensions manager (bead dtc-lfz.6, S1.5), mech 18, S1 minimal slice per BENCH_SPEC §6/§8. Minimal
+  slice (S1): read-only provider inventory + state + diagnostics + per-runtime honesty (native
+  providers show as unavailable-on-browser via the `RuntimeProfileProjection` lookup, not skin
+  logic), no lifecycle actions beyond host-exposed enable/disable. Full shape: RTD topic
+  liveness/staleness + trust/quarantine transitions surfaced live. Degrades to catalog data
+  available in-process on desktop and an honest unavailable-placeholder in browser, with no
+  per-provider status detail, until landed. Aligns with
   `docs/ux/EXTENSION_ADAPTER_ARCHITECTURE.md`.
 - **`grid-dependency-projection`** · extend · L — extend the tree-only `DependencyGraphProjection`
   to grid cells: precedents/dependents, cycle membership, and blast-radius counts addressed by grid
@@ -435,11 +437,12 @@ expected to graduate into the shared host/Skin-IR contract once generalized.
   number-format and scenario-policy edits.
 - **Note:** graduates toward the shared `per-node-effective-format` / G2 shape once format authoring
   generalizes past the OneFormula document to `AuthoringScope` (node/grid/subtree).
-- **Redesign (BENCH_SPEC §8, S1 kickoff ask):** consuming stage OneCalc Bench first, then Sheet &
-  Model styling generally, mech 05. Minimal slice (S1): CF rule authoring + font/fill set verbs
-  scoped to the OneFormula document only. Full shape: the same verbs generalized once G2 lands
-  broadly. Degrade until landed: the format panel is read + live-preview only; number format and
-  scenario policy remain the sole writable knobs.
+- **Redesign (BENCH_SPEC §8, S1 kickoff ask):** consuming stage OneCalc Bench format panel (bead
+  dtc-lfz.5, S1.4), then Sheet & Model styling generally, mech 05. Minimal slice (S1): CF rule
+  authoring + font/fill set verbs scoped to the OneFormula document only. Full shape: the same
+  verbs generalized once G2 lands broadly. Honest degrade until landed: number-format authoring
+  works (the existing `SetNumberFormat` verb is live); CF-rule and font/fill authoring stay
+  display-only in the Bench format panel until these verbs land — no faked authoring.
 
 #### `reference-form-cycling` — F4 reference-form cycling in the editor service · extend · S · enriching
 > `CycleReferenceForm{editor_context, caret}` intent: OxFml's editor service cycles the reference
@@ -447,8 +450,9 @@ expected to graduate into the shared host/Skin-IR contract once generalized.
 > rewritten source text + new caret span.
 - **Unlocks:** F4 muscle memory in the Bench editor; one of BENCH_SPEC's keyboard atlas entries
   (§9).
-- **Redesign (BENCH_SPEC §8, S1 kickoff ask):** consuming stage OneCalc Bench editor (F4 in the
-  atlas); no exit-acceptance criterion names it directly, so treat as tracked-not-blocking for S1.
-  Minimal slice: cycle a single reference token under the caret in the OneFormula editor service.
-  Full shape: extends to whichever contexts `unified-formula-authoring-surfaces` (G1) reaches.
-  Degrade until landed: F4 is a no-op; users retype reference forms manually.
+- **Redesign (BENCH_SPEC §8, S1 kickoff ask):** consuming Bench Bridge X-Ray/editing (bead
+  dtc-lfz.4, S1.3) for the F4 keyboard-atlas entry; no exit-acceptance criterion names it
+  directly, so treat as tracked-not-blocking for S1. Minimal slice: cycle a single reference token
+  under the caret in the OneFormula editor service. Full shape: extends to whichever contexts
+  `unified-formula-authoring-surfaces` (G1) reaches. Degrade until landed: F4 is a no-op with an
+  atlas note (SHELL_SPEC §6); users retype reference forms manually.
