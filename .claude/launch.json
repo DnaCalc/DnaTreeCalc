@@ -6,6 +6,12 @@
       "runtimeExecutable": "cmd",
       "runtimeArgs": ["/c", "cd src\\dnatreecalc-web && trunk serve --port 8421 --watch ..\\..\\src"],
       "port": 8421
+    },
+    {
+      "name": "bench-app",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "cd src\\dnacalc-bench-app && trunk serve --port 8423 --watch ..\\..\\src"],
+      "port": 8423
     }
   ]
 }
