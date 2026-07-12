@@ -444,6 +444,17 @@ expected to graduate into the shared host/Skin-IR contract once generalized.
   works (the existing `SetNumberFormat` verb is live); CF-rule and font/fill authoring stay
   display-only in the Bench format panel until these verbs land — no faked authoring.
 
+#### `locale-authoring-verb` — set the OneFormula document's locale / date system · new · S · enriching
+> `SetLocale{locale_language_tag}` (and/or `SetDate1904{bool}`) dispatched as `OneFormulaIntent`, so the
+> host re-renders values through OxFml under the chosen locale. Today `FormattingSurface` exposes
+> `locale_language_tag` + `date1904` READ-ONLY and `OneFormulaIntent` carries no locale write verb, so the
+> Bench panel's locale section is display-only. Distinct from `locale-presentation-layer` (chrome
+> strings/direction) and `format-resolver-on-context` (the render seam) — this is the *authoring* verb.
+- **Unlocks:** live locale switching in the Bench formatting panel (currently read-only).
+- **Redesign (BENCH_SPEC §7):** consuming stage OneCalc Bench format panel (bead dtc-lfz.5). Honest degrade
+  until landed: locale + date-system shown read-only with an explicit note — no faked switch. Filed
+  2026-07-12 alongside the S1 acceptance (the S1.4 panel confirmed no such verb exists).
+
 #### `reference-form-cycling` — F4 reference-form cycling in the editor service · extend · S · enriching
 > `CycleReferenceForm{editor_context, caret}` intent: OxFml's editor service cycles the reference
 > under the caret through relative → absolute → mixed-row → mixed-col forms (Excel's F4), returning
