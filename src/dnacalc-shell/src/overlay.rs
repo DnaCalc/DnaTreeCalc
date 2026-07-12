@@ -2,10 +2,10 @@
 //! one at a time except Peeks) and the Esc ladder ("Esc closes the topmost
 //! overlay before it does anything else").
 //!
-//! S0 scope: Command deck and Timeline are *placeholder* overlays (the deck
-//! is bead dtc-tsc.8's — a typed slot is left for it); the Keyboard atlas is
-//! real and renders from the live registry. Peek cards are a data model +
-//! rendering stub (max 3 pinned).
+//! S0 scope: the Command deck (bead dtc-tsc.8) mounts through the
+//! [`OverlaySurface`] / [`ShellOverlaySlots::command_deck`] seam; Timeline is
+//! a *placeholder* overlay; the Keyboard atlas is real and renders from the
+//! live registry. Peek cards are a data model + rendering stub (max 3 pinned).
 
 use std::sync::Arc;
 
@@ -13,7 +13,12 @@ use leptos::prelude::*;
 
 use dnacalc_skin_ir::identity::NodeKey;
 use dnacalc_skin_ir::intent::Dispatcher;
+use dnacalc_skin_ir::selection::SelectionState;
+use dnacalc_skin_ir::workspace::WorkspaceState;
 use dnacalc_skin_leptos::state_handles::SharedSkinStateHandle;
+use dnacalc_strand::{Density, Theme};
+
+use crate::keyboard::ShellKeyboardRegistry;
 
 /// The active overlay, at most one at a time (Peeks are exempt and live in
 /// [`PeekModel`]).
@@ -126,13 +131,53 @@ impl OverlayModel {
     }
 }
 
+/// Shell-local control callbacks an overlay (the command deck) drives to
+/// change view-state the Shell component owns — stage projection, region
+/// collapse, theme/density, and the sibling overlays. These are *not*
+/// dispatched intents (view-state, not model mutation); the Shell populates
+/// them with closures over its own reactive signals.
+#[derive(Clone, Copy)]
+pub struct ShellControls {
+    /// Switch to the visible stage in this 1-based slot (re-projection only).
+    pub switch_stage: Callback<u8>,
+    pub toggle_registry: Callback<()>,
+    pub toggle_inspector: Callback<()>,
+    pub open_atlas: Callback<()>,
+    pub open_timeline: Callback<()>,
+    pub set_theme: Callback<Theme>,
+    pub set_density: Callback<Density>,
+    /// Close the active overlay (a command deck closes itself on execute).
+    pub close: Callback<()>,
+}
+
 /// Context handed to a mounted overlay surface.
+///
+/// Extended additively for the command deck (bead dtc-tsc.8): it reads
+/// `workspace`/`selection`/`shared` (persona + keybinding overrides), shows
+/// effective chords from `keyboard`, adapts the in-process
+/// `CommandCatalogProjection`, and drives view-state through `controls`.
 #[derive(Clone)]
 pub struct OverlayContext {
     pub shared: SharedSkinStateHandle,
     pub dispatch: Arc<dyn Dispatcher>,
     /// For the command deck: opened in goto mode (Ctrl+F)?
     pub goto_mode: bool,
+    pub workspace: ReadSignal<WorkspaceState>,
+    pub selection: ReadSignal<SelectionState>,
+    /// The live keyboard registry, so the deck shows each command's effective
+    /// chord from the same source the dispatcher resolves.
+    pub keyboard: ShellKeyboardRegistry,
+    /// Current chrome theme / density (for the deck's active-marker + toggles).
+    pub theme: Theme,
+    pub density: Density,
+    /// Visible stages in slot order (1-based slot, title) — the deck's stage
+    /// commands and their effective chords.
+    pub visible_stages: Vec<(u8, &'static str)>,
+    /// Host persistence capability (SHELL_SPEC §4): false in S0, so the deck's
+    /// save/open render disabled-with-reason.
+    pub host_can_save: bool,
+    pub host_can_open: bool,
+    pub controls: ShellControls,
 }
 
 /// The typed slot an overlay implementation mounts into. Bead dtc-tsc.8

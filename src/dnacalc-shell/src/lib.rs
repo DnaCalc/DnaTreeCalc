@@ -17,6 +17,7 @@
 //! - Bridge formula workbench → bead dtc-tsc.7 mounts through
 //!   [`composition::BridgeSurface`].
 
+pub mod command_deck;
 pub mod composition;
 pub mod inspector;
 pub mod keyboard;
@@ -26,6 +27,11 @@ pub mod shell;
 pub mod stage;
 pub mod strip;
 
+pub use command_deck::{
+    A1Address, COMMAND_DECK_CSS, CommandDeck, DeckAction, DeckCommand, DeckGroup, DeckInputs,
+    deck_listing, filter_commands, fuzzy_score, goto_commands, parse_a1, static_command_ids,
+    static_commands,
+};
 pub use composition::{
     BRIDGE_HEIGHT_ONE_ROW_PX, BRIDGE_HEIGHT_TWO_ROW_PX, BridgeSlot, BridgeSurface,
     CatalogComposition, INSPECTOR_WIDTH_PX, InspectorComposition, MAST_HEIGHT_PX, MastComposition,
@@ -39,7 +45,7 @@ pub use keyboard::{
 };
 pub use overlay::{
     ActiveOverlay, EscapeOutcome, MAX_PINNED_PEEKS, OverlayContext, OverlayModel, OverlaySurface,
-    PeekCard, PeekError, PeekModel, ShellOverlaySlots,
+    PeekCard, PeekError, PeekModel, ShellControls, ShellOverlaySlots,
 };
 pub use profile::{ProfileTag, RuntimeContext};
 pub use shell::Shell;

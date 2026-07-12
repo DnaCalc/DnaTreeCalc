@@ -21,8 +21,8 @@ use dnacalc_shell::{
     StageHandle, StageId, StageRegistry, StageSurface,
 };
 use dnacalc_skin_ir::dispatcher::RecordingDispatcher;
-use dnacalc_skin_ir::identity::NodeKey;
-use dnacalc_skin_ir::intent::WorkspaceDelta;
+use dnacalc_skin_ir::identity::{NodeId, NodeKey};
+use dnacalc_skin_ir::intent::{WorkspaceDelta, WorkspaceIntent};
 use dnacalc_skin_ir::selection::SelectionState;
 use dnacalc_skin_ir::state::{SharedSkinState, SharedStateChange, SharedStateOrigin};
 use dnacalc_skin_ir::workspace::WorkspaceState;
@@ -169,6 +169,28 @@ fn press_chord(target: &web_sys::EventTarget, key: &str, ctrl: bool, alt: bool, 
 
 fn query(host: &web_sys::HtmlElement, selector: &str) -> Option<web_sys::Element> {
     host.query_selector(selector).unwrap()
+}
+
+/// Type `text` into an input and fire an `input` event so the deck's query
+/// signal updates, as a real keystroke would.
+fn type_into(input: &web_sys::Element, text: &str) {
+    let input: &web_sys::HtmlInputElement = input.unchecked_ref();
+    input.set_value(text);
+    input
+        .dispatch_event(&web_sys::Event::new("input").unwrap())
+        .unwrap();
+}
+
+/// Fire an Enter keydown on a specific element (the deck input owns its own
+/// Enter handler).
+fn press_enter(target: &web_sys::EventTarget) {
+    let init = web_sys::KeyboardEventInit::new();
+    init.set_key("Enter");
+    init.set_bubbles(true);
+    init.set_cancelable(true);
+    let event = web_sys::KeyboardEvent::new_with_keyboard_event_init_dict("keydown", &init)
+        .expect("construct keydown event");
+    target.dispatch_event(&event).expect("dispatch enter");
 }
 
 #[wasm_bindgen_test]
@@ -345,4 +367,107 @@ async fn registry_toggle_collapses_the_rail_and_omission_padding_holds() {
     press_chord(&root, "b", false, true, false);
     next_tick().await;
     assert_eq!(rail.get_attribute("aria-hidden").unwrap(), "false");
+}
+
+#[wasm_bindgen_test]
+async fn command_deck_opens_and_executes_a_command_through_dispatch() {
+    let mounted = mount_calc_shell();
+    let host = &mounted.host;
+    next_tick().await;
+    let root = shell_root(host);
+
+    // Ctrl+K opens the real deck (mounted through the command_deck seam), and
+    // it lists commands from the in-process catalog adapter.
+    press_chord(&root, "k", true, false, false);
+    next_tick().await;
+    assert!(
+        query(host, "[data-overlay=\"command-deck\"]").is_some(),
+        "Ctrl+K opens the command deck"
+    );
+    assert!(
+        host.query_selector_all("[data-command-id]")
+            .unwrap()
+            .length()
+            >= 15,
+        "the deck lists >= 15 commands (SHELL_SPEC 10.4)"
+    );
+    // Each row shows its effective chord where one exists.
+    let recalc = query(host, "[data-command-id=\"recalculate\"]").expect("recalculate command");
+    assert!(recalc.text_content().unwrap().contains("F9"));
+
+    // Filter to Recalculate and execute with Enter — the dispatcher records
+    // exactly the Recalculate intent, and the deck closes.
+    let input = query(host, ".dna-deck__input").expect("deck input");
+    type_into(&input, "recalc");
+    next_tick().await;
+    press_enter(&input.clone().unchecked_into());
+    next_tick().await;
+    assert_eq!(
+        mounted.dispatcher.intents(),
+        vec![WorkspaceIntent::Recalculate],
+        "executing the deck command dispatches exactly its intent"
+    );
+    assert!(
+        query(host, "[data-overlay=\"command-deck\"]").is_none(),
+        "executing a command closes the deck"
+    );
+}
+
+#[wasm_bindgen_test]
+async fn command_deck_mirror_chord_and_a1_goto_navigation() {
+    let mounted = mount_calc_shell();
+    let host = &mounted.host;
+    next_tick().await;
+    let root = shell_root(host);
+
+    // Ctrl+Shift+P is the deck mirror.
+    press_chord(&root, "P", true, false, true);
+    next_tick().await;
+    let deck = query(host, "[data-overlay=\"command-deck\"]").expect("Ctrl+Shift+P opens the deck");
+    assert_eq!(deck.get_attribute("data-goto-mode").unwrap(), "false");
+
+    // A1 address is navigation sugar: typing "B2" surfaces a goto entry whose
+    // execution selects the canonical address (Name-Box mirror).
+    let input = query(host, ".dna-deck__input").expect("deck input");
+    type_into(&input, "B2");
+    next_tick().await;
+    let goto = query(host, "[data-command-id=\"goto:a1:B2\"]").expect("A1 goto entry present");
+    goto.unchecked_ref::<web_sys::HtmlElement>().click();
+    next_tick().await;
+    assert_eq!(
+        mounted.dispatcher.intents(),
+        vec![WorkspaceIntent::SelectNode(Some(NodeId::new("B2")))],
+        "A1 goto dispatches a selection at the canonical address"
+    );
+    assert!(query(host, "[data-overlay=\"command-deck\"]").is_none());
+}
+
+#[wasm_bindgen_test]
+async fn command_deck_theme_switch_retheme_the_cockpit() {
+    let mounted = mount_calc_shell();
+    let host = &mounted.host;
+    next_tick().await;
+    let root = shell_root(host);
+    let shell = query(host, ".dna-shell").unwrap();
+    assert_eq!(
+        shell.get_attribute("data-dna-theme").unwrap(),
+        "cockpit-light"
+    );
+
+    press_chord(&root, "k", true, false, false);
+    next_tick().await;
+    // Theme switch is a view-state control (no dispatch); executing it
+    // re-themes the whole cockpit via the reactive --dna-* block.
+    let dark =
+        query(host, "[data-command-id=\"shell.theme.cockpit-dark\"]").expect("theme command");
+    dark.unchecked_ref::<web_sys::HtmlElement>().click();
+    next_tick().await;
+    assert_eq!(
+        shell.get_attribute("data-dna-theme").unwrap(),
+        "cockpit-dark"
+    );
+    assert!(
+        mounted.dispatcher.intents().is_empty(),
+        "a theme switch is view-state, never a dispatched intent"
+    );
 }

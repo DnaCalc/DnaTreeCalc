@@ -20,6 +20,7 @@ use dnacalc_skin_ir::workspace::WorkspaceState;
 use dnacalc_skin_leptos::state_handles::SharedSkinStateHandle;
 use dnacalc_strand::{Density, IdentityBadge, Theme, css_custom_properties};
 
+use crate::command_deck::{COMMAND_DECK_CSS, CommandDeck};
 use crate::composition::{
     CatalogComposition, INSPECTOR_WIDTH_PX, MAST_HEIGHT_PX, REGISTRY_WIDTH_PX, STRIP_HEIGHT_PX,
     ShellComposition,
@@ -29,7 +30,8 @@ use crate::keyboard::{
     KeyRouting, ShellKeyboardRegistry, chord_from_key_event, route_key, verb_label,
 };
 use crate::overlay::{
-    ActiveOverlay, EscapeOutcome, OverlayContext, OverlayModel, PeekCard, ShellOverlaySlots,
+    ActiveOverlay, EscapeOutcome, OverlayContext, OverlayModel, PeekCard, ShellControls,
+    ShellOverlaySlots,
 };
 use crate::profile::RuntimeContext;
 use crate::stage::{
@@ -323,8 +325,13 @@ pub fn Shell(
     reduced_motion: bool,
 ) -> impl IntoView {
     let profile = composition.profile;
-    let visible_stage_count = stages.visible(&profile).len();
-    let catalog: CatalogComposition = composition.catalog_composition(visible_stage_count);
+    let visible_stages_meta: Vec<(u8, &'static str)> = stages
+        .visible(&profile)
+        .iter()
+        .enumerate()
+        .map(|(index, stage)| (u8::try_from(index + 1).unwrap_or(u8::MAX), stage.title()))
+        .collect();
+    let catalog: CatalogComposition = composition.catalog_composition(visible_stages_meta.len());
 
     // Build the active grammar from the persisted overrides. A persisted map
     // that fails validation (stale verb id from another build, a chord this
@@ -338,6 +345,19 @@ pub fn Shell(
     let overlay = RwSignal::new(OverlayModel::default());
     let registry_collapsed = RwSignal::new(false);
     let inspector_collapsed = RwSignal::new(false);
+    // Theme/density are shell view-state so the command deck (and any future
+    // control) can switch them; the `<style>` block below reads these
+    // reactively, so a switch re-themes the whole cockpit — chrome and every
+    // token-styled stage — through the `--dna-*` cascade.
+    let theme_sig = RwSignal::new(theme);
+    let density_sig = RwSignal::new(density);
+
+    // Install the built-in command deck into the seam when the product did not
+    // supply its own (SHELL_SPEC §5.1; the deck lives in this crate).
+    let mut overlays = overlays;
+    if overlays.command_deck.is_none() {
+        overlays.command_deck = Some(Arc::new(CommandDeck));
+    }
 
     let stage_ctx = StageContext {
         workspace,
@@ -449,11 +469,41 @@ pub fn Shell(
         }
     };
 
-    let css = format!(
-        "{}\n{}",
-        css_custom_properties(theme, density),
-        shell_css(composition.bridge_slot.height_px())
-    );
+    // Shell-local control callbacks the command deck drives (view-state only,
+    // never dispatched intents). Built here where every shell signal is in
+    // scope; handed to the deck through the extended OverlayContext.
+    let controls_stages = stages.clone();
+    let controls = ShellControls {
+        switch_stage: Callback::new(move |slot: u8| {
+            switch_stage(&shared, &controls_stages, &profile, slot);
+        }),
+        toggle_registry: Callback::new(move |()| {
+            registry_collapsed.update(|collapsed| *collapsed = !*collapsed);
+        }),
+        toggle_inspector: Callback::new(move |()| {
+            inspector_collapsed.update(|collapsed| *collapsed = !*collapsed);
+        }),
+        open_atlas: Callback::new(move |()| {
+            overlay.update(|model| model.open(ActiveOverlay::KeyboardAtlas));
+        }),
+        open_timeline: Callback::new(move |()| {
+            overlay.update(|model| model.open(ActiveOverlay::Timeline));
+        }),
+        set_theme: Callback::new(move |next: Theme| theme_sig.set(next)),
+        set_density: Callback::new(move |next: Density| density_sig.set(next)),
+        close: Callback::new(move |()| overlay.update(OverlayModel::close)),
+    };
+
+    let bridge_height = composition.bridge_slot.height_px();
+    // Reactive theme/density → the whole cockpit re-themes on a deck switch.
+    let css = move || {
+        format!(
+            "{}\n{}\n{}",
+            css_custom_properties(theme_sig.get(), density_sig.get()),
+            shell_css(bridge_height),
+            COMMAND_DECK_CSS
+        )
+    };
 
     // --- Region views ---
     let mast_stages = stages.clone();
@@ -482,12 +532,12 @@ pub fn Shell(
     let persona_label = Memo::new(move |_| shared.with(|state| state.persona.stable_id()));
 
     view! {
-        <style>{css}</style>
+        <style>{move || css()}</style>
         <div
             class="dna-shell"
             class:dna-reduced-motion=reduced_motion
-            data-dna-theme=theme.id()
-            data-dna-density=density.id()
+            data-dna-theme=move || theme_sig.get().id()
+            data-dna-density=move || density_sig.get().id()
             data-profile=profile.stable_id()
             tabindex="0"
             on:keydown=handle_keydown
@@ -625,6 +675,12 @@ pub fn Shell(
                 dispatch=dispatch.clone()
                 catalog=catalog
                 runtime=runtime
+                workspace=workspace
+                selection=selection
+                theme_sig=theme_sig
+                density_sig=density_sig
+                visible_stages=visible_stages_meta
+                controls=controls
             />
             <PeekLayer overlay=overlay />
         </div>
@@ -953,9 +1009,12 @@ fn StripView(
     }
 }
 
-/// The one-at-a-time overlay layer plus placeholder cards for the slots
-/// later beads fill.
+/// The one-at-a-time overlay layer. The command deck mounts through the
+/// `command_deck` slot (defaulted to the built-in [`CommandDeck`] by the
+/// Shell); the atlas is a built-in; the timeline stays a placeholder until
+/// its bead.
 #[component]
+#[allow(clippy::too_many_arguments)]
 fn OverlayLayer(
     overlay: RwSignal<OverlayModel>,
     overlays: ShellOverlaySlots,
@@ -963,48 +1022,49 @@ fn OverlayLayer(
     dispatch: Arc<dyn Dispatcher>,
     catalog: CatalogComposition,
     runtime: RuntimeContext,
+    workspace: ReadSignal<WorkspaceState>,
+    selection: ReadSignal<SelectionState>,
+    theme_sig: RwSignal<Theme>,
+    density_sig: RwSignal<Density>,
+    visible_stages: Vec<(u8, &'static str)>,
+    controls: ShellControls,
 ) -> impl IntoView {
     let active = Memo::new(move |_| overlay.with(|model| model.active));
+    // The deck reads the live keyboard registry (same overrides the dispatcher
+    // uses) so its effective chords cannot drift.
+    let overlay_context = move |goto_mode: bool| {
+        let overrides = shared.get_untracked().keybinding_overrides;
+        let keyboard = ShellKeyboardRegistry::with_overrides(catalog, runtime, &overrides)
+            .unwrap_or_else(|_| ShellKeyboardRegistry::universal(catalog, runtime));
+        OverlayContext {
+            shared,
+            dispatch: dispatch.clone(),
+            goto_mode,
+            workspace,
+            selection,
+            keyboard,
+            theme: theme_sig.get_untracked(),
+            density: density_sig.get_untracked(),
+            visible_stages: visible_stages.clone(),
+            // S0: host persistence is not wired — save/open render
+            // disabled-with-reason (SHELL_SPEC §4). dtc-tsc.9 supplies real
+            // capability from HostCapabilityProjection.
+            host_can_save: false,
+            host_can_open: false,
+            controls,
+        }
+    };
     view! {
         {move || {
             active
                 .get()
                 .map(|current| {
                     match current {
-                        ActiveOverlay::CommandDeck { goto_mode } => {
-                            match overlays.command_deck.clone() {
-                                Some(surface) => surface
-                                    .mount(OverlayContext {
-                                        shared,
-                                        dispatch: dispatch.clone(),
-                                        goto_mode,
-                                    })
-                                    .into_any(),
-                                None => {
-                                    view! {
-                                        <div class="dna-overlay-backdrop">
-                                            <div
-                                                class="dna-overlay"
-                                                role="dialog"
-                                                aria-label="Command deck"
-                                                data-overlay="command-deck"
-                                                data-goto-mode=if goto_mode { "true" } else { "false" }
-                                            >
-                                                <h2>"Command deck"</h2>
-                                                <p class="dna-overlay__placeholder">
-                                                    {if goto_mode {
-                                                        "Goto mode — command deck v1 lands in bead dtc-tsc.8 (typed overlay slot reserved)."
-                                                    } else {
-                                                        "Command deck v1 lands in bead dtc-tsc.8 (typed overlay slot reserved)."
-                                                    }}
-                                                </p>
-                                            </div>
-                                        </div>
-                                    }
-                                        .into_any()
-                                }
-                            }
-                        }
+                        ActiveOverlay::CommandDeck { goto_mode } => overlays
+                            .command_deck
+                            .clone()
+                            .map(|surface| surface.mount(overlay_context(goto_mode)))
+                            .unwrap_or_else(|| ().into_any()),
                         ActiveOverlay::KeyboardAtlas => {
                             view! {
                                 <KeyboardAtlasOverlay
@@ -1017,13 +1077,7 @@ fn OverlayLayer(
                         }
                         ActiveOverlay::Timeline => {
                             match overlays.timeline.clone() {
-                                Some(surface) => surface
-                                    .mount(OverlayContext {
-                                        shared,
-                                        dispatch: dispatch.clone(),
-                                        goto_mode: false,
-                                    })
-                                    .into_any(),
+                                Some(surface) => surface.mount(overlay_context(false)).into_any(),
                                 None => {
                                     view! {
                                         <div class="dna-overlay-backdrop">
