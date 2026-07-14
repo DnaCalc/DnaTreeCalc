@@ -776,6 +776,160 @@ async fn calc_notebook_reviewer_persona_renders_read_only() {
     );
 }
 
+/// dtc-mohs (S2.14) — cross-stage continuity, Notebook-specific: `SharedSkinState`
+/// survives a Sheet -> Notebook -> Sheet round trip, proving that switching
+/// into AND out of the real (non-stub) Notebook stage is re-projection —
+/// shared continuity state is carried across, never reset.
+///
+/// GENERIC MECHANISM ALREADY PROVEN NATIVELY: `dnacalc-shell/src/stage.rs`'s
+/// `continuity_state_survives_a_stage_switch` seeds `selection_set`,
+/// `focus_key`, `collapsed_keys`, and `pinned_keys` directly on a
+/// `SharedSkinState`, calls `switch_stage`, and asserts every field is
+/// unchanged (and `switch_stage_writes_only_the_audited_active_lens_change`
+/// proves the ONLY write `switch_stage` makes is `SetActiveLens` — nothing
+/// else in `SharedSkinState` is ever touched by a switch). This browser test
+/// is the Notebook-SPECIFIC, real-app integration proof: it drives the switch
+/// through the actual mounted app and the actual Notebook stage, not a bare
+/// `switch_stage` call over a hand-built registry.
+///
+/// WHY PERSONA, NOT SELECTION/FOCUS: the shipped Calc app
+/// (`dnacalc-app::app::CalcApp`) has no UI affordance that sets
+/// `selection_set` or `focus_key` — the `StubStage`s (Sheet/Model) only ever
+/// READ those fields for their continuity readout
+/// (`.calc-stage__continuity`), and the Notebook stage surfaces no
+/// selection/focus-setting control either. Searching every real (non-test)
+/// `shared.apply` call site in `dnacalc-shell` turns up exactly four
+/// `SharedStateChange` variants ever written by shipped UI:
+/// `SetActiveLens` (the stage switch itself), `SetManualRecalcPending`,
+/// `SetKeybindingOverrides`, and `SetPersona`. `persona` is the one
+/// continuity field in that list living in the SAME `SharedSkinState` struct
+/// as selection/focus, settable the real way: Ctrl+K -> the command deck's
+/// `shell.persona.reviewer` entry, dispatching `SetPersona` through
+/// `PersonaDispatcher` exactly as `calc_notebook_reviewer_persona_renders_read_only`
+/// (S2.9) drives it. Because it lives in the identical handle and rides the
+/// identical `switch_stage` re-projection path, its survival is evidence of
+/// the SAME mechanism selection/focus depend on — this test plus the native
+/// one together give honest browser+native coverage of continuity across the
+/// Notebook (the plan's critique was that persona-for-Notebook was asserted
+/// but selection/focus-survives-Notebook was not; the native test closes the
+/// general case, this one closes the Notebook-specific case with the field
+/// the shipped app can actually seed).
+///
+/// OBSERVABLE: the mast's persona chip (`.dna-mast__persona[data-persona]`,
+/// `dnacalc-shell/src/shell.rs`) lives in the shell chrome, not inside any
+/// stage — so it renders identically whether Sheet or Notebook is mounted,
+/// letting the SAME element be read before the switch (on Sheet), mid-switch
+/// (on Notebook), and after switching back (on Sheet). A second, stronger
+/// signal is also asserted: because persona is seeded BEFORE the Notebook is
+/// ever mounted (unlike S2.9, which flips persona while already on the
+/// Notebook), the Notebook's own reviewer read-only gate (zero
+/// `notebook-block-edit` editors, no `+ name` control) must already hold the
+/// instant it mounts — proof the stage reads the LIVE shared handle on
+/// arrival, not a fresh default it would show if the switch had reset state.
+#[wasm_bindgen_test]
+async fn calc_selection_focus_survives_notebook_round_trip() {
+    let host = mount();
+    next_tick().await;
+
+    fn persona_chip(host: &web_sys::HtmlElement) -> String {
+        query(host, ".dna-mast__persona")
+            .and_then(|el| el.get_attribute("data-persona"))
+            .expect("the mast's persona chip mounts (shell chrome, present regardless of stage)")
+    }
+
+    // Sanity: Author is the default persona before any seeding.
+    assert_eq!(
+        persona_chip(&host),
+        "author",
+        "Author is the default persona before seeding"
+    );
+
+    // We start on the Sheet stage.
+    assert!(
+        query(&host, "[data-testid=\"calc-stage-sheet\"]").is_some(),
+        "the Sheet stage mounts first"
+    );
+
+    // Seed a NON-DEFAULT shared-continuity value through the shipped UI, on
+    // the Sheet stage, BEFORE the Notebook is ever mounted: switch persona to
+    // Reviewer via the command deck (Ctrl+K -> `shell.persona.reviewer`).
+    press_chord(&shell_root(&host), "k", true, false, false);
+    next_tick().await;
+    let reviewer_command = query(&host, "[data-command-id=\"shell.persona.reviewer\"]")
+        .expect("the command deck lists the reviewer persona switch");
+    click(&reviewer_command);
+    next_tick().await;
+
+    let before = persona_chip(&host);
+    assert_eq!(
+        before, "reviewer",
+        "the seeded value is non-trivial: reviewer, not the untouched default"
+    );
+
+    // Switch Sheet -> Notebook via its mast tab (a re-projection switch).
+    let notebook_tab = query(&host, "[data-stage-tab=\"notebook\"]").expect("notebook tab");
+    click(&notebook_tab);
+    next_tick().await;
+
+    // The Notebook stage is now mounted, the Sheet stage gone (re-projection).
+    assert!(
+        query(&host, "[data-stage=\"notebook\"]").is_some(),
+        "the Notebook stage mounts after the switch"
+    );
+    assert!(
+        query(&host, "[data-testid=\"calc-stage-sheet\"]").is_none(),
+        "switching is re-projection: only one stage mounts at a time"
+    );
+
+    // MID: the seeded shared value survived entering the Notebook, unchanged.
+    let mid = persona_chip(&host);
+    assert_eq!(mid, before, "persona survives the Sheet -> Notebook switch");
+
+    // Stronger signal: the Notebook's OWN reviewer read-only gate already
+    // holds on arrival (persona was seeded before the mount, not after) —
+    // proof the Notebook stage reads the live shared handle, not a snapshot
+    // that would show Author's always-on editors if the switch had reset it.
+    assert_eq!(
+        host.query_selector_all("[data-testid=\"notebook-block-edit\"]")
+            .unwrap()
+            .length(),
+        0,
+        "the Notebook renders the reviewer read-only gate immediately on arrival"
+    );
+    assert!(
+        query(&host, "[data-testid=\"notebook-add-name\"]").is_none(),
+        "a Reviewer arriving on the Notebook is offered no `+ name` authoring control"
+    );
+
+    // Switch Notebook -> Sheet via its mast tab (the return leg).
+    let sheet_tab = query(&host, "[data-stage-tab=\"sheet\"]").expect("sheet tab");
+    click(&sheet_tab);
+    next_tick().await;
+
+    // The Sheet stage is mounted again, the Notebook stage gone.
+    assert!(
+        query(&host, "[data-testid=\"calc-stage-sheet\"]").is_some(),
+        "the Sheet stage mounts again after switching back"
+    );
+    assert!(
+        query(&host, "[data-stage=\"notebook\"]").is_none(),
+        "switching is re-projection: the Notebook stage is gone after switching away"
+    );
+
+    // AFTER: the seeded shared value survived the FULL Sheet -> Notebook ->
+    // Sheet round trip — identical before, mid, and after. A regression that
+    // reset shared state on a Notebook switch (either leg) would turn this red.
+    let after = persona_chip(&host);
+    assert_eq!(
+        after, before,
+        "persona survives the full Sheet -> Notebook -> Sheet round trip"
+    );
+    assert_eq!(
+        after, mid,
+        "persona is identical before, mid, and after the round trip"
+    );
+}
+
 /// §10.2 — the DEGRADE bridge edits a workbook cell via `EnterGridCell`, and
 /// the host's three-way outcome (literal / formula / cleared) plus the typed
 /// rejection are each rendered honestly from the receipt.
