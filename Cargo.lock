@@ -999,6 +999,7 @@ dependencies = [
  "dnacalc-shell",
  "dnacalc-skin-ir",
  "dnacalc-skin-leptos",
+ "dnacalc-stage-notebook",
  "dnacalc-strand",
  "dnatreecalc-host",
  "js-sys",

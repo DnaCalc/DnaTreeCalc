@@ -26,6 +26,7 @@ dnacalc-skin-leptos = { path = "../dnacalc-skin-leptos" }
 dnacalc-strand = { path = "../dnacalc-strand" }
 dnacalc-shell = { path = "../dnacalc-shell" }
 dnacalc-bridge = { path = "../dnacalc-bridge" }
+dnacalc-stage-notebook = { path = "../dnacalc-stage-notebook" }
 dnatreecalc-host = { path = "../dnatreecalc-host" }
 
 [dev-dependencies]

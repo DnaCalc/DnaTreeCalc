@@ -108,9 +108,9 @@ fn calc_mounts_full_region_set_with_switcher() {
         );
     }
 
-    // Two stage tabs (Sheet, Model).
+    // Three stage tabs (Sheet, Model, Notebook).
     let tabs = host.query_selector_all("[data-stage-tab]").unwrap();
-    assert_eq!(tabs.length(), 2, "two stub stages compose the switcher");
+    assert_eq!(tabs.length(), 3, "two stub stages + Notebook compose the switcher");
 
     let parity = query(&host, "[data-slot=\"parity\"]").expect("parity slot reserved in layout");
     assert_eq!(parity.text_content().unwrap_or_default(), "");
@@ -157,6 +157,46 @@ async fn calc_stage_switch_reprojects_and_preserves_continuity_surface() {
         .and_then(|el| el.get_attribute("data-selection"))
         .expect("continuity readout on the Model stage");
     assert_eq!(before, after, "continuity state survives the switch");
+}
+
+/// S2.3 — the Notebook stage (`dnacalc-stage-notebook`) is registered into the
+/// Calc composition: the switcher lists a Notebook tab, and switching to it
+/// re-projects the stage-host to the Notebook stage's honest-empty view.
+#[wasm_bindgen_test]
+async fn calc_stage_switch_to_notebook_mounts_notebook_stage() {
+    let host = mount();
+    next_tick().await;
+
+    // The switcher lists a Notebook entry.
+    let notebook_tab =
+        query(&host, "[data-stage-tab=\"notebook\"]").expect("notebook tab listed in the switcher");
+
+    // Initial: the first visible stage (Sheet) mounts.
+    assert!(
+        query(&host, "[data-testid=\"calc-stage-sheet\"]").is_some(),
+        "the Sheet stage mounts first"
+    );
+
+    // Switch to Notebook via its mast tab (a re-projection switch).
+    let target: web_sys::EventTarget = notebook_tab.unchecked_into();
+    target
+        .dispatch_event(&web_sys::MouseEvent::new("click").unwrap())
+        .unwrap();
+    next_tick().await;
+
+    // The Notebook stage is now mounted, the Sheet stage gone (re-projection).
+    assert!(
+        query(&host, "[data-stage=\"notebook\"]").is_some(),
+        "the Notebook stage mounts after the switch"
+    );
+    assert!(
+        query(&host, "[data-testid=\"notebook-empty\"]").is_some(),
+        "the Notebook stage's honest-empty view renders"
+    );
+    assert!(
+        query(&host, "[data-testid=\"calc-stage-sheet\"]").is_none(),
+        "switching is re-projection: only one stage mounts at a time"
+    );
 }
 
 /// §10.2 — the DEGRADE bridge edits a workbook cell via `EnterGridCell`, and
