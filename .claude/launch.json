@@ -12,6 +12,12 @@
       "runtimeExecutable": "cmd",
       "runtimeArgs": ["/c", "cd src\\dnacalc-bench-app && trunk serve --port 8423 --watch ..\\..\\src"],
       "port": 8423
+    },
+    {
+      "name": "calc-app",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "cd src\\dnacalc-app && trunk serve --port 8425 --watch ..\\..\\src"],
+      "port": 8425
     }
   ]
 }
