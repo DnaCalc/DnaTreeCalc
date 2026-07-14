@@ -51,8 +51,30 @@
 //! non-empty), so it is not a hardcoded lie: it flips honestly if the host ever
 //! populates the projection, at which point the real feature (still out of
 //! scope here) could be built on top.
+//!
+//! **S2.11** gives an editable Cell block a **delete affordance** that routes
+//! through the read-side preview seam WHERE PRESENT (mechanism 12). Deleting a
+//! Cell block CLEARS its cell (Excel semantics) — it reuses the exact same
+//! entry-verb seam the editor commits through, `enter_cell_intent(grid, row,
+//! col, "")` (→ [`CellOutcome::Cleared`]); it never invents a workbook
+//! "remove cell". The affordance is authoring-gated exactly like the editor
+//! (S2.9) — a delete is a mutation, so a non-authoring persona (Reviewer /
+//! ReadOnly) gets none of it. The decision is a single pure function,
+//! [`preview_block_delete`]: with a [`dnacalc_skin_ir::PreviewService`] it asks
+//! [`dnacalc_skin_ir::PreviewService::preview_mutation_impact`] what the clear
+//! WOULD do and renders a non-mutating **ghost-preview**
+//! (`data-testid="notebook-delete-ghost"`) summarizing the impact HONESTLY from
+//! real fields — with **Esc = revert** (drop the ghost, dispatch NOTHING) and a
+//! confirm that dispatches the actual clear and reads the honest receipt. With
+//! `ctx.preview == None` (the calc app's reality today) — or a preview that
+//! ERRORS (never escalated, per `preview.rs`) — it degrades to post-attempt
+//! **receipt feedback**: activating delete dispatches the clear directly and
+//! renders the honest [`CellOutcome`] through the SAME outcome-chip machinery
+//! the editor uses, never a fabricated ghost. Workbook grid cells carry no
+//! per-cell [`NodeId`] in the projection (only their grid's id + row/col), so
+//! the preview intent addresses the grid node — see [`delete_impact_intent`].
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use leptos::prelude::*;
@@ -64,8 +86,8 @@ use dnacalc_skin_ir::intent::{Dispatcher, WorkspaceIntent};
 use dnacalc_skin_ir::{
     DefinedNameProjection, DefinedNameTargetProjection, GridAuthoredCellProjection,
     GridCellProjection, GridEditabilityProjection, GridEntryDiagnosticProjection,
-    GridTableOverlayDescriptor, NodeClassification, NodeId, NodeValueProjection, Persona,
-    WorkspaceState,
+    GridTableOverlayDescriptor, MutationImpactIntentProjection, MutationImpactProjection,
+    NodeClassification, NodeId, NodeValueProjection, Persona, PreviewService, WorkspaceState,
 };
 
 pub mod edit;
@@ -123,6 +145,13 @@ struct BlockEditState {
     /// without this the rejection underline would never appear — mirrors the
     /// app's `CalcBridgeSurface` revision discipline, keyed per block.
     revision: RwSignal<usize>,
+    /// S2.11 delete ghost-preview state: `Some(impact)` while THIS block is
+    /// showing a non-mutating ghost of a pending clear (the preview seam
+    /// answered), `None` otherwise. Set by the delete control on the ghost path,
+    /// cleared to `None` by Esc/cancel (dispatch NOTHING) or by a confirm after
+    /// its clear dispatches. Per-block by construction — it lives on this
+    /// block's own state, so one block's pending ghost never bleeds into another.
+    pending_ghost: RwSignal<Option<MutationImpactProjection>>,
 }
 
 impl BlockEditState {
@@ -134,6 +163,7 @@ impl BlockEditState {
             rejections: RwSignal::new(Vec::new()),
             outcome: RwSignal::new(None),
             revision: RwSignal::new(0),
+            pending_ghost: RwSignal::new(None),
         }
     }
 }
@@ -173,6 +203,12 @@ impl StageSurface for NotebookStage {
         // every dispatch, so a committed edit repaints via the closure below —
         // this stage wires no workspace refresh of its own.
         let dispatch = ctx.dispatch.clone();
+        // S2.11 read-side preview seam (mechanism 12): the optional, non-mutating
+        // foresight service. `Some` → a delete previews as a ghost; `None` (the
+        // calc app today) → a delete degrades to post-attempt receipt feedback.
+        // Threaded into each Cell block so [`render_cell_editor`]'s delete
+        // affordance can ask [`preview_block_delete`] which path to take.
+        let preview = ctx.preview.clone();
         // --- S2.9 reviewer-persona read-only gate -----------------------------
         // The governing persona lives in the audited shared state
         // (`SharedSkinState.persona`, written by `SetPersona`). A `Memo` projects
@@ -457,6 +493,17 @@ impl StageSurface for NotebookStage {
                     // only the mutation control is gated (NOTEBOOK_SPEC §6 #4).
                     let authoring = persona_allows_authoring(persona.get());
                     let entries = workspace.with(model::derive_entries);
+                    // S2.11 eviction: drop per-block edit state for any block no
+                    // longer derived — a deleted/cleared cell vanishes from
+                    // `entries`, and without this its `BlockEditState` would
+                    // linger keyed by `(grid,row,col)` and seed a *future*
+                    // re-author at that same address from stale `""`/`Cleared`
+                    // remnants (`block_edit_state` early-returns an existing
+                    // entry, ignoring the fresh seed). A block being edited keeps
+                    // its authored content, so it stays derived — only a
+                    // committed clear evicts.
+                    let live_keys = live_block_keys(&entries);
+                    editors.update_value(|map| map.retain(|key, _| live_keys.contains(key)));
                     if entries.is_empty() {
                         // Never blank: the honest-empty card is an explicit,
                         // testable state.
@@ -473,6 +520,7 @@ impl StageSurface for NotebookStage {
                                 render_block(
                                     entry,
                                     &dispatch,
+                                    preview.as_ref(),
                                     workspace,
                                     editors,
                                     owner.as_ref(),
@@ -605,6 +653,24 @@ fn next_cell_key(ws: &WorkspaceState, current: &BlockKey) -> Option<BlockKey> {
     keys.get(index + 1).cloned()
 }
 
+/// The set of Cell-block keys present in a derivation — the blocks that
+/// currently exist. Used to EVICT per-block edit state (`editors`) for blocks
+/// that have vanished from the derivation (e.g. a deleted/cleared cell), so a
+/// later re-author at the same `(grid,row,col)` address gets fresh state rather
+/// than a stale `""`/`Cleared`/`pending_ghost` remnant. Pure over the derived
+/// entries, so it is unit-testable.
+fn live_block_keys(entries: &[NotebookEntry]) -> HashSet<BlockKey> {
+    entries
+        .iter()
+        .filter_map(|entry| match &entry.kind {
+            NotebookEntryKind::Cell {
+                grid, authored, ..
+            } => Some((grid.clone(), authored.row, authored.col)),
+            NotebookEntryKind::Name { .. } | NotebookEntryKind::Table { .. } => None,
+        })
+        .collect()
+}
+
 /// Resolve (creating on first sight) the [`BlockEditState`] for a Cell block.
 /// The signals are created under `owner` — the stable mount owner — so they
 /// persist across the derivation closure's re-runs; storing them in `editors`
@@ -634,9 +700,16 @@ fn block_edit_state(
 /// (`display_name` · classification chip · liveness dot), a result region
 /// showing the live computed value, and — for an editable Cell — a degrade
 /// editor plus its honest outcome chip.
+// A render fan-out threading the block's whole context (dispatch, preview,
+// workspace, per-block state, owner, focus, persona) — cohesive, not a grab-bag;
+// matches the `#[allow]` the sibling shell crate uses for the same reason.
+#[allow(clippy::too_many_arguments)]
 fn render_block(
     entry: NotebookEntry,
     dispatch: &Arc<dyn Dispatcher>,
+    // S2.11: the optional preview service, threaded to the per-block delete
+    // affordance. `Some` → ghost-preview path; `None` → receipt-fallback path.
+    preview: Option<&Arc<dyn PreviewService>>,
     workspace: ReadSignal<WorkspaceState>,
     editors: StoredValue<HashMap<BlockKey, BlockEditState>>,
     owner: Option<&Owner>,
@@ -683,7 +756,9 @@ fn render_block(
     let edit_view = match &entry.kind {
         NotebookEntryKind::Cell {
             grid, authored, ..
-        } => render_cell_editor(grid, authored, dispatch, workspace, editors, owner, authoring),
+        } => render_cell_editor(
+            grid, authored, dispatch, preview, workspace, editors, owner, authoring,
+        ),
         // A Name block is edited through its backing cell, never a fabricated
         // target (SHELL_SPEC §6 honesty). The note only points at that edit path
         // for an authoring persona; a Reviewer/ReadOnly, who cannot take it, sees
@@ -852,10 +927,16 @@ fn render_add_name_affordance(
 /// The editable region of a Cell block: an editable cell gets a degrade editor
 /// (seeded from its own authored text) plus its honest outcome chip; a
 /// non-editable cell gets a read-only note naming why (never a fake editor).
+// Threads the same cohesive block context as [`render_block`], plus the S2.11
+// preview seam; see that function's note on the `#[allow]`.
+#[allow(clippy::too_many_arguments)]
 fn render_cell_editor(
     grid: &NodeId,
     authored: &GridAuthoredCellProjection,
     dispatch: &Arc<dyn Dispatcher>,
+    // S2.11: the optional preview service; `Some` drives the delete ghost-preview
+    // path, `None` the receipt-fallback path (see [`preview_block_delete`]).
+    preview: Option<&Arc<dyn PreviewService>>,
     workspace: ReadSignal<WorkspaceState>,
     editors: StoredValue<HashMap<BlockKey, BlockEditState>>,
     owner: Option<&Owner>,
@@ -929,8 +1010,55 @@ fn render_cell_editor(
         _ => {}
     });
 
+    // --- S2.11 delete affordance (mechanism 12) -------------------------------
+    // The delete-as-clear intent for THIS block, and an owned clone of the
+    // optional preview service. On activation the delete control runs the pure
+    // [`preview_block_delete`] decision over these to pick its path: a ghost when
+    // a preview answers, a receipt-fallback clear otherwise.
+    let delete_intent = delete_impact_intent(grid);
+    let delete_preview = preview.map(Arc::clone);
+    let delete_grid = grid.clone();
+    let delete_dispatch = Arc::clone(dispatch);
+    let on_delete = move |_| {
+        match preview_block_delete(delete_preview.as_ref(), &delete_intent) {
+            // Ghost path: stash the impact so the ghost region renders — NO
+            // dispatch yet. Confirm (below) is the only thing that mutates.
+            DeletePreview::Ghost(impact) => state.pending_ghost.set(Some(impact)),
+            // Receipt-fallback path (`ctx.preview == None`, the app today, or a
+            // preview that errored): dispatch the clear directly and render the
+            // honest receipt through the existing outcome chip — never a ghost.
+            DeletePreview::ReceiptFallback => {
+                dispatch_cell_clear(&delete_dispatch, &delete_grid, row, col, state);
+            }
+        }
+    };
+    // The ghost region's own confirm needs this block's address + dispatcher; a
+    // separate clone from the button's (each is moved into its own closure).
+    let ghost_grid = grid.clone();
+    let ghost_dispatch = Arc::clone(dispatch);
+
+    // Esc-to-revert at the EDIT-REGION level, not just on the ghost div: after
+    // clicking Delete, focus rests on the Delete button (a sibling of the ghost),
+    // so an Escape there would never reach the ghost's own handler. This shared
+    // ancestor of both the button and the ghost catches the bubbling Escape and
+    // reverts a pending ghost with ZERO dispatch — the headline "Esc revert"
+    // affordance works from wherever focus lands after Delete. It is inert (does
+    // not consume Escape) when no ghost is pending, so normal editor Esc/revert
+    // through the bridge is untouched.
+    let on_edit_keydown = move |ev: leptos::ev::KeyboardEvent| {
+        if ev.key() == "Escape" && state.pending_ghost.get_untracked().is_some() {
+            ev.prevent_default();
+            ev.stop_propagation();
+            state.pending_ghost.set(None);
+        }
+    };
+
     view! {
-        <div class="dna-notebook__edit" data-testid="notebook-block-edit">
+        <div
+            class="dna-notebook__edit"
+            data-testid="notebook-block-edit"
+            on:keydown=on_edit_keydown
+        >
             {move || {
                 // Remount on a commit/revert (`revision`) — never per keystroke —
                 // re-seeding from `edit_text` and re-applying `rejections`, both
@@ -946,6 +1074,90 @@ fn render_cell_editor(
                         on_event=on_event
                     />
                 }
+            }}
+            // S2.11 delete control (authoring-gated by the early return above):
+            // deleting a Cell block CLEARS its cell. Activation runs
+            // [`preview_block_delete`] — a ghost when previewable, an immediate
+            // receipt-fallback clear otherwise.
+            <button
+                type="button"
+                class="dna-notebook__delete"
+                data-testid="notebook-block-delete"
+                on:click=on_delete
+            >
+                "Delete"
+            </button>
+            {move || {
+                // S2.11 ghost-preview region: renders ONLY while this block holds
+                // a pending impact (the preview seam answered). It is a pure,
+                // non-mutating readout of the delete's impact — Esc / Cancel drop
+                // it with ZERO dispatch; Confirm dispatches the actual clear.
+                state
+                    .pending_ghost
+                    .get()
+                    .map(|impact| {
+                        let summary = describe_delete_impact(&impact);
+                        let legal = impact.legal;
+                        // Fresh per-run clones handed to this run's confirm
+                        // closure; the outer closure keeps its captures (Fn).
+                        let confirm_grid = ghost_grid.clone();
+                        let confirm_dispatch = Arc::clone(&ghost_dispatch);
+                        let confirm = move |_| {
+                            // Confirm IS the mutation: dispatch the clear, read
+                            // the honest receipt, then drop the ghost.
+                            dispatch_cell_clear(
+                                &confirm_dispatch,
+                                &confirm_grid,
+                                row,
+                                col,
+                                state,
+                            );
+                            state.pending_ghost.set(None);
+                        };
+                        // Cancel / Esc: revert the ghost, dispatch NOTHING.
+                        let cancel = move |_| state.pending_ghost.set(None);
+                        let on_ghost_keydown = move |ev: leptos::ev::KeyboardEvent| {
+                            if ev.key() == "Escape" {
+                                // Esc reverts the ghost with ZERO dispatch — the
+                                // whole handler touches only this signal.
+                                ev.prevent_default();
+                                ev.stop_propagation();
+                                state.pending_ghost.set(None);
+                            }
+                        };
+                        view! {
+                            <div
+                                class="dna-notebook__delete-ghost"
+                                data-testid="notebook-delete-ghost"
+                                data-legal=if legal { "true" } else { "false" }
+                                tabindex="0"
+                                on:keydown=on_ghost_keydown
+                            >
+                                <span
+                                    class="dna-notebook__delete-ghost-summary"
+                                    data-testid="notebook-delete-ghost-summary"
+                                >
+                                    {summary}
+                                </span>
+                                <button
+                                    type="button"
+                                    class="dna-notebook__delete-confirm"
+                                    data-testid="notebook-delete-confirm"
+                                    on:click=confirm
+                                >
+                                    "Confirm delete"
+                                </button>
+                                <button
+                                    type="button"
+                                    class="dna-notebook__delete-cancel"
+                                    data-testid="notebook-delete-cancel"
+                                    on:click=cancel
+                                >
+                                    "Cancel (Esc)"
+                                </button>
+                            </div>
+                        }
+                    })
             }}
             {move || {
                 state
@@ -971,14 +1183,127 @@ fn render_cell_editor(
     .into_any()
 }
 
+/// The outcome of [`preview_block_delete`]: either a non-mutating
+/// **ghost-preview** of the delete's impact (render it, let Esc revert, confirm
+/// to dispatch the clear), or a fall back to **post-attempt receipt feedback**
+/// (dispatch the clear now, render the honest [`CellOutcome`]) when no preview
+/// is available or the preview errored.
+// A short-lived decision value — created by [`preview_block_delete`] and matched
+// immediately by the delete control, never stored or collected — so the variant
+// size difference is immaterial; boxing the impact would add a needless
+// allocation on the (rare, user-initiated) ghost path.
+#[allow(clippy::large_enum_variant)]
+enum DeletePreview {
+    /// A preview answered: the host's non-mutating impact of the prospective
+    /// clear, to be summarized honestly and confirmed/reverted before any write.
+    Ghost(MutationImpactProjection),
+    /// No ghost — dispatch the clear directly and read the honest receipt. Both
+    /// `ctx.preview == None` (the calc app today) and a preview that ERRORED
+    /// land here; a failed preview is never escalated (`preview.rs`).
+    ReceiptFallback,
+}
+
+/// **The pure seam core (mechanism 12).** Decide how a block's delete should
+/// behave, WITHOUT mutating anything. With a [`PreviewService`], the prospective
+/// clear is offered to [`PreviewService::preview_mutation_impact`]: an
+/// `Ok(impact)` becomes a [`DeletePreview::Ghost`] (rendered before any
+/// dispatch); an `Err(_)` degrades to [`DeletePreview::ReceiptFallback`] —
+/// previews failing is never an escalated error (`preview.rs`: "previews
+/// failing is never an error a lens escalates"). With `None` (the calc app's
+/// reality, `ctx.preview == None`) it is likewise a `ReceiptFallback`. A pure
+/// function of its inputs, so it is unit-testable with a stub `PreviewService`
+/// and cannot drift from what the delete control renders.
+fn preview_block_delete(
+    preview: Option<&Arc<dyn PreviewService>>,
+    intent: &MutationImpactIntentProjection,
+) -> DeletePreview {
+    match preview {
+        Some(service) => match service.preview_mutation_impact(intent) {
+            Ok(impact) => DeletePreview::Ghost(impact),
+            Err(_) => DeletePreview::ReceiptFallback,
+        },
+        None => DeletePreview::ReceiptFallback,
+    }
+}
+
+/// Build the preview intent for deleting (== CLEARING) a Cell block. Delete-as-
+/// clear is `EditContent { content: "" }` — editing the node's content to empty
+/// — NOT [`MutationImpactIntentProjection::DeleteNode`], which would remove a
+/// node entirely; clearing a cell keeps its address and empties it (Excel).
+///
+/// **Honest workbook-cell → `NodeId` note.** The preview seam addresses NODES,
+/// but a workbook grid cell carries no per-cell [`NodeId`] in the projection:
+/// [`GridCellProjection`]/[`GridAuthoredCellProjection`] expose only `row`/`col`
+/// plus their owning grid's id. So the closest honest addressable node for this
+/// seam is the GRID (sheet) node; the row/col are not expressible in the current
+/// `MutationImpactIntentProjection` shape. This never runs live today — the calc
+/// app's `ctx.preview` is `None`, so a real host never receives this intent — it
+/// exists to drive the seam's code path in the stub-backed unit tests. If a
+/// future host adds a per-cell node identity (or a cell-addressed impact
+/// variant), this is the single site to make the intent precise.
+fn delete_impact_intent(grid: &NodeId) -> MutationImpactIntentProjection {
+    MutationImpactIntentProjection::EditContent {
+        node: grid.clone(),
+        content: String::new(),
+    }
+}
+
+/// Summarize a delete's ghost-preview impact HONESTLY from the real
+/// [`MutationImpactProjection`] fields — never a fabricated number. Reports
+/// legality (with the typed `blocked_reason` when the host says it is blocked)
+/// and the EXACT counts of `orphaned_dependents` and `affected_refs` the host
+/// computed. A pure function of the projection, so it is unit-testable and
+/// cannot drift from what the ghost region renders.
+fn describe_delete_impact(impact: &MutationImpactProjection) -> String {
+    let orphaned = impact.orphaned_dependents.len();
+    let affected = impact.affected_refs.len();
+    let legality = if impact.legal {
+        "clears this cell".to_string()
+    } else {
+        let reason = impact
+            .blocked_reason
+            .map_or("unknown", |reason| reason.stable_id());
+        format!("blocked ({reason})")
+    };
+    format!("{legality} — {orphaned} dependent(s) orphaned, {affected} reference(s) affected")
+}
+
+/// Dispatch the delete-as-clear write for a block — `enter_cell_intent(grid,
+/// row, col, "")`, Excel's empty-commit-clears path (→ [`CellOutcome::Cleared`])
+/// — and record the honest receipt on the block's OWN state (outcome chip +
+/// rejection underline + editor remount). The SAME entry-verb seam
+/// [`render_cell_editor`]'s commit crosses (SHELL_SPEC §6 layering law), reached
+/// by the delete control instead of the bridge's Enter: deleting a Cell block
+/// clears its cell, never removes a workbook address. Reads host truth only.
+fn dispatch_cell_clear(
+    dispatch: &Arc<dyn Dispatcher>,
+    grid: &NodeId,
+    row: u32,
+    col: u32,
+    state: BlockEditState,
+) {
+    let receipt = dispatch.dispatch(enter_cell_intent(grid.clone(), row, col, String::new()));
+    let resolved = interpret_receipt(&receipt);
+    if let CellOutcome::Rejected(diagnostics) = &resolved {
+        state.rejections.set(diagnostics.clone());
+    } else {
+        // A successful clear empties the buffer so the remounted editor reflects
+        // the now-cleared cell rather than the pre-clear text.
+        state.rejections.set(Vec::new());
+        state.edit_text.set(String::new());
+    }
+    state.outcome.set(Some(resolved));
+    state.revision.update(|revision| *revision += 1);
+}
+
 /// The single persona gate this stage reads at EVERY mutation-control site
 /// (S2.9 / NOTEBOOK_SPEC §6 scenario 4). Authoring — the per-block degrade
-/// editor, the `+ name` form, and the keyboard mutation grammar — is offered
-/// ONLY to a persona that [`Persona::can_mutate`] (Author). Reviewer and
-/// ReadOnly render the SAME content fully readable with ZERO enabled mutation
-/// controls: the report artifact (there is no separate export in v1). A pure
-/// function of [`Persona`], so it is unit-testable and every gate site reads the
-/// SAME rule — no site can drift from another.
+/// editor, the `+ name` form, the keyboard mutation grammar, and the S2.11
+/// delete control — is offered ONLY to a persona that [`Persona::can_mutate`]
+/// (Author). Reviewer and ReadOnly render the SAME content fully readable with
+/// ZERO enabled mutation controls: the report artifact (there is no separate
+/// export in v1). A pure function of [`Persona`], so it is unit-testable and
+/// every gate site reads the SAME rule — no site can drift from another.
 fn persona_allows_authoring(persona: Persona) -> bool {
     persona.can_mutate()
 }
@@ -1315,6 +1640,12 @@ pub const NOTEBOOK_CSS: &str = "\
 .dna-notebook__outcome{display:flex;gap:var(--dna-gap-2);align-items:baseline;padding:var(--dna-gap-1) var(--dna-gap-3);border-radius:var(--dna-radius-chip);background:var(--dna-paper-2);font-family:'Recursive Mono','Cascadia Code',Consolas,ui-monospace,monospace}
 .dna-notebook__outcome-label{font-weight:600;text-transform:uppercase;letter-spacing:0.05em;font-size:10px;color:var(--dna-accent-ink)}
 .dna-notebook__outcome-detail{font-size:11px;color:var(--dna-ink-2)}
+.dna-notebook__delete{align-self:flex-start;font:inherit;font-size:11px;font-weight:600;color:var(--dna-signal-ink);background:var(--dna-signal-soft);border:1px solid var(--dna-line);border-radius:var(--dna-radius-chip);padding:var(--dna-gap-1) var(--dna-gap-3);cursor:pointer}
+.dna-notebook__delete-ghost{display:flex;align-items:center;gap:var(--dna-gap-2);flex-wrap:wrap;padding:var(--dna-gap-2) var(--dna-gap-3);border:1px dashed var(--dna-line);border-radius:var(--dna-radius-card);background:var(--dna-paper-2)}
+.dna-notebook__delete-ghost[data-legal=\"false\"]{border-color:var(--dna-signal-ink)}
+.dna-notebook__delete-ghost-summary{font-size:11px;color:var(--dna-ink-2);font-family:'Recursive Mono','Cascadia Code',Consolas,ui-monospace,monospace}
+.dna-notebook__delete-confirm{font:inherit;font-size:11px;font-weight:600;color:var(--dna-signal-ink);background:var(--dna-paper);border:1px solid var(--dna-signal-ink);border-radius:var(--dna-radius-chip);padding:var(--dna-gap-1) var(--dna-gap-3);cursor:pointer}
+.dna-notebook__delete-cancel{font:inherit;font-size:11px;color:var(--dna-ink-2);background:var(--dna-paper);border:1px solid var(--dna-line);border-radius:var(--dna-radius-chip);padding:var(--dna-gap-1) var(--dna-gap-3);cursor:pointer}
 ";
 
 #[cfg(test)]
@@ -1492,6 +1823,37 @@ mod tests {
         assert_eq!(css_escape_attr_value("a\\b"), "a\\\\b");
     }
 
+    /// The eviction key-set (S2.11): `live_block_keys` returns exactly the
+    /// derived **Cell** block addresses — Name/Table entries contribute none, so
+    /// pruning `editors` to this set drops only vanished Cell blocks (a deleted
+    /// cell) without ever touching a still-present block's edit state. Driven
+    /// over the real demo workbook so the set matches what the block list paints.
+    #[test]
+    fn live_block_keys_are_exactly_the_derived_cell_addresses() {
+        use dnacalc_host_core::{DocumentSession, build_demo_workbook};
+
+        let session = build_demo_workbook().expect("demo workbook");
+        let document = DocumentSession::Workbook(session);
+        let ws = document.snapshot();
+        let entries = model::derive_entries(&ws);
+
+        let live = live_block_keys(&entries);
+        let expected: HashSet<BlockKey> = entries
+            .iter()
+            .filter_map(|entry| match &entry.kind {
+                NotebookEntryKind::Cell {
+                    grid, authored, ..
+                } => Some((grid.clone(), authored.row, authored.col)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(live, expected, "every derived Cell address, and only those");
+        assert!(!live.is_empty(), "the demo derives at least one Cell block");
+        // An address that is NOT derived is absent — so pruning would evict its
+        // lingering edit state.
+        assert!(!live.contains(&(NodeId::new("sheet:absent"), 999, 999)));
+    }
+
     /// **S2.10 substrate probe, pinned.** Over the REAL host-core demo
     /// workbook (native dev-dep, same seam `next_cell_key_walks_derived_order..`
     /// uses), `reference_xray_available` must be `false` — proving the
@@ -1569,5 +1931,161 @@ mod tests {
         assert!(REFERENCE_XRAY_DEGRADE_NOTE.contains("ask #7"));
         assert!(REFERENCE_XRAY_DEGRADE_NOTE.contains("G9"));
         assert!(REFERENCE_XRAY_DEGRADE_NOTE.contains("reference X-ray unavailable"));
+    }
+
+    // --- S2.11 delete ghost-preview / receipt-fallback seam -------------------
+
+    use dnacalc_skin_ir::{
+        FormulaBindPreviewProjection, MutationImpactBlockedReasonProjection, PreviewError,
+        RecalcPlanProjection,
+    };
+
+    /// A stub [`PreviewService`] driving the seam's two branches from one type:
+    /// `impact: Some(..)` makes `preview_mutation_impact` answer `Ok(impact)`
+    /// (the ghost path); `impact: None` makes it answer
+    /// `Err(PreviewError::Unavailable)` (the degrade path). `preview_formula_bind`
+    /// is unused on the delete seam and is safely `Err`.
+    struct StubPreview {
+        impact: Option<MutationImpactProjection>,
+    }
+
+    impl PreviewService for StubPreview {
+        fn preview_formula_bind(
+            &self,
+            _node: &NodeId,
+            _content: &str,
+        ) -> Result<FormulaBindPreviewProjection, PreviewError> {
+            Err(PreviewError::Unavailable)
+        }
+
+        fn preview_mutation_impact(
+            &self,
+            _intent: &MutationImpactIntentProjection,
+        ) -> Result<MutationImpactProjection, PreviewError> {
+            self.impact.clone().ok_or(PreviewError::Unavailable)
+        }
+    }
+
+    /// A canned impact carrying REAL, distinct counts (2 orphaned dependents, 1
+    /// affected reference, legal) so a summary/ghost test can prove the numbers
+    /// come from the projection rather than being fabricated.
+    fn canned_impact() -> MutationImpactProjection {
+        MutationImpactProjection {
+            intent: delete_impact_intent(&NodeId::new("sheet:Sheet1")),
+            legal: true,
+            blocked_reason: None,
+            profile_violations: Vec::new(),
+            bind_diagnostics: Vec::new(),
+            invalidation_plan: RecalcPlanProjection::default(),
+            requires_rebind: Vec::new(),
+            affected_refs: vec![NodeId::new("sheet:Sheet1:B1")],
+            orphaned_dependents: vec![
+                NodeId::new("sheet:Sheet1:C1"),
+                NodeId::new("sheet:Sheet1:D1"),
+            ],
+            collisions: Vec::new(),
+        }
+    }
+
+    /// Delete-as-clear expresses as `EditContent { content: "" }` addressed to
+    /// the grid node (the honest closest addressable node — a workbook cell has
+    /// no per-cell `NodeId`), NEVER `DeleteNode` (which would remove a node).
+    #[test]
+    fn delete_impact_intent_is_edit_content_to_empty_on_the_grid_node() {
+        let grid = NodeId::new("sheet:Sheet1");
+        match delete_impact_intent(&grid) {
+            MutationImpactIntentProjection::EditContent { node, content } => {
+                assert_eq!(node, grid, "the intent addresses the grid node");
+                assert!(content.is_empty(), "clearing sets content to empty");
+            }
+            other => panic!("delete-as-clear must be EditContent, got {other:?}"),
+        }
+    }
+
+    /// Ghost path: with a preview service that answers, `preview_block_delete`
+    /// returns `Ghost(impact)` carrying the stub's exact impact — proving the
+    /// decision actually crosses the `preview_mutation_impact` seam.
+    #[test]
+    fn preview_block_delete_returns_ghost_when_the_preview_answers() {
+        let service: Arc<dyn PreviewService> = Arc::new(StubPreview {
+            impact: Some(canned_impact()),
+        });
+        let intent = delete_impact_intent(&NodeId::new("sheet:Sheet1"));
+        match preview_block_delete(Some(&service), &intent) {
+            DeletePreview::Ghost(impact) => {
+                // The impact is the stub's, verbatim — the seam did not fabricate.
+                assert_eq!(impact.orphaned_dependents.len(), 2);
+                assert_eq!(impact.affected_refs.len(), 1);
+                assert!(impact.legal);
+            }
+            DeletePreview::ReceiptFallback => {
+                panic!("a preview that answered must produce a ghost, not a fallback")
+            }
+        }
+    }
+
+    /// Error degrades, never escalates: a preview whose `preview_mutation_impact`
+    /// returns `Err(Unavailable)` falls back to receipt feedback rather than
+    /// surfacing an error (the `preview.rs` contract).
+    #[test]
+    fn preview_block_delete_degrades_to_fallback_when_the_preview_errors() {
+        let service: Arc<dyn PreviewService> = Arc::new(StubPreview { impact: None });
+        let intent = delete_impact_intent(&NodeId::new("sheet:Sheet1"));
+        assert!(
+            matches!(
+                preview_block_delete(Some(&service), &intent),
+                DeletePreview::ReceiptFallback
+            ),
+            "a failed preview degrades to the receipt-fallback path"
+        );
+    }
+
+    /// The app's reality: with `ctx.preview == None`, `preview_block_delete`
+    /// takes the receipt-fallback path (the delete dispatches its clear and the
+    /// honest `CellOutcome` renders — no fabricated ghost).
+    #[test]
+    fn preview_block_delete_is_fallback_when_no_preview_is_present() {
+        let intent = delete_impact_intent(&NodeId::new("sheet:Sheet1"));
+        assert!(
+            matches!(
+                preview_block_delete(None, &intent),
+                DeletePreview::ReceiptFallback
+            ),
+            "no preview service means the receipt-fallback path"
+        );
+    }
+
+    /// The ghost summary reports the REAL counts from the projection (2 orphaned,
+    /// 1 affected) and the legal state — never a fabricated number.
+    #[test]
+    fn describe_delete_impact_reports_honest_counts_from_real_fields() {
+        let summary = describe_delete_impact(&canned_impact());
+        assert!(summary.contains("clears this cell"), "legal delete is stated");
+        assert!(
+            summary.contains("2 dependent(s) orphaned"),
+            "the 2 orphaned dependents surface verbatim: {summary}"
+        );
+        assert!(
+            summary.contains("1 reference(s) affected"),
+            "the 1 affected reference surfaces verbatim: {summary}"
+        );
+    }
+
+    /// A blocked impact names the typed `blocked_reason` honestly (never a bare
+    /// "unavailable") and still reports its real counts.
+    #[test]
+    fn describe_delete_impact_names_the_blocked_reason() {
+        let mut impact = canned_impact();
+        impact.legal = false;
+        impact.blocked_reason = Some(MutationImpactBlockedReasonProjection::NameCollision);
+        let summary = describe_delete_impact(&impact);
+        assert!(
+            summary.contains("blocked (name_collision)"),
+            "the typed blocked reason is surfaced: {summary}"
+        );
+        assert!(
+            summary.contains("2 dependent(s) orphaned"),
+            "counts still surface on the blocked path: {summary}"
+        );
     }
 }
