@@ -185,14 +185,19 @@ async fn bench_command_deck_lists_at_least_fifteen_commands() {
     );
 }
 
-/// Bead dtc-lfz.3 — the command deck's Save/Open rows track the REAL
-/// `PersistenceProjection` the bench-host projects, not a hardcoded value.
-/// On the browser (wasm32) target, `home_shell_view_model` honestly reports
-/// `can_save = can_open = false` (no download/file-input adapter is wired
-/// at this layer yet) — proving the disabled-with-reason rendering is
-/// driven by that real, non-fabricated capability rather than a stub.
+/// Beads dtc-lfz.3 + dtc-lfz.9 — the command deck's Save/Open rows track the
+/// REAL capability the app advertises, not a hardcoded value. On the browser
+/// (wasm32) target the split is now honest and asymmetric:
+///   - Save still renders disabled-with-reason (no browser download adapter is
+///     wired at this layer yet — the host projects `can_save = false`).
+///   - Open renders ENABLED: the app now owns a real `<input type=file>`
+///     workspace picker (bead dtc-lfz.9), so `shell_persistence_from_host`
+///     advertises `can_open = true` on wasm. This is the DOM-visible proof that
+///     the enablement flip is driven by the app's real picker seam, not a stub
+///     (before dtc-lfz.9 `can_open` was force-honest-false and this row was
+///     disabled).
 #[wasm_bindgen_test]
-async fn bench_command_deck_save_open_are_honestly_disabled_on_browser() {
+async fn bench_command_deck_save_disabled_but_open_enabled_on_browser() {
     let host = mount();
     next_tick().await;
     press_chord(&shell_root(&host), "k", true, false, false);
@@ -225,7 +230,13 @@ async fn bench_command_deck_save_open_are_honestly_disabled_on_browser() {
         .expect("open row present");
     assert_eq!(
         open.get_attribute("data-enabled").as_deref(),
-        Some("false"),
-        "browser has no real Open adapter wired yet — must render honestly disabled"
+        Some("true"),
+        "the browser now has a real <input type=file> workspace picker \
+         (bead dtc-lfz.9), so Open must render enabled"
+    );
+    assert_ne!(
+        open.get_attribute("aria-disabled").as_deref(),
+        Some("true"),
+        "an enabled Open row must not be aria-disabled"
     );
 }

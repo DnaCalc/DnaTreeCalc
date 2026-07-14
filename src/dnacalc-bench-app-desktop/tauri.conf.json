@@ -8,6 +8,7 @@
     "frontendDist": "../dnacalc-bench-app/dist"
   },
   "app": {
+    "withGlobalTauri": true,
     "windows": [
       { "title": "DNA Bench", "width": 1280, "height": 800 }
     ],

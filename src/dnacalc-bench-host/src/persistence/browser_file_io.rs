@@ -133,6 +133,17 @@ pub struct OpenedFormulaFile {
     pub xml: String,
 }
 
+/// Opened workspace payload returned by the workspace open dialog
+/// (bead dtc-lfz.9). The Bench command deck's Open reads the picked
+/// `workspace.json` text here and hands it to
+/// `persistence::open_workspace_from_content` — the browser has no
+/// addressable filesystem path, so only the content crosses.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OpenedWorkspaceFile {
+    pub filename: String,
+    pub json: String,
+}
+
 /// Show a file-picker dialog and resolve to the user's selection.
 /// `None` means the user dismissed the dialog without picking; an
 /// `Err` is reserved for actual host-side failure.
@@ -145,6 +156,28 @@ pub struct OpenedFormulaFile {
 /// not a guarantee — content-detection happens in
 /// `read_formula_xml`.
 pub async fn open_xml_via_file_input() -> Result<Option<OpenedFormulaFile>, String> {
+    Ok(pick_file_text(".dnafml,.xml,application/xml,text/xml")
+        .await?
+        .map(|(filename, xml)| OpenedFormulaFile { filename, xml }))
+}
+
+/// Show a file-picker dialog for a workspace `.json` and resolve to
+/// the user's selection (bead dtc-lfz.9). `None` means the user
+/// dismissed the dialog; an `Err` is host-side failure. Same
+/// hidden-`<input type=file>` machinery as `open_xml_via_file_input`,
+/// only the accept filter and payload type differ.
+pub async fn open_workspace_via_file_input() -> Result<Option<OpenedWorkspaceFile>, String> {
+    Ok(pick_file_text(".json,application/json")
+        .await?
+        .map(|(filename, json)| OpenedWorkspaceFile { filename, json }))
+}
+
+/// Shared file-input picker: builds a hidden `<input type="file">`
+/// with the given `accept` filter, clicks it, and resolves to the
+/// picked file's `(filename, text)` — or `None` when dismissed. The
+/// change event must outlive this call until the user picks (or
+/// dismisses), so a oneshot signal bridges the handler to this future.
+async fn pick_file_text(accept: &str) -> Result<Option<(String, String)>, String> {
     let document = current_document()?;
 
     let input: HtmlInputElement = document
@@ -158,17 +191,13 @@ pub async fn open_xml_via_file_input() -> Result<Option<OpenedFormulaFile>, Stri
         .dyn_into()
         .map_err(|_| "createElement(`input`) did not return HtmlInputElement".to_string())?;
     input.set_type("file");
-    input.set_accept(".dnafml,.xml,application/xml,text/xml");
+    input.set_accept(accept);
     let html_element: web_sys::HtmlElement = input.clone().unchecked_into();
     html_element
         .style()
         .set_property("display", "none")
         .map_err(|error| format!("input style.display failed: {}", js_error_message(&error)))?;
 
-    // The change event must outlive this call until the user picks
-    // (or dismisses) — but JsFuture awaits a Promise, not an Event.
-    // Build a small Promise/resolver shim by stashing a oneshot
-    // signal that the change handler resolves.
     let (sender, receiver) = oneshot_pair::<Option<File>>();
     let sender_for_change = sender.clone();
     let on_change = Closure::wrap(Box::new(move |event: Event| {
@@ -207,8 +236,8 @@ pub async fn open_xml_via_file_input() -> Result<Option<OpenedFormulaFile>, Stri
         return Ok(None);
     };
     let filename = file.name();
-    let xml = read_file_as_text(file).await?;
-    Ok(Some(OpenedFormulaFile { filename, xml }))
+    let text = read_file_as_text(file).await?;
+    Ok(Some((filename, text)))
 }
 
 /// Read a `.bas` file's text content via the browser FileReader API.

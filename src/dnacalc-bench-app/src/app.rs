@@ -299,21 +299,125 @@ impl StageSurface for BenchResultStage {
 }
 
 /// The `PersistenceProjection` the Bench `Shell` mount actually advertises
-/// (bead dtc-lfz.3): `can_save` and `dirty` are the host's real truth
-/// verbatim (see [`BenchHost::persistence`]) — Save needs no caller-supplied
-/// path, so a capable host genuinely writes `workspace.json` end-to-end.
-/// `can_open` is force-honest-false regardless of what the host's raw
-/// capability says: `SkinShellIntent::Open` still requires a path, and the
-/// Bench product has no file-picker/dialog seam anywhere yet to produce one
-/// (open with no path is a real, typed rejection every time — see
-/// `dispatch_shell_intent_open_without_a_path_is_a_typed_rejection_not_a_silent_noop`
-/// in `adapter.rs`), so advertising the raw value would enable a deck row
-/// that can never actually open anything. Follow-up: a Tauri dialog plugin /
-/// browser `<input type=file>` seam that resolves a path before dispatch.
+/// (beads dtc-lfz.3, dtc-lfz.9): `can_save` and `dirty` are the host's real
+/// truth verbatim (see [`BenchHost::persistence`]) — Save needs no
+/// caller-supplied path, so a capable host genuinely writes `workspace.json`
+/// end-to-end. `can_open` reflects whether the *app* has a file-picker seam
+/// for this runtime, which is the app's fact to own rather than the host's:
+/// the running Bench product is always wasm (the browser, or the WASM
+/// frontend inside the Tauri webview), and on wasm there is now a real picker
+/// — the Tauri native dialog when the desktop bridge is present, the browser
+/// `<input type=file>` otherwise (see `spawn_open_workspace`). The native
+/// `rlib` compile is test-only and ships no picker, so `can_open` is
+/// honest-false there. Open is never a fake/silent success: a cancelled
+/// picker is a no-op and a malformed file is a typed `Err` (see
+/// [`BenchHost::open_workspace_content`]).
 fn shell_persistence_from_host(host: &BenchHost) -> PersistenceProjection {
     let mut persistence = host.persistence();
-    persistence.can_open = false;
+    persistence.can_open = cfg!(target_arch = "wasm32");
     persistence
+}
+
+/// Drive the Bench command deck's Open (bead dtc-lfz.9). Open cannot run
+/// inside the synchronous `on_shell_intent` callback: every file picker is
+/// async, and the running product is wasm (so the host can never `std::fs`
+/// the path `SkinShellIntent::Open` carries — the file *content* must be
+/// resolved first). This spawns the picker, applies the resolved workspace
+/// bytes through [`BenchHost::open_workspace_content`], then re-projects both
+/// the formula surface and persistence so the newly-opened workspace renders.
+#[cfg(target_arch = "wasm32")]
+fn spawn_open_workspace(
+    host_id: u64,
+    projection: RwSignal<OneFormulaProjection>,
+    persistence: RwSignal<PersistenceProjection>,
+) {
+    wasm_bindgen_futures::spawn_local(async move {
+        let picked = match resolve_workspace_pick().await {
+            // (content, optional origin path)
+            Ok(Some(picked)) => picked,
+            // User dismissed the picker — an honest no-op, nothing opened.
+            Ok(None) => return,
+            Err(error) => {
+                web_sys::console::error_1(
+                    &format!("[bench] workspace open failed: {error}").into(),
+                );
+                return;
+            }
+        };
+        let (json, source_path) = picked;
+        let applied = with_bench_host(host_id, |host| {
+            host.open_workspace_content(&json, source_path.as_deref())
+        });
+        match applied {
+            Some(Ok(())) => {
+                if let Some(next) = with_bench_host(host_id, |host| host.projection()) {
+                    projection.set(next);
+                }
+                if let Some(next) =
+                    with_bench_host(host_id, |host| shell_persistence_from_host(host))
+                {
+                    persistence.set(next);
+                }
+            }
+            // A real, typed rejection (malformed / incompatible file) — surface
+            // it honestly rather than pretending the open succeeded.
+            Some(Err(error)) => web_sys::console::error_1(
+                &format!("[bench] workspace open rejected: {error}").into(),
+            ),
+            None => {}
+        }
+    });
+}
+
+/// Resolve the workspace bytes to open: the Tauri native dialog when the
+/// desktop bridge is present, otherwise the browser `<input type=file>` — and
+/// the browser input is also the fallback when the Tauri command is missing or
+/// errors, since it works inside the webview too, so wasm always has a real
+/// picker. Returns `(content, origin_path)`; `None` means the user dismissed
+/// the dialog.
+#[cfg(target_arch = "wasm32")]
+async fn resolve_workspace_pick() -> Result<Option<(String, Option<String>)>, String> {
+    use dnacalc_bench_host::persistence as persistence_io;
+
+    if persistence_io::tauri_command_bridge_available() {
+        match persistence_io::open_workspace_via_tauri_dialog().await {
+            Ok(Some(selection)) => return Ok(Some((selection.content, Some(selection.path)))),
+            // Native dialog dismissed — do not reopen a second (browser) picker.
+            Ok(None) => return Ok(None),
+            Err(error) => {
+                // Bridge present but the command failed (not registered / IO
+                // error). Fall through to the browser input, which works inside
+                // the Tauri webview too.
+                web_sys::console::warn_1(
+                    &format!("[bench] Tauri open dialog unavailable, using file input: {error}")
+                        .into(),
+                );
+            }
+        }
+    }
+
+    Ok(persistence_io::open_workspace_via_file_input()
+        .await?
+        .map(|selection| (selection.json, None)))
+}
+
+/// Native (`rlib`, test-only) Open: no file picker ships in the native compile,
+/// so dispatch the pathless `Open` through the host to surface its typed
+/// rejection faithfully (never a silent no-op), then re-project persistence.
+#[cfg(not(target_arch = "wasm32"))]
+fn spawn_open_workspace(
+    host_id: u64,
+    _projection: RwSignal<OneFormulaProjection>,
+    persistence: RwSignal<PersistenceProjection>,
+) {
+    let _ = with_bench_host(host_id, |host| {
+        host.dispatch_shell_intent(SkinShellIntent::Open {
+            requested_path: None,
+        })
+    });
+    if let Some(next) = with_bench_host(host_id, |host| shell_persistence_from_host(host)) {
+        persistence.set(next);
+    }
 }
 
 fn core_value_label(core: &dnacalc_skin_ir::formula::CoreValueProjection) -> &'static str {
@@ -442,9 +546,19 @@ pub fn BenchApp(
     // `adapter.rs`); a Save issued with a pending uncommitted edit therefore
     // still projects `dirty` until that edit is committed.
     let on_shell_intent = Callback::new(move |intent: SkinShellIntent| {
-        let _ = with_bench_host(host_id, |host| host.dispatch_shell_intent(intent));
-        if let Some(next) = with_bench_host(host_id, |host| shell_persistence_from_host(host)) {
-            persistence.set(next);
+        if matches!(intent, SkinShellIntent::Open { .. }) {
+            // Open needs an async file picker to resolve the workspace bytes
+            // before anything reaches the host (the wasm product can't
+            // `std::fs` a path), so it can't complete inside this synchronous
+            // callback — hand off to the picker flow, which re-projects the
+            // formula surface and persistence when it resolves (bead
+            // dtc-lfz.9).
+            spawn_open_workspace(host_id, projection, persistence);
+        } else {
+            let _ = with_bench_host(host_id, |host| host.dispatch_shell_intent(intent));
+            if let Some(next) = with_bench_host(host_id, |host| shell_persistence_from_host(host)) {
+                persistence.set(next);
+            }
         }
     });
 
