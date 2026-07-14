@@ -27,7 +27,7 @@ use leptos::prelude::*;
 
 use dnacalc_bridge::{BridgeEvent, FormulaBridgeDegrade};
 use dnacalc_shell::{ProfileTag, StageContext, StageHandle, StageId, StageSurface};
-use dnacalc_skin_ir::intent::Dispatcher;
+use dnacalc_skin_ir::intent::{Dispatcher, WorkspaceIntent};
 use dnacalc_skin_ir::{
     DefinedNameProjection, DefinedNameTargetProjection, GridAuthoredCellProjection,
     GridCellProjection, GridEditabilityProjection, GridEntryDiagnosticProjection,
@@ -148,6 +148,14 @@ impl StageSurface for NotebookStage {
         // the next workspace change. `None` only off a reactive runtime (e.g. a
         // bare SSR render), where re-derivation cannot happen anyway.
         let owner = Owner::current();
+        // The name-first authoring affordance (S2.8): its own buffers, created
+        // once outside the reactive derivation closure (same reasoning as
+        // `editors` above) so opening the form / typing survives a workspace
+        // re-derivation triggered by some OTHER block's commit.
+        let add_name_open = RwSignal::new(false);
+        let name_buffer = RwSignal::new(String::new());
+        let value_buffer = RwSignal::new(String::new());
+        let add_name_dispatch = Arc::clone(&dispatch);
         let view = view! {
             <style>{NOTEBOOK_CSS}</style>
             <section
@@ -156,6 +164,7 @@ impl StageSurface for NotebookStage {
                 data-testid="notebook-root"
                 data-dna-density="reading"
             >
+                {render_add_name_affordance(add_name_open, name_buffer, value_buffer, add_name_dispatch)}
                 {move || {
                     let entries = workspace.with(model::derive_entries);
                     if entries.is_empty() {
@@ -272,6 +281,126 @@ fn render_block(
                 {edit_view}
             </div>
         </article>
+    }
+    .into_any()
+}
+
+/// The Notebook's **name-first authoring affordance** (S2.8): a `+ name`
+/// control that reveals a two-field inline form (name, value/formula text) plus
+/// a Create button. On Create, with a non-empty (trimmed) name, this dispatches
+/// the **single** atomic `WorkspaceIntent::CreateNamedValue` through `ctx.dispatch`
+/// — host-core owns finding-or-creating the `_names` backing sheet, writing
+/// `value_text` through the universal entry verb, and defining `name` at
+/// Workbook scope (skin-ir `intent.rs`'s own doc comment); this stage never
+/// authors the `_names` sheet itself, never guesses its backing cell, and never
+/// classifies `=`-vs-literal (SHELL_SPEC §6 layering law — the same discipline
+/// `render_cell_editor` follows for ordinary cell commits).
+///
+/// HONEST EMPTY: an empty (or all-whitespace) name commits nothing at all — no
+/// intent is dispatched — and the Create button is `disabled` AND an inline
+/// hint explains why, so the affordance never fabricates a success for a name
+/// the user never actually typed.
+///
+/// The form's own buffers (`name`/`value`) are created once under the mount
+/// owner (by the caller, [`NotebookStage::mount`]), outside the reactive
+/// derivation closure — the same non-cross-contamination reasoning
+/// [`BlockEditState`] documents: a workspace re-derivation (from some sibling
+/// block's commit, or from this very create) must not reset in-progress typing
+/// in this form. The outer `move || ..` below reads only `open`, so opening/
+/// closing the form is the only thing that remounts its `<input>`s — each
+/// keystroke updates its own field's `prop:value` binding in place, never
+/// recreating the DOM nodes (mirrors the `revision`-gated remount discipline
+/// `render_cell_editor` uses for its degrade editor).
+fn render_add_name_affordance(
+    open: RwSignal<bool>,
+    name_buffer: RwSignal<String>,
+    value_buffer: RwSignal<String>,
+    dispatch: Arc<dyn Dispatcher>,
+) -> AnyView {
+    let toggle_open = move |_| open.update(|value| *value = !*value);
+
+    view! {
+        <div class="dna-notebook__add-name">
+            <button
+                type="button"
+                class="dna-notebook__add-name-toggle"
+                data-testid="notebook-add-name"
+                on:click=toggle_open
+            >
+                "+ name"
+            </button>
+            {move || {
+                if !open.get() {
+                    return ().into_any();
+                }
+                // Cloned fresh each time the form (re)opens; the `create`
+                // closure below is single-use (one Create button), so no
+                // `Clone` bound on it is needed.
+                let commit_dispatch = Arc::clone(&dispatch);
+                let create = move |_| {
+                    let typed_name = name_buffer.get_untracked();
+                    let trimmed = typed_name.trim();
+                    if trimmed.is_empty() {
+                        // Honest no-op: never dispatch, never fabricate a
+                        // created name from empty/whitespace-only text.
+                        return;
+                    }
+                    let value_text = value_buffer.get_untracked();
+                    commit_dispatch.dispatch(WorkspaceIntent::CreateNamedValue {
+                        name: trimmed.to_string(),
+                        value_text,
+                    });
+                    // Clear the inputs — the workbook dispatcher re-projects,
+                    // so the new Name block appears through the reactive
+                    // closure above with no refresh of our own.
+                    name_buffer.set(String::new());
+                    value_buffer.set(String::new());
+                };
+                view! {
+                    <div class="dna-notebook__add-name-form" data-testid="notebook-add-name-form">
+                        <input
+                            type="text"
+                            class="dna-notebook__add-name-input"
+                            data-testid="notebook-name-input"
+                            placeholder="name"
+                            prop:value=move || name_buffer.get()
+                            on:input=move |ev| name_buffer.set(event_target_value(&ev))
+                        />
+                        <span class="dna-notebook__add-name-eq" aria-hidden="true">"="</span>
+                        <input
+                            type="text"
+                            class="dna-notebook__add-name-value"
+                            data-testid="notebook-name-value"
+                            placeholder="0.065 or =A1+A2"
+                            prop:value=move || value_buffer.get()
+                            on:input=move |ev| value_buffer.set(event_target_value(&ev))
+                        />
+                        <button
+                            type="button"
+                            class="dna-notebook__add-name-create"
+                            data-testid="notebook-create-name"
+                            prop:disabled=move || name_buffer.get().trim().is_empty()
+                            on:click=create
+                        >
+                            "Create"
+                        </button>
+                        <span
+                            class="dna-notebook__add-name-hint"
+                            data-testid="notebook-add-name-hint"
+                        >
+                            {move || {
+                                if name_buffer.get().trim().is_empty() {
+                                    "enter a name to create"
+                                } else {
+                                    ""
+                                }
+                            }}
+                        </span>
+                    </div>
+                }
+                .into_any()
+            }}
+        </div>
     }
     .into_any()
 }
@@ -637,6 +766,14 @@ fn scalar_value_text(value: &NodeValueProjection) -> String {
 pub const NOTEBOOK_CSS: &str = "\
 .dna-notebook{display:flex;flex-direction:column;gap:var(--dna-gap-4);max-width:68ch;line-height:1.6;padding:var(--dna-gap-5);color:var(--dna-ink)}
 .dna-notebook__empty{margin:0;color:var(--dna-ink-3);font-style:italic}
+.dna-notebook__add-name{display:flex;flex-direction:column;gap:var(--dna-gap-2);align-items:flex-start}
+.dna-notebook__add-name-toggle{align-self:flex-start;font:inherit;font-size:12px;font-weight:600;color:var(--dna-accent-ink);background:var(--dna-accent-soft);border:1px solid var(--dna-line);border-radius:var(--dna-radius-chip);padding:var(--dna-gap-1) var(--dna-gap-3);cursor:pointer}
+.dna-notebook__add-name-form{display:flex;align-items:center;gap:var(--dna-gap-2);flex-wrap:wrap;padding:var(--dna-gap-3);border:1px solid var(--dna-line);border-radius:var(--dna-radius-card);background:var(--dna-paper-2);width:100%}
+.dna-notebook__add-name-input,.dna-notebook__add-name-value{font:inherit;font-family:'Recursive Mono','Cascadia Code',Consolas,ui-monospace,monospace;font-size:12px;color:var(--dna-ink);background:var(--dna-paper);border:1px solid var(--dna-line);border-radius:var(--dna-radius-chip);padding:var(--dna-gap-1) var(--dna-gap-2)}
+.dna-notebook__add-name-eq{color:var(--dna-ink-3)}
+.dna-notebook__add-name-create{font:inherit;font-size:11px;font-weight:600;color:var(--dna-ink);background:var(--dna-paper);border:1px solid var(--dna-line);border-radius:var(--dna-radius-chip);padding:var(--dna-gap-1) var(--dna-gap-3);cursor:pointer}
+.dna-notebook__add-name-create:disabled{color:var(--dna-ink-3);cursor:not-allowed}
+.dna-notebook__add-name-hint{font-size:11px;color:var(--dna-ink-3);font-style:italic}
 .dna-notebook__block{display:flex;align-items:stretch;border:1px solid var(--dna-line);border-radius:var(--dna-radius-card);background:var(--dna-paper);overflow:hidden}
 .dna-notebook__gutter{display:flex;align-items:flex-start;justify-content:center;padding:var(--dna-gap-3) var(--dna-gap-2);min-width:1.9rem;border-right:1px solid var(--dna-line);background:var(--dna-paper-2)}
 .dna-notebook__gutter--input{background:var(--dna-green-soft)}

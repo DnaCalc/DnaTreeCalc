@@ -452,6 +452,145 @@ async fn calc_notebook_block_edit_writes_its_own_cell_not_a_sibling() {
     );
 }
 
+/// Type `text` into a plain `<input>` element and fire an `input` event (as a
+/// keystroke would).
+fn type_into_input(input: &web_sys::HtmlInputElement, text: &str) {
+    input.set_value(text);
+    input
+        .dispatch_event(&web_sys::Event::new("input").unwrap())
+        .unwrap();
+}
+
+/// Click a plain DOM element (a real `MouseEvent`, as a user click would fire).
+fn click(element: &web_sys::Element) {
+    element
+        .dispatch_event(&web_sys::MouseEvent::new("click").unwrap())
+        .unwrap();
+}
+
+/// S2.8 — the Notebook's name-first authoring affordance: revealing the `+
+/// name` form, filling `GrowthRate` / `0.12`, and clicking Create dispatches
+/// the atomic `WorkspaceIntent::CreateNamedValue` (through the exact same
+/// `ctx.dispatch` / workbook-dispatcher path `calc_notebook_renders_reactive_block_list`
+/// drives for ordinary cell commits), and the resulting workbook-scoped name
+/// appears as a real `Name` block in the reactive list — no app-level refresh
+/// needed, the workbook dispatcher's republish is what repaints it.
+#[wasm_bindgen_test]
+async fn calc_notebook_create_name_affordance_adds_a_name_block() {
+    let host = mount();
+    next_tick().await;
+
+    // Switch to the Notebook stage.
+    let notebook_tab = query(&host, "[data-stage-tab=\"notebook\"]").expect("notebook tab");
+    let target: web_sys::EventTarget = notebook_tab.unchecked_into();
+    target
+        .dispatch_event(&web_sys::MouseEvent::new("click").unwrap())
+        .unwrap();
+    next_tick().await;
+
+    // No GrowthRate block yet.
+    assert!(
+        notebook_block(&host, "GrowthRate").is_none(),
+        "GrowthRate is not yet defined"
+    );
+
+    // The `+ name` control reveals the form.
+    let add_name_toggle =
+        query(&host, "[data-testid=\"notebook-add-name\"]").expect("the + name control mounts");
+    assert!(
+        query(&host, "[data-testid=\"notebook-name-input\"]").is_none(),
+        "the name/value inputs are not shown until the affordance is opened"
+    );
+    click(&add_name_toggle);
+    next_tick().await;
+
+    let name_input = query(&host, "[data-testid=\"notebook-name-input\"]")
+        .expect("the name input reveals")
+        .unchecked_into::<web_sys::HtmlInputElement>();
+    let value_input = query(&host, "[data-testid=\"notebook-name-value\"]")
+        .expect("the value input reveals")
+        .unchecked_into::<web_sys::HtmlInputElement>();
+    let create_button =
+        query(&host, "[data-testid=\"notebook-create-name\"]").expect("the Create button reveals");
+
+    type_into_input(&name_input, "GrowthRate");
+    type_into_input(&value_input, "0.12");
+    click(&create_button);
+    next_tick().await;
+
+    // A real Name block now renders — kind=name, carrying the name text.
+    let block = notebook_block(&host, "GrowthRate").expect("a Name block appears for GrowthRate");
+    assert_eq!(
+        block.get_attribute("data-block-kind").as_deref(),
+        Some("name"),
+        "GrowthRate derives as a Name block, not a Cell block"
+    );
+
+    // The inputs cleared after a successful commit.
+    let name_input = query(&host, "[data-testid=\"notebook-name-input\"]")
+        .expect("the name input is still mounted")
+        .unchecked_into::<web_sys::HtmlInputElement>();
+    assert_eq!(name_input.value(), "", "the name input clears after Create");
+}
+
+/// S2.8 — an empty name is an honest no-op: the Create button is disabled and
+/// clicking it (or leaving the name blank) dispatches nothing at all — no
+/// fabricated name is ever created.
+#[wasm_bindgen_test]
+async fn calc_notebook_create_name_empty_name_is_honest_no_op() {
+    let host = mount();
+    next_tick().await;
+
+    let notebook_tab = query(&host, "[data-stage-tab=\"notebook\"]").expect("notebook tab");
+    let target: web_sys::EventTarget = notebook_tab.unchecked_into();
+    target
+        .dispatch_event(&web_sys::MouseEvent::new("click").unwrap())
+        .unwrap();
+    next_tick().await;
+
+    let add_name_toggle =
+        query(&host, "[data-testid=\"notebook-add-name\"]").expect("the + name control mounts");
+    click(&add_name_toggle);
+    next_tick().await;
+
+    let blocks_before = host
+        .query_selector_all("[data-testid=\"notebook-block\"]")
+        .unwrap()
+        .length();
+
+    // Leave the name blank; only fill the value. The Create button must be
+    // disabled and an inline hint must explain why.
+    let value_input = query(&host, "[data-testid=\"notebook-name-value\"]")
+        .expect("the value input reveals")
+        .unchecked_into::<web_sys::HtmlInputElement>();
+    type_into_input(&value_input, "0.5");
+    next_tick().await;
+
+    let create_button = query(&host, "[data-testid=\"notebook-create-name\"]")
+        .expect("the Create button reveals")
+        .unchecked_into::<web_sys::HtmlButtonElement>();
+    assert!(create_button.disabled(), "Create is disabled with an empty name");
+    let hint =
+        query(&host, "[data-testid=\"notebook-add-name-hint\"]").expect("the hint element mounts");
+    assert!(
+        !hint.text_content().unwrap_or_default().trim().is_empty(),
+        "an inline hint explains the disabled state"
+    );
+
+    // Clicking the disabled button anyway dispatches nothing: no new block
+    // appears, the count is unchanged.
+    click(&create_button);
+    next_tick().await;
+    let blocks_after = host
+        .query_selector_all("[data-testid=\"notebook-block\"]")
+        .unwrap()
+        .length();
+    assert_eq!(
+        blocks_after, blocks_before,
+        "an empty name never fabricates a new block"
+    );
+}
+
 /// §10.2 — the DEGRADE bridge edits a workbook cell via `EnterGridCell`, and
 /// the host's three-way outcome (literal / formula / cleared) plus the typed
 /// rejection are each rendered honestly from the receipt.

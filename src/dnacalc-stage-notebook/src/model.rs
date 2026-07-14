@@ -144,30 +144,53 @@ fn name_scope_grid(workspace: &WorkspaceState, name: &DefinedNameProjection) -> 
     }
 }
 
-/// True when a static name's target rect covers the given cell address (used to
-/// exclude name-covered cells from the "Other cells" uncovered-cell section).
-fn name_covers_cell(name: &DefinedNameProjection, grid: &NodeId, row: u32, col: u32) -> bool {
+/// True when static `name` covers the cell at (`grid`, `row`, `col`) — i.e. that
+/// cell is the name's backing cell, so it must not also render as a bare "Other
+/// cells" entry.
+///
+/// A name covers a cell only on its OWN backing grid. That grid is resolvable
+/// via [`name_scope_grid`] only when unambiguous (a Sheet-scoped name, or a
+/// single-grid workbook); for a Workbook-scoped name in a multi-grid workbook it
+/// degrades to `None` because `GridRectProjection` carries no grid identity. In
+/// that degraded case the name covers NOTHING — never a cell that merely shares
+/// its `(row, col)` on another sheet (the S2.8 vanishing bug: a `_names!R1C1`-
+/// backed name must not hide `Sheet1!A1`/`Sheet2!A1`). The unresolved backing
+/// cell itself is kept out of the list by skipping the `_names` sheet in
+/// [`derive_entries`].
+fn name_covers_cell(
+    workspace: &WorkspaceState,
+    name: &DefinedNameProjection,
+    grid: &NodeId,
+    row: u32,
+    col: u32,
+) -> bool {
     let DefinedNameTargetProjection::Static(rect) = &name.target else {
         return false;
     };
-    let Some(scope_grid) = name_scope_matches(name, grid) else {
+    let Some(scope_grid) = name_scope_grid(workspace, name) else {
         return false;
     };
-    scope_grid
+    &scope_grid == grid
         && row >= rect.top_row
         && row <= rect.bottom_row
         && col >= rect.left_col
         && col <= rect.right_col
 }
 
-/// Whether `name`'s scope could possibly cover `grid` — `Sheet` scope must match
-/// the grid exactly; `Workbook` scope covers every grid (single-sheet
-/// assumption, as [`name_scope_grid`]).
-fn name_scope_matches(name: &DefinedNameProjection, grid: &NodeId) -> Option<bool> {
-    match &name.scope {
-        DefinedNameScopeProjection::Sheet(id) => Some(id == grid),
-        DefinedNameScopeProjection::Workbook => Some(true),
-    }
+/// The host's `_names` backing-sheet display name — host-core's
+/// `NAMES_BACKING_SHEET`, owner-ratified 2026-07-05 as "hidden-in-notebook": its
+/// append-only column-A cells are an implementation detail of defined-name
+/// storage, never notebook content, so the notebook is the designated surface
+/// that hides this sheet. A TP crate can't depend on host-core for the const, so
+/// it mirrors the ratified convention here.
+const NAMES_BACKING_SHEET: &str = "_names";
+
+/// Whether `grid` is the hidden `_names` defined-name backing sheet.
+fn is_names_backing_grid(workspace: &WorkspaceState, grid: &NodeId) -> bool {
+    workspace
+        .sheets
+        .iter()
+        .any(|sheet| &sheet.grid_node_id == grid && sheet.display_name == NAMES_BACKING_SHEET)
 }
 
 /// True when `(row, col)` falls inside a table overlay's `table_range` (table
@@ -213,6 +236,11 @@ pub fn derive_entries(workspace: &WorkspaceState) -> Vec<NotebookEntry> {
 
     // 2. Uncovered cells, grid order then sheet/row/col order.
     for (grid_id, grid) in &workspace.grids {
+        // The `_names` backing sheet is hidden-in-notebook (host convention):
+        // its column-A cells store defined-name values, not user content.
+        if is_names_backing_grid(workspace, grid_id) {
+            continue;
+        }
         for cell in &grid.cells {
             let Some(authored) = &cell.authored else {
                 continue;
@@ -224,7 +252,7 @@ pub fn derive_entries(workspace: &WorkspaceState) -> Vec<NotebookEntry> {
                 .defined_names
                 .entries
                 .iter()
-                .any(|name| name_covers_cell(name, grid_id, cell.row, cell.col));
+                .any(|name| name_covers_cell(workspace, name, grid_id, cell.row, cell.col));
             if covered_by_name {
                 continue;
             }
@@ -250,6 +278,9 @@ pub fn derive_entries(workspace: &WorkspaceState) -> Vec<NotebookEntry> {
 
     // 3. Tables, grid order then declaration order.
     for (grid_id, grid) in &workspace.grids {
+        if is_names_backing_grid(workspace, grid_id) {
+            continue;
+        }
         for table in &grid.overlays.tables {
             entries.push(NotebookEntry {
                 display_name: table.table_name.clone(),
@@ -569,5 +600,140 @@ mod tests {
             .insert(NodeId::new("Sheet1"), grid_projection(cells, Vec::new()));
 
         assert_eq!(derive_entries(&ws).len(), 0);
+    }
+
+    /// S2.8 — the `+ name` affordance's seam: dispatching the atomic
+    /// `CreateNamedValue` intent against the REAL two-sheet demo workbook (i)
+    /// derives a `Name` entry for the new name, (ii) does not leak the
+    /// `_names` backing sheet's own cell as a spurious "Other cells" `Cell`
+    /// entry, and (iii) the name is live-referenceable: a formula elsewhere in
+    /// the workbook resolves it.
+    ///
+    /// Regression guard for the S2.8 vanishing bug (fixed in this bead):
+    /// `name_covers_cell` now resolves a name's backing grid via
+    /// `name_scope_grid` (punting to `None` for a Workbook-scoped name once the
+    /// workbook has >1 grid), so creating a `_names!R1C1`-backed name no longer
+    /// wrongly hides `Sheet1!A1`/`Sheet2!A1`, which share only its `(row, col)`
+    /// on other sheets. Assertion (iv) pins that; the coordinates-only
+    /// `GridRectProjection` carrying no grid identity is why the backing cell
+    /// itself stays unresolved (assertion (i)) and is instead hidden by the
+    /// `_names`-sheet skip (assertion (ii)).
+    #[test]
+    fn create_named_value_derives_name_entry_without_leaking_backing_cell_and_is_referenceable() {
+        use dnacalc_host_core::{DocumentSession, build_demo_workbook};
+        use dnacalc_skin_ir::intent::WorkspaceIntent;
+
+        let session = build_demo_workbook().expect("demo workbook");
+        // Capture the two demo sheets' stable grid ids before the session is
+        // moved into the model-neutral `DocumentSession` wrapper (mirrors
+        // `adapter.rs`'s own test setup).
+        let sheet_rows = session.sheets().expect("demo sheets");
+        let sheet1_grid = dnacalc_host_core::sheet_grid_node_id(sheet_rows[0].node_id);
+        let sheet2_grid = dnacalc_host_core::sheet_grid_node_id(sheet_rows[1].node_id);
+        let mut document = DocumentSession::Workbook(session);
+
+        // Dispatch the SAME atomic intent the `+ name` affordance's Create
+        // button dispatches.
+        let receipt = document.dispatch(WorkspaceIntent::CreateNamedValue {
+            name: "GrowthRate".to_string(),
+            value_text: "0.12".to_string(),
+        });
+        assert!(receipt.accepted, "CreateNamedValue is accepted: {receipt:?}");
+
+        let after_snapshot = document.snapshot();
+        let after = derive_entries(&after_snapshot);
+
+        // (i) A Name entry for GrowthRate now exists (Workbook scope, the
+        // literal value's static rect).
+        let name_entry = after
+            .iter()
+            .find(|entry| entry.display_name == "GrowthRate")
+            .expect("GrowthRate derives as a Name entry");
+        let NotebookEntryKind::Name { name, backing_cell } = &name_entry.kind else {
+            panic!("GrowthRate must derive as NotebookEntryKind::Name, got {:?}", name_entry.kind);
+        };
+        assert_eq!(name.scope, DefinedNameScopeProjection::Workbook);
+        assert!(!name.is_dynamic);
+        // The workspace now has 3 grids (Sheet1, Sheet2, the lazily-created
+        // `_names` sheet), so `resolve_backing_cell`'s documented single-sheet
+        // assumption degrades to `None` rather than guessing which grid the
+        // name's coordinates-only rect addresses — an honest degrade, not a
+        // bug (see `name_scope_grid`'s doc comment).
+        assert_eq!(
+            *backing_cell, None,
+            "backing cell does not resolve across >1 grid (documented single-sheet degrade)"
+        );
+
+        // (ii) No spurious Cell entry leaks for the `_names` backing sheet
+        // itself: the third (newly-created) grid contributes ZERO "Other
+        // cells" entries to the notebook.
+        assert_eq!(after_snapshot.grids.len(), 3, "the `_names` sheet was lazily created");
+        let names_grid = after_snapshot
+            .grids
+            .keys()
+            .find(|grid| **grid != sheet1_grid && **grid != sheet2_grid)
+            .cloned()
+            .expect("a third grid (the `_names` sheet) now exists");
+        let leaked_names_cells: Vec<_> = after
+            .iter()
+            .filter(|entry| matches!(&entry.kind, NotebookEntryKind::Cell { grid, .. } if *grid == names_grid))
+            .collect();
+        assert!(
+            leaked_names_cells.is_empty(),
+            "the `_names` backing cell must not leak as a spurious Cell entry, got {leaked_names_cells:?}"
+        );
+
+        // (iv) Regression: creating the name must NOT hide same-(row,col) cells
+        // on the OTHER sheets. `Sheet1!A1` (value 1) and `Sheet2!A1` (value 6)
+        // share only the (1,1) coordinates of the `_names` backing rect, so they
+        // must still derive as Cell entries (the S2.8 vanishing bug, fixed).
+        let cell_present = |grid: &dnacalc_skin_ir::NodeId, row: u32, col: u32| {
+            after.iter().any(|entry| {
+                matches!(&entry.kind,
+                    NotebookEntryKind::Cell { grid: g, authored, .. }
+                        if g == grid && authored.row == row && authored.col == col)
+            })
+        };
+        assert!(
+            cell_present(&sheet1_grid, 1, 1),
+            "Sheet1!A1 must survive name creation (S2.8 vanishing bug fixed)"
+        );
+        assert!(
+            cell_present(&sheet2_grid, 1, 1),
+            "Sheet2!A1 must survive name creation (S2.8 vanishing bug fixed)"
+        );
+
+        // (iii) The name is live-referenceable: author a formula elsewhere
+        // (Sheet1 A6 — empty in the demo, and outside the name's (1,1,1,1)
+        // rect so it is unaffected by the limitation noted above) and prove it
+        // resolves through the freshly-created name.
+        let entry_receipt = document.dispatch(WorkspaceIntent::EnterGridCell {
+            grid: sheet1_grid.clone(),
+            row: 6,
+            col: 1,
+            text: "=GrowthRate*2".to_string(),
+        });
+        assert!(entry_receipt.accepted, "the referencing formula is accepted: {entry_receipt:?}");
+
+        let after2 = derive_entries(&document.snapshot());
+        let a6 = after2
+            .iter()
+            .find_map(|entry| match &entry.kind {
+                NotebookEntryKind::Cell { grid, authored, value }
+                    if *grid == sheet1_grid && authored.row == 6 && authored.col == 1 =>
+                {
+                    Some(value.clone())
+                }
+                _ => None,
+            })
+            .expect("Sheet1 A6 derives as a Cell entry after authoring it");
+        assert_eq!(
+            a6,
+            NodeValueProjection::Number {
+                raw: "0.24".to_string(),
+                display: "0.24".to_string(),
+            },
+            "=GrowthRate*2 resolves live to 0.24 (GrowthRate = 0.12)"
+        );
     }
 }
