@@ -25,5 +25,15 @@ leptos = { version = "0.8.17", default-features = false, features = ["ssr"] }
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 leptos = { version = "0.8.17", default-features = false, features = ["csr"] }
 
+# DEV-ONLY: the native round-trip tests in `src/edit.rs` drive the REAL
+# `dnacalc-host-core` demo workbook through the dispatcher to prove commits hit
+# the right cell. This is a `[dev-dependencies]` edge, so it never appears in
+# `cargo tree -p dnacalc-stage-notebook -e normal` — the P-gate's scope (see
+# `dnacalc-arch-gates` "Edge scope"): a dev-only `ox*` edge never ships in the
+# TP artifact, so the P-gate stays green while the tests still exercise engine
+# truth. Native (non-wasm) only: host-core is not a wasm target.
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+dnacalc-host-core = { path = "../dnacalc-host-core" }
+
 [lints]
 workspace = true

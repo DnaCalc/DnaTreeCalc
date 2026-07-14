@@ -82,6 +82,43 @@ fn notebook_block_value(host: &web_sys::HtmlElement, name_fragment: &str) -> Opt
     Some(value.text_content().unwrap_or_default())
 }
 
+/// The degrade textarea embedded in one specific notebook block (its OWN
+/// editor), found by scoping the query to that block element — so a block's
+/// editor can never be confused with the app's bridge-slot editor or another
+/// block's editor.
+fn block_editor(block: &web_sys::Element) -> web_sys::HtmlTextAreaElement {
+    block
+        .query_selector(".dna-bridge--degrade .dna-bridge__input")
+        .unwrap()
+        .expect("the block carries its own degrade editor")
+        .unchecked_into()
+}
+
+/// Type `text` into a specific block's editor and fire input (as a keystroke
+/// would), then Enter on that same editor to commit.
+fn commit_block_edit(area: &web_sys::HtmlTextAreaElement, text: &str) {
+    area.set_value(text);
+    area.dispatch_event(&web_sys::Event::new("input").unwrap())
+        .unwrap();
+    let init = web_sys::KeyboardEventInit::new();
+    init.set_key("Enter");
+    init.set_bubbles(true);
+    init.set_cancelable(true);
+    let event = web_sys::KeyboardEvent::new_with_keyboard_event_init_dict("keydown", &init).unwrap();
+    let target: web_sys::EventTarget = area.clone().unchecked_into();
+    target.dispatch_event(&event).unwrap();
+}
+
+/// The outcome-chip `data-outcome` label of the notebook block whose name
+/// contains `name_fragment`, or `None` if the block has no committed outcome yet.
+fn notebook_block_outcome(host: &web_sys::HtmlElement, name_fragment: &str) -> Option<String> {
+    let block = notebook_block(host, name_fragment)?;
+    let chip = block
+        .query_selector("[data-testid=\"notebook-block-outcome\"]")
+        .unwrap()?;
+    chip.get_attribute("data-outcome")
+}
+
 fn shell_root(host: &web_sys::HtmlElement) -> web_sys::EventTarget {
     host.query_selector(".dna-shell")
         .unwrap()
@@ -345,6 +382,73 @@ async fn calc_notebook_renders_reactive_block_list() {
         notebook_block_value(&host, "R6C1").as_deref().map(str::trim),
         Some("6"),
         "A6 block's value region now shows the formula result 6"
+    );
+}
+
+/// S2.6 — a notebook Cell block is EDITABLE through its OWN embedded degrade
+/// editor: typing a formula into the block for Sheet1 `A3` (R3C1, value 3) and
+/// committing dispatches `EnterGridCell` built from THAT block's own row/col, so
+/// the target block updates (value 6, outcome chip `formula`) while a SIBLING
+/// block — Sheet1 `A2` (R2C1, value 2) — is left completely untouched. This is
+/// the wrong-cell guard in the DOM: the critique's key risk is a block writing
+/// to the wrong cell, so the test asserts BOTH the target changed AND the
+/// sibling did not.
+#[wasm_bindgen_test]
+async fn calc_notebook_block_edit_writes_its_own_cell_not_a_sibling() {
+    let host = mount();
+    next_tick().await;
+
+    // Switch to the Notebook stage.
+    let notebook_tab = query(&host, "[data-stage-tab=\"notebook\"]").expect("notebook tab");
+    let target: web_sys::EventTarget = notebook_tab.unchecked_into();
+    target
+        .dispatch_event(&web_sys::MouseEvent::new("click").unwrap())
+        .unwrap();
+    next_tick().await;
+
+    // Before: R3C1 (A3) reads 3, its sibling R2C1 (A2) reads 2, and neither has
+    // a committed outcome yet.
+    assert_eq!(
+        notebook_block_value(&host, "R3C1").as_deref().map(str::trim),
+        Some("3"),
+        "Sheet1 A3 seeds as 3"
+    );
+    assert_eq!(
+        notebook_block_value(&host, "R2C1").as_deref().map(str::trim),
+        Some("2"),
+        "Sheet1 A2 (the sibling) seeds as 2"
+    );
+    assert!(
+        notebook_block_outcome(&host, "R3C1").is_none(),
+        "no outcome chip before the block is committed"
+    );
+
+    // Edit + commit through the R3C1 block's OWN editor.
+    let r3c1 = notebook_block(&host, "R3C1").expect("the R3C1 block renders");
+    commit_block_edit(&block_editor(&r3c1), "=A1+A5");
+    next_tick().await;
+
+    // The target block updated: value 6 (A1 + A5 = 1 + 5) and outcome `formula`.
+    assert_eq!(
+        notebook_block_value(&host, "R3C1").as_deref().map(str::trim),
+        Some("6"),
+        "the edited block's value region now shows the formula result 6"
+    );
+    assert_eq!(
+        notebook_block_outcome(&host, "R3C1").as_deref(),
+        Some("formula"),
+        "the edited block shows the host's three-way outcome (formula)"
+    );
+
+    // The sibling block is untouched — the commit hit R3C1, not R2C1.
+    assert_eq!(
+        notebook_block_value(&host, "R2C1").as_deref().map(str::trim),
+        Some("2"),
+        "the sibling block R2C1 is unchanged by the R3C1 commit"
+    );
+    assert!(
+        notebook_block_outcome(&host, "R2C1").is_none(),
+        "the sibling block never committed, so it carries no outcome chip"
     );
 }
 
