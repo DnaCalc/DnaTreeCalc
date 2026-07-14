@@ -73,6 +73,48 @@
 //! the editor uses, never a fabricated ghost. Workbook grid cells carry no
 //! per-cell [`NodeId`] in the projection (only their grid's id + row/col), so
 //! the preview intent addresses the grid node — see [`delete_impact_intent`].
+//!
+//! **S2.12** adds a stage-level, honest **scenario-chip bar**
+//! (`data-testid="notebook-scenario-bar"`; NOTEBOOK_SPEC §6 scenario 3,
+//! deferred to ask #3). The bead's substrate probe covers two independent
+//! facts, both re-verified directly against the workbook profile rather than
+//! assumed:
+//!
+//! 1. **Production.** `dnacalc-host-core` never populates
+//!    `WorkspaceState.scenarios.entries` for the Workbook model — a grep of
+//!    `src/dnacalc-host-core/src` for `scenarios`/`ScenarioManifest` finds only
+//!    a doc-comment mention, no assignment — so the workbook `snapshot()`
+//!    leaves `scenarios` at its empty `ScenarioManifestProjection::default()`.
+//! 2. **Activation.** Even were an entry ever to appear, activating it is a
+//!    dead end: `WorkspaceIntent::ActivateScenario` and `SetScenarioOverride`
+//!    both fall through the workbook dispatcher's per-intent match
+//!    (`dnacalc-host-core/src/lib.rs`) to its catch-all arm, which returns
+//!    `IntentError::UnsupportedByModel { intent, model: "Workbook" }` — never
+//!    an accepted receipt (the SAME catch-all `CreateScenario` hits, pinned by
+//!    that crate's own `create_scenario_on_workbook_is_unsupported_by_model`
+//!    test).
+//!
+//! Given both, a LIVE chip would be dishonest — it would either have nothing
+//! to show, or (were entries ever to appear) invite a click the model can
+//! only reject. So this ships a WHOLESALE degrade rather than a half-built
+//! feature, exactly like S2.10's X-Ray note: [`scenario_bar_state`] reads the
+//! REAL manifest and returns [`ScenarioBarState::Empty`] (today, always) —
+//! rendered as a `data-testid="notebook-scenario-empty"` note citing ask #3 —
+//! or, were entries ever to appear, [`ScenarioBarState::Chips`], rendered as
+//! `data-testid="notebook-scenario-chip"` buttons that are ALWAYS
+//! `disabled`/`aria-disabled`, carrying the same ask-#3 reason as their
+//! `title`. No click path here ever constructs
+//! `WorkspaceIntent::ActivateScenario` or `SetScenarioOverride` — the honest
+//! thing is to not offer a live control the model would only reject
+//! (SHELL_SPEC §6 honesty), so wiring a chip performs ZERO dispatch; a native
+//! `disabled` `<button>` additionally never fires a DOM click at all. Full
+//! scenario-switching (NOTEBOOK_SPEC §6 scenario 3) stays out of scope until
+//! ask #3 lands.
+//!
+//! The bar is a stage-level read (like the X-Ray note), not per-block. Unlike
+//! the per-block editor / `+ name` form / keyboard grammar, it is NOT gated by
+//! [`persona_allows_authoring`]: no chip is ever live, so a disabled,
+//! read-only bar is honestly renderable to every persona alike.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -482,6 +524,17 @@ impl StageSurface for NotebookStage {
                         </p>
                     }
                     .into_any()
+                }}
+                {move || {
+                    // S2.12 stage-level scenario-chip bar (ask #3 degrade): read
+                    // the workspace REACTIVELY so the bar stays truthful on any
+                    // workspace change — see `scenario_bar_state`'s doc for the
+                    // full two-part probe writeup (production + activation).
+                    // Deliberately NOT gated by `persona_allows_authoring`: no
+                    // chip this bar renders is ever live (see the module doc),
+                    // so it is honestly readable by every persona alike.
+                    let state = workspace.with(scenario_bar_state);
+                    render_scenario_bar(state)
                 }}
                 {move || {
                     // S2.9 reactive persona gate: read the governing persona
@@ -1362,6 +1415,131 @@ fn reference_xray_available(ws: &WorkspaceState) -> bool {
 /// feature.
 const REFERENCE_XRAY_DEGRADE_NOTE: &str = "reference X-ray unavailable — the workbook dependency projection is not produced (ask #7 / G9)";
 
+/// One derived scenario chip (S2.12): the REAL identity fields copied verbatim
+/// from a [`dnacalc_skin_ir::ScenarioProjection`] — `id`, display `name`, and
+/// whether the host's manifest marks it `is_active` — nothing fabricated.
+/// `reason` is ALWAYS [`SCENARIO_CHIP_DISABLED_REASON`]: there is no code path
+/// in [`scenario_bar_state`] that omits it, because
+/// `WorkspaceIntent::ActivateScenario` returns `UnsupportedByModel` for the
+/// Workbook model (see the module doc) — a chip is never offered live, so this
+/// type carries no "enabled" state to omit or forget to check.
+#[derive(Debug, Clone, PartialEq)]
+struct ScenarioChipDegrade {
+    id: String,
+    name: String,
+    is_active: bool,
+    reason: &'static str,
+}
+
+/// **S2.12 scenario-chip bar — WHOLESALE HONEST DEGRADE.** The bar's render
+/// state, derived PURELY from `WorkspaceState.scenarios` — see the module doc
+/// for the full two-part probe (production + activation). No case of this enum
+/// is ever populated with fabricated data: [`Empty`](Self::Empty) carries
+/// nothing, and every [`Chips`](Self::Chips) entry is a verbatim copy of a real
+/// [`dnacalc_skin_ir::ScenarioProjection`]'s fields via [`ScenarioChipDegrade`].
+#[derive(Debug, Clone, PartialEq)]
+enum ScenarioBarState {
+    /// `scenarios.entries` is empty — today, always, for the workbook demo
+    /// (`dnacalc-host-core` never populates it; see the module doc). Render
+    /// the honest empty note citing ask #3; no chips are invented.
+    Empty,
+    /// `scenarios.entries` carries one or more real entries (never true for
+    /// today's workbook profile, but honestly handled if it ever is): one
+    /// [`ScenarioChipDegrade`] per entry, each ALWAYS disabled.
+    Chips(Vec<ScenarioChipDegrade>),
+}
+
+/// The pure seam core for the scenario-chip bar: read `ws.scenarios.entries`
+/// and describe what to render — [`ScenarioBarState::Empty`] when it is empty
+/// (today, always), else one [`ScenarioChipDegrade`] per real entry. Never
+/// consults anything beyond the manifest itself (no dependency-graph lookup,
+/// no synthetic entry), so it cannot drift from what the host actually
+/// published. A pure function of [`WorkspaceState`], hence unit-testable
+/// against both the real demo workbook and a hand-built projection.
+fn scenario_bar_state(ws: &WorkspaceState) -> ScenarioBarState {
+    if ws.scenarios.entries.is_empty() {
+        return ScenarioBarState::Empty;
+    }
+    ScenarioBarState::Chips(
+        ws.scenarios
+            .entries
+            .iter()
+            .map(|entry| ScenarioChipDegrade {
+                id: entry.id.clone(),
+                name: entry.name.clone(),
+                is_active: entry.is_active,
+                reason: SCENARIO_CHIP_DISABLED_REASON,
+            })
+            .collect(),
+    )
+}
+
+/// The honest note shown when [`scenario_bar_state`] is
+/// [`ScenarioBarState::Empty`] (today, always) —
+/// `data-testid="notebook-scenario-empty"`. Cites ask #3 by name rather than
+/// silently omitting the feature (mirrors [`REFERENCE_XRAY_DEGRADE_NOTE`]'s
+/// convention).
+const SCENARIO_BAR_EMPTY_NOTE: &str =
+    "scenarios unavailable — scenario switching is not supported for this model yet (ask #3)";
+
+/// The honest disabled-with-reason text every [`ScenarioChipDegrade`] carries
+/// and every rendered chip surfaces as its `title` — cites ask #3 by name.
+/// Shared by every chip (there is exactly one reason a chip is never live: the
+/// model rejects activation outright), so no two chips can ever disagree on
+/// why.
+const SCENARIO_CHIP_DISABLED_REASON: &str =
+    "scenario switching unsupported for this model (ask #3)";
+
+/// Render the S2.12 scenario-chip bar from its pure [`ScenarioBarState`]:
+/// `data-testid="notebook-scenario-bar"` always wraps either the honest empty
+/// note or the (always-disabled) chip list — the bar itself is never absent,
+/// mirroring the stage's "never rendered blank" discipline for the block list.
+/// A chip's `on:click` is not wired to anything at all: the honest choice is
+/// to never construct `WorkspaceIntent::ActivateScenario` /
+/// `SetScenarioOverride` on any path here (see the module doc), and a native
+/// `disabled` attribute additionally means the browser never fires a click on
+/// it in the first place. `aria-disabled="true"` is set alongside `disabled`
+/// so a screen reader gets the same honest signal as the visual chrome.
+fn render_scenario_bar(state: ScenarioBarState) -> AnyView {
+    view! {
+        <div class="dna-notebook__scenario-bar" data-testid="notebook-scenario-bar">
+            {match state {
+                ScenarioBarState::Empty => view! {
+                    <p
+                        class="dna-notebook__scenario-empty"
+                        data-testid="notebook-scenario-empty"
+                        aria-live="polite"
+                    >
+                        {SCENARIO_BAR_EMPTY_NOTE}
+                    </p>
+                }
+                .into_any(),
+                ScenarioBarState::Chips(chips) => chips
+                    .into_iter()
+                    .map(|chip| {
+                        view! {
+                            <button
+                                type="button"
+                                class="dna-notebook__scenario-chip"
+                                data-testid="notebook-scenario-chip"
+                                data-scenario-id=chip.id
+                                data-active=chip.is_active.to_string()
+                                disabled=true
+                                aria-disabled="true"
+                                title=chip.reason
+                            >
+                                {chip.name}
+                            </button>
+                        }
+                    })
+                    .collect_view()
+                    .into_any(),
+            }}
+        </div>
+    }
+    .into_any()
+}
+
 /// The reason a cell is not directly editable, or `None` when it is `Editable`.
 /// A skin renders the non-`Editable` variants read-only (the entry verb would
 /// reject a write to them anyway, H6).
@@ -1612,6 +1790,10 @@ pub const NOTEBOOK_CSS: &str = "\
 .dna-notebook__add-name-hint{font-size:11px;color:var(--dna-ink-3);font-style:italic}
 .dna-notebook__kbd-status{margin:0;min-height:1em;font-size:11px;color:var(--dna-ink-3);font-style:italic}
 .dna-notebook__xray-degrade{margin:0;font-size:11px;color:var(--dna-ink-3);font-style:italic}
+.dna-notebook__scenario-bar{display:flex;align-items:center;gap:var(--dna-gap-2);flex-wrap:wrap}
+.dna-notebook__scenario-empty{margin:0;font-size:11px;color:var(--dna-ink-3);font-style:italic}
+.dna-notebook__scenario-chip{font:inherit;font-size:11px;font-weight:600;color:var(--dna-ink-3);background:var(--dna-paper-2);border:1px solid var(--dna-line);border-radius:var(--dna-radius-chip);padding:var(--dna-gap-1) var(--dna-gap-3);cursor:not-allowed}
+.dna-notebook__scenario-chip[data-active=\"true\"]{border-color:var(--dna-accent-ink)}
 .dna-notebook__block{display:flex;align-items:stretch;border:1px solid var(--dna-line);border-radius:var(--dna-radius-card);background:var(--dna-paper);overflow:hidden}
 .dna-notebook__block:focus-visible{outline:2px solid var(--dna-accent-ink);outline-offset:1px}
 .dna-notebook__gutter{display:flex;align-items:flex-start;justify-content:center;padding:var(--dna-gap-3) var(--dna-gap-2);min-width:1.9rem;border-right:1px solid var(--dna-line);background:var(--dna-paper-2)}
@@ -1931,6 +2113,136 @@ mod tests {
         assert!(REFERENCE_XRAY_DEGRADE_NOTE.contains("ask #7"));
         assert!(REFERENCE_XRAY_DEGRADE_NOTE.contains("G9"));
         assert!(REFERENCE_XRAY_DEGRADE_NOTE.contains("reference X-ray unavailable"));
+    }
+
+    // --- S2.12 scenario-chip bar (honest degrade, ask #3) ---------------------
+
+    /// **S2.12 substrate probe, pinned (half 1: production).** Over the REAL
+    /// host-core demo workbook (same seam `reference_xray_available_is_false_..`
+    /// uses), `scenarios.entries` must be empty and `scenario_bar_state` must
+    /// degrade to [`ScenarioBarState::Empty`] — proving the substrate is
+    /// GENUINELY empty for the workbook profile, not merely assumed empty. If
+    /// `dnacalc-host-core` ever starts populating `scenarios.entries`, this
+    /// test starts failing and is the trigger to build the real chip-switching
+    /// feature (fail-until-fixed policy applies in reverse here: this pins
+    /// today's honest degrade, not a bug).
+    #[test]
+    fn scenario_bar_state_is_honest_empty_for_the_real_demo_workbook() {
+        use dnacalc_host_core::{DocumentSession, build_demo_workbook};
+
+        let session = build_demo_workbook().expect("demo workbook");
+        let document = DocumentSession::Workbook(session);
+        let ws = document.snapshot();
+
+        assert!(
+            ws.scenarios.entries.is_empty(),
+            "the workbook profile does not populate scenarios.entries today"
+        );
+        assert_eq!(
+            scenario_bar_state(&ws),
+            ScenarioBarState::Empty,
+            "an empty manifest must degrade to the honest empty variant, never fabricate chips"
+        );
+    }
+
+    /// The other half of the substrate check: `scenario_bar_state` is a REAL
+    /// read of `scenarios.entries`, not a hardcoded `Empty`. A hand-built
+    /// [`WorkspaceState`] carrying one real [`dnacalc_skin_ir::ScenarioProjection`]
+    /// flips it to [`ScenarioBarState::Chips`] carrying that entry's OWN
+    /// id/name/is_active verbatim — and that chip's `reason` ALWAYS cites ask
+    /// #3, proving activation is never offered live even when entries exist
+    /// (half 2 of the substrate probe: `ActivateScenario`/`SetScenarioOverride`
+    /// are `UnsupportedByModel`, so there is no "enabled" state to compute).
+    #[test]
+    fn scenario_bar_state_yields_a_disabled_chip_never_live_when_entries_exist() {
+        use dnacalc_skin_ir::{ScenarioProjection, ScenarioSourceProjection};
+        use std::collections::BTreeMap;
+
+        let mut ws = WorkspaceState::default();
+        assert_eq!(
+            scenario_bar_state(&ws),
+            ScenarioBarState::Empty,
+            "a freshly-defaulted WorkspaceState carries no scenario entries"
+        );
+
+        ws.scenarios.entries.push(ScenarioProjection {
+            id: "sc-1".to_string(),
+            name: "Base case".to_string(),
+            source: ScenarioSourceProjection::Candidate {
+                handle: "cand:1".to_string(),
+            },
+            override_count: 0,
+            overridden_nodes: Vec::new(),
+            override_values: BTreeMap::new(),
+            value_epoch: None,
+            is_active: true,
+        });
+
+        match scenario_bar_state(&ws) {
+            ScenarioBarState::Chips(chips) => {
+                assert_eq!(chips.len(), 1, "exactly the one real entry, no more");
+                assert_eq!(
+                    chips[0].id, "sc-1",
+                    "the chip's id is the entry's own, verbatim"
+                );
+                assert_eq!(
+                    chips[0].name, "Base case",
+                    "the chip's name is the entry's own"
+                );
+                assert!(
+                    chips[0].is_active,
+                    "the entry's is_active flag passes through honestly"
+                );
+                assert!(
+                    chips[0].reason.contains("ask #3"),
+                    "every chip's disabled reason cites ask #3: {}",
+                    chips[0].reason
+                );
+            }
+            ScenarioBarState::Empty => panic!("a populated manifest must not degrade to Empty"),
+        }
+    }
+
+    /// Both degrade reason strings cite ask #3 by name (never a bare
+    /// "unavailable" with no explanation), and the CSS the bar's `data-testid`
+    /// nodes rely on actually exists.
+    #[test]
+    fn scenario_degrade_reasons_cite_ask_3() {
+        assert!(SCENARIO_BAR_EMPTY_NOTE.contains("ask #3"));
+        assert!(SCENARIO_BAR_EMPTY_NOTE.contains("scenarios unavailable"));
+        assert!(SCENARIO_CHIP_DISABLED_REASON.contains("ask #3"));
+        assert!(NOTEBOOK_CSS.contains(".dna-notebook__scenario-bar"));
+        assert!(NOTEBOOK_CSS.contains(".dna-notebook__scenario-empty"));
+        assert!(NOTEBOOK_CSS.contains(".dna-notebook__scenario-chip"));
+    }
+
+    /// **STRUCTURAL PROOF, ZERO MUTATION.** A disabled chip's honesty is not
+    /// "the button happens to ignore clicks" — it is that no CALL SITE in this
+    /// stage ever dispatches either scenario-mutation intent. Grep this
+    /// crate's own source (this same file, via `include_str!`) for the exact
+    /// call-site shape every real dispatch in this file uses
+    /// (`.dispatch(WorkspaceIntent::Variant`, see `render_add_name_affordance`'s
+    /// `CreateNamedValue` call for the pattern); it must be entirely absent for
+    /// both scenario intents. The needle is assembled at runtime from
+    /// non-contiguous pieces (`concat!`-free string building) specifically so
+    /// this test's OWN source text — which must still be free to NAME the
+    /// intents in prose, as the module doc above does — can never
+    /// accidentally satisfy its own check.
+    #[test]
+    fn no_scenario_activation_intent_is_ever_dispatched_in_this_stage() {
+        let source = include_str!("lib.rs");
+        let activate_call = format!("dispatch({}::{}", "WorkspaceIntent", "ActivateScenario");
+        let override_call = format!("dispatch({}::{}", "WorkspaceIntent", "SetScenarioOverride");
+        assert!(
+            !source.contains(&activate_call),
+            "the Notebook stage must never dispatch ActivateScenario — a chip's honesty \
+             depends on there being no live path to it"
+        );
+        assert!(
+            !source.contains(&override_call),
+            "the Notebook stage must never dispatch SetScenarioOverride — a chip's honesty \
+             depends on there being no live path to it"
+        );
     }
 
     // --- S2.11 delete ghost-preview / receipt-fallback seam -------------------
