@@ -24,6 +24,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use leptos::prelude::*;
+use leptos::wasm_bindgen::JsCast;
 
 use dnacalc_bridge::{BridgeEvent, FormulaBridgeDegrade};
 use dnacalc_shell::{ProfileTag, StageContext, StageHandle, StageId, StageSurface};
@@ -35,9 +36,14 @@ use dnacalc_skin_ir::{
 };
 
 pub mod edit;
+pub mod keyboard;
 pub mod model;
 
 pub use edit::{CellOutcome, enter_cell_intent, interpret_receipt};
+pub use keyboard::{
+    ActionAvailability, KeyBinding, KeyChord, NotebookAction, action_availability, notebook_keymap,
+    resolve_action,
+};
 pub use model::{NotebookEntry, NotebookEntryKind, derive_entries};
 
 /// Stable per-block identity: a Cell block's grid plus its 1-based address. The
@@ -156,6 +162,165 @@ impl StageSurface for NotebookStage {
         let name_buffer = RwSignal::new(String::new());
         let value_buffer = RwSignal::new(String::new());
         let add_name_dispatch = Arc::clone(&dispatch);
+        // --- S2.7 keyboard grammar state ---------------------------------
+        // All three signals + the root `NodeRef` are created here in `mount`,
+        // i.e. under the stable mount owner (the same discipline `editors`
+        // documents): a workspace re-derivation re-runs only the inner block
+        // closure, never `mount`, so which block is focused, the last honest
+        // degrade note, and any pending focus move all survive a sibling
+        // block's commit.
+        //
+        // `focused_block` is the load-bearing state the Enter / Shift+Enter
+        // grammar operates on; it is kept accurate by an `on:focusin` on every
+        // block (below) that stores the block's own [`BlockKey`] — or clears it
+        // for a non-editable block, so a stale editable key never lingers.
+        let focused_block: RwSignal<Option<BlockKey>> = RwSignal::new(None);
+        // The `aria-live` degrade note: a disabled-with-reason chord writes its
+        // reason here and mutates nothing else. Never a model write.
+        let keyboard_status: RwSignal<Option<String>> = RwSignal::new(None);
+        // A pending keyboard-driven focus move, landed by the effect below.
+        let focus_request: RwSignal<Option<FocusRequest>> = RwSignal::new(None);
+        let root_ref = NodeRef::<leptos::html::Section>::new();
+
+        // Land a pending keyboard focus move AFTER the block list repaints. A
+        // commit re-projects the workspace and remounts blocks, so focus cannot
+        // be moved synchronously in the keydown handler (the target node is
+        // being replaced); an effect runs after the reactive graph settles and
+        // the DOM is patched. The editor `<textarea>` lives inside the
+        // `FormulaBridgeDegrade` child (whose internal node this stage does not
+        // own), so focus is resolved by querying the root for the block's stable
+        // `data-notebook-cell` address — never a `NodeRef` we cannot hold.
+        Effect::new(move |_| {
+            let Some(request) = focus_request.get() else {
+                return;
+            };
+            let Some(root) = root_ref.get() else {
+                return;
+            };
+            let key = match &request {
+                FocusRequest::Editor(key) | FocusRequest::Article(key) => key,
+            };
+            // Query the block by its stable `data-notebook-cell` address, ESCAPING
+            // the interpolated value: a grid `NodeId` bearing a `"` or `\` would
+            // otherwise break the CSS attribute selector and silently lose focus.
+            // (`query_selector_all` would sidestep interpolation entirely but is
+            // not in leptos's enabled web_sys feature set; escaping keeps us on
+            // the available single `query_selector`.)
+            let selector = format!(
+                "article[data-notebook-cell=\"{}\"]",
+                css_escape_attr_value(&block_dom_key(key))
+            );
+            let Ok(Some(article)) = root.query_selector(&selector) else {
+                return;
+            };
+            let target = match &request {
+                // OpenEditor lands in the block's editor input.
+                FocusRequest::Editor(_) => article.query_selector("textarea").ok().flatten(),
+                // Advance-after-commit lands on the block's article (command
+                // mode), from which Enter re-opens its editor.
+                FocusRequest::Article(_) => Some(article),
+            };
+            if let Some(element) = target
+                && let Ok(html) = element.dyn_into::<leptos::web_sys::HtmlElement>()
+            {
+                let _ = html.focus();
+            }
+        });
+
+        // The one keydown pipeline: build a [`keyboard::KeyChord`], resolve it
+        // through the single [`notebook_keymap`] table, and act on the honest
+        // availability. An unbound chord returns untouched so universal shell
+        // verbs (F9, Ctrl+K, arrows) still bubble.
+        let keymap = notebook_keymap();
+        let keydown_dispatch = Arc::clone(&dispatch);
+        let keydown_workspace = workspace;
+        let root_keydown = move |ev: leptos::ev::KeyboardEvent| {
+            let chord = chord_from_event(&ev);
+            let Some(action) = resolve_action(&keymap, &chord) else {
+                return;
+            };
+            match action_availability(action) {
+                ActionAvailability::DisabledWithReason(reason) => {
+                    // Honest degrade: surface the reason, mutate NOTHING, and
+                    // consume the chord so neither the browser nor the shell
+                    // acts on it.
+                    ev.prevent_default();
+                    ev.stop_propagation();
+                    keyboard_status.set(Some(reason.to_string()));
+                }
+                ActionAvailability::Live => match action {
+                    NotebookAction::NewName => {
+                        // Reuse the S2.8 `+ name` form — never a second form.
+                        ev.prevent_default();
+                        ev.stop_propagation();
+                        keyboard_status.set(None);
+                        add_name_open.set(true);
+                    }
+                    NotebookAction::OpenEditor => {
+                        // Fire ONLY when the keystroke originates inside a block,
+                        // and only in command mode. `event_in_block` excludes the
+                        // `+ name` chrome (its toggle/Create buttons and the root
+                        // section): `focused_block` is sticky (set only by a
+                        // block's `on:focusin`), so without this guard, Enter on
+                        // the `+ name` button would `prevent_default` its own
+                        // activation and jump focus into a stale cell. The
+                        // text-entry guard additionally keeps bare Enter out of a
+                        // buffer while typing (the bridge also stop_propagations
+                        // its own Enter=commit).
+                        if !event_in_block(&ev) || event_target_is_text_entry(&ev) {
+                            return;
+                        }
+                        let Some(key) = focused_block.get_untracked() else {
+                            // Honest no-op — nothing focused. Let it bubble
+                            // rather than swallow the keystroke.
+                            return;
+                        };
+                        ev.prevent_default();
+                        ev.stop_propagation();
+                        keyboard_status.set(None);
+                        focus_request.set(Some(FocusRequest::Editor(key)));
+                    }
+                    NotebookAction::CommitAndAdvance => {
+                        // Shift+Enter is meant to fire WHILE editing a block's
+                        // bridge editor (the bridge leaves Shift+Enter a plain
+                        // newline and lets it bubble), so it is NOT gated by the
+                        // text-entry guard — but it IS gated to keystrokes that
+                        // originate inside a block. A Shift+Enter on the `+ name`
+                        // form's inputs OR its buttons OR the root section is
+                        // outside any block, so it never commits whatever block
+                        // was last focused (the sticky-`focused_block` hazard).
+                        if !event_in_block(&ev) {
+                            return;
+                        }
+                        let Some(key) = focused_block.get_untracked() else {
+                            return;
+                        };
+                        let Some(state) = editors.with_value(|map| map.get(&key).copied()) else {
+                            // Focused block has no editor state (e.g. a
+                            // read-only cell): honest no-op, no faked commit.
+                            return;
+                        };
+                        ev.prevent_default();
+                        ev.stop_propagation();
+                        keyboard_status.set(None);
+                        commit_block(&keydown_dispatch, &key, state);
+                        // Read the (re-projected) workspace untracked so the
+                        // keydown handler never subscribes to it.
+                        let next =
+                            keydown_workspace.with_untracked(|ws| next_cell_key(ws, &key));
+                        if let Some(next) = next {
+                            focused_block.set(Some(next.clone()));
+                            focus_request.set(Some(FocusRequest::Article(next)));
+                        }
+                    }
+                    // The three deferred actions are never `Live`; this keeps
+                    // the match total without an `unreachable!()` panic path.
+                    NotebookAction::ReorderUp
+                    | NotebookAction::ReorderDown
+                    | NotebookAction::NewProse => {}
+                },
+            }
+        };
         let view = view! {
             <style>{NOTEBOOK_CSS}</style>
             <section
@@ -163,8 +328,19 @@ impl StageSurface for NotebookStage {
                 data-stage="notebook"
                 data-testid="notebook-root"
                 data-dna-density="reading"
+                node_ref=root_ref
+                tabindex="0"
+                on:keydown=root_keydown
             >
                 {render_add_name_affordance(add_name_open, name_buffer, value_buffer, add_name_dispatch)}
+                <p
+                    class="dna-notebook__kbd-status"
+                    data-testid="notebook-keyboard-status"
+                    aria-live="polite"
+                    role="status"
+                >
+                    {move || keyboard_status.get().unwrap_or_default()}
+                </p>
                 {move || {
                     let entries = workspace.with(model::derive_entries);
                     if entries.is_empty() {
@@ -180,7 +356,14 @@ impl StageSurface for NotebookStage {
                         entries
                             .into_iter()
                             .map(|entry| {
-                                render_block(entry, &dispatch, workspace, editors, owner.as_ref())
+                                render_block(
+                                    entry,
+                                    &dispatch,
+                                    workspace,
+                                    editors,
+                                    owner.as_ref(),
+                                    focused_block,
+                                )
                             })
                             .collect_view()
                             .into_any()
@@ -191,6 +374,120 @@ impl StageSurface for NotebookStage {
         .into_any();
         StageHandle::new(view)
     }
+}
+
+/// A pending keyboard-driven focus move, resolved by the post-render effect in
+/// [`NotebookStage::mount`]. Held as a signal (not performed inline) because a
+/// commit re-projects the workspace and remounts blocks — focus must land AFTER
+/// that repaint, and only an effect runs late enough to see the new DOM.
+#[derive(Clone)]
+enum FocusRequest {
+    /// Focus the block's editor input — Enter / [`NotebookAction::OpenEditor`].
+    Editor(BlockKey),
+    /// Focus the block's article shell in command mode — the advance step of
+    /// [`NotebookAction::CommitAndAdvance`].
+    Article(BlockKey),
+}
+
+/// Translate a raw DOM keydown into the Notebook grammar's [`KeyChord`]: the
+/// platform `meta` key folds into `ctrl` (estate convention, matching
+/// `dnacalc_shell::keyboard::chord_from_key_event`), so a chord is
+/// layout-portable.
+fn chord_from_event(ev: &leptos::ev::KeyboardEvent) -> KeyChord {
+    KeyChord::new(
+        ev.key(),
+        ev.shift_key(),
+        ev.ctrl_key() || ev.meta_key(),
+        ev.alt_key(),
+    )
+}
+
+/// True when the keydown originates from a text-entry element — the guard that
+/// keeps command-mode chords (bare Enter) from firing while the user is typing.
+/// Mirrors `dnacalc_shell::shell::event_target_is_text_entry` (private to the
+/// shell crate, so a TP stage owns its own honest copy).
+fn event_target_is_text_entry(ev: &leptos::ev::KeyboardEvent) -> bool {
+    let Some(target) = ev.target() else {
+        return false;
+    };
+    let Ok(element) = target.dyn_into::<leptos::web_sys::Element>() else {
+        return false;
+    };
+    matches!(element.tag_name().as_str(), "INPUT" | "TEXTAREA" | "SELECT")
+        || element
+            .get_attribute("contenteditable")
+            .is_some_and(|value| value != "false")
+}
+
+/// True when the keydown originated inside a Notebook block article. Commit-
+/// and-advance (Shift+Enter) uses this so a Shift+Enter typed in the unrelated
+/// `+ name` form never commits whatever block was last focused.
+fn event_in_block(ev: &leptos::ev::KeyboardEvent) -> bool {
+    ev.target()
+        .and_then(|target| target.dyn_into::<leptos::web_sys::Element>().ok())
+        .and_then(|element| element.closest("article.dna-notebook__block").ok().flatten())
+        .is_some()
+}
+
+/// The stable DOM address a Cell block carries in `data-notebook-cell` and the
+/// focus effect queries on: its grid id plus numeric row/col, pipe-joined. A
+/// private focus-routing handle only — never an A1 address authority.
+fn block_dom_key(key: &BlockKey) -> String {
+    let (grid, row, col) = key;
+    format!("{grid}|{row}|{col}")
+}
+
+/// Escape a string for use inside a double-quoted CSS attribute-selector value
+/// (`[attr="…"]`): backslash and double-quote are the only characters that
+/// escape or terminate the value within the quotes, so escaping just those two
+/// makes the selector injection-proof for any grid `NodeId`.
+fn css_escape_attr_value(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+/// Commit a block's in-progress edit text through the SAME entry-verb seam
+/// [`render_cell_editor`] uses (SHELL_SPEC §6 layering law): build the intent
+/// from the block's OWN `(grid, row, col)` address, dispatch it, interpret the
+/// host's three-way receipt, and record the outcome / rejections / editor-
+/// remount on the block's own [`BlockEditState`]. Reads host truth only; the
+/// stage never classifies the text. This is exactly the `BridgeEvent::CommitRequested`
+/// path, reached by Shift+Enter instead of the bridge's own Enter.
+fn commit_block(dispatch: &Arc<dyn Dispatcher>, key: &BlockKey, state: BlockEditState) {
+    let (grid, row, col) = key;
+    let text = state.edit_text.get_untracked();
+    let receipt = dispatch.dispatch(enter_cell_intent(grid.clone(), *row, *col, text));
+    let resolved = interpret_receipt(&receipt);
+    if let CellOutcome::Rejected(diagnostics) = &resolved {
+        // Keep the rejected text intact so the user can fix it; underline the
+        // typed diagnostics.
+        state.rejections.set(diagnostics.clone());
+    } else {
+        state.rejections.set(Vec::new());
+    }
+    state.outcome.set(Some(resolved));
+    // Remount the editor to re-seed committed text / apply rejections,
+    // independent of whether the workspace fired (a rejection does not).
+    state.revision.update(|revision| *revision += 1);
+}
+
+/// The next editable-block key after `current` in derived order — the block
+/// Shift+Enter advances focus to. A pure function of [`WorkspaceState`] (the
+/// caller reads it untracked, so the keydown handler never subscribes),
+/// computed from the SAME [`model::derive_entries`] ordering the block list
+/// paints. `None` when `current` is the last Cell (or is absent), so the commit
+/// still lands but focus honestly stays put rather than wrapping.
+fn next_cell_key(ws: &WorkspaceState, current: &BlockKey) -> Option<BlockKey> {
+    let keys: Vec<BlockKey> = model::derive_entries(ws)
+        .into_iter()
+        .filter_map(|entry| match entry.kind {
+            NotebookEntryKind::Cell {
+                grid, authored, ..
+            } => Some((grid, authored.row, authored.col)),
+            NotebookEntryKind::Name { .. } | NotebookEntryKind::Table { .. } => None,
+        })
+        .collect();
+    let index = keys.iter().position(|candidate| candidate == current)?;
+    keys.get(index + 1).cloned()
 }
 
 /// Resolve (creating on first sight) the [`BlockEditState`] for a Cell block.
@@ -228,6 +525,7 @@ fn render_block(
     workspace: ReadSignal<WorkspaceState>,
     editors: StoredValue<HashMap<BlockKey, BlockEditState>>,
     owner: Option<&Owner>,
+    focused_block: RwSignal<Option<BlockKey>>,
 ) -> AnyView {
     let classification = entry.classification;
     let class_id = classification.stable_id();
@@ -240,6 +538,20 @@ fn render_block(
     // color itself resolves through Strand's soft-token palette in NOTEBOOK_CSS.
     let gutter_class = format!("dna-notebook__gutter dna-notebook__gutter--{class_id}");
     let display_name = entry.display_name.clone();
+    // The block's keyboard identity: `Some(key)` for an editable-addressable
+    // Cell block (the only kind the Enter / Shift+Enter grammar operates on),
+    // `None` for a Name/Table block. `on:focusin` writes this into
+    // `focused_block` — clearing it (to `None`) when a non-Cell block takes
+    // focus, so a stale editable key never lingers behind a focused Name/Table.
+    // `data-notebook-cell` is the stable address the focus effect queries on.
+    let cell_key: Option<BlockKey> = match &entry.kind {
+        NotebookEntryKind::Cell { grid, authored, .. } => {
+            Some((grid.clone(), authored.row, authored.col))
+        }
+        NotebookEntryKind::Name { .. } | NotebookEntryKind::Table { .. } => None,
+    };
+    let cell_dom_key = cell_key.as_ref().map(block_dom_key).unwrap_or_default();
+    let on_focusin = move |_| focused_block.set(cell_key.clone());
     let value_view = match &entry.kind {
         NotebookEntryKind::Cell { value, .. } => render_value(value),
         NotebookEntryKind::Name { name, backing_cell } => render_name_value(name, backing_cell),
@@ -263,6 +575,9 @@ fn render_block(
             data-block-kind=kind_id
             data-classification=class_id
             data-testid="notebook-block"
+            data-notebook-cell=cell_dom_key
+            tabindex="0"
+            on:focusin=on_focusin
         >
             <div class=gutter_class aria-hidden="true">
                 <span class="dna-notebook__glyph">{glyph}</span>
@@ -774,7 +1089,9 @@ pub const NOTEBOOK_CSS: &str = "\
 .dna-notebook__add-name-create{font:inherit;font-size:11px;font-weight:600;color:var(--dna-ink);background:var(--dna-paper);border:1px solid var(--dna-line);border-radius:var(--dna-radius-chip);padding:var(--dna-gap-1) var(--dna-gap-3);cursor:pointer}
 .dna-notebook__add-name-create:disabled{color:var(--dna-ink-3);cursor:not-allowed}
 .dna-notebook__add-name-hint{font-size:11px;color:var(--dna-ink-3);font-style:italic}
+.dna-notebook__kbd-status{margin:0;min-height:1em;font-size:11px;color:var(--dna-ink-3);font-style:italic}
 .dna-notebook__block{display:flex;align-items:stretch;border:1px solid var(--dna-line);border-radius:var(--dna-radius-card);background:var(--dna-paper);overflow:hidden}
+.dna-notebook__block:focus-visible{outline:2px solid var(--dna-accent-ink);outline-offset:1px}
 .dna-notebook__gutter{display:flex;align-items:flex-start;justify-content:center;padding:var(--dna-gap-3) var(--dna-gap-2);min-width:1.9rem;border-right:1px solid var(--dna-line);background:var(--dna-paper-2)}
 .dna-notebook__gutter--input{background:var(--dna-green-soft)}
 .dna-notebook__gutter--free_value{background:var(--dna-amber-soft)}
@@ -901,5 +1218,69 @@ mod tests {
         };
         assert_eq!(entry_kind_id(&cell), "cell");
         assert_eq!(entry_kind_glyph(&cell), "▦");
+    }
+
+    /// Shift+Enter's commit-then-ADVANCE step: `next_cell_key` walks the SAME
+    /// `derive_entries` order the block list paints, stops (returns `None`) at
+    /// the last Cell rather than wrapping, and is a clean no-op for an absent
+    /// key. Driven over the REAL host-core demo workbook (native dev-dep), so the
+    /// ordering matches what the mounted stage renders — the exact behavior the
+    /// bead acceptance calls out ("commits focused then focuses next").
+    #[test]
+    fn next_cell_key_walks_derived_order_and_stops_at_the_last_cell() {
+        use dnacalc_host_core::{DocumentSession, build_demo_workbook};
+
+        let session = build_demo_workbook().expect("demo workbook");
+        let document = DocumentSession::Workbook(session);
+        let ws = document.snapshot();
+
+        // The Cell keys in derived order — the sequence Shift+Enter advances
+        // through (Name/Table blocks are not editable Cell targets).
+        let cell_keys: Vec<BlockKey> = model::derive_entries(&ws)
+            .into_iter()
+            .filter_map(|entry| match entry.kind {
+                NotebookEntryKind::Cell {
+                    grid, authored, ..
+                } => Some((grid, authored.row, authored.col)),
+                NotebookEntryKind::Name { .. } | NotebookEntryKind::Table { .. } => None,
+            })
+            .collect();
+        assert!(
+            cell_keys.len() >= 2,
+            "the demo derives multiple Cell blocks to advance through"
+        );
+
+        // Each cell advances to its immediate successor in derived order.
+        for pair in cell_keys.windows(2) {
+            assert_eq!(
+                next_cell_key(&ws, &pair[0]),
+                Some(pair[1].clone()),
+                "advance must land on the next derived Cell block"
+            );
+        }
+        // The last cell has NO successor — focus honestly stays, never wraps.
+        assert_eq!(
+            next_cell_key(&ws, cell_keys.last().expect("at least one cell")),
+            None,
+            "the last block does not wrap to the first"
+        );
+        // An absent key resolves to `None` (no panic): a commit whose block has
+        // vanished from the derivation is a clean no-advance.
+        assert_eq!(
+            next_cell_key(&ws, &(NodeId::new("sheet:absent"), 999, 999)),
+            None,
+            "an unknown key advances nowhere rather than panicking"
+        );
+    }
+
+    /// The focus-routing selector escape neutralizes the only two CSS-string
+    /// metacharacters (`\` and `"`) so a grid `NodeId` bearing either cannot
+    /// break the attribute selector; ordinary ids (including the `|` join char)
+    /// pass through unchanged.
+    #[test]
+    fn css_escape_attr_value_neutralizes_quote_and_backslash() {
+        assert_eq!(css_escape_attr_value("sheet:Sheet1|3|1"), "sheet:Sheet1|3|1");
+        assert_eq!(css_escape_attr_value("a\"b"), "a\\\"b");
+        assert_eq!(css_escape_attr_value("a\\b"), "a\\\\b");
     }
 }
