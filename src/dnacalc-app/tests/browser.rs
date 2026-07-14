@@ -681,6 +681,101 @@ async fn calc_notebook_create_name_empty_name_is_honest_no_op() {
     );
 }
 
+/// S2.9 — the reviewer-persona read-only render (NOTEBOOK_SPEC §6 scenario 4):
+/// when the governing persona is switched away from Author, the Notebook stage
+/// renders the SAME content fully readable but with ZERO enabled mutation
+/// controls — this IS the report artifact (there is no separate export in v1).
+///
+/// As Author the demo's editable cells each carry their OWN degrade editor
+/// (`notebook-block-edit`) and the `+ name` authoring control is present. After
+/// dispatching `SetPersona { Reviewer }` through the app dispatcher (driven the
+/// real way — clicking the command deck's `shell.persona.reviewer` entry, which
+/// dispatches through the app's `PersonaDispatcher` and writes
+/// `SharedSkinState.persona`), the reactive persona gate repaints the
+/// still-mounted stage: EVERY per-block editor is gone and the `+ name` control
+/// is absent, yet the content stays readable — a value region still renders and
+/// the known demo block Sheet1 `A3` (R3C1, value `3`) still shows its name and
+/// value. This proves the gate is REACTIVE (a runtime `SetPersona` flips the
+/// surface, not just a mount-time snapshot) and HONEST (no disabled-looking
+/// editor lingers). It fails against the pre-guard code, whose always-on editors
+/// keep `notebook-block-edit` present after the switch.
+#[wasm_bindgen_test]
+async fn calc_notebook_reviewer_persona_renders_read_only() {
+    let host = mount();
+    next_tick().await;
+
+    // Switch to the Notebook stage.
+    let notebook_tab = query(&host, "[data-stage-tab=\"notebook\"]").expect("notebook tab");
+    let target: web_sys::EventTarget = notebook_tab.unchecked_into();
+    target
+        .dispatch_event(&web_sys::MouseEvent::new("click").unwrap())
+        .unwrap();
+    next_tick().await;
+
+    // As Author (the default persona): editable blocks carry their own editors,
+    // and the `+ name` authoring control is present.
+    let editors_as_author = host
+        .query_selector_all("[data-testid=\"notebook-block-edit\"]")
+        .unwrap()
+        .length();
+    assert!(
+        editors_as_author >= 1,
+        "as Author the demo's editable cells each render their own editor, got {editors_as_author}"
+    );
+    assert!(
+        query(&host, "[data-testid=\"notebook-add-name\"]").is_some(),
+        "as Author the `+ name` authoring control is present"
+    );
+    // The readable content that must SURVIVE the persona flip: Sheet1 A3 reads 3.
+    assert_eq!(
+        notebook_block_value(&host, "R3C1").as_deref().map(str::trim),
+        Some("3"),
+        "Sheet1 A3's value region reads 3 as Author"
+    );
+
+    // Switch persona to Reviewer the real way: open the command deck (Ctrl+K) and
+    // click its `shell.persona.reviewer` entry, dispatching `SetPersona`.
+    press_chord(&shell_root(&host), "k", true, false, false);
+    next_tick().await;
+    let reviewer_command = query(&host, "[data-command-id=\"shell.persona.reviewer\"]")
+        .expect("the command deck lists the reviewer persona switch");
+    click(&reviewer_command);
+    next_tick().await;
+
+    // The reactive persona gate repainted the still-mounted Notebook: ZERO
+    // per-block editors remain.
+    let editors_as_reviewer = host
+        .query_selector_all("[data-testid=\"notebook-block-edit\"]")
+        .unwrap()
+        .length();
+    assert_eq!(
+        editors_as_reviewer, 0,
+        "a Reviewer persona renders ZERO per-block editors (report artifact)"
+    );
+    // And no `+ name` authoring control — the cleanest zero-mutation render omits
+    // it entirely rather than showing a disabled shell.
+    assert!(
+        query(&host, "[data-testid=\"notebook-add-name\"]").is_none(),
+        "a Reviewer persona is offered no `+ name` authoring control"
+    );
+
+    // Content stays fully READABLE: value regions still render, and the known
+    // demo block (R3C1) still shows its name and its value 3.
+    assert!(
+        query(&host, "[data-testid=\"notebook-block-value\"]").is_some(),
+        "the value regions still render read-only for a Reviewer"
+    );
+    assert!(
+        notebook_block(&host, "R3C1").is_some(),
+        "the R3C1 block still renders — content is readable"
+    );
+    assert_eq!(
+        notebook_block_value(&host, "R3C1").as_deref().map(str::trim),
+        Some("3"),
+        "R3C1's value region still reads 3 for a Reviewer"
+    );
+}
+
 /// §10.2 — the DEGRADE bridge edits a workbook cell via `EnterGridCell`, and
 /// the host's three-way outcome (literal / formula / cleared) plus the typed
 /// rejection are each rendered honestly from the receipt.

@@ -17,6 +17,20 @@
 //! into `ctx.workspace`, so the reactive closure repaints the block's value
 //! automatically after a commit.
 //!
+//! When the governing persona is NOT Author (Reviewer / ReadOnly), the SAME
+//! content renders fully readable but with ZERO enabled mutation controls — the
+//! report artifact (S2.9; NOTEBOOK_SPEC §5 published/locked mode + §6 scenario
+//! 4; there is no separate export in v1). The gate is a single pure predicate,
+//! [`persona_allows_authoring`], read REACTIVELY off `ctx.shared` (through a
+//! persona-projecting [`Memo`]) at every mutation-control site — the per-block
+//! degrade editor ([`render_cell_editor`]), the `+ name` form
+//! ([`render_add_name_affordance`]), and the keyboard mutation grammar (the root
+//! `on:keydown`). A runtime `SetPersona` therefore repaints the surface live:
+//! names, values, classification tints, liveness dots, and outcomes stay
+//! readable while every editor / commit affordance vanishes — never a
+//! disabled-looking editor that would in fact reject a write (SHELL_SPEC §6
+//! honesty).
+//!
 //! It is never rendered blank: an empty derivation renders an explicit, testable
 //! honest-empty card.
 
@@ -32,7 +46,8 @@ use dnacalc_skin_ir::intent::{Dispatcher, WorkspaceIntent};
 use dnacalc_skin_ir::{
     DefinedNameProjection, DefinedNameTargetProjection, GridAuthoredCellProjection,
     GridCellProjection, GridEditabilityProjection, GridEntryDiagnosticProjection,
-    GridTableOverlayDescriptor, NodeClassification, NodeId, NodeValueProjection, WorkspaceState,
+    GridTableOverlayDescriptor, NodeClassification, NodeId, NodeValueProjection, Persona,
+    WorkspaceState,
 };
 
 pub mod edit;
@@ -140,6 +155,20 @@ impl StageSurface for NotebookStage {
         // every dispatch, so a committed edit repaints via the closure below —
         // this stage wires no workspace refresh of its own.
         let dispatch = ctx.dispatch.clone();
+        // --- S2.9 reviewer-persona read-only gate -----------------------------
+        // The governing persona lives in the audited shared state
+        // (`SharedSkinState.persona`, written by `SetPersona`). A `Memo` projects
+        // it out so every gate site below subscribes to the persona ALONE — a
+        // persona flip repaints the mutation controls, while unrelated shared-
+        // state writes (selection, collapse, active-lens continuity) do NOT churn
+        // the block list or remount a block's in-progress editor. `ctx.shared` is
+        // `Copy` (captured into the memo); the memo is `Copy` (captured into each
+        // gating closure). This is the ONE reactive read that makes the Reviewer/
+        // ReadOnly report artifact LIVE rather than a mount-time snapshot
+        // (NOTEBOOK_SPEC §5-6). Every gate reads it through the single pure
+        // predicate [`persona_allows_authoring`], so no site can drift.
+        let shared = ctx.shared;
+        let persona = Memo::new(move |_| shared.with(|state| state.persona));
         // Per-block editor state, keyed by stable block identity. Lives OUTSIDE
         // the reactive derivation closure so a workspace change (which re-derives
         // and remounts every block) cannot reset a block's in-progress text,
@@ -248,6 +277,22 @@ impl StageSurface for NotebookStage {
                     ev.stop_propagation();
                     keyboard_status.set(Some(reason.to_string()));
                 }
+                ActionAvailability::Live
+                    if !persona_allows_authoring(persona.get_untracked()) =>
+                {
+                    // S2.9 reactive persona gate: every `Live` Notebook action is
+                    // an AUTHORING verb (open this block's editor, commit-and-
+                    // advance, new name), so a non-authoring persona (Reviewer /
+                    // ReadOnly) performs ZERO of them — surface the honest read-
+                    // only note, consume the chord so neither the browser nor the
+                    // shell acts on it, and dispatch NOTHING (mirrors the
+                    // `DisabledWithReason` arm above). Persona is read UNTRACKED
+                    // (via the memo) so this event handler never subscribes to it,
+                    // exactly how `keydown_workspace` is read below.
+                    ev.prevent_default();
+                    ev.stop_propagation();
+                    keyboard_status.set(Some(READ_ONLY_PERSONA_NOTE.to_string()));
+                }
                 ActionAvailability::Live => match action {
                     NotebookAction::NewName => {
                         // Reuse the S2.8 `+ name` form — never a second form.
@@ -332,7 +377,23 @@ impl StageSurface for NotebookStage {
                 tabindex="0"
                 on:keydown=root_keydown
             >
-                {render_add_name_affordance(add_name_open, name_buffer, value_buffer, add_name_dispatch)}
+                {move || {
+                    // S2.9 reactive persona gate: the `+ name` form is a mutation
+                    // control, so a non-authoring persona (Reviewer / ReadOnly)
+                    // gets NOTHING here — the cleanest "zero enabled mutation
+                    // controls", not a disabled shell. Reading the persona memo
+                    // subscribes this fragment to `SetPersona`, so the form
+                    // appears/vanishes live on a runtime persona flip.
+                    if !persona_allows_authoring(persona.get()) {
+                        return ().into_any();
+                    }
+                    render_add_name_affordance(
+                        add_name_open,
+                        name_buffer,
+                        value_buffer,
+                        Arc::clone(&add_name_dispatch),
+                    )
+                }}
                 <p
                     class="dna-notebook__kbd-status"
                     data-testid="notebook-keyboard-status"
@@ -342,6 +403,14 @@ impl StageSurface for NotebookStage {
                     {move || keyboard_status.get().unwrap_or_default()}
                 </p>
                 {move || {
+                    // S2.9 reactive persona gate: read the governing persona
+                    // (via the memo) HERE so this derivation subscribes to
+                    // `SetPersona` — a persona flip repaints every block with (or
+                    // without) its per-block editor. `authoring` is threaded into
+                    // each block so the value region, name, classification chip,
+                    // liveness dot, and outcome stay READABLE for every persona;
+                    // only the mutation control is gated (NOTEBOOK_SPEC §6 #4).
+                    let authoring = persona_allows_authoring(persona.get());
                     let entries = workspace.with(model::derive_entries);
                     if entries.is_empty() {
                         // Never blank: the honest-empty card is an explicit,
@@ -363,6 +432,7 @@ impl StageSurface for NotebookStage {
                                     editors,
                                     owner.as_ref(),
                                     focused_block,
+                                    authoring,
                                 )
                             })
                             .collect_view()
@@ -526,6 +596,10 @@ fn render_block(
     editors: StoredValue<HashMap<BlockKey, BlockEditState>>,
     owner: Option<&Owner>,
     focused_block: RwSignal<Option<BlockKey>>,
+    // S2.9: whether the governing persona may author. `false` (Reviewer /
+    // ReadOnly) swaps THIS block's editor slot for an honest read-only note;
+    // every readable region above is rendered regardless.
+    authoring: bool,
 ) -> AnyView {
     let classification = entry.classification;
     let class_id = classification.stable_id();
@@ -564,8 +638,18 @@ fn render_block(
     let edit_view = match &entry.kind {
         NotebookEntryKind::Cell {
             grid, authored, ..
-        } => render_cell_editor(grid, authored, dispatch, workspace, editors, owner),
-        NotebookEntryKind::Name { .. } => read_only_note("defined name — edit its backing cell"),
+        } => render_cell_editor(grid, authored, dispatch, workspace, editors, owner, authoring),
+        // A Name block is edited through its backing cell, never a fabricated
+        // target (SHELL_SPEC §6 honesty). The note only points at that edit path
+        // for an authoring persona; a Reviewer/ReadOnly, who cannot take it, sees
+        // the plain read-only label instead of a call-to-action they can't act on.
+        NotebookEntryKind::Name { .. } => {
+            if authoring {
+                read_only_note("defined name — edit its backing cell")
+            } else {
+                read_only_note("defined name")
+            }
+        }
         NotebookEntryKind::Table { .. } => ().into_any(),
     };
 
@@ -730,7 +814,19 @@ fn render_cell_editor(
     workspace: ReadSignal<WorkspaceState>,
     editors: StoredValue<HashMap<BlockKey, BlockEditState>>,
     owner: Option<&Owner>,
+    authoring: bool,
 ) -> AnyView {
+    // S2.9: a non-authoring persona (Reviewer / ReadOnly) gets NO editor and NO
+    // commit affordance — only an honest read-only note. The value region, name,
+    // classification chip, liveness dot, and any outcome are rendered by the
+    // caller and stay fully READABLE; this function owns only the MUTATION
+    // control, so gating it here IS the whole read-only render. Never a disabled-
+    // looking editor that would in fact reject a write (SHELL_SPEC §6 honesty).
+    // Persona takes precedence over cell editability: the governing reason a
+    // Reviewer cannot edit is the persona, not the cell's structural role.
+    if !authoring {
+        return read_only_note(READ_ONLY_PERSONA_NOTE);
+    }
     // Respect editability honestly: a non-`Editable` cell is read-only.
     if let Some(reason) = editability_note(&authored.editability) {
         return read_only_note(reason);
@@ -829,6 +925,25 @@ fn render_cell_editor(
     }
     .into_any()
 }
+
+/// The single persona gate this stage reads at EVERY mutation-control site
+/// (S2.9 / NOTEBOOK_SPEC §6 scenario 4). Authoring — the per-block degrade
+/// editor, the `+ name` form, and the keyboard mutation grammar — is offered
+/// ONLY to a persona that [`Persona::can_mutate`] (Author). Reviewer and
+/// ReadOnly render the SAME content fully readable with ZERO enabled mutation
+/// controls: the report artifact (there is no separate export in v1). A pure
+/// function of [`Persona`], so it is unit-testable and every gate site reads the
+/// SAME rule — no site can drift from another.
+fn persona_allows_authoring(persona: Persona) -> bool {
+    persona.can_mutate()
+}
+
+/// The honest note shown wherever a non-authoring persona (Reviewer / ReadOnly)
+/// would otherwise reach a mutation control (S2.9): the per-block editor slot
+/// ([`render_cell_editor`]) and the `aria-live` keyboard status (the root
+/// `on:keydown`) both surface it, so the reason a control is absent reads
+/// identically in the DOM and to a screen reader.
+const READ_ONLY_PERSONA_NOTE: &str = "read-only persona — editing disabled";
 
 /// An honest, testable read-only note — a cell/name the Notebook deliberately
 /// does not offer an editor for, with the reason stated (never a fake editor).
@@ -1130,6 +1245,17 @@ mod tests {
         assert_eq!(stage.id(), StageId::Notebook);
         assert_eq!(stage.title(), "Notebook");
         assert!(stage.supports(&ProfileTag::ExcelStrict));
+    }
+
+    /// S2.9 persona gate: authoring controls are offered ONLY to a persona that
+    /// `can_mutate` (Author). Reviewer and ReadOnly render the same content
+    /// read-only — the report artifact (NOTEBOOK_SPEC §6 scenario 4). Pins the
+    /// single predicate every gate site in this stage reads.
+    #[test]
+    fn persona_allows_authoring_only_for_author() {
+        assert!(persona_allows_authoring(Persona::Author));
+        assert!(!persona_allows_authoring(Persona::Reviewer));
+        assert!(!persona_allows_authoring(Persona::ReadOnly));
     }
 
     #[test]
