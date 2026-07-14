@@ -10,6 +10,10 @@ use leptos::prelude::*;
 
 use dnacalc_shell::{ProfileTag, StageContext, StageHandle, StageId, StageSurface};
 
+pub mod model;
+
+pub use model::{NotebookEntry, NotebookEntryKind, derive_entries};
+
 /// The Notebook stage surface.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct NotebookStage;
