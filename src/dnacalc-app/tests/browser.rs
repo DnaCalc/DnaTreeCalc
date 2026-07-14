@@ -48,6 +48,40 @@ fn query(host: &web_sys::HtmlElement, selector: &str) -> Option<web_sys::Element
     host.query_selector(selector).unwrap()
 }
 
+/// The notebook block (`[data-testid="notebook-block"]`) whose name row contains
+/// `name_fragment` (e.g. `"R6C1"`), or `None` if no such block is rendered.
+fn notebook_block(host: &web_sys::HtmlElement, name_fragment: &str) -> Option<web_sys::Element> {
+    let blocks = host
+        .query_selector_all("[data-testid=\"notebook-block\"]")
+        .unwrap();
+    for i in 0..blocks.length() {
+        let block: web_sys::Element = blocks.item(i).unwrap().unchecked_into();
+        let name = block
+            .query_selector("[data-testid=\"notebook-block-name\"]")
+            .unwrap();
+        if let Some(name) = name
+            && name
+                .text_content()
+                .unwrap_or_default()
+                .contains(name_fragment)
+        {
+            return Some(block);
+        }
+    }
+    None
+}
+
+/// The value-region text of the notebook block whose name contains
+/// `name_fragment` (read from the block's dedicated value element, so a name
+/// that happens to contain the value's digits cannot skew the assertion).
+fn notebook_block_value(host: &web_sys::HtmlElement, name_fragment: &str) -> Option<String> {
+    let block = notebook_block(host, name_fragment)?;
+    let value = block
+        .query_selector("[data-testid=\"notebook-block-value\"]")
+        .unwrap()?;
+    Some(value.text_content().unwrap_or_default())
+}
+
 fn shell_root(host: &web_sys::HtmlElement) -> web_sys::EventTarget {
     host.query_selector(".dna-shell")
         .unwrap()
@@ -161,7 +195,10 @@ async fn calc_stage_switch_reprojects_and_preserves_continuity_surface() {
 
 /// S2.3 — the Notebook stage (`dnacalc-stage-notebook`) is registered into the
 /// Calc composition: the switcher lists a Notebook tab, and switching to it
-/// re-projects the stage-host to the Notebook stage's honest-empty view.
+/// re-projects the stage-host to the Notebook stage's reactive block list. (Its
+/// honest-empty card is unit-tested in the notebook crate; over the demo
+/// workbook the stage renders content, so this test asserts the root mounts —
+/// the reactive block content is proved by `calc_notebook_renders_reactive_block_list`.)
 #[wasm_bindgen_test]
 async fn calc_stage_switch_to_notebook_mounts_notebook_stage() {
     let host = mount();
@@ -190,12 +227,124 @@ async fn calc_stage_switch_to_notebook_mounts_notebook_stage() {
         "the Notebook stage mounts after the switch"
     );
     assert!(
-        query(&host, "[data-testid=\"notebook-empty\"]").is_some(),
-        "the Notebook stage's honest-empty view renders"
+        query(&host, "[data-testid=\"notebook-root\"]").is_some(),
+        "the Notebook stage's reactive block list mounts"
     );
     assert!(
         query(&host, "[data-testid=\"calc-stage-sheet\"]").is_none(),
         "switching is re-projection: only one stage mounts at a time"
+    );
+}
+
+/// S2.5 — the Notebook stage renders the reactive single-column block list from
+/// host truth, and re-derives it when the workspace changes.
+///
+/// The demo workbook authors no defined names or tables, so every entry is a
+/// Cell block (the escape-hatch idiom) named by its grid address — e.g. Sheet1
+/// `A3` renders as a block whose name row contains `R3C1` and whose value region
+/// reads `3` (`R3C1` is unique across the two demo sheets; `R1C1`/`R1C2` appear
+/// on both). That proves render-from-host-truth for the seeded content.
+///
+/// REACTIVITY is driven through the app's existing DEGRADE bridge path (the same
+/// path `calc_degrade_edits_cell_with_honest_three_way_outcome` drives), which
+/// authors Sheet1 `A6` (row 6, col 1) — empty in the demo, so no block exists
+/// for it initially. Committing the literal `42` makes a new Cell block appear
+/// (`free value` classification, value `42`); committing the formula `=A1+A5`
+/// into the SAME cell re-renders that block with value `6` and reclassifies it
+/// `output`. Because the notebook body is a closure over `ctx.workspace`, the
+/// mounted stage re-derives both times with no remount — the block list tracks
+/// host truth. A6 is chosen because it is the only cell the fixed-target bridge
+/// can drive, and because going empty→literal→formula exercises both a new-block
+/// derivation and an in-place value+classification change on one stable block.
+#[wasm_bindgen_test]
+async fn calc_notebook_renders_reactive_block_list() {
+    let host = mount();
+    next_tick().await;
+
+    // Switch to the Notebook stage.
+    let notebook_tab = query(&host, "[data-stage-tab=\"notebook\"]").expect("notebook tab");
+    let target: web_sys::EventTarget = notebook_tab.unchecked_into();
+    target
+        .dispatch_event(&web_sys::MouseEvent::new("click").unwrap())
+        .unwrap();
+    next_tick().await;
+
+    // The reactive block list renders (not the honest-empty card): the demo's
+    // seeded cells derive as blocks.
+    query(&host, "[data-testid=\"notebook-root\"]").expect("notebook root mounts");
+    let blocks = host
+        .query_selector_all("[data-testid=\"notebook-block\"]")
+        .unwrap();
+    assert!(
+        blocks.length() >= 1,
+        "the demo's seeded cells render as blocks, got {}",
+        blocks.length()
+    );
+    assert!(
+        query(&host, "[data-testid=\"notebook-empty\"]").is_none(),
+        "not the empty card when the demo has content"
+    );
+
+    // A real block from the demo: Sheet1 A3 (a literal `3`). The name row names
+    // the cell (`R3C1`, unique across both demo sheets) and the value region
+    // reads its computed value `3`.
+    let a3_value = notebook_block_value(&host, "R3C1").expect("a block names Sheet1 A3");
+    assert_eq!(a3_value.trim(), "3", "Sheet1 A3's block value region reads 3");
+    // Each block carries its classification chip.
+    assert!(
+        query(&host, "[data-testid=\"notebook-classification\"]").is_some(),
+        "blocks carry a classification chip"
+    );
+
+    // A6 is empty in the demo: no block for it yet.
+    assert!(
+        notebook_block_value(&host, "R6C1").is_none(),
+        "A6 is empty in the demo — no block for it yet"
+    );
+
+    // Drive reactivity via the existing bridge path: author A6 as literal `42`.
+    set_degrade_text(&host, "42");
+    next_tick().await;
+    commit_degrade(&host);
+    next_tick().await;
+
+    // The reactive closure re-derived: a new A6 block appeared with value `42`,
+    // classified `free_value` (a literal nothing consumes).
+    let a6_block = notebook_block(&host, "R6C1").expect("A6 block appears after authoring it");
+    assert_eq!(
+        a6_block.get_attribute("data-block-kind").as_deref(),
+        Some("cell"),
+        "A6 is a Cell block (the escape-hatch idiom)"
+    );
+    assert_eq!(
+        a6_block.get_attribute("data-classification").as_deref(),
+        Some("free_value"),
+        "A6 literal classifies as free_value"
+    );
+    assert_eq!(
+        notebook_block_value(&host, "R6C1").as_deref().map(str::trim),
+        Some("42"),
+        "A6 block's value region shows the literal 42"
+    );
+
+    // Author the SAME cell as a formula (=A1+A5 = 6 over the demo). The same
+    // block re-renders with the new value and classification — proof the value
+    // region tracks host truth, not a one-shot snapshot.
+    set_degrade_text(&host, "=A1+A5");
+    next_tick().await;
+    commit_degrade(&host);
+    next_tick().await;
+
+    let a6_block = notebook_block(&host, "R6C1").expect("A6 block still present");
+    assert_eq!(
+        a6_block.get_attribute("data-classification").as_deref(),
+        Some("output"),
+        "A6 reclassifies literal (free_value) -> formula (output)"
+    );
+    assert_eq!(
+        notebook_block_value(&host, "R6C1").as_deref().map(str::trim),
+        Some("6"),
+        "A6 block's value region now shows the formula result 6"
     );
 }
 
