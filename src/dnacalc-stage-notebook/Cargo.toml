@@ -1,0 +1,29 @@
+# dnacalc-stage-notebook — the Notebook stage (S2.1), TP tier.
+#
+# TP tier (SHELL_SPEC.md §2): may depend on `dnacalc-skin-ir` (T0) + Leptos +
+# the TP crates `dnacalc-shell` / `dnacalc-bridge` / `dnacalc-strand` /
+# `dnacalc-skin-leptos` — NEVER any `ox*` engine crate (P-gate).
+[package]
+name = "dnacalc-stage-notebook"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+
+[dependencies]
+dnacalc-skin-ir = { path = "../dnacalc-skin-ir" }
+dnacalc-shell = { path = "../dnacalc-shell" }
+dnacalc-bridge = { path = "../dnacalc-bridge" }
+dnacalc-strand = { path = "../dnacalc-strand" }
+dnacalc-skin-leptos = { path = "../dnacalc-skin-leptos" }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+leptos = { version = "0.8.17", default-features = false, features = ["ssr"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+leptos = { version = "0.8.17", default-features = false, features = ["csr"] }
+
+[lints]
+workspace = true

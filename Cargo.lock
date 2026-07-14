@@ -1184,6 +1184,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "dnacalc-stage-notebook"
+version = "0.1.0"
+dependencies = [
+ "dnacalc-bridge",
+ "dnacalc-shell",
+ "dnacalc-skin-ir",
+ "dnacalc-skin-leptos",
+ "dnacalc-strand",
+ "leptos",
+]
+
+[[package]]
 name = "dnacalc-strand"
 version = "0.1.0"
 dependencies = [
