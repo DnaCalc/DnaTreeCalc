@@ -69,10 +69,31 @@ pub fn open_workspace_from_path(
     path: &str,
 ) -> Result<(), String> {
     let json = std::fs::read_to_string(path).map_err(|error| error.to_string())?;
-    let workspace = deserialize_workspace(&json).map_err(|error| error.to_string())?;
+    open_workspace_from_content(state, &json, Some(path))
+}
+
+/// Apply a workspace.json *string* (not a filesystem path) to the host
+/// state — the both-target Open seam the wasm Bench product uses (bead
+/// dtc-lfz.9). wasm cannot `std::fs` a path, so `open_workspace_from_path`
+/// above is the native/test-only seam; this one carries the file *content*
+/// instead, resolved by an async picker (browser `<input type=file>` or the
+/// Tauri desktop dialog) and handed in directly. `source_path` records the
+/// origin for the mast's `current_path` when the picker knows it (Tauri: the
+/// real path; browser: `None` — there is no addressable path). Mirrors the
+/// `Open` handler in `adapters::skin_session`: on success it also clears any
+/// pending persistence intent.
+pub fn open_workspace_from_content(
+    state: &mut crate::state::OneCalcHostState,
+    json: &str,
+    source_path: Option<&str>,
+) -> Result<(), String> {
+    let workspace = deserialize_workspace(json).map_err(|error| error.to_string())?;
     workspace
         .apply_to_state(state)
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+    state.workspace_shell.current_workspace_path = source_path.map(str::to_string);
+    state.workspace_shell.pending_persistence_intent = None;
+    Ok(())
 }
 
 impl dnacalc_bench_core::StatePersistence<crate::state::OneCalcHostState>
@@ -89,5 +110,10 @@ impl dnacalc_bench_core::StatePersistence<crate::state::OneCalcHostState>
 
 #[cfg(target_arch = "wasm32")]
 pub use browser_file_io::{
-    open_xml_via_file_input, save_xml_via_download, suggested_filename_stem, OpenedFormulaFile,
+    open_workspace_via_file_input, open_xml_via_file_input, save_xml_via_download,
+    suggested_filename_stem, OpenedFormulaFile, OpenedWorkspaceFile,
+};
+#[cfg(target_arch = "wasm32")]
+pub use tauri_file_io::{
+    open_workspace_via_tauri_dialog, tauri_command_bridge_available, TauriOpenedWorkspace,
 };

@@ -21,6 +21,14 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
+# The `open_workspace_file` command (bead dtc-lfz.9): a native file dialog
+# (rfd) + a plain `std::fs` read that hands the raw `workspace.json` *text*
+# back to the WASM frontend, which owns deserialize/apply. Reading raw text
+# only is deliberate — it keeps this shell free of any `dnacalc-*` crate edge
+# (see the F-gate note in `dnacalc-arch-gates`); the same rfd pattern the
+# sibling `dnacalc-bench-desktop` shell already uses.
+rfd = "0.15"
+serde = { workspace = true }
 
 [lints]
 workspace = true

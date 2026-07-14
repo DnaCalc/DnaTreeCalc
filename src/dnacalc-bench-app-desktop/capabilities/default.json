@@ -1,0 +1,8 @@
+{
+  "identifier": "default",
+  "description": "Default capability set for the DNA Bench desktop shell: core IPC so the WASM frontend can invoke the app-defined open_workspace_file command (bead dtc-lfz.9).",
+  "windows": ["main"],
+  "permissions": [
+    "core:default"
+  ]
+}

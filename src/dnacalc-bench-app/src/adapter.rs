@@ -142,6 +142,40 @@ impl BenchHost {
         OneCalcSessionHost::dispatch(&mut self.state, SkinIntent::Shell(intent))
     }
 
+    /// Open a workspace from resolved file *content* (bead dtc-lfz.9) — the
+    /// both-target seam the async Bench picker feeds. `SkinShellIntent::Open`
+    /// carries only a path, and the running Bench product is wasm end-to-end
+    /// (browser, or the WASM frontend inside the Tauri webview), so it can
+    /// never `std::fs` that path; the browser `<input type=file>` / Tauri
+    /// native dialog resolve the bytes instead and hand them here. This routes
+    /// through the same `persistence::open_workspace_from_content` seam every
+    /// OneCalc host surface shares (deserialize → `apply_to_state`), so a
+    /// malformed file is a real typed `Err`, never a fabricated success.
+    /// `source_path` is the origin when the picker knows it (Tauri: the real
+    /// path, mirrored to the mast's `current_path`; browser: `None` — a
+    /// downloaded blob has no addressable path). On success the private
+    /// committed-text baseline is resynced to the freshly loaded formula so a
+    /// later `RevertRequested` restores what was opened, not the pre-open text.
+    pub fn open_workspace_content(
+        &mut self,
+        json: &str,
+        source_path: Option<&str>,
+    ) -> Result<(), String> {
+        dnacalc_bench_host::persistence::open_workspace_from_content(
+            &mut self.state,
+            json,
+            source_path,
+        )?;
+        // Re-run the OxFml pass over the freshly loaded formula so its result
+        // is live: `apply_to_state` restores the stored text/state but not an
+        // evaluated result, so a just-opened formula would otherwise read
+        // `Pending` forever until the user edited it. Same refresh
+        // `set_number_format` uses to recompute through host truth.
+        let _ = refresh_active_formula_space(&*self.bridge, &mut self.state);
+        self.committed_text = self.projection().raw_entered_cell_text;
+        Ok(())
+    }
+
     /// Translate one [`BridgeEvent`] into the host's intent family and apply
     /// it. Returns `true` when host state may have changed (so the caller
     /// re-projects and remounts the bridge).
@@ -703,6 +737,78 @@ mod tests {
             }
             other => panic!("expected a typed rejection without a path, got {other:?}"),
         }
+    }
+
+    /// Open-by-content round trip (bead dtc-lfz.9): author a formula, serialize
+    /// the host to `workspace.json` bytes, then open those bytes into a FRESH
+    /// host through `open_workspace_content` — the exact both-target seam the
+    /// async Bench picker feeds (browser `<input type=file>` / Tauri dialog).
+    /// Proves the opened host carries the authored formula with its real OxFml
+    /// result, that the private committed-text baseline is resynced to what was
+    /// opened (so a later `RevertRequested` restores the opened formula, not the
+    /// pre-open text), and that a supplied origin path surfaces on the mast's
+    /// `current_path`. Fail-pre-fix: `open_workspace_content` did not exist
+    /// before this bead.
+    #[test]
+    fn open_workspace_content_round_trips_authored_formula() {
+        let mut source = BenchHost::new();
+        source.apply(BridgeEvent::TextEdited {
+            text: "=SUM(10,20)".to_string(),
+            caret: 11,
+        });
+        let json = dnacalc_bench_host::persistence::serialize_workspace(&source.state)
+            .expect("serialize the authored workspace");
+
+        let mut opened = BenchHost::new();
+        // Author a different formula first, so the round trip proves Open really
+        // replaces the live workspace rather than appending to an empty one.
+        opened.apply(BridgeEvent::TextEdited {
+            text: "=1".to_string(),
+            caret: 2,
+        });
+        opened
+            .open_workspace_content(&json, Some("saved/ws.json"))
+            .expect("open the serialized workspace content");
+
+        let projection = opened.projection();
+        assert_eq!(projection.raw_entered_cell_text, "=SUM(10,20)");
+        match projection.result {
+            FormulaResultSurface::Display { text, .. } => assert_eq!(text, "30"),
+            other => panic!("expected the opened formula to display 30, got {other:?}"),
+        }
+        assert_eq!(
+            opened.committed_text, "=SUM(10,20)",
+            "the committed baseline tracks what was opened (a later revert restores it)"
+        );
+        assert_eq!(
+            opened.persistence().current_path.as_deref(),
+            Some("saved/ws.json"),
+            "a known origin path rides through to the mast's current_path"
+        );
+    }
+
+    /// Malformed content is a real, typed `Err` — never a fabricated success or
+    /// a silent no-op (bead dtc-lfz.9). The Bench picker surfaces this to the
+    /// console rather than pretending a workspace opened, and the live state is
+    /// left untouched (deserialize fails before any mutation).
+    #[test]
+    fn open_workspace_content_rejects_malformed_json() {
+        let mut host = BenchHost::new();
+        host.apply(BridgeEvent::TextEdited {
+            text: "=7*6".to_string(),
+            caret: 4,
+        });
+        let before = host.projection().raw_entered_cell_text;
+
+        let error = host
+            .open_workspace_content("{ not valid workspace json", None)
+            .expect_err("malformed workspace content must be a typed error");
+        assert!(!error.is_empty(), "the error carries a message: {error:?}");
+        assert_eq!(
+            host.projection().raw_entered_cell_text,
+            before,
+            "a failed open leaves the live workspace untouched"
+        );
     }
 
     // NOTE ON SAVE COVERAGE: `dispatch_shell_intent(Save)` is not exercised

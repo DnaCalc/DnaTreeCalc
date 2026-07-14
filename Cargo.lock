@@ -1045,6 +1045,8 @@ dependencies = [
 name = "dnacalc-bench-app-desktop"
 version = "0.1.0"
 dependencies = [
+ "rfd",
+ "serde",
  "tauri",
  "tauri-build",
 ]

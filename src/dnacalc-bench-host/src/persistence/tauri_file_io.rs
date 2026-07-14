@@ -46,6 +46,44 @@ pub async fn select_vba_module_source() -> Result<Option<TauriVbaModuleSourceSel
     }))
 }
 
+/// Workspace file resolved by the native Tauri open dialog (bead
+/// dtc-lfz.9). Unlike the browser file input, the desktop shell knows
+/// the real filesystem `path`, so it rides along for the mast's
+/// `current_path`; `content` is the `workspace.json` text the backend
+/// read for us (wasm cannot `std::fs`, so the native side reads).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TauriOpenedWorkspace {
+    pub path: String,
+    pub content: String,
+}
+
+/// Invoke the desktop shell's `open_workspace_file` command: it shows
+/// the native open dialog and reads the chosen file, returning
+/// `{ path, content }` — or `null` when the user cancels. `Err` is a
+/// real bridge/host failure (the command missing, an IO error). The
+/// command is registered by `dnacalc-bench-app-desktop`; when the
+/// bridge is absent (plain browser) callers fall back to
+/// `browser_file_io::open_workspace_via_file_input`.
+pub async fn open_workspace_via_tauri_dialog() -> Result<Option<TauriOpenedWorkspace>, String> {
+    let (core, invoke) = tauri_core_invoke()?;
+    let args = Object::new();
+    let promise_value = invoke
+        .call2(&core, &JsValue::from_str("open_workspace_file"), &args)
+        .map_err(|error| format!("Tauri invoke failed: {}", js_error_message(&error)))?;
+    let selection = JsFuture::from(Promise::from(promise_value))
+        .await
+        .map_err(|error| format!("Tauri command rejected: {}", js_error_message(&error)))?;
+
+    if selection.is_null() || selection.is_undefined() {
+        return Ok(None);
+    }
+
+    Ok(Some(TauriOpenedWorkspace {
+        path: reflect_string(&selection, "path")?,
+        content: reflect_string(&selection, "content")?,
+    }))
+}
+
 fn tauri_core_invoke() -> Result<(JsValue, Function), String> {
     let window = web_sys::window().ok_or_else(|| "window unavailable".to_string())?;
     let tauri = Reflect::get(window.as_ref(), &JsValue::from_str("__TAURI__"))

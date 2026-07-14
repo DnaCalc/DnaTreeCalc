@@ -40,6 +40,9 @@ leptos = { version = "0.8.17", default-features = false, features = ["ssr"] }
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 leptos = { version = "0.8.17", default-features = false, features = ["csr"] }
 wasm-bindgen = "=0.2.117"
+# Real (non-dev) wasm dep now: the command deck's Open spawns an async file
+# picker via `spawn_local` before dispatching (bead dtc-lfz.9).
+wasm-bindgen-futures = "0.4"
 js-sys = "0.3"
 web-sys = { version = "0.3", features = ["Window", "Document", "Element", "HtmlElement", "console"] }
 
