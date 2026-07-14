@@ -33,6 +33,24 @@
 //!
 //! It is never rendered blank: an empty derivation renders an explicit, testable
 //! honest-empty card.
+//!
+//! **S2.10** adds a stage-level, honest **Reference X-Ray degrade**. The bead's
+//! substrate probe asks whether the workbook bridge produces a caret-driven
+//! `ReferenceResolutionProjection` that resolves a defined-name/cell reference
+//! to a specific block — i.e. whether `WorkspaceState.dependencies` is ever
+//! populated for the workbook profile. It is NOT: `dnacalc-host-core` has ZERO
+//! references to `reference_resolutions` / `DependencyGraphProjection` / any
+//! `dependencies` population, so `snapshot()` leaves `WorkspaceState.dependencies`
+//! at its empty `DependencyGraphProjection::default()` (the TYPE machinery lives
+//! in skin-ir's `workspace.rs`, unused by the workbook profile). Per the bead,
+//! this ships a WHOLESALE honest degrade rather than a half-built feature: a
+//! single reactive `data-testid="notebook-xray-degrade"` note
+//! ([`reference_xray_available`]) citing ask #7 / G9 — NO caret tracking, NO
+//! gutter arrows, NO reference highlighting, none of that machinery exists
+//! here. The check reads the REAL substrate (`reference_resolutions`
+//! non-empty), so it is not a hardcoded lie: it flips honestly if the host ever
+//! populates the projection, at which point the real feature (still out of
+//! scope here) could be built on top.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -402,6 +420,33 @@ impl StageSurface for NotebookStage {
                 >
                     {move || keyboard_status.get().unwrap_or_default()}
                 </p>
+                {move || {
+                    // S2.10 substrate probe: read the workspace REACTIVELY so
+                    // this note stays truthful on any workspace change —
+                    // it would flip silently if the host ever populated
+                    // `dependencies.reference_resolutions`. For today's
+                    // workbook demo the projection is always empty, so this
+                    // always renders the honest degrade. See
+                    // `reference_xray_available`'s doc comment for the full
+                    // probe writeup (WHOLESALE HONEST DEGRADE, ask #7 / G9).
+                    if workspace.with(reference_xray_available) {
+                        // The real feature (caret tracking, gutter arrows,
+                        // reference highlighting) stays OUT OF SCOPE even if
+                        // the substrate ever appears — render nothing extra,
+                        // never build it speculatively here.
+                        return ().into_any();
+                    }
+                    view! {
+                        <p
+                            class="dna-notebook__xray-degrade"
+                            data-testid="notebook-xray-degrade"
+                            aria-live="polite"
+                        >
+                            {REFERENCE_XRAY_DEGRADE_NOTE}
+                        </p>
+                    }
+                    .into_any()
+                }}
                 {move || {
                     // S2.9 reactive persona gate: read the governing persona
                     // (via the memo) HERE so this derivation subscribes to
@@ -956,6 +1001,42 @@ fn read_only_note(reason: &'static str) -> AnyView {
     .into_any()
 }
 
+/// **S2.10 substrate probe — WHOLESALE HONEST DEGRADE.** A real block-to-block
+/// Reference X-Ray needs the host to produce a caret-driven
+/// `ReferenceResolutionProjection` (`dnacalc_skin_ir::ReferenceResolutionProjection`)
+/// that resolves a defined-name (or cell) reference to a specific block — i.e.
+/// `WorkspaceState.dependencies.reference_resolutions` populated with entries
+/// carrying a `token_span` + `target` (skin-ir `workspace.rs`:
+/// `DependencyGraphProjection.reference_resolutions:
+/// BTreeMap<String, ReferenceResolutionProjection>`).
+///
+/// It is not produced. `dnacalc-host-core` has ZERO references to
+/// `reference_resolutions` / `DependencyGraphProjection` / any `dependencies`
+/// population anywhere in its source (verified by direct grep of
+/// `src/dnacalc-host-core/src/`), so the workbook `snapshot()` leaves
+/// `WorkspaceState.dependencies` at its empty `DependencyGraphProjection::default()`.
+/// The TYPE machinery exists in skin-ir; it is simply never populated for the
+/// workbook profile. There is therefore no caret X-Ray substrate to build a
+/// real feature on top of, so this stage ships a WHOLESALE degrade (ask #7 /
+/// G9) instead of a half-built one: no caret tracking, no gutter arrows, no
+/// reference highlighting — none of that machinery exists in this crate.
+///
+/// This predicate is the REAL substrate check (non-empty
+/// `reference_resolutions`), never a hardcoded `false`: if the host ever
+/// populates the projection, this flips honestly and a future reader knows
+/// exactly where to build the real feature — see [`REFERENCE_XRAY_DEGRADE_NOTE`]
+/// for the note this gates.
+fn reference_xray_available(ws: &WorkspaceState) -> bool {
+    !ws.dependencies.reference_resolutions.is_empty()
+}
+
+/// The honest disabled-with-reason text shown wherever
+/// [`reference_xray_available`] is `false` (today, always) — the S2.10
+/// wholesale degrade note (`data-testid="notebook-xray-degrade"`), citing the
+/// substrate gap by name (ask #7 / G9) rather than silently omitting the
+/// feature.
+const REFERENCE_XRAY_DEGRADE_NOTE: &str = "reference X-ray unavailable — the workbook dependency projection is not produced (ask #7 / G9)";
+
 /// The reason a cell is not directly editable, or `None` when it is `Editable`.
 /// A skin renders the non-`Editable` variants read-only (the entry verb would
 /// reject a write to them anyway, H6).
@@ -1205,6 +1286,7 @@ pub const NOTEBOOK_CSS: &str = "\
 .dna-notebook__add-name-create:disabled{color:var(--dna-ink-3);cursor:not-allowed}
 .dna-notebook__add-name-hint{font-size:11px;color:var(--dna-ink-3);font-style:italic}
 .dna-notebook__kbd-status{margin:0;min-height:1em;font-size:11px;color:var(--dna-ink-3);font-style:italic}
+.dna-notebook__xray-degrade{margin:0;font-size:11px;color:var(--dna-ink-3);font-style:italic}
 .dna-notebook__block{display:flex;align-items:stretch;border:1px solid var(--dna-line);border-radius:var(--dna-radius-card);background:var(--dna-paper);overflow:hidden}
 .dna-notebook__block:focus-visible{outline:2px solid var(--dna-accent-ink);outline-offset:1px}
 .dna-notebook__gutter{display:flex;align-items:flex-start;justify-content:center;padding:var(--dna-gap-3) var(--dna-gap-2);min-width:1.9rem;border-right:1px solid var(--dna-line);background:var(--dna-paper-2)}
@@ -1408,5 +1490,84 @@ mod tests {
         assert_eq!(css_escape_attr_value("sheet:Sheet1|3|1"), "sheet:Sheet1|3|1");
         assert_eq!(css_escape_attr_value("a\"b"), "a\\\"b");
         assert_eq!(css_escape_attr_value("a\\b"), "a\\\\b");
+    }
+
+    /// **S2.10 substrate probe, pinned.** Over the REAL host-core demo
+    /// workbook (native dev-dep, same seam `next_cell_key_walks_derived_order..`
+    /// uses), `reference_xray_available` must be `false` — proving the
+    /// substrate is GENUINELY empty for the workbook profile, not merely
+    /// assumed empty. If `dnacalc-host-core` ever starts populating
+    /// `dependencies.reference_resolutions`, this test starts failing and is
+    /// the trigger to build the real feature (fail-until-fixed policy applies
+    /// in reverse here: this pins today's honest degrade, not a bug).
+    #[test]
+    fn reference_xray_available_is_false_for_the_real_demo_workbook() {
+        use dnacalc_host_core::{DocumentSession, build_demo_workbook};
+
+        let session = build_demo_workbook().expect("demo workbook");
+        let document = DocumentSession::Workbook(session);
+        let ws = document.snapshot();
+
+        assert!(
+            !reference_xray_available(&ws),
+            "the workbook profile does not populate dependencies.reference_resolutions \
+             today — this predicate must read that as unavailable"
+        );
+    }
+
+    /// The other half of the substrate check: it is a REAL read of
+    /// `dependencies.reference_resolutions`, not a hardcoded `false`. A
+    /// hand-built `WorkspaceState` carrying one
+    /// `ReferenceResolutionProjection` flips the predicate to `true` — proving
+    /// it would honestly report a live X-Ray substrate if the host ever
+    /// produced one.
+    #[test]
+    fn reference_xray_available_is_true_when_the_projection_is_populated() {
+        use dnacalc_skin_ir::{
+            DependencyKindProjection, NodeKey, ReferenceResolutionProjection,
+            ReferenceTargetProjection, SourceSpanProjection,
+        };
+
+        let mut ws = WorkspaceState::default();
+        assert!(
+            !reference_xray_available(&ws),
+            "a freshly-defaulted WorkspaceState carries no resolutions"
+        );
+
+        ws.dependencies.reference_resolutions.insert(
+            "handle:Sheet1!A1".to_string(),
+            ReferenceResolutionProjection {
+                source_reference_handle: "A1".to_string(),
+                owner: NodeId::new("sheet:Sheet1:B1"),
+                owner_key: NodeKey::new("key:Sheet1:B1"),
+                descriptor_ids: vec!["descriptor:1".to_string()],
+                token_span: Some(SourceSpanProjection {
+                    start_utf8: 1,
+                    end_utf8: 3,
+                }),
+                target: ReferenceTargetProjection::Node {
+                    node: NodeId::new("sheet:Sheet1:A1"),
+                    key: NodeKey::new("key:Sheet1:A1"),
+                },
+                primary_kind: DependencyKindProjection::StaticDirect,
+                requires_rebind_on_structural_change: false,
+            },
+        );
+
+        assert!(
+            reference_xray_available(&ws),
+            "a populated reference_resolutions map must flip the predicate to true"
+        );
+    }
+
+    /// The wholesale degrade note names the substrate gap honestly and cites
+    /// the tracked asks, so a reviewer (or a screen reader) never sees a bare
+    /// "unavailable" with no explanation.
+    #[test]
+    fn reference_xray_degrade_note_cites_the_tracked_asks() {
+        assert!(NOTEBOOK_CSS.contains(".dna-notebook__xray-degrade"));
+        assert!(REFERENCE_XRAY_DEGRADE_NOTE.contains("ask #7"));
+        assert!(REFERENCE_XRAY_DEGRADE_NOTE.contains("G9"));
+        assert!(REFERENCE_XRAY_DEGRADE_NOTE.contains("reference X-ray unavailable"));
     }
 }
