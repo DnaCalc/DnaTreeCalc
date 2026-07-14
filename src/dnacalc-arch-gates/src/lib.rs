@@ -132,11 +132,22 @@ pub const WORKSPACE_ROOT_ENV: &str = "DNACALC_GATES_WORKSPACE_ROOT";
 /// - `dnacalc-bridge` (`SHELL_SPEC.md` section 2, the TP-pure formula
 ///   bridge).
 ///
+/// Also since landed and added here (S2.2):
+/// - `dnacalc-stage-notebook` (S2.1, the Notebook stage surface; verified
+///   clean at seed time via `cargo tree -p dnacalc-stage-notebook -e normal
+///   --prefix none --locked`).
+///
 /// Appending a future TP crate is still a one-line change: add its name
 /// below once it exists under `src/` and passes `cargo tree -p <name> -e
 /// normal --prefix none --locked` clean, and nothing else in this crate
 /// needs to change.
-pub const TP_CRATES: &[&str] = &["dnacalc-strand", "dnacalc-skin-leptos", "dnacalc-shell", "dnacalc-bridge"];
+pub const TP_CRATES: &[&str] = &[
+    "dnacalc-strand",
+    "dnacalc-skin-leptos",
+    "dnacalc-shell",
+    "dnacalc-bridge",
+    "dnacalc-stage-notebook",
+];
 
 /// One resolved `cargo tree` run for a single crate: the crate name it was
 /// run for, plus every non-empty stdout line, trimmed of trailing `\r` and
