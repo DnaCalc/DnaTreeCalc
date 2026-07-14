@@ -137,6 +137,11 @@ pub const WORKSPACE_ROOT_ENV: &str = "DNACALC_GATES_WORKSPACE_ROOT";
 ///   clean at seed time via `cargo tree -p dnacalc-stage-notebook -e normal
 ///   --prefix none --locked`).
 ///
+/// Also since landed and added here (S2.15):
+/// - `dnacalc-stage-atlas` (the Atlas stage surface: structure map + calc
+///   HUD; verified clean at seed time via `cargo tree -p dnacalc-stage-atlas
+///   -e normal --prefix none --locked`).
+///
 /// Appending a future TP crate is still a one-line change: add its name
 /// below once it exists under `src/` and passes `cargo tree -p <name> -e
 /// normal --prefix none --locked` clean, and nothing else in this crate
@@ -147,6 +152,7 @@ pub const TP_CRATES: &[&str] = &[
     "dnacalc-shell",
     "dnacalc-bridge",
     "dnacalc-stage-notebook",
+    "dnacalc-stage-atlas",
 ];
 
 /// One resolved `cargo tree` run for a single crate: the crate name it was

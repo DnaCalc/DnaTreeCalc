@@ -179,9 +179,13 @@ fn calc_mounts_full_region_set_with_switcher() {
         );
     }
 
-    // Three stage tabs (Sheet, Model, Notebook).
+    // Four stage tabs (Sheet, Model, Notebook, Atlas).
     let tabs = host.query_selector_all("[data-stage-tab]").unwrap();
-    assert_eq!(tabs.length(), 3, "two stub stages + Notebook compose the switcher");
+    assert_eq!(
+        tabs.length(),
+        4,
+        "two stub stages + Notebook + Atlas compose the switcher"
+    );
 
     let parity = query(&host, "[data-slot=\"parity\"]").expect("parity slot reserved in layout");
     assert_eq!(parity.text_content().unwrap_or_default(), "");
@@ -270,6 +274,92 @@ async fn calc_stage_switch_to_notebook_mounts_notebook_stage() {
     assert!(
         query(&host, "[data-testid=\"calc-stage-sheet\"]").is_none(),
         "switching is re-projection: only one stage mounts at a time"
+    );
+}
+
+/// S2.15 — the Atlas stage (`dnacalc-stage-atlas`) is registered into the
+/// Calc composition: the switcher lists an Atlas tab, and switching to it
+/// re-projects the stage-host to the Atlas stage's structure map + calc HUD,
+/// each derived from the real demo workbook (2 sheets, no defined names, and
+/// a populated `workbook_calc` — see `dnacalc-host-core`'s
+/// `snapshot_of_demo_workbook_projects_grids_values_and_calc_state`).
+#[wasm_bindgen_test]
+async fn calc_stage_switch_to_atlas_mounts_atlas_stage() {
+    let host = mount();
+    next_tick().await;
+
+    // The switcher lists an Atlas entry.
+    let atlas_tab =
+        query(&host, "[data-stage-tab=\"atlas\"]").expect("atlas tab listed in the switcher");
+
+    // Initial: the first visible stage (Sheet) mounts.
+    assert!(
+        query(&host, "[data-testid=\"calc-stage-sheet\"]").is_some(),
+        "the Sheet stage mounts first"
+    );
+
+    // Switch to Atlas via its mast tab (a re-projection switch).
+    let target: web_sys::EventTarget = atlas_tab.unchecked_into();
+    target
+        .dispatch_event(&web_sys::MouseEvent::new("click").unwrap())
+        .unwrap();
+    next_tick().await;
+
+    // The Atlas stage is now mounted, the Sheet stage gone (re-projection).
+    assert!(
+        query(&host, "[data-stage=\"atlas\"]").is_some(),
+        "the Atlas stage mounts after the switch"
+    );
+    assert!(
+        query(&host, "[data-testid=\"atlas-root\"]").is_some(),
+        "the Atlas stage's root mounts"
+    );
+    assert!(
+        query(&host, "[data-testid=\"calc-stage-sheet\"]").is_none(),
+        "switching is re-projection: only one stage mounts at a time"
+    );
+
+    // The structure map lists the demo workbook's 2 real sheets.
+    let structure_map =
+        query(&host, "[data-testid=\"atlas-structure-map\"]").expect("structure map mounts");
+    let sheet_rows = structure_map
+        .query_selector_all("[data-testid=\"atlas-sheet\"]")
+        .unwrap();
+    assert_eq!(sheet_rows.length(), 2, "the demo workbook has 2 sheets");
+    let sheet_names: Vec<String> = (0..sheet_rows.length())
+        .map(|i| {
+            sheet_rows
+                .item(i)
+                .unwrap()
+                .text_content()
+                .unwrap_or_default()
+                .trim()
+                .to_string()
+        })
+        .collect();
+    assert!(
+        sheet_names.contains(&"Sheet1".to_string()),
+        "Sheet1 is listed, got {sheet_names:?}"
+    );
+    assert!(
+        sheet_names.contains(&"Sheet2".to_string()),
+        "Sheet2 is listed, got {sheet_names:?}"
+    );
+
+    // The demo authors no defined names, so the structure map shows the honest
+    // empty note (never a placeholder row).
+    assert!(
+        query(&host, "[data-testid=\"atlas-names-empty\"]").is_some(),
+        "the demo has no defined names, so the honest-empty note renders"
+    );
+
+    // The calc HUD mounts the POPULATED branch (the demo snapshot fills
+    // `workbook_calc`): assert a Present-only element (`atlas-hud-mode`), not the
+    // shared `atlas-hud` container — which both the Empty and Present branches
+    // emit, so it would pass even if the wrong branch rendered.
+    assert!(
+        query(&host, "[data-testid=\"atlas-hud-mode\"]").is_some(),
+        "the populated calc HUD renders its mode row (not the empty note)"
     );
 }
 

@@ -1,0 +1,31 @@
+# dnacalc-stage-atlas — the Atlas stage (S2.15), TP tier.
+#
+# TP tier (SHELL_SPEC.md §2): may depend on `dnacalc-skin-ir` (T0) + Leptos +
+# the TP crates (`dnacalc-shell` / `dnacalc-bridge` / `dnacalc-strand` /
+# `dnacalc-skin-leptos`) — NEVER any `ox*` engine crate (P-gate). This
+# read-only stage needs only `dnacalc-shell` (the StageSurface contract) and
+# `dnacalc-skin-ir` (the WorkspaceState projections it reads); the bridge/
+# strand/skin-leptos TP crates are not referenced, so they are intentionally
+# NOT declared here (minimal dep set — a later Atlas bead re-adds one if it
+# grows an editor or a Strand symbol).
+[package]
+name = "dnacalc-stage-atlas"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+
+[dependencies]
+dnacalc-skin-ir = { path = "../dnacalc-skin-ir" }
+dnacalc-shell = { path = "../dnacalc-shell" }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+leptos = { version = "0.8.17", default-features = false, features = ["ssr"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+leptos = { version = "0.8.17", default-features = false, features = ["csr"] }
+
+[lints]
+workspace = true

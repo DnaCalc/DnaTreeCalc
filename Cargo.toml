@@ -11,6 +11,7 @@ members = [
     "src/dnacalc-skin-ir",
     "src/dnacalc-skin-leptos",
     "src/dnacalc-stage-notebook",
+    "src/dnacalc-stage-atlas",
     "src/dnacalc-strand",
     "src/dnatreecalc-host",
     "src/dnatreecalc-skin-framework",

@@ -999,6 +999,7 @@ dependencies = [
  "dnacalc-shell",
  "dnacalc-skin-ir",
  "dnacalc-skin-leptos",
+ "dnacalc-stage-atlas",
  "dnacalc-stage-notebook",
  "dnacalc-strand",
  "dnatreecalc-host",
@@ -1184,6 +1185,15 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.18",
+]
+
+[[package]]
+name = "dnacalc-stage-atlas"
+version = "0.1.0"
+dependencies = [
+ "dnacalc-shell",
+ "dnacalc-skin-ir",
+ "leptos",
 ]
 
 [[package]]

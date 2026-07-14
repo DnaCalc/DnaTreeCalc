@@ -19,6 +19,7 @@ use dnacalc_skin_ir::selection::SelectionState;
 use dnacalc_skin_ir::state::{SharedSkinState, SharedStateChange, SharedStateOrigin};
 use dnacalc_skin_ir::workspace::{GridEntryDiagnosticProjection, WorkspaceState};
 use dnacalc_skin_leptos::state_handles::SharedSkinStateHandle;
+use dnacalc_stage_atlas::AtlasStage;
 use dnacalc_stage_notebook::NotebookStage;
 use dnacalc_strand::{Density, Theme};
 use dnatreecalc_host::app::WorkbookHostDispatcher;
@@ -250,7 +251,8 @@ pub fn CalcApp(runtime: RuntimeContext) -> impl IntoView {
             title: "Model",
             testid: "calc-stage-model",
         }))
-        .with_stage(Arc::new(NotebookStage::new()));
+        .with_stage(Arc::new(NotebookStage::new()))
+        .with_stage(Arc::new(AtlasStage::new()));
 
     view! {
         <style>{CALC_APP_CSS}</style>
