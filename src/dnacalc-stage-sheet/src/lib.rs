@@ -21,6 +21,18 @@ use leptos::prelude::*;
 use dnacalc_shell::{ProfileTag, StageContext, StageHandle, StageId, StageSurface};
 use dnacalc_skin_ir::{GridProjection, WorkspaceState};
 
+pub mod geometry;
+pub mod render_plan;
+
+pub use geometry::{
+    CellRect, GridMetrics, HitTarget, Viewport, cell_rect, hit_test, visible_col_range,
+    visible_row_range,
+};
+pub use render_plan::{
+    PlannedCell, PlannedColHeader, PlannedRowHeader, RenderPlan, build_render_plan, col_label,
+    value_text,
+};
+
 /// The Sheet stage surface.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct SheetStage;
