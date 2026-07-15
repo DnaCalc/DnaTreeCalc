@@ -115,6 +115,26 @@
 //! the per-block editor / `+ name` form / keyboard grammar, it is NOT gated by
 //! [`persona_allows_authoring`]: no chip is ever live, so a disabled,
 //! read-only bar is honestly renderable to every persona alike.
+//!
+//! **S2.13** — **prose blocks + block ordering** (NOTEBOOK_SPEC §2 prose row,
+//! §3 reorder) DEGRADE, and the degrade is honest end-to-end. Ordering, prose,
+//! and the block cursor live in the document manifest (the xlsx-embedded
+//! manifest + the `_names` backing sheet), which **G6** would turn into an IR
+//! projection (blocks / order / cursor). Neither is built: `dnacalc-host-core`
+//! has NO document-manifest read/write lane (it defers file I/O to R6), and no
+//! `blocks`/`order`/`cursor` projection is produced. So the Notebook:
+//!  - surfaces the honest **degrade affordance** through the S2.7 keyboard
+//!    grammar — `Ctrl+Shift+M` (new prose) and `Alt+↑/↓` (reorder) resolve to
+//!    [`keyboard::ActionAvailability::DisabledWithReason`] citing **ask #1**,
+//!    written to the `aria-live` status note and dispatching NOTHING;
+//!  - does **NO skin-side manifest byte parsing** — it consumes only the host's
+//!    projections (`WorkspaceState`), never file/manifest bytes (structurally
+//!    true: the stage crate references no file-I/O or byte-parsing at all,
+//!    pinned by [`tests::prose_and_reorder_degrade_cite_ask_1_and_parse_no_manifest`]);
+//!  - therefore **save/reload preserves nothing extra** — block order and prose
+//!    are not persisted by this stage, and it fabricates no ad-hoc manifest of
+//!    its own. Full manifest round-trip (NOTEBOOK_SPEC §6 scenario 1) stays out
+//!    of scope until ask #1 / G6 lands.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -2034,6 +2054,60 @@ mod tests {
         // An address that is NOT derived is absent — so pruning would evict its
         // lingering edit state.
         assert!(!live.contains(&(NodeId::new("sheet:absent"), 999, 999)));
+    }
+
+    /// **S2.13 prose + reorder degrade.** Two halves of the bead acceptance:
+    /// (1) the degrade affordance cites ask #1 — the `Ctrl+Shift+M` (new prose)
+    /// and `Alt+↑/↓` (reorder) actions resolve to a disabled-with-reason
+    /// availability whose reason names ask #1; (2) NO skin-side manifest byte
+    /// parsing occurs — the stage crate consumes only host projections and never
+    /// touches file/manifest bytes, so block order and prose are not persisted
+    /// here (deferred to ask #1 / G6 / R6). The forbidden needles are assembled
+    /// at runtime from split pieces so this test's own source cannot self-match.
+    #[test]
+    fn prose_and_reorder_degrade_cite_ask_1_and_parse_no_manifest() {
+        for action in [
+            NotebookAction::NewProse,
+            NotebookAction::ReorderUp,
+            NotebookAction::ReorderDown,
+        ] {
+            match action_availability(action) {
+                ActionAvailability::DisabledWithReason(reason) => assert!(
+                    reason.contains("ask #1"),
+                    "{action:?} degrade must cite ask #1, got {reason:?}"
+                ),
+                ActionAvailability::Live => {
+                    panic!("{action:?} must be a disabled-with-reason degrade, not live")
+                }
+            }
+        }
+
+        // No file/manifest byte parsing anywhere in the stage crate: it renders
+        // projections, never bytes. Needles built from pieces so the assertions
+        // below don't match themselves.
+        let sources = [
+            include_str!("lib.rs"),
+            include_str!("keyboard.rs"),
+            include_str!("model.rs"),
+            include_str!("edit.rs"),
+        ];
+        let forbidden = [
+            format!("std::{}", "fs"),
+            format!("File::{}", "open"),
+            format!("read_{}", "to_string"),
+            format!("from_{}", "reader"),
+            format!("from_{}", "slice"),
+            format!("from_{}", "bytes"),
+        ];
+        for src in sources {
+            for needle in &forbidden {
+                assert!(
+                    !src.contains(needle.as_str()),
+                    "the Notebook stage must not parse manifest/file bytes (found {needle:?}) — \
+                     blocks/order/prose persistence is the host's job (ask #1 / R6 / G6)"
+                );
+            }
+        }
     }
 
     /// **S2.10 substrate probe, pinned.** Over the REAL host-core demo
