@@ -44,6 +44,20 @@
 //! draws with, so a click lands on — and the editor sits over — the drawn cell.
 //! Single-cell selection only: arrow-key navigation and range/fill are S3.8.
 //!
+//! **S3.7 (this bead)** draws the grid's READ-ONLY overlays — structured
+//! tables, spilled-array regions, merged cells — from the windowed
+//! [`dnacalc_skin_ir::GridOverlayBundle`] the projection now carries
+//! (`grid.overlays`), via [`crate::canvas::draw_overlays`]. The redraw effect
+//! calls it right after [`draw_render_plan`] (on top of the cells) and BEFORE
+//! the S3.8 active-cell highlight below (so a selection box always stays the
+//! topmost chrome). A window-clipped overlay edge
+//! (`GridOverlayRect::clipped_*`) draws as a dashed "continues beyond the
+//! window" affordance rather than a fabricated hard border. Honest-empty v1:
+//! the demo workbook is cells-only, so its `overlays` bundle is empty and this
+//! pass draws nothing there — the value is the correct draw path plus the
+//! unit-tested pure geometry ([`crate::canvas::overlay_pixel_rect`],
+//! [`crate::canvas::overlay_edge_style`]) over a hand-built projection.
+//!
 //! **S3.8 (this bead)** splits S3.6's conflated "selected == editing" into the
 //! proper Excel-strict SELECT-vs-EDIT model (SHEET_SPEC §4). SELECT is the base
 //! state: a single click OR an arrow key moves the ACTIVE cell
@@ -124,7 +138,10 @@ pub mod render_plan;
 pub mod selection;
 pub mod viewport;
 
-pub use canvas::{Palette, draw_active_cell, draw_render_plan, looks_numeric, resolve_palette};
+pub use canvas::{
+    OverlayEdgeStyle, Palette, draw_active_cell, draw_overlays, draw_render_plan,
+    looks_numeric, overlay_edge_style, overlay_pixel_rect, resolve_palette,
+};
 pub use edit::{CellOutcome, enter_cell_intent, interpret_receipt};
 pub use geometry::{
     CellRect, GridMetrics, HitTarget, Viewport, cell_rect, hit_test, visible_col_range,
@@ -305,6 +322,15 @@ impl StageSurface for SheetStage {
                 active_grid(ws).map(|grid| {
                     let plan = build_render_plan(grid, &metrics, &vp);
                     draw_render_plan(&ctx2d, &plan, &metrics, &vp, &palette);
+                    // S3.7 overlays (tables / spills / merged): drawn right after
+                    // the plan, ON TOP of the cells, but BEFORE the active-cell
+                    // highlight below — so the selection box always stays the
+                    // topmost chrome even where it happens to coincide with an
+                    // overlay's outline. `grid.overlays` comes from the SAME
+                    // workspace read that built `plan`, so it repaints with every
+                    // re-projection; an empty bundle (the demo workbook, which is
+                    // cells-only) draws nothing.
+                    draw_overlays(&ctx2d, &grid.overlays, &metrics, &vp, &palette);
                     (plan.cells.len(), plan.extent_rows, plan.extent_cols)
                 })
             });
@@ -313,7 +339,8 @@ impl StageSurface for SheetStage {
                 plan_extent.set(format!("{rows}\u{00d7}{cols}"));
             }
 
-            // S3.8 active-cell highlight — a follow-on pass over the drawn plan.
+            // S3.8 active-cell highlight — a follow-on pass over the drawn plan
+            // AND overlays (see the z-order note above).
             // Reading `active_cell` here subscribes the effect to selection, so an
             // arrow-key move or a click repaints the 2px accent box. Drawn with the
             // SAME scaled metrics + scrolled viewport the plan used, so the box
