@@ -1,0 +1,40 @@
+# dnacalc-stage-sheet — the Sheet stage (S3), TP tier.
+#
+# TP tier (SHELL_SPEC.md §2): may depend on `dnacalc-skin-ir` (T0) + Leptos +
+# the TP crates — NEVER any `ox*` engine crate (P-gate). The Sheet stage is the
+# Excel-strict grid: a Canvas2D tile renderer + one DOM overlay editor over a
+# RenderPlan-IR whose geometry/hit-test invariants are unit-tested (Foundation
+# doctrine). It needs `dnacalc-shell` (the StageSurface contract) and
+# `dnacalc-skin-ir` (the GridProjection it renders); further TP crates
+# (`dnacalc-bridge` for the overlay editor) are added by the bead that first
+# uses them, so the dep set stays minimal (no unused-crate cruft).
+[package]
+name = "dnacalc-stage-sheet"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+
+[dependencies]
+dnacalc-skin-ir = { path = "../dnacalc-skin-ir" }
+dnacalc-shell = { path = "../dnacalc-shell" }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+leptos = { version = "0.8.17", default-features = false, features = ["ssr"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+leptos = { version = "0.8.17", default-features = false, features = ["csr"] }
+
+# DEV-ONLY (native): geometry / render-plan tests drive the REAL
+# `dnacalc-host-core` demo workbook so the RenderPlan is proven over a genuine
+# `GridProjection`, not a hand-mock. A `[dev-dependencies]` edge never appears
+# in `cargo tree -e normal`, so the P-gate (no ox* in the TP artifact) stays
+# green while the tests still exercise engine truth. Native only: host-core is
+# not a wasm target.
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+dnacalc-host-core = { path = "../dnacalc-host-core" }
+
+[lints]
+workspace = true

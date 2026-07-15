@@ -1210,6 +1210,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "dnacalc-stage-sheet"
+version = "0.1.0"
+dependencies = [
+ "dnacalc-host-core",
+ "dnacalc-shell",
+ "dnacalc-skin-ir",
+ "leptos",
+]
+
+[[package]]
 name = "dnacalc-strand"
 version = "0.1.0"
 dependencies = [

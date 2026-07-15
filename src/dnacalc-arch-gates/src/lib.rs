@@ -141,6 +141,10 @@ pub const WORKSPACE_ROOT_ENV: &str = "DNACALC_GATES_WORKSPACE_ROOT";
 /// - `dnacalc-stage-atlas` (the Atlas stage surface: structure map + calc
 ///   HUD; verified clean at seed time via `cargo tree -p dnacalc-stage-atlas
 ///   -e normal --prefix none --locked`).
+/// - `dnacalc-stage-sheet` (S3, the Sheet stage: Canvas2D grid over a
+///   RenderPlan IR; verified clean via `cargo tree -p dnacalc-stage-sheet -e
+///   normal --prefix none --locked` — host-core is a native dev-dep only, off
+///   the `normal` edge set).
 ///
 /// Appending a future TP crate is still a one-line change: add its name
 /// below once it exists under `src/` and passes `cargo tree -p <name> -e
@@ -153,6 +157,7 @@ pub const TP_CRATES: &[&str] = &[
     "dnacalc-bridge",
     "dnacalc-stage-notebook",
     "dnacalc-stage-atlas",
+    "dnacalc-stage-sheet",
 ];
 
 /// One resolved `cargo tree` run for a single crate: the crate name it was
