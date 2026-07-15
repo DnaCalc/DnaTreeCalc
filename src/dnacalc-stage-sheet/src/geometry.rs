@@ -60,6 +60,32 @@ impl Default for GridMetrics {
     }
 }
 
+impl GridMetrics {
+    /// The metrics scaled proportionally by a zoom `factor` (S3.10 semantic
+    /// zoom's Detail tier: "scale `GridMetrics` by the zoom factor").
+    ///
+    /// A pure, total multiply of all four cell/header extents — so `scaled(1.0)`
+    /// is exactly the input (`22.0 * 1.0 == 22.0`), the property the default-zoom
+    /// geometry relies on to reproduce today's unscaled grid bit-for-bit. A
+    /// non-finite or non-positive `factor` is a guard case that returns the
+    /// metrics unchanged, so a bad zoom value never yields `NaN`/zero pixels that
+    /// would break [`hit_test`] or [`cell_rect`]. The caller clamps `factor` to a
+    /// legible range (see `crate::viewport::legible_factor`); this method itself
+    /// applies no floor, so the scaling is faithfully proportional.
+    #[must_use]
+    pub fn scaled(&self, factor: f64) -> Self {
+        if !factor.is_finite() || factor <= 0.0 {
+            return *self;
+        }
+        Self {
+            row_height: self.row_height * factor,
+            col_width: self.col_width * factor,
+            header_h: self.header_h * factor,
+            header_w: self.header_w * factor,
+        }
+    }
+}
+
 /// The scrolled viewport over the grid, in CSS pixels.
 ///
 /// `scroll_x`/`scroll_y` are the distance the grid has been scrolled *away* from
@@ -305,6 +331,37 @@ mod tests {
                 header_w: 48.0,
             }
         );
+    }
+
+    /// `scaled` is faithfully proportional, `scaled(1.0)` is the identity (the
+    /// property the default-zoom grid relies on to reproduce today's geometry
+    /// exactly), and a degenerate factor returns the metrics unchanged rather
+    /// than fabricating `NaN`/zero pixels.
+    #[test]
+    fn scaled_metrics_are_proportional_with_identity_at_one() {
+        let m = GridMetrics::default();
+
+        // Identity at 1.0 — bit-for-bit equal (so zoom=1.0 draws today's grid).
+        assert_eq!(m.scaled(1.0), m);
+
+        // Proportional at 2.0 and 0.6 (the legibility floor the caller clamps to).
+        assert_eq!(
+            m.scaled(2.0),
+            GridMetrics {
+                row_height: 44.0,
+                col_width: 160.0,
+                header_h: 44.0,
+                header_w: 96.0,
+            }
+        );
+        let floor = m.scaled(0.6);
+        assert!((floor.row_height - 13.2).abs() < 1e-9);
+        assert!((floor.col_width - 48.0).abs() < 1e-9);
+
+        // Degenerate factors are guarded to identity — never NaN/zero metrics.
+        assert_eq!(m.scaled(f64::NAN), m);
+        assert_eq!(m.scaled(0.0), m);
+        assert_eq!(m.scaled(-1.5), m);
     }
 
     /// The first cell sits exactly at the grid origin `(header_w, header_h)` and

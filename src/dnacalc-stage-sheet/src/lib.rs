@@ -70,11 +70,44 @@
 //! (`data-testid="sheet-g3-affordances"`) stands in for the gated TOOLS (fill,
 //! clipboard). No fake fill handle is ever drawn (the highlight is the only
 //! selection chrome).
+//!
+//! **S3.9 (this bead)** makes the grid SCROLLABLE and replaces the hardcoded
+//! origin [`Viewport`] the earlier beads drew/clicked/edited with, with a single
+//! reactive `viewport: RwSignal<Viewport>` — the ONE source of truth every
+//! consumer agrees on. A `on:wheel` handler accumulates deltas into a
+//! [`crate::viewport::ScrollCoalescer`] and a `requestAnimationFrame` callback
+//! applies at most ONE clamped `viewport.scroll` update per frame (so a wheel
+//! storm coalesces to one repaint — the estate's interest-coalescer pattern, the
+//! same frame boundary G4 will emit real `SetGridInterest` from). The redraw
+//! effect subscribes to the viewport, so a scroll repaints; the click / nav /
+//! editor read the CURRENT viewport, so a click while scrolled lands on — and the
+//! editor sits over — the right cell. Because `SetGridInterest` is a workbook
+//! no-op today (G4 unbuilt), the stage works HONESTLY at bounded-sheet scale: it
+//! renders the host's already-windowed cells as-is (no fabricated client-side
+//! virtualization) and surfaces an honest `data-testid="sheet-interest-degrade"`
+//! note that windowing / prefetch are deferred to G4. Ctrl+arrow edge-jump
+//! degrades to a window-local jump ([`crate::viewport::window_edge_jump`]) with
+//! the same honest note.
+//!
+//! **S3.10 (this bead)** adds SEMANTIC ZOOM: a `zoom: RwSignal<f64>` and a
+//! `+`/`−`/reset control ([`crate::viewport::clamp_zoom`]) that scales the drawn
+//! [`GridMetrics`] live via [`GridMetrics::scaled`]. The Detail tier (≥ 60%,
+//! [`crate::viewport::zoom_tier`]) renders full cells/gridlines/text at the
+//! scaled metrics. The Structure (15–60%) and District (< 15%) tiers
+//! HONEST-DEGRADE v1: the labeled-block / district renderers are NOT built, so
+//! the stage holds the Detail grid at the legibility floor
+//! ([`crate::viewport::legible_factor`] — text never shrinks below readable) and
+//! renders a `data-testid="sheet-zoom-degrade"` disabled-with-reason note that
+//! the semantic tier is deferred, rather than half-building it. Default
+//! `zoom = 1.0` + `scroll = 0` reproduce the earlier beads' exact geometry
+//! (`GridMetrics::scaled(1.0)` is the identity, `Viewport::default()` is the
+//! origin), so the S3.11 click test's cell math is unchanged.
 
 use std::sync::Arc;
 
 use leptos::prelude::*;
 use leptos::wasm_bindgen::JsCast;
+use leptos::wasm_bindgen::closure::Closure;
 use web_sys::CanvasRenderingContext2d;
 
 use dnacalc_bridge::{BridgeEvent, FormulaBridgeDegrade};
@@ -89,12 +122,18 @@ pub mod edit;
 pub mod geometry;
 pub mod render_plan;
 pub mod selection;
+pub mod viewport;
 
 pub use canvas::{Palette, draw_active_cell, draw_render_plan, looks_numeric, resolve_palette};
 pub use edit::{CellOutcome, enter_cell_intent, interpret_receipt};
 pub use geometry::{
     CellRect, GridMetrics, HitTarget, Viewport, cell_rect, hit_test, visible_col_range,
     visible_row_range,
+};
+pub use viewport::{
+    BOUNDED_SCALE_INTEREST_NOTE, EDGE_JUMP_DEGRADE_REASON, EdgeDir, ScrollCoalescer, Tier,
+    clamp_scroll, clamp_zoom, edge_dir_from_key, legible_factor, tier_degrade_reason,
+    window_edge_jump, zoom_tier,
 };
 pub use render_plan::{
     PlannedCell, PlannedColHeader, PlannedRowHeader, RenderPlan, build_render_plan, col_label,
@@ -178,6 +217,20 @@ impl StageSurface for SheetStage {
             RwSignal::new(Vec::new());
         let editor_revision = RwSignal::new(0usize);
 
+        // --- S3.9 scroll / S3.10 zoom: the shared reactive viewport + zoom ------
+        // The ONE source of truth for the scrolled viewport (S3.9) and the zoom
+        // factor (S3.10). Every consumer — the redraw effect, the click / dblclick
+        // hit-test, the nav grammar, and the overlay editor's position — reads
+        // THESE, so they can never disagree on where a cell is drawn. Created once
+        // here in the stable owner so scroll/zoom survive a workspace re-projection.
+        //
+        // `Viewport::default()` is the origin (scroll 0, size 0) and `zoom = 1.0`
+        // is 100% — the defaults the earlier beads hardcoded, so with no scroll
+        // and no zoom the geometry is bit-for-bit today's (the redraw effect fills
+        // `width`/`height` from the live canvas size each paint).
+        let viewport: RwSignal<Viewport> = RwSignal::new(Viewport::default());
+        let zoom = RwSignal::new(1.0_f64);
+
         // The reactive redraw. Subscribes to the workspace (a re-projection
         // repaints) and to `canvas_ref` (bound after the canvas mounts). Every
         // JS-interop step degrades gracefully (`let ... else` / `ok()`), never
@@ -215,15 +268,34 @@ impl StageSurface for SheetStage {
             };
             let _ = ctx2d.scale(dpr, dpr);
 
-            let metrics = GridMetrics::default();
-            // Origin viewport: scroll/zoom is S3.9. The demo used-range fits the
-            // top-left, which is exactly what the plan windows here.
-            let viewport = Viewport {
-                scroll_x: 0.0,
-                scroll_y: 0.0,
+            // S3.10 zoom: the drawn metrics are the default scaled by the live
+            // zoom, floored at the legibility floor (so text never shrinks below
+            // readable — Structure/District hold the grid here and add the honest
+            // note on top). Reading `zoom` subscribes this effect, so a zoom press
+            // repaints. `legible_factor(1.0) == 1.0` and `scaled(1.0)` is the
+            // identity, so at default zoom the metrics are exactly today's.
+            let metrics = zoomed_metrics(zoom.get());
+            // S3.9 scroll: read the shared viewport for scroll_x/scroll_y
+            // (subscribing this effect, so a wheel-scroll repaints) and rebuild it
+            // with the freshly measured canvas size. The signal is the single
+            // source of truth for scroll; the size is measured here each paint.
+            let scrolled = viewport.get();
+            let vp = Viewport {
+                scroll_x: scrolled.scroll_x,
+                scroll_y: scrolled.scroll_y,
                 width: css_w,
                 height: css_h,
             };
+            // Feed the measured size back into the shared viewport so the wheel
+            // coalescer's scroll clamp uses the real data area. Written UNTRACKED
+            // so this self-write does not re-fire the effect (an infinite repaint
+            // loop) — only a scroll or zoom change repaints, never a resize echo.
+            if scrolled.width != css_w || scrolled.height != css_h {
+                viewport.update_untracked(|v| {
+                    v.width = css_w;
+                    v.height = css_h;
+                });
+            }
             let palette = resolve_palette(&el);
 
             // Build + draw the plan from the SAME workspace read, and publish its
@@ -231,8 +303,8 @@ impl StageSurface for SheetStage {
             // workspace here is what subscribes this effect to re-projections.
             let published = workspace.with(|ws| {
                 active_grid(ws).map(|grid| {
-                    let plan = build_render_plan(grid, &metrics, &viewport);
-                    draw_render_plan(&ctx2d, &plan, &metrics, &viewport, &palette);
+                    let plan = build_render_plan(grid, &metrics, &vp);
+                    draw_render_plan(&ctx2d, &plan, &metrics, &vp, &palette);
                     (plan.cells.len(), plan.extent_rows, plan.extent_cols)
                 })
             });
@@ -243,16 +315,102 @@ impl StageSurface for SheetStage {
 
             // S3.8 active-cell highlight — a follow-on pass over the drawn plan.
             // Reading `active_cell` here subscribes the effect to selection, so an
-            // arrow-key move or a click repaints the 2px accent box. Drawn only
-            // when a grid was actually drawn (`published` is Some) AND a cell is
-            // active — the highlight is the ONLY selection chrome (no fake handles).
+            // arrow-key move or a click repaints the 2px accent box. Drawn with the
+            // SAME scaled metrics + scrolled viewport the plan used, so the box
+            // tracks the cell under scroll/zoom. Drawn only when a grid was
+            // actually drawn (`published` is Some) AND a cell is active — the
+            // highlight is the ONLY selection chrome (no fake handles).
             if published.is_some()
                 && let Some((row, col)) = active_cell.get()
             {
-                let rect = cell_rect(&metrics, &viewport, row, col);
-                draw_active_cell(&ctx2d, &metrics, &viewport, &rect, &palette);
+                let rect = cell_rect(&metrics, &vp, row, col);
+                draw_active_cell(&ctx2d, &metrics, &vp, &rect, &palette);
             }
         });
+
+        // S3.9 wheel scroll → RAF-coalesced viewport update. Every wheel event
+        // adds its delta to a per-frame [`ScrollCoalescer`]; only the FIRST note
+        // since the last flush schedules a `requestAnimationFrame`, and further
+        // wheel events in that frame just accumulate. The RAF callback drains the
+        // coalescer ONCE and applies a single clamped `viewport.scroll` update, so
+        // a wheel storm coalesces to at most one repaint per frame (the estate's
+        // interest-coalescer pattern — the same frame boundary G4 will emit real
+        // `SetGridInterest` from). The shared per-frame state lives in
+        // `StoredValue` (Copy + Send, so the view closure that embeds this handler
+        // stays `Send` under `ssr`, unlike an `Rc<RefCell<..>>`); every access is a
+        // panic-safe `try_*` so a callback that fires after the stage unmounts (the
+        // StoredValue disposed) is a silent no-op, never a JS-interop panic. Native
+        // builds never invoke this (no effects / event handlers under `ssr`).
+        let scroll_coalescer = StoredValue::new(ScrollCoalescer::new());
+        let frame_scheduled = StoredValue::new(false);
+        let wheel_workspace = workspace;
+        let on_canvas_wheel = move |ev: leptos::ev::WheelEvent| {
+            // Keep the wheel over the grid from also scrolling the page. (Best
+            // effort — a passive listener may ignore it; the grid still scrolls.)
+            ev.prevent_default();
+            let (dx, dy) = (ev.delta_x(), ev.delta_y());
+            let _ = scroll_coalescer.try_update_value(|c| c.note_delta(dx, dy));
+
+            // Coalesce: only schedule a frame if one is not already pending. A
+            // disposed StoredValue (stage unmounted) reads as "scheduled", so we
+            // skip rather than schedule a doomed callback.
+            if frame_scheduled.try_with_value(|v| *v).unwrap_or(true) {
+                return;
+            }
+            let _ = frame_scheduled.try_update_value(|v| *v = true);
+
+            // The RAF flush: drain the frame's accumulated delta and apply ONE
+            // clamped scroll update. Reads zoom / viewport / extent UNTRACKED (this
+            // is not a reactive scope), then writes `viewport.scroll` TRACKED so
+            // the redraw effect repaints. `viewport.width`/`height` were fed in by
+            // the redraw effect, so the clamp bounds to the real data area.
+            let flush: Closure<dyn FnMut()> = Closure::once(move || {
+                let _ = frame_scheduled.try_update_value(|v| *v = false);
+                let Some((dx, dy)) = scroll_coalescer
+                    .try_update_value(|c| c.take_pending())
+                    .flatten()
+                else {
+                    return;
+                };
+                let metrics = zoomed_metrics(zoom.get_untracked());
+                let current = viewport.get_untracked();
+                let (extent_rows, extent_cols) = wheel_workspace
+                    .with_untracked(|ws| active_grid(ws).map(|g| (g.max_rows, g.max_cols)))
+                    .unwrap_or((1, 1));
+                let next_x = clamp_scroll(
+                    current.scroll_x + dx,
+                    extent_cols,
+                    metrics.col_width,
+                    metrics.header_w,
+                    current.width,
+                );
+                let next_y = clamp_scroll(
+                    current.scroll_y + dy,
+                    extent_rows,
+                    metrics.row_height,
+                    metrics.header_h,
+                    current.height,
+                );
+                // Only write (and thus repaint) when the clamped scroll actually
+                // moved — a wheel already parked at an edge is a no-op, not a
+                // needless repaint.
+                if next_x != current.scroll_x || next_y != current.scroll_y {
+                    viewport.update(|v| {
+                        v.scroll_x = next_x;
+                        v.scroll_y = next_y;
+                    });
+                }
+            });
+            let Some(window) = web_sys::window() else {
+                return;
+            };
+            let _ = window.request_animation_frame(flush.as_ref().unchecked_ref());
+            // The RAF callback fires at most once (`Closure::once`); leaking it
+            // here is the standard wasm-bindgen pattern for a one-shot callback
+            // that must outlive the JS call site — at most one leak per scrolled
+            // frame, bounded by the `frame_scheduled` gate (never one per event).
+            flush.forget();
+        };
 
         // The section the keyboard grammar listens on (`tabindex=0`); focused on a
         // pointer select so keys land here immediately after a click.
@@ -287,8 +445,13 @@ impl StageSurface for SheetStage {
             // fills its viewport wrapper with no border/padding).
             let x = f64::from(ev.offset_x());
             let y = f64::from(ev.offset_y());
-            let metrics = GridMetrics::default();
-            let viewport = Viewport::default(); // origin (scroll 0): matches drawn pixels
+            // Hit-test in the SAME scaled metrics + scrolled viewport the redraw
+            // effect last drew with (read untracked — a handler is not a reactive
+            // scope), so a click while scrolled/zoomed lands on the drawn cell. Both
+            // `hit_test` and `cell_rect` use only scroll + metrics (never the
+            // viewport size), so the last-measured size is irrelevant here.
+            let metrics = zoomed_metrics(zoom.get_untracked());
+            let vp = viewport.get_untracked();
             let Some((extent_rows, extent_cols)) = click_workspace
                 .with_untracked(|ws| active_grid(ws).map(|g| (g.max_rows, g.max_cols)))
             else {
@@ -307,7 +470,7 @@ impl StageSurface for SheetStage {
                 g3_note.set(Some(selection::RANGE_SELECT_DEFERRED_REASON.to_string()));
                 return;
             }
-            match hit_test(&metrics, &viewport, extent_rows, extent_cols, x, y) {
+            match hit_test(&metrics, &vp, extent_rows, extent_cols, x, y) {
                 HitTarget::Cell { row, col } => {
                     // SELECT: move the highlight, close any open editor WITHOUT
                     // committing (an implicit revert — nothing was dispatched), and
@@ -338,8 +501,11 @@ impl StageSurface for SheetStage {
             if ev.shift_key() {
                 return;
             }
-            let metrics = GridMetrics::default();
-            let viewport = Viewport::default();
+            // Same scaled metrics + scrolled viewport the redraw effect drew with,
+            // read untracked — so a double-click while scrolled/zoomed opens the
+            // editor over the right cell.
+            let metrics = zoomed_metrics(zoom.get_untracked());
+            let vp = viewport.get_untracked();
             let Some((grid, extent_rows, extent_cols)) = dblclick_workspace.with_untracked(|ws| {
                 active_grid(ws).map(|g| (g.grid_node_id.clone(), g.max_rows, g.max_cols))
             }) else {
@@ -348,7 +514,7 @@ impl StageSurface for SheetStage {
             let x = f64::from(ev.offset_x());
             let y = f64::from(ev.offset_y());
             if let HitTarget::Cell { row, col } =
-                hit_test(&metrics, &viewport, extent_rows, extent_cols, x, y)
+                hit_test(&metrics, &vp, extent_rows, extent_cols, x, y)
             {
                 let seed = dblclick_workspace
                     .with_untracked(|ws| edit::current_authored_seed(ws, &grid, row, col));
@@ -423,10 +589,31 @@ impl StageSurface for SheetStage {
                 }
                 return;
             }
+            // S3.9 Ctrl+arrow edge-jump — HONEST DEGRADE. The data-aware jump (stop
+            // at the next data boundary) needs the G4 model query, which is
+            // unbuilt, so we degrade to a WINDOW-LOCAL jump: the active cell lands
+            // on the current window's edge ([`window_edge_jump`]) and the transient
+            // note announces the degrade (citing G4). Not a keymap row (Ctrl+arrow
+            // stays unbound in `sheet_keymap` so the chord is reserved for the real
+            // G4 verb); handled here as a wiring fallback ahead of type-to-replace.
+            // (Ctrl+Home is a bound `Move(GridStart)` and already returned above.)
+            if (ev.ctrl_key() || ev.meta_key())
+                && !ev.alt_key()
+                && !ev.shift_key()
+                && let Some(dir) = edge_dir_from_key(&ev.key())
+            {
+                ev.prevent_default();
+                ev.stop_propagation();
+                let current = active_cell.get_untracked().unwrap_or((1, 1));
+                let jumped = window_edge_jump(current, dir, extent_rows, extent_cols);
+                active_cell.set(Some(jumped));
+                g3_note.set(Some(EDGE_JUMP_DEGRADE_REASON.to_string()));
+                return;
+            }
             // Type-to-replace: a lone printable key with no Ctrl/Alt/Meta enters
             // EDIT seeding the buffer with THAT character (Excel behavior). An
-            // unbound modified chord (Ctrl+C, Ctrl+arrow edge-jump) falls through
-            // untouched so universal shell verbs still bubble.
+            // unbound modified chord (Ctrl+C) falls through untouched so universal
+            // shell verbs still bubble.
             if !ev.ctrl_key()
                 && !ev.alt_key()
                 && !ev.meta_key()
@@ -467,16 +654,31 @@ impl StageSurface for SheetStage {
             else {
                 return ().into_any();
             };
-            let rect = cell_rect(&GridMetrics::default(), &Viewport::default(), row, col);
+            // Reactive position (S3.9 scroll / S3.10 zoom): a closure bound to the
+            // `style` attribute, so scrolling or zooming while EDITING repositions
+            // the overlay by updating ONLY the style — it never re-runs this outer
+            // closure (which reads only `editing`/`active_cell`/`editor_revision`),
+            // so the bridge is NOT remounted and typing + focus survive a scroll.
+            // Reads the SAME scaled metrics + scrolled viewport the canvas drew
+            // with, so the overlay sits over the drawn cell. A cell scrolled out of
+            // view gets an off-screen rect and is clipped away by the viewport's
+            // `overflow:hidden` — the editor stays MOUNTED (its typed text survives)
+            // and reappears when scrolled back, rather than closing under the user.
+            //
             // Honor the cell rect as the anchor + minimum. The degrade bridge is a
             // full card (editor box + rejection list), so it cannot fit a 22px cell
             // exactly; anchoring at the cell's top-left with the cell's min-width /
             // min-height lets it grow honestly (Excel widens its editor too) rather
             // than clip to a fake cell-sized box.
-            let position = format!(
-                "left:{}px;top:{}px;min-width:{}px;min-height:{}px",
-                rect.x, rect.y, rect.w, rect.h
-            );
+            let position = move || {
+                let metrics = zoomed_metrics(zoom.get());
+                let vp = viewport.get();
+                let rect = cell_rect(&metrics, &vp, row, col);
+                format!(
+                    "left:{}px;top:{}px;min-width:{}px;min-height:{}px",
+                    rect.x, rect.y, rect.w, rect.h
+                )
+            };
             match target {
                 CellEditTarget::ReadOnly { reason } => {
                     // A non-editable cell (repeated-region / merged / spill / table
@@ -597,6 +799,58 @@ impl StageSurface for SheetStage {
                         // flip; the redraw effect repaints on every projection, and
                         // the overlay reacts to the selected cell.
                         view! {
+                            // S3.10 semantic-zoom control: +/-/reset scale the
+                            // drawn metrics live (Detail tier), with the live
+                            // percentage. `clamp_zoom` holds the factor to
+                            // [10%, 400%]; reset returns to 100% (today's geometry).
+                            <div
+                                class="dna-sheet__toolbar"
+                                data-testid="sheet-toolbar"
+                                role="group"
+                                aria-label="Zoom"
+                            >
+                                <button
+                                    class="dna-sheet__zoom-btn"
+                                    type="button"
+                                    data-testid="sheet-zoom-out"
+                                    aria-label="Zoom out"
+                                    title="Zoom out"
+                                    on:click=move |_| {
+                                        zoom.update(|z| *z = clamp_zoom(*z / viewport::ZOOM_STEP));
+                                    }
+                                >
+                                    "\u{2212}"
+                                </button>
+                                <span
+                                    class="dna-sheet__zoom-level"
+                                    data-testid="sheet-zoom-level"
+                                    aria-live="polite"
+                                >
+                                    {move || format!("{}%", (zoom.get() * 100.0).round() as i64)}
+                                </span>
+                                <button
+                                    class="dna-sheet__zoom-btn"
+                                    type="button"
+                                    data-testid="sheet-zoom-in"
+                                    aria-label="Zoom in"
+                                    title="Zoom in"
+                                    on:click=move |_| {
+                                        zoom.update(|z| *z = clamp_zoom(*z * viewport::ZOOM_STEP));
+                                    }
+                                >
+                                    "+"
+                                </button>
+                                <button
+                                    class="dna-sheet__zoom-btn"
+                                    type="button"
+                                    data-testid="sheet-zoom-reset"
+                                    aria-label="Reset zoom to 100%"
+                                    title="Reset zoom"
+                                    on:click=move |_| zoom.set(1.0)
+                                >
+                                    "Reset"
+                                </button>
+                            </div>
                             <div class="dna-sheet__viewport" data-testid="sheet-viewport">
                                 <canvas
                                     class="dna-sheet__canvas"
@@ -604,9 +858,37 @@ impl StageSurface for SheetStage {
                                     node_ref=canvas_ref
                                     on:mousedown=on_canvas_mousedown
                                     on:dblclick=on_canvas_dblclick
+                                    on:wheel=on_canvas_wheel
                                 ></canvas>
                                 {cell_overlay}
                             </div>
+                            // S3.10 zoom degrade: in the Structure/District tiers
+                            // the labeled-block / district renderers are NOT built,
+                            // so this reactive disabled-with-reason note names the
+                            // deferred tier (the Detail grid is still drawn, held at
+                            // the legibility floor). Empty (hidden) in the Detail
+                            // tier, so 100% renders no note.
+                            <p
+                                class="dna-sheet__zoom-note"
+                                data-testid="sheet-zoom-degrade"
+                                aria-live="polite"
+                                role="status"
+                            >
+                                {move || {
+                                    tier_degrade_reason(zoom_tier(zoom.get())).unwrap_or_default()
+                                }}
+                            </p>
+                            // S3.9 honest bounded-scale interest note (persistent):
+                            // `SetGridInterest` is a workbook no-op today (G4), so
+                            // the stage renders the host's full window as-is and
+                            // states that windowing / prefetch are deferred to G4 —
+                            // no fabricated client-side virtualization.
+                            <p
+                                class="dna-sheet__interest-note"
+                                data-testid="sheet-interest-degrade"
+                            >
+                                {BOUNDED_SCALE_INTEREST_NOTE}
+                            </p>
                             // Honest G3 degrade surface. The reactive note announces
                             // the reason when the user ATTEMPTS a gated GESTURE
                             // (range / row-col / select-all); the static strip stands
@@ -687,6 +969,18 @@ impl StageSurface for SheetStage {
         .into_any();
         StageHandle::new(view)
     }
+}
+
+/// The drawn [`GridMetrics`] for a live zoom factor: the default metrics scaled
+/// by the zoom, floored at the legibility floor ([`viewport::legible_factor`]) so
+/// cell text never shrinks below readable. The ONE place the zoom→metrics mapping
+/// lives, so the redraw effect, the click / dblclick hit-test, and the overlay
+/// position can never disagree on the drawn cell size. `zoomed_metrics(1.0)` is
+/// exactly [`GridMetrics::default`] (the identity `scaled(1.0)`), so default zoom
+/// reproduces today's geometry.
+#[must_use]
+fn zoomed_metrics(zoom: f64) -> GridMetrics {
+    GridMetrics::default().scaled(legible_factor(zoom))
 }
 
 /// The active grid to render: the first sheet's backing grid (the active-sheet
@@ -778,6 +1072,14 @@ pub const SHEET_CSS: &str = "\
 .dna-sheet:focus{outline:none}
 .dna-sheet:focus-visible{outline:2px solid var(--dna-accent);outline-offset:2px}
 .dna-sheet__empty{margin:0;color:var(--dna-ink-3);font-style:italic}
+.dna-sheet__toolbar{display:flex;align-items:center;gap:var(--dna-gap-2)}
+.dna-sheet__zoom-btn{border:1px solid var(--dna-line);border-radius:var(--dna-radius-chip);background:var(--dna-paper-2);color:var(--dna-ink);min-width:26px;padding:var(--dna-gap-1) var(--dna-gap-2);font-size:13px;line-height:1;cursor:pointer}
+.dna-sheet__zoom-btn:hover{background:var(--dna-paper)}
+.dna-sheet__zoom-btn:focus-visible{outline:2px solid var(--dna-accent);outline-offset:1px}
+.dna-sheet__zoom-level{min-width:3.5em;text-align:center;color:var(--dna-ink-2);font-size:12px;font-variant-numeric:tabular-nums}
+.dna-sheet__zoom-note{margin:0;min-height:1.2em;color:var(--dna-ink-3);font-style:italic;font-size:12px}
+.dna-sheet__zoom-note:empty{visibility:hidden}
+.dna-sheet__interest-note{margin:0;color:var(--dna-ink-3);font-size:11px}
 .dna-sheet__viewport{position:relative;flex:1 1 auto;min-height:0;overflow:hidden}
 .dna-sheet__canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
 .dna-sheet__cell-editor{position:absolute;z-index:5;box-sizing:border-box}
