@@ -1001,6 +1001,7 @@ dependencies = [
  "dnacalc-skin-leptos",
  "dnacalc-stage-atlas",
  "dnacalc-stage-notebook",
+ "dnacalc-stage-sheet",
  "dnacalc-strand",
  "dnatreecalc-host",
  "js-sys",

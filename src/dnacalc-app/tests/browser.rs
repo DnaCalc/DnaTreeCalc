@@ -6,6 +6,17 @@
 //! and reads shared continuity state), that the DEGRADE bridge edits a workbook
 //! cell via `EnterGridCell` with the three-way outcome rendered honestly, and
 //! that the atlas + deck open. Reserved parity/evidence slots render NOTHING.
+//!
+//! S3.11 registers the REAL `dnacalc_stage_sheet::SheetStage` in place of the
+//! former Sheet `StubStage`: every test that used to treat
+//! `[data-testid="calc-stage-sheet"]` as the "Sheet is mounted" marker now
+//! reads the real stage's own root (`[data-testid="sheet-root"]`), and two new
+//! tests below (`calc_sheet_stage_renders_the_canvas_grid` /
+//! `calc_sheet_click_opens_editor_and_commits`) prove the canvas actually
+//! draws a plan and that a click opens the overlay editor and commits a real
+//! `EnterGridCell`. The Sheet stub's `.calc-stage__continuity` readout is gone
+//! with it — `calc_stage_switch_reprojects_and_preserves_continuity_surface`
+//! now reads that readout off the Model stub (still a `StubStage`) instead.
 
 #![cfg(target_arch = "wasm32")]
 
@@ -184,7 +195,7 @@ fn calc_mounts_full_region_set_with_switcher() {
     assert_eq!(
         tabs.length(),
         4,
-        "two stub stages + Notebook + Atlas compose the switcher"
+        "the real Sheet stage + the Model stub + Notebook + Atlas compose the switcher"
     );
 
     let parity = query(&host, "[data-slot=\"parity\"]").expect("parity slot reserved in layout");
@@ -195,19 +206,26 @@ fn calc_mounts_full_region_set_with_switcher() {
 /// §10.1 — stage switching is re-projection: the incoming stage mounts and its
 /// shared-continuity readout is present (the shared state survives the switch,
 /// it is not reset to a fresh default).
+///
+/// RETARGETED for S3.11: the real Sheet stage (`dnacalc_stage_sheet::SheetStage`)
+/// carries no `.calc-stage__continuity` readout — only the Model `StubStage`
+/// still does. So the mount/gone assertions stay on the real Sheet's own root
+/// (`sheet-root`), but the continuity read itself moves to Model. To keep the
+/// proof non-tautological (not just "one switch, read once"), the test drives
+/// a full re-projection ROUND TRIP through Model — Sheet -> Model (read
+/// `before`) -> Notebook (Model torn down) -> Model again (read `after`) —
+/// so equality proves the shared continuity state survives being re-projected
+/// away and back, not merely that it was never touched.
 #[wasm_bindgen_test]
 async fn calc_stage_switch_reprojects_and_preserves_continuity_surface() {
     let host = mount();
     next_tick().await;
 
-    // Initial: the first visible stage (Sheet) mounts.
+    // Initial: the first visible stage (the real Sheet) mounts.
     assert!(
-        query(&host, "[data-testid=\"calc-stage-sheet\"]").is_some(),
+        query(&host, "[data-testid=\"sheet-root\"]").is_some(),
         "the Sheet stage mounts first"
     );
-    let before = query(&host, "[data-testid=\"calc-stage-sheet\"] .calc-stage__continuity")
-        .and_then(|el| el.get_attribute("data-selection"))
-        .expect("continuity readout on the Sheet stage");
 
     // Switch to Model via its mast tab (a re-projection switch).
     let model_tab = query(&host, "[data-stage-tab=\"model\"]").expect("model tab");
@@ -223,15 +241,42 @@ async fn calc_stage_switch_reprojects_and_preserves_continuity_surface() {
         "the Model stage mounts after the switch"
     );
     assert!(
-        query(&host, "[data-testid=\"calc-stage-sheet\"]").is_none(),
+        query(&host, "[data-testid=\"sheet-root\"]").is_none(),
         "switching is re-projection: only one stage mounts at a time"
     );
-    // The shared continuity state survived the switch (same value the new
-    // stage reads back).
-    let after = query(&host, "[data-testid=\"calc-stage-model\"] .calc-stage__continuity")
+    let before = query(&host, "[data-testid=\"calc-stage-model\"] .calc-stage__continuity")
         .and_then(|el| el.get_attribute("data-selection"))
         .expect("continuity readout on the Model stage");
-    assert_eq!(before, after, "continuity state survives the switch");
+
+    // Switch away to Notebook (tearing Model down) and then back to Model — a
+    // full re-projection round trip the shared continuity state must survive.
+    let notebook_tab = query(&host, "[data-stage-tab=\"notebook\"]").expect("notebook tab");
+    let target: web_sys::EventTarget = notebook_tab.unchecked_into();
+    target
+        .dispatch_event(&web_sys::MouseEvent::new("click").unwrap())
+        .unwrap();
+    next_tick().await;
+    assert!(
+        query(&host, "[data-testid=\"calc-stage-model\"]").is_none(),
+        "switching away tears down the Model stage (re-projection)"
+    );
+
+    let model_tab = query(&host, "[data-stage-tab=\"model\"]").expect("model tab");
+    let target: web_sys::EventTarget = model_tab.unchecked_into();
+    target
+        .dispatch_event(&web_sys::MouseEvent::new("click").unwrap())
+        .unwrap();
+    next_tick().await;
+
+    // The shared continuity state survived the round trip (same value the
+    // re-mounted Model stage reads back).
+    let after = query(&host, "[data-testid=\"calc-stage-model\"] .calc-stage__continuity")
+        .and_then(|el| el.get_attribute("data-selection"))
+        .expect("continuity readout on the Model stage after the round trip");
+    assert_eq!(
+        before, after,
+        "continuity state survives a full re-projection round trip"
+    );
 }
 
 /// S2.3 — the Notebook stage (`dnacalc-stage-notebook`) is registered into the
@@ -249,9 +294,9 @@ async fn calc_stage_switch_to_notebook_mounts_notebook_stage() {
     let notebook_tab =
         query(&host, "[data-stage-tab=\"notebook\"]").expect("notebook tab listed in the switcher");
 
-    // Initial: the first visible stage (Sheet) mounts.
+    // Initial: the first visible stage (the real Sheet) mounts.
     assert!(
-        query(&host, "[data-testid=\"calc-stage-sheet\"]").is_some(),
+        query(&host, "[data-testid=\"sheet-root\"]").is_some(),
         "the Sheet stage mounts first"
     );
 
@@ -272,7 +317,7 @@ async fn calc_stage_switch_to_notebook_mounts_notebook_stage() {
         "the Notebook stage's reactive block list mounts"
     );
     assert!(
-        query(&host, "[data-testid=\"calc-stage-sheet\"]").is_none(),
+        query(&host, "[data-testid=\"sheet-root\"]").is_none(),
         "switching is re-projection: only one stage mounts at a time"
     );
 }
@@ -292,9 +337,9 @@ async fn calc_stage_switch_to_atlas_mounts_atlas_stage() {
     let atlas_tab =
         query(&host, "[data-stage-tab=\"atlas\"]").expect("atlas tab listed in the switcher");
 
-    // Initial: the first visible stage (Sheet) mounts.
+    // Initial: the first visible stage (the real Sheet) mounts.
     assert!(
-        query(&host, "[data-testid=\"calc-stage-sheet\"]").is_some(),
+        query(&host, "[data-testid=\"sheet-root\"]").is_some(),
         "the Sheet stage mounts first"
     );
 
@@ -315,7 +360,7 @@ async fn calc_stage_switch_to_atlas_mounts_atlas_stage() {
         "the Atlas stage's root mounts"
     );
     assert!(
-        query(&host, "[data-testid=\"calc-stage-sheet\"]").is_none(),
+        query(&host, "[data-testid=\"sheet-root\"]").is_none(),
         "switching is re-projection: only one stage mounts at a time"
     );
 
@@ -846,7 +891,7 @@ async fn calc_selection_focus_survives_notebook_round_trip() {
 
     // We start on the Sheet stage.
     assert!(
-        query(&host, "[data-testid=\"calc-stage-sheet\"]").is_some(),
+        query(&host, "[data-testid=\"sheet-root\"]").is_some(),
         "the Sheet stage mounts first"
     );
 
@@ -877,7 +922,7 @@ async fn calc_selection_focus_survives_notebook_round_trip() {
         "the Notebook stage mounts after the switch"
     );
     assert!(
-        query(&host, "[data-testid=\"calc-stage-sheet\"]").is_none(),
+        query(&host, "[data-testid=\"sheet-root\"]").is_none(),
         "switching is re-projection: only one stage mounts at a time"
     );
 
@@ -908,7 +953,7 @@ async fn calc_selection_focus_survives_notebook_round_trip() {
 
     // The Sheet stage is mounted again, the Notebook stage gone.
     assert!(
-        query(&host, "[data-testid=\"calc-stage-sheet\"]").is_some(),
+        query(&host, "[data-testid=\"sheet-root\"]").is_some(),
         "the Sheet stage mounts again after switching back"
     );
     assert!(
@@ -1023,5 +1068,183 @@ async fn calc_command_deck_lists_commands_and_goto() {
     assert!(
         query(&host, "[data-command-id=\"goto:a1:A1\"]").is_some(),
         "the deck recognizes an A1 goto address"
+    );
+}
+
+/// S3.11 — the real `dnacalc_stage_sheet::SheetStage` renders its canvas grid
+/// over the host-core demo workbook. Sheet is the DEFAULT stage, so it is
+/// already mounted; this asserts the canvas element is present AND that the
+/// visually-hidden debug readout (`sheet-render-plan`, which mirrors exactly
+/// what the redraw effect drew — see `dnacalc-stage-sheet/src/lib.rs`)
+/// reports a non-zero cell count and a non-empty extent. Reading the readout
+/// rather than canvas pixels catches a blank/0-size render (a canvas that got
+/// no size, or a redraw effect that never ran) without a screenshot
+/// assertion — the crate's own doctrine (Foundation: no screenshot
+/// assertions).
+#[wasm_bindgen_test]
+async fn calc_sheet_stage_renders_the_canvas_grid() {
+    let host = mount();
+    // The redraw effect runs after layout (it reads `clientWidth`/`clientHeight`
+    // off the mounted canvas) — give it generous ticks before asserting.
+    next_tick().await;
+    next_tick().await;
+    next_tick().await;
+
+    assert!(
+        query(&host, "[data-testid=\"sheet-root\"]").is_some(),
+        "the Sheet stage mounts by default"
+    );
+    assert!(
+        query(&host, "[data-testid=\"sheet-canvas\"]").is_some(),
+        "the real canvas mounts"
+    );
+
+    let plan = query(&host, "[data-testid=\"sheet-render-plan\"]")
+        .expect("the debug readout mirroring the drawn RenderPlan mounts");
+    let cell_count: usize = plan
+        .get_attribute("data-cell-count")
+        .expect("data-cell-count is set")
+        .parse()
+        .expect("data-cell-count is a plain integer");
+    assert!(
+        cell_count > 0,
+        "the demo grid (Sheet1 A1..B5) windows real cells — the canvas got a \
+         real size and the redraw effect drew the plan, got cell_count={cell_count}"
+    );
+    let extent = plan
+        .get_attribute("data-extent")
+        .expect("data-extent is set");
+    assert!(
+        !extent.is_empty(),
+        "the extent readout reports the demo grid's real row x col extent, got {extent:?}"
+    );
+}
+
+/// S3.11 — clicking the canvas at a cell's own pixel opens the ONE overlay
+/// editor at that cell (hit-tested through the SAME [`GridMetrics::default`] +
+/// origin `Viewport` the redraw effect draws with — see
+/// `dnacalc-stage-sheet/src/geometry.rs`), and committing through it runs the
+/// real `EnterGridCell` path end to end.
+///
+/// Cell (row=1, col=1) = Sheet1 `A1` (a literal `1` in the demo workbook, see
+/// `dnacalc-host-core/src/demo.rs`) sits at the default metrics'
+/// `cell_rect(1, 1)` = `(header_w=48, header_h=22, col_width=80,
+/// row_height=22)`, so its center in the canvas's own coordinate space is
+/// `(48 + 40, 22 + 11) = (88, 33)`. A dispatched `MouseEvent`'s
+/// `offsetX`/`offsetY` (what the click handler reads) are computed by the
+/// browser from `clientX`/`clientY` relative to the event's target's real
+/// `getBoundingClientRect()` — so `clientX`/`clientY` are built by translating
+/// `(88, 33)` by the canvas's actual on-screen origin, which works
+/// regardless of the canvas's rendered size (this offset math depends only
+/// on the canvas's top-left position, not its width/height).
+///
+/// COMMIT SIGNAL: an accepted commit closes the overlay (only a `Rejected`
+/// outcome keeps it open with the typed diagnostics underlined — see
+/// `SheetStage::mount`'s `on_event` handler in
+/// `dnacalc-stage-sheet/src/lib.rs`), so the overlay's disappearance after
+/// Enter is the honest, host-truth-driven proof the commit was accepted —
+/// not a fabricated pass.
+#[wasm_bindgen_test]
+async fn calc_sheet_click_opens_editor_and_commits() {
+    let host = mount();
+    next_tick().await;
+    next_tick().await;
+    next_tick().await;
+
+    let canvas = query(&host, "[data-testid=\"sheet-canvas\"]").expect("the canvas mounts");
+
+    assert!(
+        query(&host, "[data-testid=\"sheet-cell-editor\"]").is_none(),
+        "no cell is selected before any click"
+    );
+
+    // Translate cell (1, 1)'s center — (88, 33) in the canvas's own coordinate
+    // space — into viewport `clientX`/`clientY` via the canvas's real
+    // bounding rect, so the browser's offsetX/offsetY computation lands on
+    // the same point the stage's click handler hit-tests against.
+    let rect = canvas.get_bounding_client_rect();
+    let client_x = (rect.x() + 88.0).round() as i32;
+    let client_y = (rect.y() + 33.0).round() as i32;
+
+    let init = web_sys::MouseEventInit::new();
+    init.set_client_x(client_x);
+    init.set_client_y(client_y);
+    init.set_bubbles(true);
+    init.set_cancelable(true);
+    let event = web_sys::MouseEvent::new_with_mouse_event_init_dict("mousedown", &init)
+        .expect("construct the mousedown event");
+    let canvas_target: web_sys::EventTarget = canvas.clone().unchecked_into();
+    canvas_target.dispatch_event(&event).unwrap();
+    next_tick().await;
+
+    // The overlay opened at exactly A1 (row 1, col 1): editable (a plain
+    // literal cell in the demo, not a read-only role), seeded from its OWN
+    // authored text (the literal `1`, never the computed value).
+    let editor = query(&host, "[data-testid=\"sheet-cell-editor\"]")
+        .expect("the click opens the ONE overlay editor at A1");
+    assert_eq!(
+        editor.get_attribute("data-editable").as_deref(),
+        Some("true"),
+        "A1 is a plain editable literal cell in the demo workbook"
+    );
+    assert_eq!(
+        editor.get_attribute("data-cell").as_deref(),
+        Some("1:1"),
+        "the editor targets exactly the clicked cell (row 1, col 1 = A1)"
+    );
+    let area = editor
+        .query_selector(".dna-bridge--degrade .dna-bridge__input")
+        .unwrap()
+        .expect("the degrade editor mounts inside the overlay")
+        .unchecked_into::<web_sys::HtmlTextAreaElement>();
+    assert_eq!(
+        area.value(),
+        "1",
+        "the editor seeds A1's own authored text (the demo's literal 1)"
+    );
+
+    // Commit a new literal through the editor — the real EnterGridCell path
+    // (`dnacalc_stage_sheet::edit::enter_cell_intent`), the same commit seam
+    // `calc_degrade_edits_cell_with_honest_three_way_outcome` proves for the
+    // app's bridge slot.
+    area.set_value("99");
+    area.dispatch_event(&web_sys::Event::new("input").unwrap())
+        .unwrap();
+    let commit_init = web_sys::KeyboardEventInit::new();
+    commit_init.set_key("Enter");
+    commit_init.set_bubbles(true);
+    commit_init.set_cancelable(true);
+    let commit_event =
+        web_sys::KeyboardEvent::new_with_keyboard_event_init_dict("keydown", &commit_init)
+            .expect("construct the Enter keydown event");
+    let area_target: web_sys::EventTarget = area.clone().unchecked_into();
+    area_target.dispatch_event(&commit_event).unwrap();
+    next_tick().await;
+
+    // An ACCEPTED commit closes the overlay (a Rejected outcome would instead
+    // keep it open with the diagnostics underlined) — the overlay's
+    // disappearance is the honest signal the commit ran and was accepted.
+    assert!(
+        query(&host, "[data-testid=\"sheet-cell-editor\"]").is_none(),
+        "the overlay closes after an accepted commit"
+    );
+
+    // The canvas remains mounted and the debug readout still reports a real
+    // drawn plan after the workbook dispatcher's re-projection repaint — no
+    // blank state after the commit.
+    assert!(
+        query(&host, "[data-testid=\"sheet-canvas\"]").is_some(),
+        "the canvas remains mounted after the commit's re-projection"
+    );
+    let plan = query(&host, "[data-testid=\"sheet-render-plan\"]")
+        .expect("the debug readout still mounts after the commit");
+    let cell_count: usize = plan
+        .get_attribute("data-cell-count")
+        .expect("data-cell-count is set")
+        .parse()
+        .expect("data-cell-count is a plain integer");
+    assert!(
+        cell_count > 0,
+        "the plan still reports real cells after the commit's repaint, got {cell_count}"
     );
 }

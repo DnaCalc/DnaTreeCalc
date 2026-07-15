@@ -28,6 +28,7 @@ dnacalc-shell = { path = "../dnacalc-shell" }
 dnacalc-bridge = { path = "../dnacalc-bridge" }
 dnacalc-stage-notebook = { path = "../dnacalc-stage-notebook" }
 dnacalc-stage-atlas = { path = "../dnacalc-stage-atlas" }
+dnacalc-stage-sheet = { path = "../dnacalc-stage-sheet" }
 dnatreecalc-host = { path = "../dnatreecalc-host" }
 
 [dev-dependencies]
@@ -50,6 +51,7 @@ wasm-bindgen-futures = "0.4"
 js-sys = "0.3"
 web-sys = { version = "0.3", features = [
     "Document",
+    "DomRect",
     "Element",
     "Event",
     "HtmlElement",
@@ -58,6 +60,8 @@ web-sys = { version = "0.3", features = [
     "InputEventInit",
     "KeyboardEvent",
     "KeyboardEventInit",
+    "MouseEvent",
+    "MouseEventInit",
     "Node",
     "NodeList",
     "Window",

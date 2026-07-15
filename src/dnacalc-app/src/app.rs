@@ -1,5 +1,6 @@
-//! The DNA Calc product composition — `ShellComposition::calc()` with two stub
-//! stages over the real `dnacalc-host-core` demo workbook (driven through
+//! The DNA Calc product composition — `ShellComposition::calc()` with the real
+//! `dnacalc-stage-sheet::SheetStage` (S3.11) plus a remaining Model stub stage,
+//! over the real `dnacalc-host-core` demo workbook (driven through
 //! `dnatreecalc-host`'s `WorkbookHostDispatcher`), and the formula workbench in
 //! DEGRADE mode editing one workbook cell via `EnterGridCell` with the
 //! three-way outcome rendered honestly.
@@ -21,6 +22,7 @@ use dnacalc_skin_ir::workspace::{GridEntryDiagnosticProjection, WorkspaceState};
 use dnacalc_skin_leptos::state_handles::SharedSkinStateHandle;
 use dnacalc_stage_atlas::AtlasStage;
 use dnacalc_stage_notebook::NotebookStage;
+use dnacalc_stage_sheet::SheetStage;
 use dnacalc_strand::{Density, Theme};
 use dnatreecalc_host::app::WorkbookHostDispatcher;
 
@@ -241,11 +243,7 @@ pub fn CalcApp(runtime: RuntimeContext) -> impl IntoView {
     }));
 
     let stages = StageRegistry::new()
-        .with_stage(Arc::new(StubStage {
-            id: StageId::Sheet,
-            title: "Sheet",
-            testid: "calc-stage-sheet",
-        }))
+        .with_stage(Arc::new(SheetStage::new()))
         .with_stage(Arc::new(StubStage {
             id: StageId::Model,
             title: "Model",
