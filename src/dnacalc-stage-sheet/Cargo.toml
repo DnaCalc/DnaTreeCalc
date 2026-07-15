@@ -44,6 +44,7 @@ web-sys = { version = "0.3", features = [
     "DomRect",
     "MouseEvent",
     "WheelEvent",
+    "ResizeObserver",
 ] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

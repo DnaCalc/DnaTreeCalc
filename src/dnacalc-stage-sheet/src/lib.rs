@@ -248,6 +248,23 @@ impl StageSurface for SheetStage {
         let viewport: RwSignal<Viewport> = RwSignal::new(Viewport::default());
         let zoom = RwSignal::new(1.0_f64);
 
+        // --- Resize-reflow (dtc-4erh) ----------------------------------------
+        // The redraw effect measures the canvas box + sizes the device-px backing
+        // store, but its reactive inputs are workspace / scroll / zoom / selection —
+        // a window/container RESIZE is none of those, so without this the backing
+        // store would keep its old device dimensions and the browser would CSS-scale
+        // that fixed bitmap (stretched / blurry, clicks slightly off) until the next
+        // interaction repaints. `resize_tick` is a signal the redraw effect reads;
+        // a `ResizeObserver` on the canvas bumps it on any size change, re-firing the
+        // redraw to re-measure + repaint at the new size. The observer ALSO fires
+        // once on `observe()`, so a canvas that mounts 0-tall and later gets a size
+        // repaints on its own (the robustness edge behind the S3.12 blank preview).
+        let resize_tick = RwSignal::new(0u32);
+        // Install the observer exactly once (on the first redraw run where the
+        // canvas is bound). A plain `bool` in a `StoredValue` (Send + Sync, Copy),
+        // captured into the redraw closure.
+        let resize_installed = StoredValue::new(false);
+
         // The reactive redraw. Subscribes to the workspace (a re-projection
         // repaints) and to `canvas_ref` (bound after the canvas mounts). Every
         // JS-interop step degrades gracefully (`let ... else` / `ok()`), never
@@ -264,6 +281,33 @@ impl StageSurface for SheetStage {
             let Some(window) = web_sys::window() else {
                 return;
             };
+
+            // Resize-reflow: install the ResizeObserver ONCE, on the first run
+            // where the canvas is bound, then subscribe to `resize_tick` so a
+            // canvas resize re-fires this effect (re-measure + repaint below). The
+            // observer fires repeatedly, so its callback is a `Closure::new`/FnMut;
+            // it uses `try_update` so a fire after the stage unmounts (disposed
+            // signal) is a silent no-op, not a panic. The closure + observer are
+            // `.forget()`/`mem::forget`'d — web_sys types are `!Send` so cannot
+            // live in the default (Sync) `StoredValue`, and this is the same bounded
+            // one-shot leak the scroll-coalescer RAF already uses; the observe()
+            // holds the callback for the stage's lifetime.
+            if !resize_installed.get_value() {
+                resize_installed.set_value(true);
+                let on_resize = Closure::<dyn FnMut()>::new(move || {
+                    let _ = resize_tick.try_update(|tick| *tick = tick.wrapping_add(1));
+                });
+                if let Ok(observer) =
+                    web_sys::ResizeObserver::new(on_resize.as_ref().unchecked_ref())
+                {
+                    observer.observe(&el);
+                    on_resize.forget();
+                    std::mem::forget(observer);
+                }
+            }
+            // Subscribe: a `ResizeObserver` bump re-runs this effect to re-measure
+            // `client_width`/`client_height` below at the new size.
+            resize_tick.get();
 
             // DPR sizing: the backing store is device px (crisp text) while the
             // CSS box stays the container size (the stylesheet sizes it to 100%).

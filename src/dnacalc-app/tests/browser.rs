@@ -1276,3 +1276,56 @@ async fn calc_sheet_click_opens_editor_and_commits() {
         "the plan still reports real cells after the commit's repaint, got {cell_count}"
     );
 }
+
+/// S3 follow-up (resize-reflow, dtc-4erh): the Canvas2D redraw effect reacts to
+/// workspace / scroll / zoom / selection — but a window/container RESIZE is none
+/// of those, so a `ResizeObserver` on the canvas re-fires the effect to
+/// re-measure + resize the device-px backing store at the new size (otherwise the
+/// fixed backing store would be CSS-scaled — stretched/blurry — until the next
+/// interaction). This proves the observer path end-to-end: shrinking the mount
+/// host reflows the canvas (CSS `width:100%`) narrower, and its OWN backing-store
+/// width tracks the change.
+#[wasm_bindgen_test]
+async fn calc_sheet_canvas_repaints_when_it_resizes() {
+    let host = mount();
+    // A few ticks for the initial layout measure + draw (and the ResizeObserver's
+    // own on-observe fire) to settle.
+    next_tick().await;
+    next_tick().await;
+    next_tick().await;
+
+    let canvas: web_sys::HtmlCanvasElement = query(&host, "[data-testid=\"sheet-canvas\"]")
+        .expect("the sheet canvas mounts")
+        .unchecked_into();
+    let before = canvas.width();
+    assert!(
+        before > 0,
+        "the canvas has a real device-px backing store initially, got {before}"
+    );
+
+    // Shrink the mount host, forcing the canvas (CSS `width:100%`) to reflow
+    // narrower. The ResizeObserver fires and re-runs the redraw effect, which
+    // re-measures `client_width` and resizes the backing store.
+    host.style()
+        .set_property("width", "420px")
+        .expect("shrink the mount host");
+
+    // ResizeObserver notifications are async (after layout); poll a bounded number
+    // of ticks for the backing-store width to change — never a fixed sleep.
+    let mut after = before;
+    for _ in 0..30 {
+        next_tick().await;
+        after = canvas.width();
+        if after != before {
+            break;
+        }
+    }
+    assert_ne!(
+        after, before,
+        "resizing re-measures the canvas backing store (resize-reflow): {before} -> {after}"
+    );
+    assert!(
+        after > 0,
+        "the resized canvas still has a real backing store, got {after}"
+    );
+}
