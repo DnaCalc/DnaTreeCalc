@@ -9,21 +9,39 @@
 //! `SetGridInterest` real, single-cell selection until G3, and the Detail zoom
 //! tier until the labeled-block/district tiers land.
 //!
-//! **S3.1 (this scaffold)** stands up the [`dnacalc_shell::StageSurface`] under
-//! [`dnacalc_shell::StageId::Sheet`] and renders honestly from host truth: an
+//! **S3.1 (the scaffold)** stood up the [`dnacalc_shell::StageSurface`] under
+//! [`dnacalc_shell::StageId::Sheet`] and rendered honestly from host truth: an
 //! explicit honest-empty card when the workspace carries no grid, else a
-//! placeholder readout of the active grid's real extent + windowed cell count
-//! (the Canvas2D renderer replaces this placeholder in S3.5). It is never
-//! rendered blank.
+//! placeholder readout of the active grid's real extent + windowed cell count.
+//! It is never rendered blank.
+//!
+//! **S3.5 (this bead)** replaces that placeholder with a real `<canvas>` that
+//! draws the [`RenderPlan`] via [`crate::canvas::draw_render_plan`]: the honest
+//! pixels of the windowed cells, header bands, gridlines, and value text. The
+//! new code is the thin DOM-facing draw layer ([`crate::canvas`]) plus the
+//! reactive redraw wiring in [`SheetStage::mount`] — device-pixel-ratio sizing
+//! for crisp text, live `--dna-*` palette resolution, and a full redraw on each
+//! workspace change (real tiling / `SetGridInterest` narrowing is G4 / S3.9).
+//! The geometry and the plan themselves ([`crate::geometry`],
+//! [`crate::render_plan`]) are pure + unit-tested and merely *consumed* here.
+//! The honest-empty card still stands in for a workspace with no grid.
+//!
+//! A visually-hidden debug readout (`data-testid="sheet-render-plan"`) mirrors
+//! the drawn plan's cell count + extent, so the S3.11 browser test can assert
+//! the demo grid rendered without pixel-reading the canvas.
 
 use leptos::prelude::*;
+use leptos::wasm_bindgen::JsCast;
+use web_sys::CanvasRenderingContext2d;
 
 use dnacalc_shell::{ProfileTag, StageContext, StageHandle, StageId, StageSurface};
 use dnacalc_skin_ir::{GridProjection, WorkspaceState};
 
+pub mod canvas;
 pub mod geometry;
 pub mod render_plan;
 
+pub use canvas::{Palette, draw_render_plan, looks_numeric, resolve_palette};
 pub use geometry::{
     CellRect, GridMetrics, HitTarget, Viewport, cell_rect, hit_test, visible_col_range,
     visible_row_range,
@@ -58,10 +76,89 @@ impl StageSurface for SheetStage {
     }
 
     fn mount(&self, ctx: StageContext) -> StageHandle {
-        // The one host-truth read the stage makes. `ReadSignal` is `Copy`, so the
-        // closure re-derives on every workspace change — the grid view is never a
-        // copy that can drift from host truth.
+        // The one host-truth read the stage makes. `ReadSignal` is `Copy`, so
+        // every reactive read below re-derives from live host truth — the grid
+        // view is never a copy that can drift.
         let workspace = ctx.workspace;
+
+        // The canvas node, and the two signals the redraw effect publishes for
+        // the debug readout. All are created ONCE here in `mount` (the stable
+        // owner), so a workspace re-projection re-runs only the inner reactive
+        // fragments, never remints the canvas or its effect.
+        let canvas_ref = NodeRef::<leptos::html::Canvas>::new();
+        let plan_cell_count = RwSignal::new(0usize);
+        let plan_extent = RwSignal::new(String::new());
+
+        // Whether the workspace carries a grid to draw. A `Memo` fires only when
+        // this boolean flips, so the `<canvas>` is built once (not remade on
+        // every workspace change) — the redraw effect owns the per-projection
+        // repaint, not a view rebuild.
+        let has_grid = Memo::new(move |_| workspace.with(|ws| active_grid(ws).is_some()));
+
+        // The reactive redraw. Subscribes to the workspace (a re-projection
+        // repaints) and to `canvas_ref` (bound after the canvas mounts). Every
+        // JS-interop step degrades gracefully (`let ... else` / `ok()`), never
+        // unwrapping: a not-yet-mounted canvas, a missing `window`, or a null 2d
+        // context is an early return, not a panic. Under `ssr` (native) Leptos
+        // never runs effects, so this closure is the wasm-only draw path with an
+        // automatic native no-op — no `cfg` gate needed.
+        Effect::new(move |_| {
+            // The canvas may not be in the DOM yet (first run, or no grid): bail
+            // until its ref binds, at which point this effect re-runs.
+            let Some(el) = canvas_ref.get() else {
+                return;
+            };
+            let Some(window) = web_sys::window() else {
+                return;
+            };
+
+            // DPR sizing: the backing store is device px (crisp text) while the
+            // CSS box stays the container size (the stylesheet sizes it to 100%).
+            // Setting width/height also resets the 2d transform, so we re-apply
+            // the DPR scale each redraw and thereafter draw in CSS px.
+            let dpr = window.device_pixel_ratio().max(1.0);
+            let css_w = f64::from(el.client_width());
+            let css_h = f64::from(el.client_height());
+            el.set_width((css_w * dpr).round().max(0.0) as u32);
+            el.set_height((css_h * dpr).round().max(0.0) as u32);
+
+            let Some(ctx2d) = el
+                .get_context("2d")
+                .ok()
+                .flatten()
+                .and_then(|obj| obj.dyn_into::<CanvasRenderingContext2d>().ok())
+            else {
+                return;
+            };
+            let _ = ctx2d.scale(dpr, dpr);
+
+            let metrics = GridMetrics::default();
+            // Origin viewport: scroll/zoom is S3.9. The demo used-range fits the
+            // top-left, which is exactly what the plan windows here.
+            let viewport = Viewport {
+                scroll_x: 0.0,
+                scroll_y: 0.0,
+                width: css_w,
+                height: css_h,
+            };
+            let palette = resolve_palette(&el);
+
+            // Build + draw the plan from the SAME workspace read, and publish its
+            // honest cell count + extent for the debug readout. Reading the
+            // workspace here is what subscribes this effect to re-projections.
+            let published = workspace.with(|ws| {
+                active_grid(ws).map(|grid| {
+                    let plan = build_render_plan(grid, &metrics, &viewport);
+                    draw_render_plan(&ctx2d, &plan, &metrics, &viewport, &palette);
+                    (plan.cells.len(), plan.extent_rows, plan.extent_cols)
+                })
+            });
+            if let Some((count, rows, cols)) = published {
+                plan_cell_count.set(count);
+                plan_extent.set(format!("{rows}\u{00d7}{cols}"));
+            }
+        });
+
         let view = view! {
             <style>{SHEET_CSS}</style>
             <section
@@ -70,7 +167,45 @@ impl StageSurface for SheetStage {
                 data-testid="sheet-root"
                 data-dna-density="working"
             >
-                {move || workspace.with(render_sheet)}
+                {move || {
+                    if has_grid.get() {
+                        // The real canvas + a visually-hidden debug readout that
+                        // mirrors the drawn plan (so S3.11 asserts the demo grid
+                        // without pixel-reading). Built once per grid-presence
+                        // flip; the redraw effect repaints on every projection.
+                        view! {
+                            <canvas
+                                class="dna-sheet__canvas"
+                                data-testid="sheet-canvas"
+                                node_ref=canvas_ref
+                            ></canvas>
+                            <span
+                                class="dna-sheet__debug"
+                                data-testid="sheet-render-plan"
+                                aria-hidden="true"
+                                data-cell-count=move || plan_cell_count.get().to_string()
+                                data-extent=move || plan_extent.get()
+                            >
+                                {move || {
+                                    format!(
+                                        "{} cells \u{00b7} {}",
+                                        plan_cell_count.get(),
+                                        plan_extent.get(),
+                                    )
+                                }}
+                            </span>
+                        }
+                        .into_any()
+                    } else {
+                        // Honest-empty: no grid to draw, never a blank canvas.
+                        view! {
+                            <p class="dna-sheet__empty" data-testid="sheet-empty">
+                                "No grid in this workbook."
+                            </p>
+                        }
+                        .into_any()
+                    }
+                }}
             </section>
         }
         .into_any();
@@ -89,50 +224,16 @@ pub fn active_grid(ws: &WorkspaceState) -> Option<&GridProjection> {
     ws.grids.get(&sheet.grid_node_id)
 }
 
-/// Render the Sheet body from workspace truth: an honest-empty card when there
-/// is no active grid, else the S3.1 placeholder readout of the grid's REAL
-/// extent + windowed cell count (replaced by the Canvas2D renderer in S3.5).
-/// Never blank.
-fn render_sheet(ws: &WorkspaceState) -> AnyView {
-    let Some(grid) = active_grid(ws) else {
-        return view! {
-            <p class="dna-sheet__empty" data-testid="sheet-empty">
-                "No grid in this workbook."
-            </p>
-        }
-        .into_any();
-    };
-
-    // Honest placeholder: the real grid extent + how many computed cells the
-    // host windowed into this projection. The Canvas2D renderer (S3.5) draws
-    // these cells; until then the readout proves render-from-host-truth.
-    let grid_id = grid.grid_node_id.to_string();
-    let extent = format!("{}\u{00d7}{}", grid.max_rows, grid.max_cols);
-    let windowed = grid.cells.len();
-    view! {
-        <div class="dna-sheet__placeholder" data-testid="sheet-grid-placeholder">
-            <span class="dna-sheet__grid-id" data-testid="sheet-grid-id">{grid_id}</span>
-            <span class="dna-sheet__extent" data-testid="sheet-grid-extent">{extent}</span>
-            <span
-                class="dna-sheet__windowed"
-                data-testid="sheet-grid-windowed"
-                data-cell-count=windowed.to_string()
-            >
-                {format!("{windowed} cells in window")}
-            </span>
-        </div>
-    }
-    .into_any()
-}
-
-/// The Sheet stage's scoped stylesheet — Strand `--dna-*` tokens only.
+/// The Sheet stage's scoped stylesheet — Strand `--dna-*` tokens only. The
+/// canvas fills the stage (its CSS box is the container size; the redraw effect
+/// sizes the device-px backing store off `clientWidth`/`clientHeight`). The
+/// debug readout is visually hidden (off-screen, not `display:none`) so it stays
+/// queryable by `data-testid`/`data-*` for the S3.11 browser test.
 pub const SHEET_CSS: &str = "\
 .dna-sheet{display:flex;flex-direction:column;gap:var(--dna-gap-3);padding:var(--dna-gap-4);color:var(--dna-ink);height:100%;min-height:0}
 .dna-sheet__empty{margin:0;color:var(--dna-ink-3);font-style:italic}
-.dna-sheet__placeholder{display:flex;gap:var(--dna-gap-3);align-items:baseline;flex-wrap:wrap;font-family:'Recursive Mono','Cascadia Code',Consolas,ui-monospace,monospace;font-size:12px}
-.dna-sheet__grid-id{color:var(--dna-ink-2)}
-.dna-sheet__extent{color:var(--dna-value-ink);font-weight:600}
-.dna-sheet__windowed{color:var(--dna-ink-3)}
+.dna-sheet__canvas{flex:1 1 auto;width:100%;min-height:0;display:block}
+.dna-sheet__debug{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
 ";
 
 #[cfg(test)]

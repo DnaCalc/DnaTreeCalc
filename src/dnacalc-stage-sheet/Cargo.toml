@@ -20,6 +20,20 @@ publish.workspace = true
 [dependencies]
 dnacalc-skin-ir = { path = "../dnacalc-skin-ir" }
 dnacalc-shell = { path = "../dnacalc-shell" }
+# S3.5 Canvas2D renderer. `web-sys` is NOT an `ox*` crate, so the P-gate admits
+# it in this TP crate (verified via `cargo tree -e normal`). It compiles on both
+# native and wasm — its imported functions are link-time stubs natively (never
+# called under the `ssr` test build), so the draw layer needs no `cfg` gate.
+web-sys = { version = "0.3", features = [
+    "Window",
+    "Document",
+    "Element",
+    "HtmlElement",
+    "HtmlCanvasElement",
+    "CanvasRenderingContext2d",
+    "CssStyleDeclaration",
+    "DomRect",
+] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 leptos = { version = "0.8.17", default-features = false, features = ["ssr"] }
