@@ -43,6 +43,33 @@
 //! use the SAME [`GridMetrics::default`] + origin [`Viewport`] the redraw effect
 //! draws with, so a click lands on — and the editor sits over — the drawn cell.
 //! Single-cell selection only: arrow-key navigation and range/fill are S3.8.
+//!
+//! **S3.8 (this bead)** splits S3.6's conflated "selected == editing" into the
+//! proper Excel-strict SELECT-vs-EDIT model (SHEET_SPEC §4). SELECT is the base
+//! state: a single click OR an arrow key moves the ACTIVE cell
+//! ([`active_cell`](SheetStage)), drawn as a 2px `--dna-accent` highlight ON THE
+//! CANVAS ([`draw_active_cell`]) by the same redraw effect (now subscribed to the
+//! active cell) — no editor. EDIT opens the ONE overlay editor at the active cell
+//! and is entered three ways (all reusing the S3.6 machinery): a printable key
+//! (type-to-replace — seed the buffer with that character), **F2** or a
+//! double-click (edit-in-place — seed with the cell's existing text). In SELECT
+//! mode **Enter** moves the active cell DOWN (Excel-classic), it does NOT open the
+//! editor. **Esc** returns to SELECT; an accepted commit (**Enter** WHILE editing)
+//! writes through [`edit::enter_cell_intent`] and advances the active cell one row
+//! down ([`next_active`]), staying in SELECT. The pure nav grammar and the edge-clamped
+//! movement live in the unit-tested [`crate::selection`] module (an
+//! atlas-taggable keymap table, mirroring the Notebook stage's `keyboard.rs`).
+//!
+//! **G3 honest degrades.** Everything the interaction pack (G3) owns — range
+//! select (Shift+click / Shift+Arrow), whole row/column select (header click),
+//! select-all (corner click), fill grips, and the grid clipboard — renders as a
+//! visible disabled-with-reason affordance citing **G3** and performs ZERO
+//! selection change beyond the single active cell and ZERO mutation. A reactive
+//! `data-testid="sheet-g3-degrade"` note surfaces the reason when the user
+//! attempts a gated GESTURE; a static strip of `disabled` chips
+//! (`data-testid="sheet-g3-affordances"`) stands in for the gated TOOLS (fill,
+//! clipboard). No fake fill handle is ever drawn (the highlight is the only
+//! selection chrome).
 
 use std::sync::Arc;
 
@@ -61,8 +88,9 @@ pub mod canvas;
 pub mod edit;
 pub mod geometry;
 pub mod render_plan;
+pub mod selection;
 
-pub use canvas::{Palette, draw_render_plan, looks_numeric, resolve_palette};
+pub use canvas::{Palette, draw_active_cell, draw_render_plan, looks_numeric, resolve_palette};
 pub use edit::{CellOutcome, enter_cell_intent, interpret_receipt};
 pub use geometry::{
     CellRect, GridMetrics, HitTarget, Viewport, cell_rect, hit_test, visible_col_range,
@@ -71,6 +99,10 @@ pub use geometry::{
 pub use render_plan::{
     PlannedCell, PlannedColHeader, PlannedRowHeader, RenderPlan, build_render_plan, col_label,
     value_text,
+};
+pub use selection::{
+    ActionAvailability, GridExtent, KeyBinding, KeyChord, NavAction, SheetAction,
+    action_availability, next_active, resolve_action, sheet_keymap, typed_char,
 };
 
 /// The Sheet stage surface.
@@ -116,6 +148,35 @@ impl StageSurface for SheetStage {
         // every workspace change) — the redraw effect owns the per-projection
         // repaint, not a view rebuild.
         let has_grid = Memo::new(move |_| workspace.with(|ws| active_grid(ws).is_some()));
+
+        // --- S3.8 select/edit state ------------------------------------------
+        // The one dispatcher a commit crosses (SHELL_SPEC §6). Held in a
+        // `StoredValue` (Copy) so the overlay closure — embedded inside the
+        // re-runnable `has_grid` branch — stays `Copy`. The workbook dispatcher
+        // re-projects on every accepted dispatch, so a committed edit repaints the
+        // canvas through the redraw effect with no refresh of our own.
+        let dispatch: StoredValue<Arc<dyn Dispatcher>> = StoredValue::new(ctx.dispatch.clone());
+        // SELECT vs EDIT, split from S3.6's conflated `selected_cell`. `active_cell`
+        // is the single selected cell — always drawn as the canvas highlight, and
+        // it SURVIVES a repaint (created once here in the stable owner). `editing`
+        // is the orthogonal mode bit: the overlay editor renders only when EDITING
+        // at the active cell. A single click sets `active_cell` (SELECT); F2 /
+        // a printable key / a double-click flip `editing` (EDIT); Enter moves down.
+        let active_cell: RwSignal<Option<(u32, u32)>> = RwSignal::new(None);
+        let editing = RwSignal::new(false);
+        // The transient honest-degrade note (aria-live): set to a G3 reason when the
+        // user attempts a range / row-col / select-all gesture, cleared on the next
+        // real select/nav. Never gates a mutation — it only explains an absence.
+        let g3_note: RwSignal<Option<String>> = RwSignal::new(None);
+        // The one editor's live buffer, its last commit's typed rejections, and a
+        // remount counter. Singular (there is exactly one active-cell editor): the
+        // buffer is seeded on EDIT entry and read UNTRACKED on remount, so typing
+        // never remounts the bridge — only entering EDIT or a commit/revert
+        // (`editor_revision`) does.
+        let edit_text = RwSignal::new(String::new());
+        let editor_rejections: RwSignal<Vec<GridEntryDiagnosticProjection>> =
+            RwSignal::new(Vec::new());
+        let editor_revision = RwSignal::new(0usize);
 
         // The reactive redraw. Subscribes to the workspace (a re-projection
         // repaints) and to `canvas_ref` (bound after the canvas mounts). Every
@@ -179,83 +240,222 @@ impl StageSurface for SheetStage {
                 plan_cell_count.set(count);
                 plan_extent.set(format!("{rows}\u{00d7}{cols}"));
             }
+
+            // S3.8 active-cell highlight — a follow-on pass over the drawn plan.
+            // Reading `active_cell` here subscribes the effect to selection, so an
+            // arrow-key move or a click repaints the 2px accent box. Drawn only
+            // when a grid was actually drawn (`published` is Some) AND a cell is
+            // active — the highlight is the ONLY selection chrome (no fake handles).
+            if published.is_some()
+                && let Some((row, col)) = active_cell.get()
+            {
+                let rect = cell_rect(&metrics, &viewport, row, col);
+                draw_active_cell(&ctx2d, &metrics, &viewport, &rect, &palette);
+            }
         });
 
-        // --- S3.6 single-cell selection + one overlay editor -------------------
-        // The one dispatcher a commit crosses (SHELL_SPEC §6). Held in a
-        // `StoredValue` (Copy) so both the click handler and the overlay closure
-        // — which are embedded inside the re-runnable `has_grid` branch — stay
-        // `Copy` and can be re-embedded when grid-presence flips. The workbook
-        // dispatcher re-projects on every accepted dispatch, so a committed edit
-        // repaints the canvas through the redraw effect with no refresh of our own.
-        let dispatch: StoredValue<Arc<dyn Dispatcher>> = StoredValue::new(ctx.dispatch.clone());
-        // The single selected/active cell. `None` closes the editor. Created ONCE
-        // here in `mount` (the stable owner), so a workspace re-projection never
-        // remints it — selection survives a repaint.
-        let selected_cell: RwSignal<Option<(u32, u32)>> = RwSignal::new(None);
-        // The one editor's live buffer, its last commit's typed rejections, and a
-        // remount counter. Like the Notebook's per-block state but singular (there
-        // is exactly one active-cell editor): the buffer is seeded on selection and
-        // read UNTRACKED on remount, so typing never remounts the bridge — only a
-        // cell change or a commit/revert (`editor_revision`) does.
-        let edit_text = RwSignal::new(String::new());
-        let editor_rejections: RwSignal<Vec<GridEntryDiagnosticProjection>> =
-            RwSignal::new(Vec::new());
-        let editor_revision = RwSignal::new(0usize);
+        // The section the keyboard grammar listens on (`tabindex=0`); focused on a
+        // pointer select so keys land here immediately after a click.
+        let section_ref = NodeRef::<leptos::html::Section>::new();
 
-        // Click → select. Map the pointer into the SAME origin viewport / metrics
-        // the redraw effect draws with, hit-test, and set the active cell. The
-        // canvas fills its viewport wrapper (`position:absolute; inset:0`) with no
-        // border/padding, so `offset_x`/`offset_y` are already in the drawn
-        // coordinate space (CSS px, origin viewport) — a click lands on the cell
-        // under the cursor. All captures are `Copy`, so this handler is `Copy`.
+        // Enter EDIT: seed the one editor's buffer, clear any stale rejection
+        // underline, remount the bridge, select the target cell, and flip `editing`
+        // on (clearing the degrade note). Reused by the three EDIT entry gestures
+        // (F2, a printable key, a double-click). Captures only `Copy`
+        // signals, so the closure is itself `Copy` and re-usable across handlers.
+        let open_editor = move |row: u32, col: u32, seed: String| {
+            edit_text.set(seed);
+            editor_rejections.set(Vec::new());
+            editor_revision.update(|revision| *revision += 1);
+            active_cell.set(Some((row, col)));
+            editing.set(true);
+            g3_note.set(None);
+        };
+
+        // Single-click → SELECT (not EDIT). Map the pointer into the SAME origin
+        // viewport / metrics the redraw effect draws with, hit-test, and move the
+        // active cell — the highlight, not the editor. `offset_x`/`offset_y` are
+        // already in the drawn coordinate space (the canvas fills its viewport
+        // wrapper with no border/padding). All captures are `Copy`.
         let click_workspace = workspace;
         let on_canvas_mousedown = move |ev: leptos::ev::MouseEvent| {
+            // Read the pointer offset FIRST, before any `focus()` side effect: some
+            // browsers compute `offsetX`/`offsetY` lazily against the target's
+            // CURRENT layout, so focusing the section (which can trigger a reflow /
+            // scroll-into-view) before reading them would perturb the hit-test
+            // coordinate. Offset is already in the drawn CSS-px space (the canvas
+            // fills its viewport wrapper with no border/padding).
             let x = f64::from(ev.offset_x());
             let y = f64::from(ev.offset_y());
             let metrics = GridMetrics::default();
             let viewport = Viewport::default(); // origin (scroll 0): matches drawn pixels
-            // Grid id + extent from live host truth (untracked — a handler never
-            // subscribes). `None` (no grid) leaves selection untouched.
-            let Some((grid, extent_rows, extent_cols)) = click_workspace.with_untracked(|ws| {
+            let Some((extent_rows, extent_cols)) = click_workspace
+                .with_untracked(|ws| active_grid(ws).map(|g| (g.max_rows, g.max_cols)))
+            else {
+                return; // No grid: nothing to select.
+            };
+            // Focus the section so arrow-key navigation lands here right after the
+            // pointer select (a native no-op — refs are unbound under `ssr`). Done
+            // AFTER the offset read above so it cannot move the hit-test point.
+            if let Some(section) = section_ref.get() {
+                let _ = section.focus();
+            }
+            // Shift+click asks for a RANGE — a G3 degrade: surface the reason and
+            // change NOTHING (zero selection change beyond the single active cell,
+            // zero mutation, no fabricated range).
+            if ev.shift_key() {
+                g3_note.set(Some(selection::RANGE_SELECT_DEFERRED_REASON.to_string()));
+                return;
+            }
+            match hit_test(&metrics, &viewport, extent_rows, extent_cols, x, y) {
+                HitTarget::Cell { row, col } => {
+                    // SELECT: move the highlight, close any open editor WITHOUT
+                    // committing (an implicit revert — nothing was dispatched), and
+                    // clear the degrade note. No editor opens on a single click;
+                    // double-click / F2 / a printable key enter EDIT (Enter moves down).
+                    active_cell.set(Some((row, col)));
+                    editing.set(false);
+                    g3_note.set(None);
+                }
+                // A header / corner click is a whole row / column / sheet select —
+                // all G3. Surface the honest reason, change NOTHING (no fake band).
+                HitTarget::ColumnHeader { .. }
+                | HitTarget::RowHeader { .. }
+                | HitTarget::Corner => {
+                    g3_note.set(Some(selection::ROW_COL_SELECT_DEFERRED_REASON.to_string()));
+                }
+                // Past the extent: an honest no-op — Excel selects nothing there
+                // either, so the active cell and editor are left untouched.
+                HitTarget::Outside => {}
+            }
+        };
+
+        // Double-click → EDIT (the mouse path into the editor), seeded with the
+        // cell's EXISTING authored text — the same seed F2 uses. Shift+double-click
+        // has no cell meaning here and is ignored.
+        let dblclick_workspace = workspace;
+        let on_canvas_dblclick = move |ev: leptos::ev::MouseEvent| {
+            if ev.shift_key() {
+                return;
+            }
+            let metrics = GridMetrics::default();
+            let viewport = Viewport::default();
+            let Some((grid, extent_rows, extent_cols)) = dblclick_workspace.with_untracked(|ws| {
                 active_grid(ws).map(|g| (g.grid_node_id.clone(), g.max_rows, g.max_cols))
             }) else {
                 return;
             };
-            match hit_test(&metrics, &viewport, extent_rows, extent_cols, x, y) {
-                HitTarget::Cell { row, col } => {
-                    // Seed the one editor from THIS cell's own authored text (host
-                    // truth), clear any stale rejection underline, remount the
-                    // bridge, then open the overlay at this cell by selecting it.
-                    let seed = click_workspace
-                        .with_untracked(|ws| edit::current_authored_seed(ws, &grid, row, col));
-                    edit_text.set(seed);
-                    editor_rejections.set(Vec::new());
-                    editor_revision.update(|revision| *revision += 1);
-                    selected_cell.set(Some((row, col)));
-                }
-                // Header / corner / outside close the editor. Single-cell selection
-                // only — header selection + ranges are S3.8; never a fabricated one.
-                HitTarget::ColumnHeader { .. }
-                | HitTarget::RowHeader { .. }
-                | HitTarget::Corner
-                | HitTarget::Outside => selected_cell.set(None),
+            let x = f64::from(ev.offset_x());
+            let y = f64::from(ev.offset_y());
+            if let HitTarget::Cell { row, col } =
+                hit_test(&metrics, &viewport, extent_rows, extent_cols, x, y)
+            {
+                let seed = dblclick_workspace
+                    .with_untracked(|ws| edit::current_authored_seed(ws, &grid, row, col));
+                open_editor(row, col, seed);
             }
         };
 
-        // The single overlay editor. Renders ONLY when a cell is selected AND the
-        // grid resolves; positioned at the selected cell's `cell_rect` (the same
-        // origin viewport / metrics the canvas drew with, so it sits over the drawn
-        // cell). All captures are `Copy` (the `Arc` lives in `dispatch`, a
+        // The one keydown pipeline (SELECT mode): build a [`selection::KeyChord`],
+        // resolve it through the single [`sheet_keymap`] table, and act on the
+        // honest availability. While the overlay editor's textarea is focused the
+        // bridge owns every key (Enter=commit, Esc=revert, arrows=caret), so the
+        // text-entry guard bails first — the select grammar never steals them.
+        let keymap = sheet_keymap();
+        let keydown_workspace = workspace;
+        let on_section_keydown = move |ev: leptos::ev::KeyboardEvent| {
+            if event_target_is_text_entry(&ev) {
+                return;
+            }
+            let Some((grid, extent_rows, extent_cols)) = keydown_workspace.with_untracked(|ws| {
+                active_grid(ws).map(|g| (g.grid_node_id.clone(), g.max_rows, g.max_cols))
+            }) else {
+                return; // No grid: let the keystroke bubble to the shell.
+            };
+            let extent = GridExtent::new(extent_rows, extent_cols);
+            let chord = chord_from_event(&ev);
+            if let Some(action) = resolve_action(&keymap, &chord) {
+                match action_availability(action) {
+                    ActionAvailability::DisabledWithReason(reason) => {
+                        // Honest G3 degrade (Shift+Arrow range extend): surface the
+                        // reason, consume the chord, mutate NOTHING.
+                        ev.prevent_default();
+                        ev.stop_propagation();
+                        g3_note.set(Some(reason.to_string()));
+                    }
+                    ActionAvailability::Live => match action {
+                        SheetAction::Move(nav) => {
+                            ev.prevent_default();
+                            ev.stop_propagation();
+                            g3_note.set(None);
+                            // First nav key with nothing selected lands on the
+                            // origin; otherwise step from the current active cell,
+                            // edge-clamped by the pure `next_active`.
+                            let next = match active_cell.get_untracked() {
+                                Some(current) => next_active(current, nav, extent),
+                                None => extent.clamp(1, 1),
+                            };
+                            active_cell.set(Some(next));
+                        }
+                        SheetAction::BeginEdit => {
+                            // F2 opens the editor at the active cell (or the origin
+                            // if nothing is selected yet), seeded with the cell's
+                            // existing authored text. (Enter is not BeginEdit — it
+                            // moves down via the Move arm above.)
+                            ev.prevent_default();
+                            ev.stop_propagation();
+                            let (row, col) =
+                                extent.clamp_pair(active_cell.get_untracked().unwrap_or((1, 1)));
+                            let seed = keydown_workspace.with_untracked(|ws| {
+                                edit::current_authored_seed(ws, &grid, row, col)
+                            });
+                            open_editor(row, col, seed);
+                        }
+                        SheetAction::Cancel => {
+                            // Escape in SELECT mode clears the transient note.
+                            ev.prevent_default();
+                            ev.stop_propagation();
+                            g3_note.set(None);
+                        }
+                        // ExtendSelection is never `Live`; keeps the match total.
+                        SheetAction::ExtendSelection => {}
+                    },
+                }
+                return;
+            }
+            // Type-to-replace: a lone printable key with no Ctrl/Alt/Meta enters
+            // EDIT seeding the buffer with THAT character (Excel behavior). An
+            // unbound modified chord (Ctrl+C, Ctrl+arrow edge-jump) falls through
+            // untouched so universal shell verbs still bubble.
+            if !ev.ctrl_key()
+                && !ev.alt_key()
+                && !ev.meta_key()
+                && let Some(ch) = typed_char(&ev.key())
+            {
+                ev.prevent_default();
+                ev.stop_propagation();
+                let (row, col) = extent.clamp_pair(active_cell.get_untracked().unwrap_or((1, 1)));
+                open_editor(row, col, ch.to_string());
+            }
+        };
+
+        // The single overlay editor. Renders ONLY when EDITING at the active cell
+        // AND the grid resolves; positioned at the active cell's `cell_rect` (the
+        // same origin viewport / metrics the canvas drew with, so it sits over the
+        // drawn cell). All captures are `Copy` (the `Arc` lives in `dispatch`, a
         // `StoredValue`), so this closure is `Copy` and safe to re-embed when the
         // `has_grid` branch re-runs.
         let overlay_workspace = workspace;
         let cell_overlay = move || {
             // Subscribe to the remount signal so a rejected commit re-applies the
-            // underline (a rejection leaves the workspace untouched, so nothing
-            // else would remount the bridge). `selected_cell` drives open/close.
+            // underline (a rejection leaves the workspace untouched, so nothing else
+            // would remount the bridge). `editing` + `active_cell` drive open/close:
+            // SELECT (highlight-only) renders no overlay.
             editor_revision.get();
-            let Some((row, col)) = selected_cell.get() else {
+            if !editing.get() {
+                return ().into_any();
+            }
+            let Some((row, col)) = active_cell.get() else {
                 return ().into_any();
             };
             // Resolve the target from host truth (untracked: the click seeded the
@@ -327,19 +527,32 @@ impl StageSurface for SheetStage {
                                     editor_revision.update(|revision| *revision += 1);
                                 }
                                 // Accepted (Literal / Formula / Cleared / NoChange):
-                                // close the overlay. The workbook dispatcher
-                                // re-projects, so the canvas repaints the new value
-                                // automatically through the redraw effect.
+                                // leave EDIT for SELECT and advance the active cell
+                                // one row down (Excel's Enter-commit), clamped to the
+                                // live extent. The workbook dispatcher re-projects,
+                                // so the canvas repaints the new value AND the moved
+                                // highlight automatically through the redraw effect.
                                 _ => {
                                     editor_rejections.set(Vec::new());
-                                    selected_cell.set(None);
+                                    editing.set(false);
+                                    let extent = overlay_workspace.with_untracked(|ws| {
+                                        active_grid(ws)
+                                            .map(|g| GridExtent::new(g.max_rows, g.max_cols))
+                                            .unwrap_or_else(|| GridExtent::new(1, 1))
+                                    });
+                                    active_cell.set(Some(next_active(
+                                        (row, col),
+                                        NavAction::CommitDown,
+                                        extent,
+                                    )));
                                 }
                             }
                         }
-                        // Esc: cancel — close the overlay, dispatch NOTHING.
+                        // Esc: exact-revert — leave EDIT for SELECT (the active cell
+                        // and its highlight stay put), dispatch NOTHING.
                         BridgeEvent::RevertRequested => {
                             editor_rejections.set(Vec::new());
-                            selected_cell.set(None);
+                            editing.set(false);
                         }
                         _ => {}
                     });
@@ -370,6 +583,9 @@ impl StageSurface for SheetStage {
                 data-stage="sheet"
                 data-testid="sheet-root"
                 data-dna-density="working"
+                node_ref=section_ref
+                tabindex="0"
+                on:keydown=on_section_keydown
             >
                 {move || {
                     if has_grid.get() {
@@ -387,8 +603,57 @@ impl StageSurface for SheetStage {
                                     data-testid="sheet-canvas"
                                     node_ref=canvas_ref
                                     on:mousedown=on_canvas_mousedown
+                                    on:dblclick=on_canvas_dblclick
                                 ></canvas>
                                 {cell_overlay}
+                            </div>
+                            // Honest G3 degrade surface. The reactive note announces
+                            // the reason when the user ATTEMPTS a gated GESTURE
+                            // (range / row-col / select-all); the static strip stands
+                            // in for the gated TOOLS (fill, clipboard) as visible
+                            // `disabled` chips citing G3 — no fake handles, zero
+                            // behavior. (SHEET_SPEC §4: "affordances render disabled-
+                            // with-reason until then (no fake handles)".)
+                            <p
+                                class="dna-sheet__g3-note"
+                                data-testid="sheet-g3-degrade"
+                                aria-live="polite"
+                                role="status"
+                            >
+                                {move || g3_note.get().unwrap_or_default()}
+                            </p>
+                            <div
+                                class="dna-sheet__degrades"
+                                data-testid="sheet-g3-affordances"
+                                aria-label="Disabled until the G3 interaction pack"
+                            >
+                                <button
+                                    class="dna-sheet__degrade-chip"
+                                    type="button"
+                                    disabled=true
+                                    data-testid="sheet-g3-fill"
+                                    title=selection::FILL_DEFERRED_REASON
+                                >
+                                    "Fill"
+                                </button>
+                                <button
+                                    class="dna-sheet__degrade-chip"
+                                    type="button"
+                                    disabled=true
+                                    data-testid="sheet-g3-clipboard"
+                                    title=selection::CLIPBOARD_DEFERRED_REASON
+                                >
+                                    "Copy / Paste"
+                                </button>
+                                <button
+                                    class="dna-sheet__degrade-chip"
+                                    type="button"
+                                    disabled=true
+                                    data-testid="sheet-g3-range"
+                                    title=selection::RANGE_SELECT_DEFERRED_REASON
+                                >
+                                    "Range"
+                                </button>
                             </div>
                             <span
                                 class="dna-sheet__debug"
@@ -468,6 +733,36 @@ fn resolve_cell_edit_target(ws: &WorkspaceState, row: u32, col: u32) -> Option<C
     }
 }
 
+/// Translate a raw DOM keydown into the Sheet grammar's [`KeyChord`]: the platform
+/// `meta` key folds into `ctrl` (estate convention, matching
+/// `dnacalc_shell::keyboard::chord_from_key_event` and the Notebook stage's copy),
+/// so a chord is layout-portable.
+fn chord_from_event(ev: &leptos::ev::KeyboardEvent) -> KeyChord {
+    KeyChord::new(
+        ev.key(),
+        ev.shift_key(),
+        ev.ctrl_key() || ev.meta_key(),
+        ev.alt_key(),
+    )
+}
+
+/// True when the keydown originates from a text-entry element — the guard that
+/// keeps the SELECT grammar (arrows, F2, type-to-replace) from firing while the
+/// overlay editor's textarea is focused (the bridge owns those keys in EDIT).
+/// Mirrors the Notebook stage's private copy (each independent TP stage owns one).
+fn event_target_is_text_entry(ev: &leptos::ev::KeyboardEvent) -> bool {
+    let Some(target) = ev.target() else {
+        return false;
+    };
+    let Ok(element) = target.dyn_into::<web_sys::Element>() else {
+        return false;
+    };
+    matches!(element.tag_name().as_str(), "INPUT" | "TEXTAREA" | "SELECT")
+        || element
+            .get_attribute("contenteditable")
+            .is_some_and(|value| value != "false")
+}
+
 /// The Sheet stage's scoped stylesheet — Strand `--dna-*` tokens only. The
 /// canvas fills a POSITIONED viewport wrapper (`.dna-sheet__viewport`) that is the
 /// overlay editor's absolute-positioning ancestor; the canvas's CSS box is the
@@ -475,15 +770,24 @@ fn resolve_cell_edit_target(ws: &WorkspaceState, row: u32, col: u32) -> Option<C
 /// `clientWidth`/`clientHeight`). The overlay editor is absolutely positioned at
 /// the selected cell's rect, in the SAME coordinate space the canvas draws with.
 /// The debug readout is visually hidden (off-screen, not `display:none`) so it
-/// stays queryable by `data-testid`/`data-*` for the S3.11 browser test.
+/// stays queryable by `data-testid`/`data-*` for the S3.11 browser test. The
+/// `--g3-note` line is the honest degrade announcer (aria-live) and the
+/// `--degrades` strip renders the gated tools as visible `disabled` chips.
 pub const SHEET_CSS: &str = "\
 .dna-sheet{display:flex;flex-direction:column;gap:var(--dna-gap-3);padding:var(--dna-gap-4);color:var(--dna-ink);height:100%;min-height:0}
+.dna-sheet:focus{outline:none}
+.dna-sheet:focus-visible{outline:2px solid var(--dna-accent);outline-offset:2px}
 .dna-sheet__empty{margin:0;color:var(--dna-ink-3);font-style:italic}
 .dna-sheet__viewport{position:relative;flex:1 1 auto;min-height:0;overflow:hidden}
 .dna-sheet__canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
 .dna-sheet__cell-editor{position:absolute;z-index:5;box-sizing:border-box}
 .dna-sheet__cell-editor--readonly{background:var(--dna-paper);border:1px solid var(--dna-line);border-radius:var(--dna-radius-chip);padding:var(--dna-gap-2) var(--dna-gap-3)}
 .dna-sheet__cell-readonly{margin:0;color:var(--dna-ink-3);font-style:italic;font-size:12px;white-space:nowrap}
+.dna-sheet__g3-note{margin:0;min-height:1.2em;color:var(--dna-ink-3);font-style:italic;font-size:12px}
+.dna-sheet__g3-note:empty{visibility:hidden}
+.dna-sheet__degrades{display:flex;gap:var(--dna-gap-2);flex-wrap:wrap}
+.dna-sheet__degrade-chip{border:1px dashed var(--dna-line);border-radius:var(--dna-radius-chip);background:var(--dna-paper-2);color:var(--dna-ink-3);padding:var(--dna-gap-1) var(--dna-gap-3);font-size:12px}
+.dna-sheet__degrade-chip[disabled]{opacity:.55;cursor:not-allowed}
 .dna-sheet__debug{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
 ";
 

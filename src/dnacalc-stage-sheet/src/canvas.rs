@@ -65,6 +65,9 @@ pub struct Palette {
     pub line: String,
     /// Numeric-value ink — `--dna-value-ink`.
     pub value_ink: String,
+    /// Active-cell selection outline — `--dna-accent`. The 2px box
+    /// [`draw_active_cell`] strokes around the selected cell (Excel's idiom).
+    pub accent: String,
     /// Cell value font (constant, see [`SHEET_CELL_FONT`]).
     pub cell_font: String,
     /// Header label font (constant, see [`SHEET_HEADER_FONT`]).
@@ -87,6 +90,7 @@ impl Palette {
             ink_2: "#48606A".to_string(),
             line: "#D5DFE3".to_string(),
             value_ink: "#2E6E5B".to_string(),
+            accent: "#318995".to_string(),
             cell_font: SHEET_CELL_FONT.to_string(),
             header_font: SHEET_HEADER_FONT.to_string(),
         }
@@ -130,6 +134,7 @@ pub fn resolve_palette(el: &Element) -> Palette {
         ink_2: read("--dna-ink-2", &fallback.ink_2),
         line: read("--dna-line", &fallback.line),
         value_ink: read("--dna-value-ink", &fallback.value_ink),
+        accent: read("--dna-accent", &fallback.accent),
         cell_font: fallback.cell_font,
         header_font: fallback.header_font,
     }
@@ -243,6 +248,62 @@ pub fn draw_render_plan(
     }
 }
 
+/// Stroke the active-cell selection outline over an already-drawn plan (S3.8).
+///
+/// A follow-on pass the redraw effect calls AFTER [`draw_render_plan`], so it
+/// overdraws the gridlines with a 2px `--dna-accent` box around the selected cell
+/// — the Excel idiom, and the ONLY selection chrome the stage renders (ranges,
+/// fill grips and row/col bands are G3 degrades, so none are drawn). The stroke is
+/// clipped to the data area (past the header strips) so a selection near the
+/// origin never bleeds onto the headers, and the box is inset half the line width
+/// so both edges land inside the cell's own rect rather than on the neighbor's
+/// gridline. Outline-only (no fill) so the cell's value text stays legible under
+/// the highlight.
+///
+/// `rect` is the selected cell's viewport-local [`crate::geometry::CellRect`]
+/// (computed by the caller with the SAME metrics/viewport the plan drew with);
+/// `m`/`v` supply the header offsets for the clip. Draws nothing — an honest
+/// no-op — when the rect lies entirely under the header strips (fully
+/// scrolled-off), never a clamped phantom box.
+pub fn draw_active_cell(
+    ctx: &CanvasRenderingContext2d,
+    m: &GridMetrics,
+    v: &Viewport,
+    rect: &crate::geometry::CellRect,
+    palette: &Palette,
+) {
+    // The data area past the two header strips — the region a selection may paint.
+    let clip_w = (v.width - m.header_w).max(0.0);
+    let clip_h = (v.height - m.header_h).max(0.0);
+    if clip_w <= 0.0 || clip_h <= 0.0 {
+        return; // No data area to draw into (viewport smaller than the headers).
+    }
+    // Nothing to draw if the cell is entirely under the header strips (scrolled
+    // off the top-left) — honest absence, not a box clamped onto the headers.
+    if rect.x + rect.w <= m.header_w || rect.y + rect.h <= m.header_h {
+        return;
+    }
+
+    let line_w = 2.0;
+    let inset = line_w / 2.0;
+    ctx.save();
+    // Clip to the data area so the outline cannot stroke onto the header strips.
+    ctx.begin_path();
+    ctx.rect(m.header_w, m.header_h, clip_w, clip_h);
+    ctx.clip();
+    ctx.set_stroke_style_str(&palette.accent);
+    ctx.set_line_width(line_w);
+    // Inset the box by half the line width so the 2px stroke sits inside the
+    // cell's own rect (a stroke is centered on its path), not over the neighbor.
+    ctx.stroke_rect(
+        rect.x + inset,
+        rect.y + inset,
+        (rect.w - line_w).max(0.0),
+        (rect.h - line_w).max(0.0),
+    );
+    ctx.restore();
+}
+
 /// Draw `label` centered in the rect `(x, y, w, h)`, clipped to it. Assumes the
 /// caller has already set `text_align("center")`, `text_baseline("middle")`,
 /// the font, and the fill color — this only owns the clip + placement so the
@@ -285,6 +346,7 @@ mod tests {
             ("ink_2", &palette.ink_2),
             ("line", &palette.line),
             ("value_ink", &palette.value_ink),
+            ("accent", &palette.accent),
             ("cell_font", &palette.cell_font),
             ("header_font", &palette.header_font),
         ] {
@@ -294,6 +356,7 @@ mod tests {
         // fallback matches the default theme rather than an arbitrary color.
         assert_eq!(palette.paper, "#FFFFFF");
         assert_eq!(palette.value_ink, "#2E6E5B");
+        assert_eq!(palette.accent, "#318995");
     }
 
     /// `looks_numeric` is honest about what right-aligns: integers, decimals,

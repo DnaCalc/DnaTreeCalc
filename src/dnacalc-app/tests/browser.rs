@@ -1120,11 +1120,16 @@ async fn calc_sheet_stage_renders_the_canvas_grid() {
     );
 }
 
-/// S3.11 — clicking the canvas at a cell's own pixel opens the ONE overlay
-/// editor at that cell (hit-tested through the SAME [`GridMetrics::default`] +
-/// origin `Viewport` the redraw effect draws with — see
-/// `dnacalc-stage-sheet/src/geometry.rs`), and committing through it runs the
-/// real `EnterGridCell` path end to end.
+/// S3.11 / S3.8 — clicking the canvas at a cell's own pixel SELECTS that cell
+/// (hit-tested through the SAME [`GridMetrics::default`] + origin `Viewport` the
+/// redraw effect draws with — see `dnacalc-stage-sheet/src/geometry.rs`), then an
+/// EDIT gesture (F2) opens the ONE overlay editor at that cell, and committing
+/// through it runs the real `EnterGridCell` path end to end.
+///
+/// Updated at S3.8 for the SELECT-vs-EDIT split: the single click no longer opens
+/// the editor (that was S3.6's conflated "selected == editing"), so the test now
+/// clicks to SELECT, asserts the editor is still absent, then presses F2 to enter
+/// EDIT — preserving this test's intent (a real cell edit commits end to end).
 ///
 /// Cell (row=1, col=1) = Sheet1 `A1` (a literal `1` in the demo workbook, see
 /// `dnacalc-host-core/src/demo.rs`) sits at the default metrics'
@@ -1177,11 +1182,34 @@ async fn calc_sheet_click_opens_editor_and_commits() {
     canvas_target.dispatch_event(&event).unwrap();
     next_tick().await;
 
+    // S3.8 SELECT vs EDIT: a single click SELECTS the cell (canvas highlight),
+    // it does NOT open the editor. The overlay stays absent until an EDIT gesture
+    // (F2 / Enter / a printable key / double-click).
+    assert!(
+        query(&host, "[data-testid=\"sheet-cell-editor\"]").is_none(),
+        "a single click selects the cell (highlight) but does NOT open the editor"
+    );
+
+    // Press F2 to enter EDIT at the selected cell (A1). Dispatched on the sheet
+    // section (`data-testid=\"sheet-root\"`, `tabindex=0`) that carries the
+    // keydown grammar; its target is the <section>, not a text-entry element, so
+    // the SELECT grammar's text-entry guard lets it through.
+    let root = query(&host, "[data-testid=\"sheet-root\"]").expect("the sheet root mounts");
+    let f2_init = web_sys::KeyboardEventInit::new();
+    f2_init.set_key("F2");
+    f2_init.set_bubbles(true);
+    f2_init.set_cancelable(true);
+    let f2_event = web_sys::KeyboardEvent::new_with_keyboard_event_init_dict("keydown", &f2_init)
+        .expect("construct the F2 keydown event");
+    let root_target: web_sys::EventTarget = root.clone().unchecked_into();
+    root_target.dispatch_event(&f2_event).unwrap();
+    next_tick().await;
+
     // The overlay opened at exactly A1 (row 1, col 1): editable (a plain
     // literal cell in the demo, not a read-only role), seeded from its OWN
     // authored text (the literal `1`, never the computed value).
     let editor = query(&host, "[data-testid=\"sheet-cell-editor\"]")
-        .expect("the click opens the ONE overlay editor at A1");
+        .expect("F2 opens the ONE overlay editor at the selected cell A1");
     assert_eq!(
         editor.get_attribute("data-editable").as_deref(),
         Some("true"),
