@@ -4,10 +4,10 @@
 # the TP crates — NEVER any `ox*` engine crate (P-gate). The Sheet stage is the
 # Excel-strict grid: a Canvas2D tile renderer + one DOM overlay editor over a
 # RenderPlan-IR whose geometry/hit-test invariants are unit-tested (Foundation
-# doctrine). It needs `dnacalc-shell` (the StageSurface contract) and
-# `dnacalc-skin-ir` (the GridProjection it renders); further TP crates
-# (`dnacalc-bridge` for the overlay editor) are added by the bead that first
-# uses them, so the dep set stays minimal (no unused-crate cruft).
+# doctrine). It needs `dnacalc-shell` (the StageSurface contract),
+# `dnacalc-skin-ir` (the GridProjection it renders), and — since S3.6 — the
+# `dnacalc-bridge` degrade editor for the single active-cell overlay. All three
+# are TP crates (verified ox-free via `cargo tree -e normal`).
 [package]
 name = "dnacalc-stage-sheet"
 version = "0.1.0"
@@ -20,10 +20,16 @@ publish.workspace = true
 [dependencies]
 dnacalc-skin-ir = { path = "../dnacalc-skin-ir" }
 dnacalc-shell = { path = "../dnacalc-shell" }
+# S3.6 overlay editor: the shared degrade formula editor. A TP crate
+# (`dnacalc-skin-ir` + `dnacalc-strand` + Leptos only), so the P-gate stays green
+# — no `ox*` enters the Sheet's normal graph (verified via `cargo tree -e normal`).
+dnacalc-bridge = { path = "../dnacalc-bridge" }
 # S3.5 Canvas2D renderer. `web-sys` is NOT an `ox*` crate, so the P-gate admits
 # it in this TP crate (verified via `cargo tree -e normal`). It compiles on both
 # native and wasm — its imported functions are link-time stubs natively (never
 # called under the `ssr` test build), so the draw layer needs no `cfg` gate.
+# `MouseEvent` (S3.6) is needed for `offset_x`/`offset_y` on the canvas click
+# handler; it is declared here rather than relied on transitively via Leptos.
 web-sys = { version = "0.3", features = [
     "Window",
     "Document",
@@ -33,6 +39,7 @@ web-sys = { version = "0.3", features = [
     "CanvasRenderingContext2d",
     "CssStyleDeclaration",
     "DomRect",
+    "MouseEvent",
 ] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

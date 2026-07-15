@@ -1213,6 +1213,7 @@ dependencies = [
 name = "dnacalc-stage-sheet"
 version = "0.1.0"
 dependencies = [
+ "dnacalc-bridge",
  "dnacalc-host-core",
  "dnacalc-shell",
  "dnacalc-skin-ir",
