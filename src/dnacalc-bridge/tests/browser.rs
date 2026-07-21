@@ -15,7 +15,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use dnacalc_bridge::{BridgeEvent, FormulaBridge, FormulaBridgeDegrade};
+use dnacalc_bridge::{BridgeEvent, CommitAdvance, FormulaBridge, FormulaBridgeDegrade};
 use dnacalc_skin_ir::formula::{
     CompletionItemProjection, CompletionKindProjection, CompletionSurface, FormulaAssistSurface,
     FormulaEditorSurface,
@@ -163,7 +163,7 @@ fn typing_emits_text_edited_then_commit_then_revert_verbatim() {
     assert!(
         observed
             .iter()
-            .any(|e| matches!(e, BridgeEvent::CommitRequested)),
+            .any(|e| matches!(e, BridgeEvent::CommitRequested { .. })),
         "Enter must emit CommitRequested"
     );
     assert!(
@@ -244,7 +244,7 @@ async fn escape_closes_completion_then_enter_commits() {
     assert!(
         observed
             .iter()
-            .any(|e| matches!(e, BridgeEvent::CommitRequested)),
+            .any(|e| matches!(e, BridgeEvent::CommitRequested { .. })),
         "Enter after closing popup must emit CommitRequested, got {observed:?}"
     );
     assert!(
@@ -305,6 +305,71 @@ async fn degrade_mode_renders_zero_token_role_classes() {
     assert!(
         matches!(observed.first(), Some(BridgeEvent::TextEdited { text, .. }) if text == "=NOT@PARSED="),
         "degrade typing must pass through verbatim, got {observed:?}"
+    );
+}
+
+/// Mount a bare `FormulaBridgeDegrade` with a chosen `commit_on_tab`, collecting
+/// its events into `sink` (dtc-dzky test support).
+fn mount_degrade(commit_on_tab: bool, sink: Arc<Mutex<Vec<BridgeEvent>>>) -> web_sys::HtmlElement {
+    let host = fresh_host();
+    let on_event = Callback::new(move |event| sink.lock().unwrap().push(event));
+    leptos::mount::mount_to(host.clone().unchecked_into(), move || {
+        view! { <FormulaBridgeDegrade commit_on_tab=commit_on_tab on_event=on_event /> }
+    })
+    .forget();
+    host
+}
+
+/// dtc-dzky: the degrade editor commits with a DIRECTION — Enter advances Down,
+/// and Tab advances Right, but Tab only where the host opted in (`commit_on_tab`,
+/// a grid). Without opt-in, Tab is left to the browser (emits no commit), so a
+/// Notebook block / the single-formula Bench slot is unchanged.
+#[wasm_bindgen_test]
+fn degrade_commit_carries_enter_down_and_opt_in_tab_right() {
+    // Opted in (the Sheet grid): Enter → Down, Tab → Right.
+    let events: Arc<Mutex<Vec<BridgeEvent>>> = Arc::new(Mutex::new(Vec::new()));
+    let host = mount_degrade(true, events.clone());
+    let area = textarea(&host);
+
+    press_key(&area, "Enter");
+    assert_eq!(
+        events.lock().unwrap().last(),
+        Some(&BridgeEvent::CommitRequested {
+            advance: CommitAdvance::Down
+        }),
+        "Enter commits with the Down advance"
+    );
+    press_key(&area, "Tab");
+    assert_eq!(
+        events.lock().unwrap().last(),
+        Some(&BridgeEvent::CommitRequested {
+            advance: CommitAdvance::Right
+        }),
+        "Tab (opted in) commits with the Right advance"
+    );
+
+    // NOT opted in (the default): Tab emits no commit — it stays a browser focus
+    // move, so Notebook/Bench keep their behavior; Enter still commits (Down).
+    let events2: Arc<Mutex<Vec<BridgeEvent>>> = Arc::new(Mutex::new(Vec::new()));
+    let host2 = mount_degrade(false, events2.clone());
+    let area2 = textarea(&host2);
+    press_key(&area2, "Tab");
+    assert!(
+        !events2
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|e| matches!(e, BridgeEvent::CommitRequested { .. })),
+        "Tab must NOT commit without opt-in, got {:?}",
+        events2.lock().unwrap()
+    );
+    press_key(&area2, "Enter");
+    assert_eq!(
+        events2.lock().unwrap().last(),
+        Some(&BridgeEvent::CommitRequested {
+            advance: CommitAdvance::Down
+        }),
+        "Enter commits (Down) even without the tab opt-in"
     );
 }
 

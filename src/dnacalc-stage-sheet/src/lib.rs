@@ -124,7 +124,7 @@ use leptos::wasm_bindgen::JsCast;
 use leptos::wasm_bindgen::closure::Closure;
 use web_sys::CanvasRenderingContext2d;
 
-use dnacalc_bridge::{BridgeEvent, FormulaBridgeDegrade};
+use dnacalc_bridge::{BridgeEvent, CommitAdvance, FormulaBridgeDegrade};
 use dnacalc_shell::{ProfileTag, StageContext, StageHandle, StageId, StageSurface};
 use dnacalc_skin_ir::intent::Dispatcher;
 use dnacalc_skin_ir::{
@@ -789,7 +789,7 @@ impl StageSurface for SheetStage {
                         // Verbatim text; the host classifies `=`-vs-literal, never
                         // the skin (SHELL_SPEC §6 layering law).
                         BridgeEvent::TextEdited { text, .. } => edit_text.set(text),
-                        BridgeEvent::CommitRequested => {
+                        BridgeEvent::CommitRequested { advance } => {
                             let text = edit_text.get_untracked();
                             let receipt = commit_dispatch.dispatch(enter_cell_intent(
                                 commit_grid.clone(),
@@ -806,10 +806,11 @@ impl StageSurface for SheetStage {
                                     editor_revision.update(|revision| *revision += 1);
                                 }
                                 // Accepted (Literal / Formula / Cleared / NoChange):
-                                // leave EDIT for SELECT and advance the active cell
-                                // one row down (Excel's Enter-commit), clamped to the
-                                // live extent. The workbook dispatcher re-projects,
-                                // so the canvas repaints the new value AND the moved
+                                // leave EDIT for SELECT and advance the active cell —
+                                // Enter goes one row DOWN, Tab one column RIGHT
+                                // (Excel grid commit, dtc-dzky) — clamped to the live
+                                // extent. The workbook dispatcher re-projects, so the
+                                // canvas repaints the new value AND the moved
                                 // highlight automatically through the redraw effect.
                                 _ => {
                                     editor_rejections.set(Vec::new());
@@ -819,11 +820,14 @@ impl StageSurface for SheetStage {
                                             .map(|g| GridExtent::new(g.max_rows, g.max_cols))
                                             .unwrap_or_else(|| GridExtent::new(1, 1))
                                     });
-                                    let next =
-                                        next_active((row, col), NavAction::CommitDown, extent);
+                                    let nav = match advance {
+                                        CommitAdvance::Down => NavAction::CommitDown,
+                                        CommitAdvance::Right => NavAction::CommitRight,
+                                    };
+                                    let next = next_active((row, col), nav, extent);
                                     active_cell.set(Some(next));
-                                    // dtc-m20s: reveal the post-commit cell (Enter at
-                                    // the bottom row scrolls the next row into view).
+                                    // dtc-m20s: reveal the post-commit cell (a commit
+                                    // at the window edge scrolls the next cell in).
                                     reveal_active_cell(viewport, zoom, next.0, next.1);
                                 }
                             }
@@ -847,6 +851,7 @@ impl StageSurface for SheetStage {
                             <FormulaBridgeDegrade
                                 text=seed_now
                                 rejections=rejections_now
+                                commit_on_tab=true
                                 on_event=on_event
                             />
                         </div>

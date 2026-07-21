@@ -1049,7 +1049,9 @@ fn render_cell_editor(
     let on_event = Callback::new(move |event: BridgeEvent| match event {
         // Verbatim text; the host classifies it — the skin never inspects `=`.
         BridgeEvent::TextEdited { text, .. } => state.edit_text.set(text),
-        BridgeEvent::CommitRequested => {
+        // A Notebook block is not a grid, so the Tab-vs-Enter `advance` carries no
+        // spatial meaning here — commit the block either way.
+        BridgeEvent::CommitRequested { .. } => {
             let text = state.edit_text.get_untracked();
             let receipt = commit_dispatch.dispatch(enter_cell_intent(
                 commit_grid.clone(),

@@ -92,6 +92,10 @@ pub enum NavAction {
     /// One row down, keeping the column — the move an accepted Enter-commit makes
     /// (Excel advances down after committing).
     CommitDown,
+    /// One column right, keeping the row — the move an accepted Tab-commit makes
+    /// (Excel advances right after committing with Tab). The horizontal twin of
+    /// [`NavAction::CommitDown`].
+    CommitRight,
 }
 
 /// The next active cell after applying `action` to `current` over `extent`.
@@ -114,6 +118,7 @@ pub fn next_active(current: (u32, u32), action: NavAction, extent: GridExtent) -
         NavAction::RowStart => (row, 1),
         NavAction::GridStart => (1, 1),
         NavAction::CommitDown => (row.saturating_add(1), col),
+        NavAction::CommitRight => (row, col.saturating_add(1)),
     };
     extent.clamp(next_row, next_col)
 }
@@ -417,6 +422,15 @@ mod tests {
         assert_eq!(next_active((2, 2), NavAction::CommitDown, DEMO), (3, 2));
         // Already on the last row: stays put (no wrap to row 1).
         assert_eq!(next_active((5, 2), NavAction::CommitDown, DEMO), (5, 2));
+    }
+
+    /// An accepted Tab-commit advances one column right, clamping at the last
+    /// column (the horizontal twin of the Enter-commit, dtc-dzky).
+    #[test]
+    fn commit_right_advances_and_clamps_at_the_last_column() {
+        assert_eq!(next_active((2, 1), NavAction::CommitRight, DEMO), (2, 2));
+        // Already on the last column: stays put (no wrap to column 1).
+        assert_eq!(next_active((2, 2), NavAction::CommitRight, DEMO), (2, 2));
     }
 
     /// THE clamping invariant: a move off every edge parks on the edge cell — the

@@ -14,7 +14,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use leptos::prelude::*;
 
-use dnacalc_bridge::{BridgeEvent, FormulaBridge};
+use dnacalc_bridge::{BridgeEvent, CommitAdvance, FormulaBridge};
 use dnacalc_shell::{
     BridgeSurface, InspectorSurface, ProfileTag, RuntimeContext, Shell, ShellComposition,
     ShellOverlaySlots, StageContext, StageHandle, StageId, StageRegistry, StageSurface,
@@ -464,7 +464,9 @@ impl Dispatcher for BenchDispatcher {
             }
             WorkspaceIntent::Recalculate => {
                 if let Some(next) = with_bench_host(self.host_id, |host| {
-                    host.apply(BridgeEvent::CommitRequested);
+                    host.apply(BridgeEvent::CommitRequested {
+                        advance: CommitAdvance::Down,
+                    });
                     host.projection()
                 }) {
                     self.projection.set(next);

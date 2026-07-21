@@ -199,7 +199,9 @@ pub fn CalcApp(runtime: RuntimeContext) -> impl IntoView {
     let on_event = Callback::new(move |event: BridgeEvent| match event {
         // Verbatim text; the host classifies it — the skin never inspects `=`.
         BridgeEvent::TextEdited { text, .. } => text_buffer.set(text),
-        BridgeEvent::CommitRequested => {
+        // The app's single-formula bridge slot has no grid to walk, so the Tab-vs-
+        // Enter `advance` is irrelevant here — commit either way.
+        BridgeEvent::CommitRequested { .. } => {
             let text = text_buffer.get_untracked();
             let grid = workspace_ro
                 .with_untracked(|state| state.sheets.first().map(|sheet| sheet.grid_node_id.clone()));

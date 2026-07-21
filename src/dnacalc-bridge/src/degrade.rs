@@ -18,7 +18,7 @@ use dnacalc_skin_ir::preview::PreviewService;
 use dnacalc_skin_ir::workspace::{FormulaBindPreviewProjection, GridEntryDiagnosticProjection};
 
 use crate::editor::segment_view;
-use crate::events::{BridgeEvent, BridgeEvents, EditDiscipline};
+use crate::events::{BridgeEvent, BridgeEvents, CommitAdvance, EditDiscipline};
 use crate::vm::{degrade_segments, dry_bind_preview, text_edited_from_dom, utf8_to_utf16};
 
 /// The optional dry-bind seam a Calc host can hand the degrade editor: the
@@ -46,6 +46,14 @@ pub fn FormulaBridgeDegrade(
     /// the post-attempt rejection channel (the preview doctrine).
     #[prop(optional)]
     preview: Option<DegradePreviewBinding>,
+    /// Whether Tab (no Shift) COMMITS and advances RIGHT (Excel grid entry),
+    /// emitting [`BridgeEvent::CommitRequested`] with [`CommitAdvance::Right`].
+    /// A SPATIAL host (the Sheet grid) opts in; everywhere else (default `false`)
+    /// Tab keeps its browser behavior, so a Notebook block or the single-formula
+    /// Bench slot is unchanged. Grid horizontal walk is meaningless off a grid, so
+    /// this is a per-host capability, not a universal editor behavior.
+    #[prop(optional)]
+    commit_on_tab: bool,
     /// The bridge's semantic-event sink.
     on_event: BridgeEvents,
 ) -> impl IntoView {
@@ -89,7 +97,21 @@ pub fn FormulaBridgeDegrade(
             "Enter" if !ev.shift_key() => {
                 ev.prevent_default();
                 edit_state.set(EditDiscipline::Selected);
-                on_event.run(BridgeEvent::CommitRequested);
+                on_event.run(BridgeEvent::CommitRequested {
+                    advance: CommitAdvance::Down,
+                });
+            }
+            // Tab commits and advances RIGHT — but only where the host opted in
+            // (`commit_on_tab`, a grid). Elsewhere Tab is left to the browser
+            // (focus move), so Notebook/Bench behavior is unchanged. Shift+Tab is
+            // deliberately NOT captured here (grid Shift+Tab-left is a later
+            // concern); it falls through to the browser default.
+            "Tab" if commit_on_tab && !ev.shift_key() => {
+                ev.prevent_default();
+                edit_state.set(EditDiscipline::Selected);
+                on_event.run(BridgeEvent::CommitRequested {
+                    advance: CommitAdvance::Right,
+                });
             }
             "Escape" => {
                 ev.prevent_default();

@@ -1423,3 +1423,79 @@ async fn calc_sheet_scrolls_the_active_cell_into_view_on_keyboard_nav() {
         "the revealed cell sits within the visible canvas [0, {canvas_h}], got {editor_top}"
     );
 }
+
+/// S3 follow-up (Tab-in-editor commits and moves RIGHT, dtc-dzky): Enter-commit
+/// advances DOWN, but a Tab-commit must advance RIGHT (Excel grid entry). The
+/// Sheet opts its overlay editor into the bridge's `commit_on_tab`, so Tab emits
+/// `CommitRequested { advance: Right }` and the Sheet commits + moves the active
+/// cell one COLUMN right. Proven end-to-end: open A1, type, Tab, then reopen the
+/// editor and confirm it lands on B1 (row 1, col 2) — RIGHT, not the Enter-path
+/// 2:1. (The demo workbook is cells-only, so every cell is editable and exposes
+/// `data-cell`.)
+#[wasm_bindgen_test]
+async fn calc_sheet_tab_in_editor_commits_and_moves_right() {
+    let host = mount();
+    next_tick().await;
+    next_tick().await;
+    next_tick().await;
+
+    let root = query(&host, "[data-testid=\"sheet-root\"]").expect("the sheet root mounts");
+    let root_target: web_sys::EventTarget = root.clone().unchecked_into();
+    let press_f2 = || {
+        let init = web_sys::KeyboardEventInit::new();
+        init.set_key("F2");
+        init.set_bubbles(true);
+        init.set_cancelable(true);
+        let ev = web_sys::KeyboardEvent::new_with_keyboard_event_init_dict("keydown", &init)
+            .expect("construct the F2 keydown");
+        root_target.dispatch_event(&ev).unwrap();
+    };
+
+    // F2 opens the overlay editor at A1 (nothing selected → the origin).
+    press_f2();
+    next_tick().await;
+    let editor = query(&host, "[data-testid=\"sheet-cell-editor\"]")
+        .expect("F2 opens the overlay at A1");
+    assert_eq!(
+        editor.get_attribute("data-cell").as_deref(),
+        Some("1:1"),
+        "the editor opens at A1"
+    );
+
+    // Type a literal, then commit with TAB (not Enter).
+    let area = editor
+        .query_selector(".dna-bridge--degrade .dna-bridge__input")
+        .unwrap()
+        .expect("the degrade editor mounts")
+        .unchecked_into::<web_sys::HtmlTextAreaElement>();
+    area.set_value("77");
+    area.dispatch_event(&web_sys::Event::new("input").unwrap())
+        .unwrap();
+    let tab_init = web_sys::KeyboardEventInit::new();
+    tab_init.set_key("Tab");
+    tab_init.set_bubbles(true);
+    tab_init.set_cancelable(true);
+    let tab_event = web_sys::KeyboardEvent::new_with_keyboard_event_init_dict("keydown", &tab_init)
+        .expect("construct the Tab keydown");
+    let area_target: web_sys::EventTarget = area.clone().unchecked_into();
+    area_target.dispatch_event(&tab_event).unwrap();
+    next_tick().await;
+
+    // An accepted commit closed the overlay (only a Rejected outcome keeps it open).
+    assert!(
+        query(&host, "[data-testid=\"sheet-cell-editor\"]").is_none(),
+        "an accepted Tab-commit closes the overlay"
+    );
+
+    // Reopen the editor on the post-Tab active cell: it walked one column RIGHT to
+    // B1 (row 1, col 2) — NOT the Enter-path 2:1.
+    press_f2();
+    next_tick().await;
+    let editor2 = query(&host, "[data-testid=\"sheet-cell-editor\"]")
+        .expect("F2 reopens the overlay at the post-Tab active cell");
+    assert_eq!(
+        editor2.get_attribute("data-cell").as_deref(),
+        Some("1:2"),
+        "Tab-commit advanced the active cell one column RIGHT (B1), not down to 2:1"
+    );
+}

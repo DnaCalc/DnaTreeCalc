@@ -17,7 +17,7 @@ use dnacalc_skin_ir::formula::{FormulaAssistSurface, FormulaDrillSurface, Formul
 
 use crate::assist::{CompletionPopup, FunctionHelpPane, SignaturePane};
 use crate::diagnostics::DiagnosticsList;
-use crate::events::{BridgeEvent, BridgeEvents, EditDiscipline};
+use crate::events::{BridgeEvent, BridgeEvents, CommitAdvance, EditDiscipline};
 use crate::readout::ReadoutRow;
 use crate::vm::{
     RenderSegment, buffer_is_dirty, completion_applied, completion_next, drill_state_id,
@@ -259,7 +259,11 @@ pub fn FormulaBridge(
                 ev.prevent_default();
                 ev.stop_propagation();
                 edit_state.set(EditDiscipline::Selected);
-                on_event.run(BridgeEvent::CommitRequested);
+                // The full editor is the single-formula (Bench) surface — no grid
+                // to walk — so Enter always commits with the default Down advance.
+                on_event.run(BridgeEvent::CommitRequested {
+                    advance: CommitAdvance::Down,
+                });
             }
             // Esc exact-reverts — host-side. The bridge only reports it, but
             // still stops propagation here — see the precedence note above.

@@ -231,7 +231,9 @@ impl BenchHost {
             // `dirty` bit (read by the Shell's mast dirty-dot, bead dtc-lfz.3)
             // stuck `true` for the rest of the session after the first edit.
             // `committed_text` still mirrors it for `RevertRequested`.
-            BridgeEvent::CommitRequested => {
+            // The Bench is a single-formula surface — no grid — so the Tab-vs-Enter
+            // `advance` is irrelevant; commit either way.
+            BridgeEvent::CommitRequested { .. } => {
                 self.committed_text = self.projection().raw_entered_cell_text;
                 apply_editor_command_to_active_formula_space(
                     &mut self.state,
@@ -416,6 +418,7 @@ impl BenchHost {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use dnacalc_bridge::CommitAdvance;
     use dnacalc_skin_ir::formula::{FormulaEntryModeProjection, FormulaResultSurface};
 
     /// Author `=SUM(1,2,3)` end-to-end through the bridge-event seam and prove
@@ -465,7 +468,9 @@ mod tests {
             text: "=1+1".to_string(),
             caret: 4,
         });
-        host.apply(BridgeEvent::CommitRequested);
+        host.apply(BridgeEvent::CommitRequested {
+            advance: CommitAdvance::Down,
+        });
         assert_eq!(host.committed_text, "=1+1");
 
         // Edit away from the committed text…
@@ -686,7 +691,9 @@ mod tests {
         // Committing marks the active formula space committed (raw ==
         // committed == proofed), so `live_state()` resolves to `Committed`
         // and the persistence-projected `dirty` bit clears.
-        host.apply(BridgeEvent::CommitRequested);
+        host.apply(BridgeEvent::CommitRequested {
+            advance: CommitAdvance::Down,
+        });
         assert!(
             !host.persistence().dirty,
             "a commit must clear the persistence-projected dirty bit"

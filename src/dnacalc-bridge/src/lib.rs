@@ -39,7 +39,7 @@ pub use assist::{CompletionPopup, FunctionHelpPane, SignaturePane};
 pub use degrade::{DegradePreviewBinding, DryBindList, FormulaBridgeDegrade, RejectionList};
 pub use diagnostics::DiagnosticsList;
 pub use editor::FormulaBridge;
-pub use events::{BridgeEvent, BridgeEvents, EditDiscipline};
+pub use events::{BridgeEvent, BridgeEvents, CommitAdvance, EditDiscipline};
 pub use vm::{
     ALL_COMPLETION_KINDS, MAX_WINDOW_EDGE, PartialEvalVm, ReadoutVm, RenderSegment,
     buffer_is_dirty, completion_applied, completion_kind_class, completion_kind_glyph,

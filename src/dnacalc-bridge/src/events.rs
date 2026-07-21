@@ -40,12 +40,33 @@ pub enum BridgeEvent {
     },
     /// The X-Ray affordance was toggled.
     DrillToggled,
-    /// Enter: commit through the context's single entry verb (the host maps
-    /// this to `EnterGridCell` / `EditContent` / the name form).
-    CommitRequested,
+    /// Enter / Tab: commit through the context's single entry verb (the host
+    /// maps this to `EnterGridCell` / `EditContent` / the name form). `advance`
+    /// carries the Enter-vs-Tab distinction that a SPATIAL host (the Sheet grid)
+    /// uses to move the selection after an accepted commit — Enter advances down,
+    /// Tab advances right (Excel grid entry). Non-spatial hosts (the single-formula
+    /// Bench, a Notebook block) ignore `advance` and just commit. Only editors that
+    /// opt in (`FormulaBridgeDegrade`'s `commit_on_tab`) ever emit
+    /// [`CommitAdvance::Right`]; the default is [`CommitAdvance::Down`].
+    CommitRequested { advance: CommitAdvance },
     /// Esc: exact-revert. The bridge dispatches nothing and reverts nothing
     /// itself — the host owns the committed text.
     RevertRequested,
+}
+
+/// The direction a SPATIAL host advances its selection after an accepted commit —
+/// the Enter-vs-Tab distinction carried by [`BridgeEvent::CommitRequested`]. The
+/// bridge itself never moves anything; it only reports which key committed, and
+/// the host's adapter maps that to its own nav grammar (the Sheet: `Down` →
+/// commit-down, `Right` → commit-right). Non-spatial hosts ignore it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CommitAdvance {
+    /// Enter — advance to the next row (the default, and the only direction a
+    /// non-opted-in editor ever emits).
+    #[default]
+    Down,
+    /// Tab — advance to the next column (grid horizontal entry).
+    Right,
 }
 
 /// The bridge's callback interface: every component takes one of these and
