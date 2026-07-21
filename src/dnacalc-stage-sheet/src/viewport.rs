@@ -185,6 +185,58 @@ pub fn clamp_scroll(scroll: f64, extent: u32, band_size: f64, header: f64, viewp
     scroll.clamp(0.0, max_scroll)
 }
 
+/// The scroll offset along one axis that brings the 1-based `band` (a row or a
+/// column) fully into the viewport's data area, moving the viewport **as little
+/// as possible** (Excel's minimal-scroll reveal) — the pure core of the
+/// keyboard-nav auto-scroll (dtc-m20s).
+///
+/// The band's content-space span is `[(band − 1)·band_size, band·band_size)`
+/// (measured from the grid origin, the exact inverse of the
+/// `header + (index − 1)·size − scroll` term in [`crate::geometry::cell_rect`]);
+/// the visible data window in that space is `[scroll, scroll + (viewport_len −
+/// header)]`. Three cases:
+/// - band **before** the window (`near < scroll`) → scroll back to the band's
+///   near edge, so it appears flush against the header;
+/// - band **after** the window (`far > scroll + data_len`) → scroll forward so the
+///   band's far edge aligns with the viewport's far edge;
+/// - band **already fully visible** → the scroll is returned unchanged (no jump).
+///
+/// Pure and total: a non-finite `scroll` resets to `0`; a degenerate `band_size`
+/// or a non-positive data area (pre-first-paint, or a header wider than the
+/// viewport) leaves the scroll untouched rather than fabricating a bogus offset;
+/// the result is never negative. The upper bound is implicit — callers only ever
+/// reveal an in-extent band, whose far edge is within the grid content, so the
+/// forward target `far − data_len` is always ≤ [`clamp_scroll`]'s maximum.
+#[must_use]
+pub fn reveal_scroll(band: u32, band_size: f64, header: f64, viewport_len: f64, scroll: f64) -> f64 {
+    if !scroll.is_finite() {
+        return 0.0;
+    }
+    let scroll = scroll.max(0.0);
+    if !band_size.is_finite() || band_size <= 0.0 {
+        return scroll;
+    }
+    let data_len = if viewport_len.is_finite() && header.is_finite() {
+        (viewport_len - header).max(0.0)
+    } else {
+        0.0
+    };
+    if data_len <= 0.0 {
+        // No measurable data area (pre-first-paint size 0, or a header wider than
+        // the viewport): nothing to reveal into — leave the scroll as-is.
+        return scroll;
+    }
+    let near = ((f64::from(band) - 1.0) * band_size).max(0.0);
+    let far = f64::from(band) * band_size;
+    if near < scroll {
+        near
+    } else if far > scroll + data_len {
+        (far - data_len).max(0.0)
+    } else {
+        scroll
+    }
+}
+
 /// A per-frame scroll coalescer: it accumulates the wheel deltas noted within one
 /// animation frame into a single pending `(dx, dy)`, drained once at the frame
 /// boundary.
@@ -437,5 +489,97 @@ mod tests {
         // A degenerate extent floors to one legal cell (never an out-of-range
         // address).
         assert_eq!(window_edge_jump((9, 9), EdgeDir::Down, 0, 0), (1, 1));
+    }
+
+    /// `reveal_scroll` leaves an already-fully-visible band's scroll UNCHANGED —
+    /// the no-jump case (nav within the visible window never scrolls).
+    #[test]
+    fn reveal_scroll_keeps_a_visible_band_put() {
+        // 22px bands, 22px header, 200px viewport → 178px data area (~8 rows).
+        let (band_size, header, vp) = (22.0, 22.0, 200.0);
+        // Unscrolled, band 1 (near=0, far=22) and band 8 (near=154, far=176) both
+        // sit inside [0, 178] → no scroll change.
+        assert_eq!(reveal_scroll(1, band_size, header, vp, 0.0), 0.0);
+        assert_eq!(reveal_scroll(8, band_size, header, vp, 0.0), 0.0);
+    }
+
+    /// A band BEFORE the window (its near edge above/left of the scroll) reveals
+    /// to the band's near edge, flush against the header.
+    #[test]
+    fn reveal_scroll_pulls_back_to_a_band_above_the_window() {
+        let (band_size, header, vp) = (22.0, 22.0, 200.0);
+        // Scrolled to 500px, band 3's near edge is at (3−1)·22 = 44px < 500 → the
+        // window jumps back so band 3 sits flush at the top.
+        assert_eq!(reveal_scroll(3, band_size, header, vp, 500.0), 44.0);
+    }
+
+    /// A band AFTER the window (its far edge past `scroll + data_len`) reveals by
+    /// aligning that far edge to the viewport's far edge — minimal forward scroll.
+    #[test]
+    fn reveal_scroll_pushes_forward_to_a_band_below_the_window() {
+        let (band_size, header, vp) = (22.0, 22.0, 200.0);
+        let data_len = vp - header; // 178
+        // Unscrolled, band 9's far edge is 9·22 = 198 > 0 + 178 → scroll forward to
+        // 198 − 178 = 20, so band 9's far edge lands exactly on the data-area edge.
+        let s = reveal_scroll(9, band_size, header, vp, 0.0);
+        assert!((s - 20.0).abs() < 1e-9, "band 9 far edge flush to the viewport far edge");
+        // And after that scroll the band is genuinely fully inside the data window.
+        let near = (9.0 - 1.0) * band_size;
+        let far = 9.0 * band_size;
+        assert!(near >= s - 1e-9 && far <= s + data_len + 1e-9, "band 9 now fully visible");
+    }
+
+    /// After one reveal, EVERY navigated band lands fully inside the data window
+    /// and the scroll is never negative — the load-bearing property, swept over a
+    /// range of bands and starting scrolls (data area comfortably wider than one
+    /// band, so every band fits).
+    #[test]
+    fn reveal_scroll_makes_the_band_fully_visible() {
+        let (band_size, header, vp) = (22.0, 22.0, 200.0);
+        let data_len = vp - header;
+        for &start in &[0.0, 60.0, 500.0, 5000.0] {
+            for band in 1..=60u32 {
+                let s = reveal_scroll(band, band_size, header, vp, start);
+                assert!(s >= 0.0, "scroll never negative (band {band}, start {start})");
+                let near = (f64::from(band) - 1.0) * band_size;
+                let far = f64::from(band) * band_size;
+                assert!(
+                    near >= s - 1e-9 && far <= s + data_len + 1e-9,
+                    "band {band} must be fully visible after reveal (start {start}, scroll {s})"
+                );
+            }
+        }
+    }
+
+    /// `reveal_scroll` is idempotent: revealing a band that a first reveal already
+    /// brought on screen returns the same scroll (no oscillation on repeat nav).
+    #[test]
+    fn reveal_scroll_is_idempotent() {
+        let (band_size, header, vp) = (22.0, 22.0, 200.0);
+        for band in 1..=60u32 {
+            let once = reveal_scroll(band, band_size, header, vp, 3000.0);
+            let twice = reveal_scroll(band, band_size, header, vp, once);
+            assert!((once - twice).abs() < 1e-9, "band {band} reveal must be stable");
+        }
+    }
+
+    /// Totality guards: a non-finite scroll resets to 0; a degenerate band size or
+    /// a non-positive data area (size-0 pre-paint viewport, or header ≥ viewport)
+    /// leaves the scroll untouched rather than fabricating a bogus offset.
+    #[test]
+    fn reveal_scroll_guards_degenerate_inputs() {
+        // NaN scroll → the early-return 0 (independent of the band).
+        assert_eq!(reveal_scroll(9, 22.0, 22.0, 200.0, f64::NAN), 0.0, "NaN scroll → 0");
+        // A negative scroll is clamped to 0; band 1 is visible there, so the reveal
+        // is a no-op and the result stays 0 (isolating the negative→0 guard from the
+        // reveal itself — a band that needs revealing would legitimately move off 0).
+        assert_eq!(reveal_scroll(1, 22.0, 22.0, 200.0, -50.0), 0.0, "negative scroll → 0");
+        // Degenerate band size: scroll passes through (clamped ≥ 0).
+        assert_eq!(reveal_scroll(9, 0.0, 22.0, 200.0, 130.0), 130.0);
+        assert_eq!(reveal_scroll(9, f64::NAN, 22.0, 200.0, 130.0), 130.0);
+        // No data area (viewport not yet measured, or header wider than viewport):
+        // leave the scroll as-is, never scroll a band into a zero-height window.
+        assert_eq!(reveal_scroll(9, 22.0, 22.0, 0.0, 130.0), 130.0, "size-0 viewport → no-op");
+        assert_eq!(reveal_scroll(9, 22.0, 22.0, 10.0, 130.0), 130.0, "header ≥ viewport → no-op");
     }
 }

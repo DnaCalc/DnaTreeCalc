@@ -149,7 +149,7 @@ pub use geometry::{
 };
 pub use viewport::{
     BOUNDED_SCALE_INTEREST_NOTE, EDGE_JUMP_DEGRADE_REASON, EdgeDir, ScrollCoalescer, Tier,
-    clamp_scroll, clamp_zoom, edge_dir_from_key, legible_factor, tier_degrade_reason,
+    clamp_scroll, clamp_zoom, edge_dir_from_key, legible_factor, reveal_scroll, tier_degrade_reason,
     window_edge_jump, zoom_tier,
 };
 pub use render_plan::{
@@ -633,6 +633,9 @@ impl StageSurface for SheetStage {
                                 None => extent.clamp(1, 1),
                             };
                             active_cell.set(Some(next));
+                            // dtc-m20s: keep the moved cell on screen (a step past
+                            // the visible window scrolls it into view).
+                            reveal_active_cell(viewport, zoom, next.0, next.1);
                         }
                         SheetAction::BeginEdit => {
                             // F2 opens the editor at the active cell (or the origin
@@ -678,6 +681,9 @@ impl StageSurface for SheetStage {
                 let current = active_cell.get_untracked().unwrap_or((1, 1));
                 let jumped = window_edge_jump(current, dir, extent_rows, extent_cols);
                 active_cell.set(Some(jumped));
+                // dtc-m20s: an edge-jump lands on the window edge — reveal it (the
+                // far edge scrolls into view when the window edge is off-screen).
+                reveal_active_cell(viewport, zoom, jumped.0, jumped.1);
                 g3_note.set(Some(EDGE_JUMP_DEGRADE_REASON.to_string()));
                 return;
             }
@@ -813,11 +819,12 @@ impl StageSurface for SheetStage {
                                             .map(|g| GridExtent::new(g.max_rows, g.max_cols))
                                             .unwrap_or_else(|| GridExtent::new(1, 1))
                                     });
-                                    active_cell.set(Some(next_active(
-                                        (row, col),
-                                        NavAction::CommitDown,
-                                        extent,
-                                    )));
+                                    let next =
+                                        next_active((row, col), NavAction::CommitDown, extent);
+                                    active_cell.set(Some(next));
+                                    // dtc-m20s: reveal the post-commit cell (Enter at
+                                    // the bottom row scrolls the next row into view).
+                                    reveal_active_cell(viewport, zoom, next.0, next.1);
                                 }
                             }
                         }
@@ -1052,6 +1059,31 @@ impl StageSurface for SheetStage {
 #[must_use]
 fn zoomed_metrics(zoom: f64) -> GridMetrics {
     GridMetrics::default().scaled(legible_factor(zoom))
+}
+
+/// Scroll the shared `viewport` so a just-navigated active cell is fully visible,
+/// moving as little as possible (dtc-m20s). Reads the live zoom + the measured
+/// viewport (the redraw effect feeds `width`/`height` back into the signal each
+/// paint) UNTRACKED, computes the minimal per-axis reveal ([`reveal_scroll`],
+/// column→x, row→y), and — only when it actually changes — writes the new scroll
+/// back TRACKED so the redraw effect repaints with the highlight on screen.
+///
+/// Called from the KEYBOARD-nav sites (arrows / Enter-move / Ctrl+arrow edge-jump /
+/// Enter-commit advance); mouse clicks deliberately skip it, since a clicked cell
+/// is visible by construction. A no-op if the cell is already on screen (so nav
+/// within the window never jitters the scroll) and pre-first-paint (size-0
+/// viewport → [`reveal_scroll`] leaves the scroll put).
+fn reveal_active_cell(viewport: RwSignal<Viewport>, zoom: RwSignal<f64>, row: u32, col: u32) {
+    let metrics = zoomed_metrics(zoom.get_untracked());
+    let current = viewport.get_untracked();
+    let next_x = reveal_scroll(col, metrics.col_width, metrics.header_w, current.width, current.scroll_x);
+    let next_y = reveal_scroll(row, metrics.row_height, metrics.header_h, current.height, current.scroll_y);
+    if next_x != current.scroll_x || next_y != current.scroll_y {
+        viewport.update(|v| {
+            v.scroll_x = next_x;
+            v.scroll_y = next_y;
+        });
+    }
 }
 
 /// The active grid to render: the first sheet's backing grid (the active-sheet

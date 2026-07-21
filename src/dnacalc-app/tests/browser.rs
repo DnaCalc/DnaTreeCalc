@@ -1329,3 +1329,97 @@ async fn calc_sheet_canvas_repaints_when_it_resizes() {
         "the resized canvas still has a real backing store, got {after}"
     );
 }
+
+/// S3 follow-up (nav auto-scroll, dtc-m20s): arrow-key nav moves the active cell,
+/// but a step PAST the visible window must scroll the viewport so the cell stays
+/// on screen (otherwise the highlight draws off-screen and is clipped away). This
+/// drives ArrowDown well past the canvas's visible rows, then opens the editor on
+/// the deep active cell and proves — via the editor overlay's real on-screen
+/// position (it is placed at `cell_rect(metrics, scrolled_viewport, row, col)`) —
+/// that the cell was revealed near the viewport's bottom edge rather than left at
+/// its far-below unscrolled position.
+#[wasm_bindgen_test]
+async fn calc_sheet_scrolls_the_active_cell_into_view_on_keyboard_nav() {
+    let host = mount();
+    // Settle the initial layout measure + first paint (which feeds the measured
+    // canvas size back into the shared viewport that the reveal math reads).
+    next_tick().await;
+    next_tick().await;
+    next_tick().await;
+
+    let canvas: web_sys::HtmlCanvasElement = query(&host, "[data-testid=\"sheet-canvas\"]")
+        .expect("the sheet canvas mounts")
+        .unchecked_into();
+    let canvas_h = f64::from(canvas.client_height());
+    assert!(
+        canvas_h > 0.0,
+        "the canvas has a real measured height for the reveal math, got {canvas_h}"
+    );
+
+    // Default metrics at zoom 1.0: 22px rows + a 22px column-header strip
+    // (`GridMetrics::default`). Rows that fit in the data area, then aim ~20 rows
+    // PAST that so the target is unambiguously below the visible window.
+    let row_h = 22.0_f64;
+    let header_h = 22.0_f64;
+    let rows_visible = ((canvas_h - header_h) / row_h).floor().max(1.0) as u32;
+    let target_row = rows_visible + 20;
+
+    // The unscrolled viewport-y of the target cell — where its editor WOULD sit
+    // with no auto-scroll (far below the canvas). The test is only meaningful if
+    // that position is genuinely off-screen.
+    let unscrolled_top = header_h + (f64::from(target_row) - 1.0) * row_h;
+    assert!(
+        unscrolled_top > canvas_h,
+        "test set-up must put the target row off-screen: unscrolled_top {unscrolled_top} > canvas_h {canvas_h}"
+    );
+
+    // Focus the sheet section and step down `target_row` times. The first
+    // ArrowDown (nothing selected) lands on A1, each subsequent one moves down one
+    // row, so `target_row` presses reach row `target_row`. Each press reveals the
+    // moved cell synchronously (the reveal reads the viewport untracked and
+    // accumulates scroll), so no per-press tick is needed.
+    let root = query(&host, "[data-testid=\"sheet-root\"]").expect("the sheet root mounts");
+    let root_target: web_sys::EventTarget = root.clone().unchecked_into();
+    for _ in 0..target_row {
+        let init = web_sys::KeyboardEventInit::new();
+        init.set_key("ArrowDown");
+        init.set_bubbles(true);
+        init.set_cancelable(true);
+        let event = web_sys::KeyboardEvent::new_with_keyboard_event_init_dict("keydown", &init)
+            .expect("construct the ArrowDown keydown");
+        root_target.dispatch_event(&event).unwrap();
+    }
+
+    // F2 opens the ONE overlay editor at the (now deep) active cell.
+    let f2_init = web_sys::KeyboardEventInit::new();
+    f2_init.set_key("F2");
+    f2_init.set_bubbles(true);
+    f2_init.set_cancelable(true);
+    let f2_event = web_sys::KeyboardEvent::new_with_keyboard_event_init_dict("keydown", &f2_init)
+        .expect("construct the F2 keydown");
+    root_target.dispatch_event(&f2_event).unwrap();
+    next_tick().await;
+
+    let editor = query(&host, "[data-testid=\"sheet-cell-editor\"]")
+        .expect("F2 opens the overlay editor at the deep active cell");
+    assert_eq!(
+        editor.get_attribute("data-cell").as_deref(),
+        Some(format!("{target_row}:1").as_str()),
+        "the active cell walked down to row {target_row} (column 1)"
+    );
+
+    // The editor sits at the active cell's real on-screen rect. Its offset from the
+    // canvas top IS the cell's scrolled viewport-y: with auto-scroll it is near the
+    // bottom of the visible canvas; without it, it would be at `unscrolled_top`,
+    // far below. Measured via bounding rects (no inline-style string parsing).
+    let canvas_top = canvas.get_bounding_client_rect().top();
+    let editor_top = editor.get_bounding_client_rect().top() - canvas_top;
+    assert!(
+        editor_top < unscrolled_top,
+        "auto-scroll revealed the cell (editor top {editor_top} must be above its unscrolled {unscrolled_top})"
+    );
+    assert!(
+        editor_top >= 0.0 && editor_top <= canvas_h,
+        "the revealed cell sits within the visible canvas [0, {canvas_h}], got {editor_top}"
+    );
+}
