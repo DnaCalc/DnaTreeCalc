@@ -45,6 +45,7 @@ pub mod grid_publication;
 pub mod persistence;
 pub mod skin_protocol;
 pub mod present;
+pub mod tree;
 pub mod workbook;
 
 pub use calc::{
