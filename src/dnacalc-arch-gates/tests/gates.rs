@@ -186,3 +186,28 @@ fn inverted_control_host_core_contains_oxcalc() {
     let tree = run_cargo_tree("dnacalc-host-core");
     assert_graph_includes("Inverted control", &tree, "oxcalc");
 }
+
+/// TC-gate (S4.P1, epic calc- / dtc-c0wf) — `dnacalc-host-core` (the TC/Calc
+/// tier) must stay free of Leptos. host-core's own crate doc claims a
+/// "no-Leptos gate, asserted by `cargo tree`" (`src/dnacalc-host-core/src/lib.rs`),
+/// but until this test that invariant was only *documented*, never pinned:
+/// `t0_gate_skin_ir_has_no_leptos_or_ox` covers skin-ir, and the inverted
+/// control above proves host-core *includes* oxcalc, but nothing asserted the
+/// absence of `leptos`.
+///
+/// This gate is filed BEFORE the S4 RichTree extraction moves the (verified
+/// Leptos-free) `TreeWorkspaceSession` out of the Leptos-bound
+/// `dnatreecalc-host` and into host-core — precisely the change most likely to
+/// smuggle a `leptos` edge in through a missed facade import
+/// (`dnatreecalc_skin_framework` is `pub use dnacalc_skin_leptos::*`, so a
+/// stray `use` of the wrong re-export would pull Leptos in silently). The gate
+/// makes that regression fail loudly the moment it happens.
+///
+/// The `inverted_control_host_core_contains_oxcalc` test guards the shared
+/// `run_cargo_tree` mechanism for THIS crate against a silent vacuous pass, so
+/// this exclusion cannot pass merely because `cargo tree` returned nothing.
+#[test]
+fn tc_gate_host_core_has_no_leptos() {
+    let tree = run_cargo_tree("dnacalc-host-core");
+    assert_graph_excludes("TC-gate", &tree, &["leptos"]);
+}

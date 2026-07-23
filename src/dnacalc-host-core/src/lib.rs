@@ -4,9 +4,9 @@
 //! Host-core owns the document session and the model→intent seam between the
 //! Skin IR wire protocol ([`dnacalc_skin_ir`]) and the OxCalc document surface
 //! ([`oxcalc_core`]). It carries **no Leptos dependency anywhere in its tree**
-//! (the no-Leptos gate, asserted by `cargo tree`), so a worker, a CLI/MCP host,
-//! or the browser UI can each drive the same session logic without pulling in a
-//! UI framework.
+//! (the TC-gate, pinned by `dnacalc-arch-gates`'s `tc_gate_host_core_has_no_leptos`
+//! over `cargo tree`), so a worker, a CLI/MCP host, or the browser UI can each
+//! drive the same session logic without pulling in a UI framework.
 //!
 //! ## Model-neutral sessions
 //!
