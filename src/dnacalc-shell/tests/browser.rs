@@ -498,3 +498,72 @@ async fn command_deck_theme_switch_retheme_the_cockpit() {
         "a theme switch is view-state, never a dispatched intent"
     );
 }
+
+/// SHELL_SPEC §1.1: the mast control buttons are the pointer/touch path into
+/// the overlays and rails. Clicking them must do exactly what the Ctrl+K /
+/// Ctrl+B / Ctrl+I verbs do — open the deck, collapse/expand the rails —
+/// and never dispatch a workspace intent.
+#[wasm_bindgen_test]
+async fn mast_controls_drive_deck_and_rails_without_a_keyboard() {
+    let mounted = mount_calc_shell();
+    let host = &mounted.host;
+    next_tick().await;
+
+    // The Calc composition renders all three controls (the deck is built-in;
+    // both rails compose for Calc).
+    let registry_button =
+        query(host, "[data-testid=\"mast-toggle-registry\"]").expect("registry toggle renders");
+    let inspector_button =
+        query(host, "[data-testid=\"mast-toggle-inspector\"]").expect("inspector toggle renders");
+    query(host, "[data-testid=\"mast-open-commands\"]").expect("commands button renders");
+
+    // Registry starts expanded; the button collapses it exactly like Ctrl+B,
+    // reflected in aria-expanded AND the rail's collapsed class.
+    assert_eq!(
+        registry_button.get_attribute("aria-expanded").as_deref(),
+        Some("true"),
+        "rails start expanded on desktop"
+    );
+    registry_button
+        .unchecked_ref::<web_sys::HtmlElement>()
+        .click();
+    next_tick().await;
+    let rail = query(host, ".dna-registry").expect("registry rail mounts");
+    assert!(
+        rail.get_class_name().contains("dna-registry--collapsed"),
+        "the button collapses the registry rail"
+    );
+    let registry_button = query(host, "[data-testid=\"mast-toggle-registry\"]")
+        .expect("registry toggle persists across re-render");
+    assert_eq!(
+        registry_button.get_attribute("aria-expanded").as_deref(),
+        Some("false")
+    );
+
+    // Same contract on the inspector side.
+    inspector_button
+        .unchecked_ref::<web_sys::HtmlElement>()
+        .click();
+    next_tick().await;
+    let inspector = query(host, ".dna-inspector").expect("inspector mounts");
+    assert!(
+        inspector
+            .get_class_name()
+            .contains("dna-inspector--collapsed"),
+        "the button collapses the inspector panel"
+    );
+
+    // The commands button opens the same deck Ctrl+K opens, with zero
+    // dispatched intents (view-state only).
+    let deck_button = query(host, "[data-testid=\"mast-open-commands\"]").unwrap();
+    deck_button.unchecked_ref::<web_sys::HtmlElement>().click();
+    next_tick().await;
+    assert!(
+        query(host, "[data-overlay=\"command-deck\"]").is_some(),
+        "the mast commands button opens the command deck"
+    );
+    assert!(
+        mounted.dispatcher.intents().is_empty(),
+        "mast controls are view-state, never dispatched intents"
+    );
+}

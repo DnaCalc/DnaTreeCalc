@@ -40,6 +40,8 @@ use crate::stage::{
     switch_stage,
 };
 use crate::strip::{StripSlot, StripSlotContent, strip_slot_content};
+#[cfg(target_arch = "wasm32")]
+use crate::viewport::{initial_is_narrow, install_narrow_watcher};
 
 /// True when the keyboard event originates from a text-entry element —
 /// the first guard in the §5 keydown order (proven estate pattern).
@@ -104,7 +106,9 @@ fn mast_dirty(workspace: &WorkspaceState, persistence: Option<&PersistenceProjec
 fn node_carries_error(node: &NodeView) -> bool {
     matches!(
         node.calc_state,
-        Some(NodeCalcStateProjection::RejectedPendingRepair | NodeCalcStateProjection::CycleBlocked)
+        Some(
+            NodeCalcStateProjection::RejectedPendingRepair | NodeCalcStateProjection::CycleBlocked
+        )
     ) || !node.binding_diagnostics.is_empty()
 }
 
@@ -158,20 +162,33 @@ const STATIC_SHELL_CSS: &str = r#"
 .dna-mast__mark { font-weight: 700; white-space: nowrap; }
 .dna-mast__badge { display: inline-flex; align-items: center; gap: 2px; }
 .dna-mast__badge-block { display: inline-block; height: 10px; border-radius: 2px; }
-.dna-mast__doc { display: inline-flex; align-items: center; gap: var(--dna-gap-2); white-space: nowrap; }
+.dna-mast__doc { display: inline-flex; align-items: center; gap: var(--dna-gap-2); white-space: nowrap; min-width: 0; max-width: 40vw; }
+.dna-mast__doc > span:first-child { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .dna-mast__dirty-dot {
   width: 7px; height: 7px; border-radius: 50%;
   background: var(--dna-amber);
 }
 .dna-mast__spacer { flex: 1; }
-.dna-mast__switcher { display: inline-flex; gap: 1px; border-radius: var(--dna-radius-chip); overflow: hidden; }
+.dna-mast__switcher { display: inline-flex; gap: 1px; border-radius: var(--dna-radius-chip); overflow-x: auto; overflow-y: hidden; scrollbar-width: none; min-width: 0; flex-shrink: 1; }
+.dna-mast__switcher::-webkit-scrollbar { display: none; }
 .dna-mast__switcher button {
-  border: none; cursor: pointer;
+  border: none; cursor: pointer; flex: none; white-space: nowrap;
   padding: 3px 10px;
   background: var(--dna-chrome-2);
   color: var(--dna-chrome-ink-2);
   font: inherit; font-size: 12px;
 }
+.dna-mast__controls { display: inline-flex; gap: 2px; flex: none; margin-left: auto; }
+.dna-mast__ctl {
+  border: none; cursor: pointer;
+  min-width: 28px; height: 28px; padding: 0 6px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: var(--dna-radius-chip);
+  background: var(--dna-chrome-2); color: var(--dna-chrome-ink-2);
+  font: inherit; font-size: 14px; line-height: 1;
+}
+.dna-mast__ctl:hover { background: var(--dna-accent); color: var(--dna-chrome-ink); }
+.dna-mast__ctl:focus-visible { outline: 2px solid var(--dna-accent); outline-offset: 1px; }
 .dna-mast__switcher button[aria-selected="true"] {
   background: var(--dna-accent);
   color: var(--dna-chrome-ink);
@@ -253,8 +270,11 @@ const STATIC_SHELL_CSS: &str = r#"
   background: var(--dna-chrome-2);
   color: var(--dna-chrome-ink-2);
   font-size: 11px;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
 }
+.dna-strip::-webkit-scrollbar { display: none; }
 .dna-strip__slot { white-space: nowrap; }
 .dna-strip__slot--absent { opacity: 0.65; }
 .dna-strip__slot--clickable { cursor: pointer; text-decoration: underline dotted; }
@@ -264,7 +284,7 @@ const STATIC_SHELL_CSS: &str = r#"
   position: fixed; inset: 0;
   background: rgba(10, 23, 28, 0.45);
   display: flex; align-items: flex-start; justify-content: center;
-  padding-top: 8vh;
+  padding: 8vh 12px 16px;
   z-index: 40;
 }
 .dna-overlay {
@@ -272,8 +292,8 @@ const STATIC_SHELL_CSS: &str = r#"
   color: var(--dna-ink);
   border-radius: var(--dna-radius-panel);
   border: 1px solid var(--dna-line);
-  min-width: 420px;
-  max-width: 720px;
+  width: min(720px, calc(100vw - 24px));
+  box-sizing: border-box;
   max-height: 80vh;
   overflow-y: auto;
   padding: var(--dna-gap-5);
@@ -332,6 +352,35 @@ const STATIC_SHELL_CSS: &str = r#"
   padding: var(--dna-gap-3) var(--dna-gap-4);
   font-size: 12px;
   display: flex; align-items: center; gap: var(--dna-gap-3);
+}
+/* --- Responsive provisions (SHELL_SPEC §1.1) -------------------------- */
+/* Narrow viewports: the rails compose as overlay panels OVER the stage
+   instead of squeezing it. They start collapsed (the Shell auto-collapses
+   on entering narrow); the mast buttons bring them back. */
+@media (max-width: 900px) {
+  .dna-middle { position: relative; }
+  .dna-registry:not(.dna-registry--collapsed) {
+    position: absolute; top: 0; bottom: 0; left: 0; z-index: 20;
+    width: min(232px, 78vw);
+    box-shadow: 0 0 0 1px var(--dna-line), 8px 0 20px rgba(10, 23, 28, 0.35);
+  }
+  .dna-inspector:not(.dna-inspector--collapsed) {
+    position: absolute; top: 0; bottom: 0; right: 0; z-index: 20;
+    width: min(268px, 84vw);
+    box-shadow: 0 0 0 1px var(--dna-line), -8px 0 20px rgba(10, 23, 28, 0.35);
+  }
+}
+@media (max-width: 600px) {
+  .dna-mast__mark { display: none; }
+  .dna-mast__persona { display: none; }
+  .dna-mast__doc { max-width: 34vw; }
+}
+/* Coarse pointers: chrome targets reach touch size (≈38-44px). */
+@media (pointer: coarse) {
+  .dna-mast__ctl { min-width: 38px; height: 38px; font-size: 16px; }
+  .dna-mast__switcher button { padding: 10px 14px; font-size: 13px; }
+  .dna-strip { font-size: 12px; }
+  .dna-registry__entry { padding: 5px 0; }
 }
 "#;
 
@@ -411,6 +460,25 @@ pub fn Shell(
     // control) can switch them; the `<style>` block below reads these
     // reactively, so a switch re-themes the whole cockpit — chrome and every
     // token-styled stage — through the `--dna-*` cascade.
+
+    // Responsive provisions (SHELL_SPEC §1.1): below the narrow breakpoint
+    // the rails compose as overlay panels over the stage (pure CSS media
+    // query) and START collapsed so a phone lands on the stage, not chrome.
+    // Entering narrow collapses any open rail once; leaving narrow restores
+    // the desktop contract without forcing anything open. The mast control
+    // buttons are the pointer/touch path back to a rail.
+    #[cfg(target_arch = "wasm32")]
+    let narrow = RwSignal::new(initial_is_narrow());
+    #[cfg(not(target_arch = "wasm32"))]
+    let narrow = RwSignal::new(false);
+    #[cfg(target_arch = "wasm32")]
+    install_narrow_watcher(narrow);
+    Effect::new(move |_| {
+        if narrow.get() {
+            registry_collapsed.set(true);
+            inspector_collapsed.set(true);
+        }
+    });
     let theme_sig = RwSignal::new(theme);
     let density_sig = RwSignal::new(density);
 
@@ -669,6 +737,63 @@ pub fn Shell(
                             </div>
                         }
                     })}
+                <span class="dna-mast__controls">
+                    // Pointer/touch path into the overlays and rails
+                    // (SHELL_SPEC §1.1): the deck was Ctrl+K-only, the rails
+                    // Ctrl+B/Ctrl+I-only — unreachable without a keyboard.
+                    <button
+                        class="dna-mast__ctl"
+                        type="button"
+                        data-testid="mast-open-commands"
+                        aria-label="Command deck"
+                        title="Commands (Ctrl+K)"
+                        on:click=move |_| {
+                            overlay.update(|model| {
+                                model.open(ActiveOverlay::CommandDeck { goto_mode: false });
+                            });
+                        }
+                    >
+                        "⌘"
+                    </button>
+                    {registry_composed.then(|| {
+                        view! {
+                            <button
+                                class="dna-mast__ctl"
+                                type="button"
+                                data-testid="mast-toggle-registry"
+                                aria-label=move || {
+                                    if registry_collapsed.get() { "Show registry" } else { "Hide registry" }
+                                }
+                                title="Registry (Ctrl+B)"
+                                aria-expanded=move || if registry_collapsed.get() { "false" } else { "true" }
+                                on:click=move |_| {
+                                    registry_collapsed.update(|collapsed| *collapsed = !*collapsed);
+                                }
+                            >
+                                "☰"
+                            </button>
+                        }
+                    })}
+                    {inspector_composed.then(|| {
+                        view! {
+                            <button
+                                class="dna-mast__ctl"
+                                type="button"
+                                data-testid="mast-toggle-inspector"
+                                aria-label=move || {
+                                    if inspector_collapsed.get() { "Show inspector" } else { "Hide inspector" }
+                                }
+                                title="Inspector (Ctrl+I)"
+                                aria-expanded=move || if inspector_collapsed.get() { "false" } else { "true" }
+                                on:click=move |_| {
+                                    inspector_collapsed.update(|collapsed| *collapsed = !*collapsed);
+                                }
+                            >
+                                "◫"
+                            </button>
+                        }
+                    })}
+                </span>
                 <span class="dna-mast__persona" data-persona=move || persona_label.get()>
                     {move || persona_label.get()}
                 </span>
@@ -1061,18 +1186,18 @@ fn InspectorPanel(
                 .iter()
                 .map(|kind| {
                     let kind = *kind;
-                    if kind == InspectorSlotKind::StagePanel {
-                        if let Some(surface_view) = stage_panel_view.take() {
-                            return view! {
-                                <section
-                                    class="dna-inspector__block"
-                                    data-inspector-slot="stage-panel"
-                                >
-                                    {surface_view}
-                                </section>
-                            }
-                            .into_any();
+                    if kind == InspectorSlotKind::StagePanel
+                        && let Some(surface_view) = stage_panel_view.take()
+                    {
+                        return view! {
+                            <section
+                                class="dna-inspector__block"
+                                data-inspector-slot="stage-panel"
+                            >
+                                {surface_view}
+                            </section>
                         }
+                        .into_any();
                     }
                     typed_slot(kind)
                 })
@@ -1634,7 +1759,10 @@ mod tests {
     #[test]
     fn node_carries_error_reflects_calc_state_and_binding_diagnostics() {
         let mut n = node("n1", "key-n1");
-        assert!(!node_carries_error(&n), "a clean projection carries no error");
+        assert!(
+            !node_carries_error(&n),
+            "a clean projection carries no error"
+        );
 
         n.calc_state = Some(NodeCalcStateProjection::Clean);
         assert!(

@@ -30,6 +30,8 @@ dnacalc-bridge = { path = "../dnacalc-bridge" }
 # called under the `ssr` test build), so the draw layer needs no `cfg` gate.
 # `MouseEvent` (S3.6) is needed for `offset_x`/`offset_y` on the canvas click
 # handler; `WheelEvent` (S3.9) for `delta_x`/`delta_y` on the scroll handler.
+# `PointerEvent` (SHELL_SPEC §1.1 touch pass) covers tap/pan/pinch on the
+# canvas; `Performance` timestamps the double-tap classifier.
 # `Window::request_animation_frame` (the S3.9 RAF coalescer flush boundary) needs
 # no extra feature beyond `Window`, already enabled. They are declared here
 # rather than relied on transitively via Leptos.
@@ -43,6 +45,8 @@ web-sys = { version = "0.3", features = [
     "CssStyleDeclaration",
     "DomRect",
     "MouseEvent",
+    "PointerEvent",
+    "Performance",
     "WheelEvent",
     "ResizeObserver",
 ] }

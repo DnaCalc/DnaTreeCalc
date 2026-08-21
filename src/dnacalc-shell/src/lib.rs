@@ -26,6 +26,7 @@ pub mod profile;
 pub mod shell;
 pub mod stage;
 pub mod strip;
+pub mod viewport;
 
 pub use command_deck::{
     A1Address, COMMAND_DECK_CSS, CommandDeck, DeckAction, DeckCommand, DeckGroup, DeckInputs,
@@ -54,4 +55,6 @@ pub use stage::{
     HaloSpec, StageContext, StageHandle, StageId, StageRegistry, StageResolution, StageSurface,
     continuity_halo, resolve_active_stage, switch_stage,
 };
-pub use strip::{StripSlot, StripSlotContent, strip_slot_content};
+pub use viewport::{NARROW_MAX_WIDTH_PX, is_narrow_width};
+#[cfg(target_arch = "wasm32")]
+pub use viewport::{initial_is_narrow, install_narrow_watcher};

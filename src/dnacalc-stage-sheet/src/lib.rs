@@ -127,31 +127,26 @@ use web_sys::CanvasRenderingContext2d;
 use dnacalc_bridge::{BridgeEvent, CommitAdvance, FormulaBridgeDegrade};
 use dnacalc_shell::{ProfileTag, StageContext, StageHandle, StageId, StageSurface};
 use dnacalc_skin_ir::intent::Dispatcher;
-use dnacalc_skin_ir::{
-    GridEntryDiagnosticProjection, GridProjection, NodeId, WorkspaceState,
-};
+use dnacalc_skin_ir::{GridEntryDiagnosticProjection, GridProjection, NodeId, WorkspaceState};
 
 pub mod canvas;
 pub mod edit;
 pub mod geometry;
+pub mod gestures;
 pub mod render_plan;
 pub mod selection;
 pub mod viewport;
 
 pub use canvas::{
-    OverlayEdgeStyle, Palette, draw_active_cell, draw_overlays, draw_render_plan,
-    looks_numeric, overlay_edge_style, overlay_pixel_rect, resolve_palette,
+    OverlayEdgeStyle, Palette, draw_active_cell, draw_overlays, draw_render_plan, looks_numeric,
+    overlay_edge_style, overlay_pixel_rect, resolve_palette,
 };
 pub use edit::{CellOutcome, enter_cell_intent, interpret_receipt};
 pub use geometry::{
     CellRect, GridMetrics, HitTarget, Viewport, cell_rect, hit_test, visible_col_range,
     visible_row_range,
 };
-pub use viewport::{
-    BOUNDED_SCALE_INTEREST_NOTE, EDGE_JUMP_DEGRADE_REASON, EdgeDir, ScrollCoalescer, Tier,
-    clamp_scroll, clamp_zoom, edge_dir_from_key, legible_factor, reveal_scroll, tier_degrade_reason,
-    window_edge_jump, zoom_tier,
-};
+pub use gestures::{PanTapTracker, pinch_scale, point_distance};
 pub use render_plan::{
     PlannedCell, PlannedColHeader, PlannedRowHeader, RenderPlan, build_render_plan, col_label,
     value_text,
@@ -159,6 +154,11 @@ pub use render_plan::{
 pub use selection::{
     ActionAvailability, GridExtent, KeyBinding, KeyChord, NavAction, SheetAction,
     action_availability, next_active, resolve_action, sheet_keymap, typed_char,
+};
+pub use viewport::{
+    BOUNDED_SCALE_INTEREST_NOTE, EDGE_JUMP_DEGRADE_REASON, EdgeDir, ScrollCoalescer, Tier,
+    clamp_scroll, clamp_zoom, edge_dir_from_key, legible_factor, reveal_scroll,
+    tier_degrade_reason, window_edge_jump, zoom_tier,
 };
 
 /// The Sheet stage surface.
@@ -170,6 +170,16 @@ impl SheetStage {
     pub fn new() -> Self {
         Self
     }
+}
+
+/// Monotonic milliseconds for gesture timing (`performance.now()`); 0.0 when
+/// no window — native builds compile this but never invoke the handlers that
+/// call it (no effects / event handlers under `ssr`).
+fn performance_now_ms() -> f64 {
+    web_sys::window()
+        .and_then(|window| window.performance())
+        .map(|performance| performance.now())
+        .unwrap_or(0.0)
 }
 
 impl StageSurface for SheetStage {
@@ -501,13 +511,68 @@ impl StageSurface for SheetStage {
             g3_note.set(None);
         };
 
-        // Single-click → SELECT (not EDIT). Map the pointer into the SAME origin
-        // viewport / metrics the redraw effect draws with, hit-test, and move the
-        // active cell — the highlight, not the editor. `offset_x`/`offset_y` are
-        // already in the drawn coordinate space (the canvas fills its viewport
-        // wrapper with no border/padding). All captures are `Copy`.
+        // Touch-gesture state (SHELL_SPEC §1.1): the active touch pointers,
+        // the tap/pan classifier, and an optional pinch origin (start span,
+        // start zoom). Same StoredValue discipline as the scroll coalescer:
+        // Copy state, panic-safe try_* accessors, silent no-op after unmount.
+        let touch_points = StoredValue::new(Vec::<(i32, (f64, f64))>::new());
+        let pantap = StoredValue::new(PanTapTracker::default());
+        let pinch_start = StoredValue::new(Option::<(f64, f64)>::None);
+
+        // Span between the first two active touch pointers (0.0 when fewer).
+        let touch_span = |points: &StoredValue<Vec<(i32, (f64, f64))>>| -> f64 {
+            points
+                .try_with_value(|list| match list.as_slice() {
+                    [(_, (x1, y1)), (_, (x2, y2))] => point_distance(*x1, *y1, *x2, *y2),
+                    _ => 0.0,
+                })
+                .unwrap_or(0.0)
+        };
+
+        // One clamped scroll update (the wheel flush math, applied directly —
+        // a finger-drag produces a bounded stream of moves, not a storm).
+        let pan_workspace = workspace;
+        let apply_pan_delta = move |dx: f64, dy: f64| {
+            let metrics = zoomed_metrics(zoom.get_untracked());
+            let current = viewport.get_untracked();
+            let (extent_rows, extent_cols) = pan_workspace
+                .with_untracked(|ws| active_grid(ws).map(|g| (g.max_rows, g.max_cols)))
+                .unwrap_or((1, 1));
+            let next_x = clamp_scroll(
+                current.scroll_x + dx,
+                extent_cols,
+                metrics.col_width,
+                metrics.header_w,
+                current.width,
+            );
+            let next_y = clamp_scroll(
+                current.scroll_y + dy,
+                extent_rows,
+                metrics.row_height,
+                metrics.header_h,
+                current.height,
+            );
+            if next_x != current.scroll_x || next_y != current.scroll_y {
+                viewport.update(|v| {
+                    v.scroll_x = next_x;
+                    v.scroll_y = next_y;
+                });
+            }
+        };
+
+        // Pointer select → SELECT (not EDIT) — for mouse, pen AND touch. Map
+        // the pointer into the SAME origin viewport / metrics the redraw
+        // effect draws with, hit-test, and move the active cell — the
+        // highlight, not the editor. `offset_x`/`offset_y` are already in the
+        // drawn coordinate space (the canvas fills its viewport wrapper with
+        // no border/padding). All captures are `Copy`.
+        //
+        // Touch bookkeeping rides on the same handler: selection happens at
+        // `pointerdown` exactly where the old `mousedown` did, then the
+        // `gestures` classifiers take over (double-tap = EDIT on pointerup,
+        // one-finger drag = pan, two-finger pinch = zoom).
         let click_workspace = workspace;
-        let on_canvas_mousedown = move |ev: leptos::ev::MouseEvent| {
+        let on_canvas_pointerdown = move |ev: leptos::ev::PointerEvent| {
             // Read the pointer offset FIRST, before any `focus()` side effect: some
             // browsers compute `offsetX`/`offsetY` lazily against the target's
             // CURRENT layout, so focusing the section (which can trigger a reflow /
@@ -518,9 +583,7 @@ impl StageSurface for SheetStage {
             let y = f64::from(ev.offset_y());
             // Hit-test in the SAME scaled metrics + scrolled viewport the redraw
             // effect last drew with (read untracked — a handler is not a reactive
-            // scope), so a click while scrolled/zoomed lands on the drawn cell. Both
-            // `hit_test` and `cell_rect` use only scroll + metrics (never the
-            // viewport size), so the last-measured size is irrelevant here.
+            // scope), so a click while scrolled/zoomed lands on the drawn cell.
             let metrics = zoomed_metrics(zoom.get_untracked());
             let vp = viewport.get_untracked();
             let Some((extent_rows, extent_cols)) = click_workspace
@@ -562,6 +625,119 @@ impl StageSurface for SheetStage {
                 // either, so the active cell and editor are left untouched.
                 HitTarget::Outside => {}
             }
+            // --- Touch gestures (the canvas owns its viewport) ---
+            if ev.pointer_type() == "touch" {
+                ev.prevent_default();
+                let id = ev.pointer_id();
+                let _ = touch_points.try_update_value(|list| {
+                    list.retain(|(pid, _)| *pid != id);
+                    list.push((id, (x, y)));
+                });
+                let held = touch_points.try_with_value(|list| list.len()).unwrap_or(0);
+                if held == 1 {
+                    let _ = pantap.try_update_value(|t| t.pointer_down(performance_now_ms(), x, y));
+                    let _ = pinch_start.try_update_value(|p| *p = None);
+                    // Keep receiving moves even when the finger leaves the canvas.
+                    if let Some(canvas) = canvas_ref.get() {
+                        let _ = canvas.set_pointer_capture(id);
+                    }
+                } else if held == 2 {
+                    let span = touch_span(&touch_points);
+                    let zoom_now = zoom.get_untracked();
+                    let _ = pinch_start.try_update_value(|p| *p = Some((span, zoom_now)));
+                    // A pinch absorbs the armed tap: no phantom double-tap.
+                    let _ = pantap.try_update_value(PanTapTracker::disarm);
+                }
+            }
+        };
+
+        // Touch moves: one finger PANS (content follows the finger), two
+        // fingers PINCH around the pinch's starting zoom. Mouse moves are not
+        // a gesture (no drag semantics exist yet) and fall through.
+        let on_canvas_pointermove = move |ev: leptos::ev::PointerEvent| {
+            if ev.pointer_type() != "touch" {
+                return;
+            }
+            let id = ev.pointer_id();
+            let x = f64::from(ev.offset_x());
+            let y = f64::from(ev.offset_y());
+            let _ = touch_points.try_update_value(|list| {
+                if let Some((_, position)) = list.iter_mut().find(|(pid, _)| *pid == id) {
+                    *position = (x, y);
+                }
+            });
+            match touch_points.try_with_value(|list| list.len()).unwrap_or(0) {
+                1 => {
+                    if let Some((dx, dy)) =
+                        pantap.try_update_value(|t| t.pointer_move(x, y)).flatten()
+                    {
+                        apply_pan_delta(dx, dy);
+                    }
+                }
+                2 => {
+                    let started = pinch_start.try_with_value(|p| *p).unwrap_or(None);
+                    if let Some((start_span, start_zoom)) = started {
+                        let scale = pinch_scale(start_span, touch_span(&touch_points));
+                        zoom.set(clamp_zoom(start_zoom * scale));
+                    }
+                }
+                _ => {}
+            }
+        };
+
+        // Touch up: complete the gesture. A lone finishing finger is either a
+        // tap pair completion (second tap = EDIT) or nothing; a finger lifting
+        // out of a pinch disarms the residue so it can neither pan nor tap.
+        let up_workspace = workspace;
+        let on_canvas_pointerup = move |ev: leptos::ev::PointerEvent| {
+            if ev.pointer_type() != "touch" {
+                return;
+            }
+            let id = ev.pointer_id();
+            let _ = touch_points.try_update_value(|list| list.retain(|(pid, _)| *pid != id));
+            if touch_points.try_with_value(|list| list.len()).unwrap_or(0) != 0 {
+                let _ = pantap.try_update_value(PanTapTracker::disarm);
+                let _ = pinch_start.try_update_value(|p| *p = None);
+                return;
+            }
+            let _ = pinch_start.try_update_value(|p| *p = None);
+            let is_double = pantap
+                .try_update_value(|t| t.pointer_up(performance_now_ms()))
+                .unwrap_or(false);
+            if !is_double {
+                return;
+            }
+            // Double-tap → EDIT (the touch dblclick), seeded with the cell's
+            // EXISTING authored text — the same seed F2 uses.
+            let (x, y) = pantap
+                .try_with_value(|t| t.tap_position())
+                .unwrap_or((0.0, 0.0));
+            let metrics = zoomed_metrics(zoom.get_untracked());
+            let vp = viewport.get_untracked();
+            let Some((grid, extent_rows, extent_cols)) = up_workspace.with_untracked(|ws| {
+                active_grid(ws).map(|g| (g.grid_node_id.clone(), g.max_rows, g.max_cols))
+            }) else {
+                return;
+            };
+            if let HitTarget::Cell { row, col } =
+                hit_test(&metrics, &vp, extent_rows, extent_cols, x, y)
+            {
+                let seed = up_workspace
+                    .with_untracked(|ws| edit::current_authored_seed(ws, &grid, row, col));
+                open_editor(row, col, seed);
+            }
+        };
+
+        // Touch cancel (palm rejection, incoming call): abandon the gesture
+        // honestly — no verdict, no half-state left behind.
+        let on_canvas_pointercancel = move |ev: leptos::ev::PointerEvent| {
+            if ev.pointer_type() != "touch" {
+                return;
+            }
+            let id = ev.pointer_id();
+            let _ = touch_points.try_update_value(|list| list.retain(|(pid, _)| *pid != id));
+            let _ = pantap.try_update_value(PanTapTracker::disarm);
+            let _ = pinch_start.try_update_value(|p| *p = None);
         };
 
         // Double-click → EDIT (the mouse path into the editor), seeded with the
@@ -939,7 +1115,10 @@ impl StageSurface for SheetStage {
                                     class="dna-sheet__canvas"
                                     data-testid="sheet-canvas"
                                     node_ref=canvas_ref
-                                    on:mousedown=on_canvas_mousedown
+                                    on:pointerdown=on_canvas_pointerdown
+                                    on:pointermove=on_canvas_pointermove
+                                    on:pointerup=on_canvas_pointerup
+                                    on:pointercancel=on_canvas_pointercancel
                                     on:dblclick=on_canvas_dblclick
                                     on:wheel=on_canvas_wheel
                                 ></canvas>
@@ -1081,8 +1260,20 @@ fn zoomed_metrics(zoom: f64) -> GridMetrics {
 fn reveal_active_cell(viewport: RwSignal<Viewport>, zoom: RwSignal<f64>, row: u32, col: u32) {
     let metrics = zoomed_metrics(zoom.get_untracked());
     let current = viewport.get_untracked();
-    let next_x = reveal_scroll(col, metrics.col_width, metrics.header_w, current.width, current.scroll_x);
-    let next_y = reveal_scroll(row, metrics.row_height, metrics.header_h, current.height, current.scroll_y);
+    let next_x = reveal_scroll(
+        col,
+        metrics.col_width,
+        metrics.header_w,
+        current.width,
+        current.scroll_x,
+    );
+    let next_y = reveal_scroll(
+        row,
+        metrics.row_height,
+        metrics.header_h,
+        current.height,
+        current.scroll_y,
+    );
     if next_x != current.scroll_x || next_y != current.scroll_y {
         viewport.update(|v| {
             v.scroll_x = next_x;
@@ -1181,12 +1372,11 @@ pub const SHEET_CSS: &str = "\
 .dna-sheet:focus-visible{outline:2px solid var(--dna-accent);outline-offset:2px}
 .dna-sheet__empty{margin:0;color:var(--dna-ink-3);font-style:italic}
 .dna-sheet__toolbar{display:flex;align-items:center;gap:var(--dna-gap-2)}
-.dna-sheet__zoom-btn{border:1px solid var(--dna-line);border-radius:var(--dna-radius-chip);background:var(--dna-paper-2);color:var(--dna-ink);min-width:26px;padding:var(--dna-gap-1) var(--dna-gap-2);font-size:13px;line-height:1;cursor:pointer}
-.dna-sheet__zoom-btn:hover{background:var(--dna-paper)}
+.dna-sheet__zoom-btn{border:1px solid var(--dna-line);border-radius:var(--dna-radius-chip);background:var(--dna-paper-2);color:var(--dna-ink);min-width:32px;height:28px;padding:var(--dna-gap-1) var(--dna-gap-2);font-size:13px;line-height:1;cursor:pointer}
 .dna-sheet__zoom-btn:focus-visible{outline:2px solid var(--dna-accent);outline-offset:1px}
 .dna-sheet__zoom-level{min-width:3.5em;text-align:center;color:var(--dna-ink-2);font-size:12px;font-variant-numeric:tabular-nums}
 .dna-sheet__zoom-note{margin:0;min-height:1.2em;color:var(--dna-ink-3);font-style:italic;font-size:12px}
-.dna-sheet__zoom-note:empty{visibility:hidden}
+.dna-sheet__canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
 .dna-sheet__interest-note{margin:0;color:var(--dna-ink-3);font-size:11px}
 .dna-sheet__viewport{position:relative;flex:1 1 auto;min-height:0;overflow:hidden}
 .dna-sheet__canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
@@ -1194,6 +1384,11 @@ pub const SHEET_CSS: &str = "\
 .dna-sheet__cell-editor--readonly{background:var(--dna-paper);border:1px solid var(--dna-line);border-radius:var(--dna-radius-chip);padding:var(--dna-gap-2) var(--dna-gap-3)}
 .dna-sheet__cell-readonly{margin:0;color:var(--dna-ink-3);font-style:italic;font-size:12px;white-space:nowrap}
 .dna-sheet__g3-note{margin:0;min-height:1.2em;color:var(--dna-ink-3);font-style:italic;font-size:12px}
+/* Coarse pointers: chrome controls reach touch size (SHELL_SPEC §1.1). */
+@media (pointer: coarse){
+.dna-sheet__toolbar{gap:var(--dna-gap-3)}
+.dna-sheet__zoom-btn{min-width:44px;height:40px;font-size:16px}
+}
 .dna-sheet__g3-note:empty{visibility:hidden}
 .dna-sheet__degrades{display:flex;gap:var(--dna-gap-2);flex-wrap:wrap}
 .dna-sheet__degrade-chip{border:1px dashed var(--dna-line);border-radius:var(--dna-radius-chip);background:var(--dna-paper-2);color:var(--dna-ink-3);padding:var(--dna-gap-1) var(--dna-gap-3);font-size:12px}
@@ -1237,7 +1432,10 @@ mod tests {
         let first_sheet = ws.sheets.first().expect("the demo workbook has a sheet");
         let grid = active_grid(&ws).expect("the first sheet's grid resolves");
         assert_eq!(grid.grid_node_id, first_sheet.grid_node_id);
-        assert!(grid.max_rows > 0 && grid.max_cols > 0, "the grid has a real extent");
+        assert!(
+            grid.max_rows > 0 && grid.max_cols > 0,
+            "the grid has a real extent"
+        );
         assert!(
             !grid.cells.is_empty(),
             "the demo grid windows at least one computed cell"

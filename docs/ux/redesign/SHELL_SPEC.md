@@ -38,6 +38,37 @@ which handler owns that keystroke, not a violation of "Esc closes the topmost ov
 anything else" (that rule is about *overlay* Esc precedence over other overlay mechanics, not
 about reaching into a focused input that already claimed the keystroke).
 
+### 1.1 Responsive & touch provisions
+
+The anatomy above is the desktop contract. Below the **narrow breakpoint**
+(`≤ 900px` CSS px; `dnacalc-shell::viewport::NARROW_MAX_WIDTH_PX`) the shell adapts:
+
+- **Rails become overlay panels.** Registry and Inspector compose as absolutely-positioned
+  panels OVER the stage (media query in `STATIC_SHELL_CSS`) instead of squeezing it;
+  their widths cap at `min(<contract>px, ~80vw)`.
+- **Rails start collapsed on narrow viewports** — a phone lands on the stage, not chrome.
+  The Shell tracks viewport width (wasm-only resize watcher feeding a signal); entering
+  narrow collapses an open rail once, exactly as Ctrl+B/Ctrl+I would; leaving narrow
+  restores the desktop contract without forcing anything open.
+- **Mast controls are the pointer/touch path back.** The mast renders ⌘ Commands
+  (`Ctrl+K`), ☰ Registry (`Ctrl+B`), ◫ Inspector (`Ctrl+I`) buttons for every composed
+  region — same verbs, same state, zero dispatched intents. They exist on desktop too
+  (discoverability), and grow to ≥38px targets under `pointer: coarse`.
+- **Overlays fit any width:** the panel is `min(720px, calc(100vw − 24px))`; the Strip
+  scrolls horizontally instead of clipping; the Mast's document name ellipsizes and its
+  stage switcher scrolls.
+- **Sheet stage gestures** (`dnacalc-stage-sheet`, canvas owns its viewport via
+  `touch-action: none`): tap = select (same hit-test as mouse), double-tap = edit
+  (the touch `dblclick`; classified by the pure `gestures` module), one-finger drag =
+  pan (content follows the finger), two-finger pinch = zoom around the pinch's starting
+  factor. Mouse behavior is unchanged (the pointer path replaces `mousedown`
+  one-for-one; `dblclick`/wheel stay).
+- App roots size to `100dvh` (with a `100vh` fallback) so mobile URL-bar chrome does not
+  clip the Strip.
+
+The breakpoint decision is pinned by native tests (`viewport::is_narrow_width`, the
+gesture classifiers); DOM behavior is proven by the browser harness (§9).
+
 ## 2. Crate decomposition (tiers per D5)
 
 | Crate | Tier | Contents |
