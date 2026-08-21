@@ -1426,6 +1426,23 @@ const COCKPIT_CSS: &str = r#"
 .dtc-companion-toggles__button--active { background: var(--dtc-accent-surface); border-color: var(--dtc-accent-border); }
 
 .dtc-preset-picker__select { font-size: 12px; }
+
+/* Responsive cockpit (bead dtc-ajl.32): on narrow viewports the main lens
+   keeps the dominant share and companion slots stack beneath it at bounded
+   height instead of squeezing the stage off-screen. */
+@media (max-width: 900px) {
+  .dtc-cockpit { flex-direction: column; }
+  .dtc-cockpit__main { order: -1; }
+  .dtc-cockpit__split,
+  .dtc-cockpit__inspector {
+    width: 100%; flex: 0 0 auto; max-height: 32vh;
+    border-left: none; border-right: none;
+  }
+  .dtc-cockpit__split--left { border-bottom: 1px solid var(--dtc-border-muted); }
+  .dtc-cockpit__split--right { border-top: 1px solid var(--dtc-border-muted); }
+  .dtc-cockpit__inspector { border-top: 1px solid var(--dtc-border-muted); }
+  .dtc-cockpit__console { max-height: 32vh; overflow: auto; }
+}
 "#;
 
 #[cfg(test)]

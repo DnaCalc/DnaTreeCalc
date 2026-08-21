@@ -358,6 +358,8 @@ fn WorkbookView(cx: SkinContext<WorkbookState>) -> impl IntoView {
                 <input
                     class="dtc-workbook__formula-input"
                     type="text"
+                    autocapitalize="off"
+                    spellcheck="false"
                     prop:value=move || formula_buffer.get()
                     on:input=move |ev| formula_buffer.set(event_target_value(&ev))
                     on:keydown=formula_keydown
@@ -487,5 +489,19 @@ const WORKBOOK_CSS: &str = r#"
 .dtc-workbook__tab-rename {
   padding: 4px 6px; margin: 0; font-size: 12px; width: 8ch;
   border: 1px solid var(--dtc-accent, #2563eb); border-radius: 4px 4px 0 0;
+}
+
+/* Responsive pass (bead dtc-ajl.32): on narrow viewports the formula input
+   wraps onto its own row below the name box and fx toggle. */
+@media (max-width: 700px) {
+  .dtc-workbook__formula-bar {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+
+  .dtc-workbook__formula-input {
+    flex: 1 1 100%;
+    order: 5;
+  }
 }
 "#;

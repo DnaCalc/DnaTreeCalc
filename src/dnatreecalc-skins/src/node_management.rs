@@ -144,12 +144,16 @@ pub(crate) fn NodeManagementPanel(
                 <input
                     class="dtc-node-management__symbol"
                     placeholder="Node"
+                    autocapitalize="off"
+                    spellcheck="false"
                     prop:value=move || new_symbol.get()
                     on:input=move |ev| new_symbol.set(event_target_value(&ev))
                 />
                 <input
                     class="dtc-node-management__content"
                     placeholder="Content"
+                    autocapitalize="off"
+                    spellcheck="false"
                     prop:value=move || new_content.get()
                     on:input=move |ev| new_content.set(event_target_value(&ev))
                 />
@@ -265,6 +269,8 @@ pub(crate) fn NodeManagementPanel(
                 <input
                     class="dtc-node-management__symbol"
                     placeholder="Rename"
+                    autocapitalize="off"
+                    spellcheck="false"
                     prop:value=move || rename_symbol.get()
                     on:input=move |ev| rename_symbol.set(event_target_value(&ev))
                 />

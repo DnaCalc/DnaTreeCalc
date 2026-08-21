@@ -174,6 +174,8 @@ fn TripleEditorView(cx: SkinContext<TripleEditorState>) -> impl IntoView {
                 <div class="dtc-section-label">"Formula"</div>
                 <textarea
                     class="dtc-formula-tree__input dtc-triple-editor__input"
+                    autocapitalize="off"
+                    spellcheck="false"
                     prop:value=move || editor_text.get()
                     on:input=move |ev| editor_text.set(event_target_value(&ev))
                 />

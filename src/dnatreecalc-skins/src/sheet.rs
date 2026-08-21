@@ -724,6 +724,8 @@ fn SheetView(cx: SkinContext<SheetState>) -> impl IntoView {
                     class="dtc-sheet-bar__input"
                     node_ref=bar_ref
                     placeholder="content or =formula"
+                    autocapitalize="off"
+                    spellcheck="false"
                     prop:value=move || bar_text.get()
                     prop:disabled=move || bar_disabled.get()
                     on:focus=move |_| bar_editing.set(true)

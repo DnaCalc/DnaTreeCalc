@@ -880,6 +880,30 @@ const NOTEBOOK_CSS: &str = r#"
 .dtc-notebook-badge--intermediate { background: var(--dtc-warning-surface, #fff4e0); color: var(--dtc-warning-text, #8a5a00); }
 .dtc-notebook-badge--output { background: var(--dtc-success-surface, #e6f7ec); color: var(--dtc-success-text, #17703c); }
 .dtc-notebook-badge--empty { background: var(--dtc-surface-subtle); color: var(--dtc-text-subtle); }
+
+/* Responsive pass (bead dtc-ajl.32): on narrow viewports the name rail
+   moves below the entry list; long entries keep a readable measure. */
+.dtc-notebook-entry {
+  max-width: 72rem;
+}
+
+@media (max-width: 900px) {
+  .dtc-notebook {
+    flex-direction: column;
+  }
+
+  .dtc-notebook__entries {
+    flex: 1 1 auto;
+  }
+
+  .dtc-notebook__rail {
+    width: 100%;
+    box-sizing: border-box;
+    max-height: 40%;
+    border-left: none;
+    border-top: 1px solid var(--dtc-border-muted);
+  }
+}
 "#;
 
 #[cfg(test)]

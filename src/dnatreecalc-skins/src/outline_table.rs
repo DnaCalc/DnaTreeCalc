@@ -219,6 +219,8 @@ fn outline_row(
                     class="dtc-outline-table__content-input"
                     aria-label=aria_label
                     title=content_kind
+                    autocapitalize="off"
+                    spellcheck="false"
                     prop:value=formula
                     on:click=|ev| ev.stop_propagation()
                     on:change=move |ev| {

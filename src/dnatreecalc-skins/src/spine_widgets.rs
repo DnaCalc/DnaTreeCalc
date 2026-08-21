@@ -432,6 +432,8 @@ pub(crate) fn NodeInspector(
                             class="dtc-inspector__edit"
                             class:dtc-inspector__edit--active=move || editing.get()
                             node_ref=edit_ref
+                            autocapitalize="off"
+                            spellcheck="false"
                             prop:value=move || editor_text.get()
                             on:focus=move |_| editing.set(true)
                             on:input=move |ev| editor_text.set(event_target_value(&ev))
@@ -594,6 +596,8 @@ pub(crate) fn InlineLabelEdit(
                     <input
                         class="dtc-inline-edit"
                         node_ref=input_ref
+                        autocapitalize="off"
+                        spellcheck="false"
                         prop:value=move || text.get()
                         on:input=move |ev| text.set(event_target_value(&ev))
                         on:blur=move |_| {

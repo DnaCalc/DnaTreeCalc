@@ -1229,4 +1229,117 @@ pub const SHELL_CSS: &str = r#"
 .dtc-dependency-row {
     color: inherit;
 }
+
+/* ---------------------------------------------------------------------------
+   Responsive + touch pass (bead dtc-ajl.32): the shell must degrade from the
+   desktop cockpit down to narrow/touch viewports without horizontal page
+   scroll or unreachable chrome.
+   --------------------------------------------------------------------------- */
+.dtc-shell {
+    /* The implicit column track otherwise sizes to max-content, so a lens
+       whose content has a huge intrinsic width (e.g. the demo grid's full
+       Excel-bounds canvas) drags the whole shell — and the page scrollbar —
+       out to that width. Pinning the track to the shell width re-arms every
+       downstream overflow clip (main slot, sheet scroll, grid canvas). */
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.dtc-context-strip {
+    flex-wrap: wrap;
+    row-gap: 0.375rem;
+}
+
+.dtc-skin-switcher {
+    flex-wrap: wrap;
+    max-width: 100%;
+    min-width: 0;
+    row-gap: 0.1875rem;
+}
+
+.dtc-status-foot {
+    flex-wrap: wrap;
+    row-gap: 0.25rem;
+}
+
+/* Mobile browser chrome (~URL bar) changes the visual viewport; `dvh` tracks
+   it so the shell never leaves a strip stranded under the fold. */
+@supports (height: 100dvh) {
+    .dtc-shell {
+        height: 100dvh;
+    }
+}
+
+@media (max-width: 900px) {
+    .dtc-triple-editor {
+        grid-template-columns: 1fr;
+    }
+
+    .dtc-triple-editor__nav,
+    .dtc-triple-editor__editor {
+        border-right: none;
+        border-bottom: 1px solid var(--dtc-border-muted);
+    }
+
+    .dtc-formula-tree {
+        grid-template-columns: 1fr;
+    }
+
+    .dtc-formula-tree__nav {
+        border-right: none;
+        border-bottom: 1px solid var(--dtc-border-muted);
+    }
+
+    .dtc-dependency-inspector {
+        grid-template-columns: 1fr;
+    }
+
+    .dtc-dependency-inspector__list {
+        border-right: none;
+        border-bottom: 1px solid var(--dtc-border-muted);
+    }
+}
+
+@media (max-width: 700px) {
+    /* The shortcut bar documents hardware-key chords; on a phone-width
+       viewport it is unreadable noise, so it stands down entirely. */
+    .dtc-shortcut-bar {
+        display: none;
+    }
+
+    .dtc-context-strip {
+        gap: 0.5rem;
+        padding: 0.5rem;
+    }
+}
+
+/* Coarse pointers (touch): comfortable hit targets on chrome controls, no
+   kbd chips inside tabs, and >=16px form text so mobile browsers do not
+   zoom-on-focus mid-edit. Dense in-lens grids keep their compact metrics. */
+@media (pointer: coarse) {
+    .dtc-shortcut-bar {
+        display: none;
+    }
+
+    .dtc-shell kbd {
+        display: none;
+    }
+
+    .dtc-skin-switcher__tab {
+        min-height: 2.25rem;
+        padding: 0.375rem 0.75rem;
+    }
+
+    .dtc-workspace-control__new,
+    .dtc-recalc-mode button,
+    .dtc-companion-toggles button,
+    .dtc-companion-header__close {
+        min-height: 2.25rem;
+    }
+
+    .dtc-shell input,
+    .dtc-shell select,
+    .dtc-shell textarea {
+        font-size: 1rem;
+    }
+}
 "#;

@@ -780,6 +780,8 @@ fn CaptureView(cx: SkinContext<CaptureState>) -> impl IntoView {
                             node_ref=line_ref
                             aria-label="Node path"
                             placeholder="Dotted.Path.Leaf"
+                            autocapitalize="off"
+                            spellcheck="false"
                             prop:value=move || capture_path.get()
                             on:input=move |ev| capture_path.set(event_target_value(&ev))
                             on:keydown=move |ev: leptos::ev::KeyboardEvent| {
@@ -812,6 +814,8 @@ fn CaptureView(cx: SkinContext<CaptureState>) -> impl IntoView {
                             node_ref=content_ref
                             aria-label="Content — value or =formula"
                             placeholder="value or =formula"
+                            autocapitalize="off"
+                            spellcheck="false"
                             prop:value=move || capture_content.get()
                             on:input=move |ev| capture_content.set(event_target_value(&ev))
                             on:keydown=move |ev: leptos::ev::KeyboardEvent| {
