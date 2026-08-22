@@ -158,9 +158,10 @@ pub struct FunctionHelpSurface {
     pub deferred_or_profile_limited: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum FormulaResultSurface {
+    #[default]
     Empty,
     Pending,
     Display {
@@ -180,12 +181,6 @@ pub enum FormulaResultSurface {
         window: ArrayWindowProjection,
         truncated: bool,
     },
-}
-
-impl Default for FormulaResultSurface {
-    fn default() -> Self {
-        Self::Empty
-    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]

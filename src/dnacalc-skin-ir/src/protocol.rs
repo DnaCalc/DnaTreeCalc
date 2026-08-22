@@ -86,7 +86,14 @@ pub enum SkinProtocolError {
     InvalidCapabilityPlacement,
 }
 
+// Wire-protocol mirror of the host's two document shapes; both variants are
+// moved by value through the session channel, so boxing one variant would
+// reshape the public API for every consumer rather than save a copy.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "protocol enum mirrors engine-owned projections; boxing reshapes the public API"
+)]
 #[serde(tag = "document_kind", content = "document", rename_all = "snake_case")]
 pub enum SkinDocumentProjection {
     OneFormula(OneFormulaProjection),
