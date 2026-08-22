@@ -1729,15 +1729,17 @@ mod tests {
 
         // Workspace calc projection reports dirty, persistence absent: the
         // pre-existing tree-workspace path still works standalone.
-        let mut dirty_workspace = WorkspaceState::default();
-        dirty_workspace.workbook_calc = Some(WorkbookCalcProjection {
-            mode: dnacalc_skin_ir::workspace::CalcModeProjection::Automatic,
-            last_recalc_tick: None,
-            sheets: vec![SheetCalcSummaryProjection {
-                grid_node_id: NodeId::new("s1"),
-                dirty: true,
-            }],
-        });
+        let dirty_workspace = WorkspaceState {
+            workbook_calc: Some(WorkbookCalcProjection {
+                mode: dnacalc_skin_ir::workspace::CalcModeProjection::Automatic,
+                last_recalc_tick: None,
+                sheets: vec![SheetCalcSummaryProjection {
+                    grid_node_id: NodeId::new("s1"),
+                    dirty: true,
+                }],
+            }),
+            ..WorkspaceState::default()
+        };
         assert!(mast_dirty(&dirty_workspace, None));
         // Both clean: not dirty.
         assert!(!mast_dirty(&clean_workspace, None));

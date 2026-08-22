@@ -871,7 +871,7 @@ fn group_id(group: DeckGroup) -> &'static str {
 
 /// The deck's component-scoped styles (resolve through Strand `--dna-*`).
 pub const COMMAND_DECK_CSS: &str = r#"
-.dna-deck { min-width: 520px; padding: 0; overflow: hidden; }
+.dna-deck { min-width: min(520px, calc(100vw - 24px)); max-width: calc(100vw - 24px); padding: 0; overflow: hidden; }
 .dna-deck__input {
   width: 100%;
   box-sizing: border-box;
@@ -1102,12 +1102,21 @@ mod tests {
         let registry = registry();
         let commands = static_commands(&inputs(&ws, &sel, &registry, Persona::Author));
         let save = commands.iter().find(|c| c.id == "shell.save").unwrap();
-        assert!(!save.enabled, "shell.save must be disabled until host support");
+        assert!(
+            !save.enabled,
+            "shell.save must be disabled until host support"
+        );
         assert!(save.disabled_reason.is_some());
-        assert_eq!(save.action, DeckAction::EmitShellIntent(SkinShellIntent::Save));
+        assert_eq!(
+            save.action,
+            DeckAction::EmitShellIntent(SkinShellIntent::Save)
+        );
 
         let open = commands.iter().find(|c| c.id == "shell.open").unwrap();
-        assert!(!open.enabled, "shell.open must be disabled until host support");
+        assert!(
+            !open.enabled,
+            "shell.open must be disabled until host support"
+        );
         assert!(open.disabled_reason.is_some());
         assert_eq!(
             open.action,
@@ -1136,12 +1145,21 @@ mod tests {
         let commands = static_commands(&deck_inputs);
 
         let save = commands.iter().find(|c| c.id == "shell.save").unwrap();
-        assert!(save.enabled, "shell.save must enable once the host advertises can_save");
+        assert!(
+            save.enabled,
+            "shell.save must enable once the host advertises can_save"
+        );
         assert!(save.disabled_reason.is_none());
-        assert_eq!(save.action, DeckAction::EmitShellIntent(SkinShellIntent::Save));
+        assert_eq!(
+            save.action,
+            DeckAction::EmitShellIntent(SkinShellIntent::Save)
+        );
 
         let open = commands.iter().find(|c| c.id == "shell.open").unwrap();
-        assert!(open.enabled, "shell.open must enable once the host advertises can_open");
+        assert!(
+            open.enabled,
+            "shell.open must enable once the host advertises can_open"
+        );
         assert!(open.disabled_reason.is_none());
         assert_eq!(
             open.action,
@@ -1164,15 +1182,39 @@ mod tests {
         save_only.host_can_save = true;
         save_only.host_can_open = false;
         let commands = static_commands(&save_only);
-        assert!(commands.iter().find(|c| c.id == "shell.save").unwrap().enabled);
-        assert!(!commands.iter().find(|c| c.id == "shell.open").unwrap().enabled);
+        assert!(
+            commands
+                .iter()
+                .find(|c| c.id == "shell.save")
+                .unwrap()
+                .enabled
+        );
+        assert!(
+            !commands
+                .iter()
+                .find(|c| c.id == "shell.open")
+                .unwrap()
+                .enabled
+        );
 
         let mut open_only = inputs(&ws, &sel, &registry, Persona::Author);
         open_only.host_can_save = false;
         open_only.host_can_open = true;
         let commands = static_commands(&open_only);
-        assert!(!commands.iter().find(|c| c.id == "shell.save").unwrap().enabled);
-        assert!(commands.iter().find(|c| c.id == "shell.open").unwrap().enabled);
+        assert!(
+            !commands
+                .iter()
+                .find(|c| c.id == "shell.save")
+                .unwrap()
+                .enabled
+        );
+        assert!(
+            commands
+                .iter()
+                .find(|c| c.id == "shell.open")
+                .unwrap()
+                .enabled
+        );
     }
 
     /// `run_action` genuinely dispatches through `ctx.shell_intent` for

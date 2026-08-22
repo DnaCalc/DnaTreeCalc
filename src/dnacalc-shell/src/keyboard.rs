@@ -790,7 +790,8 @@ mod tests {
         // only exercised `register_stage_verb`) for the two rebind entry
         // points, and follows each acceptance all the way through
         // `with_overrides` to a resolvable chord (not a vacuous `Ok(..)`).
-        let registry = ShellKeyboardRegistry::universal(bench_composition(), RuntimeContext::Desktop);
+        let registry =
+            ShellKeyboardRegistry::universal(bench_composition(), RuntimeContext::Desktop);
         let current = KeybindingOverrideMap::new();
 
         // Not sanctioned even on desktop: rebind_validated must still reject.
@@ -821,7 +822,10 @@ mod tests {
             &with_ctrl_1,
         )
         .expect("with_overrides must accept the desktop-sanctioned override it just produced");
-        assert_eq!(rebuilt.resolve(&KeyChord::ctrl("1")), Some(SkinVerb::Explain));
+        assert_eq!(
+            rebuilt.resolve(&KeyChord::ctrl("1")),
+            Some(SkinVerb::Explain)
+        );
 
         let with_ctrl_pageup = registry
             .rebind_validated(&current, SkinVerb::Explain, KeyChord::ctrl("PageUp"))
