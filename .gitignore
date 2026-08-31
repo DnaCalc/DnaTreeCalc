@@ -24,3 +24,7 @@ Thumbs.db
 # Local scratch
 /.tmp/
 /.local/
+/.scratch/
+
+# bv (beads viewer) local config and caches
+.bv/
