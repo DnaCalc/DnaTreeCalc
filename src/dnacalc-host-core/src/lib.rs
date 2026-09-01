@@ -1051,6 +1051,470 @@ mod tests {
     }
 
     // ------------------------------------------------------------------
+    // W011 (dtc-j7n8.6): the campaign's EDIT proof — `EnterGridCell` on the
+    // xlsx-LOADED session, through the very `dispatch` path the hand-built
+    // H6 tests below prove. `A1` 7 -> 10 makes `B1` (`=A1*3`) publish 30;
+    // the receipt shape is `GridCellEntered` (a `GridChanged` alongside it
+    // is dtc-j7n8.18's scope, so these tests search the receipt for the
+    // `GridCellEntered` change rather than pattern-matching exactly one).
+    // ------------------------------------------------------------------
+
+    use dnacalc_skin_ir::{GridCellProjection, GridProjection};
+
+    /// Open the W011 fixture through the command surface a host actually
+    /// calls (`HostCommand::OpenXlsxBytes` over a live session) — the shape
+    /// every dtc-j7n8.6 test starts from.
+    fn open_w011_fixture_document() -> DocumentSession {
+        let mut document = DocumentSession::Workbook(build_demo_workbook().unwrap());
+        document
+            .execute(HostCommand::OpenXlsxBytes {
+                bytes: w011_fixture_bytes(),
+                name: Some("a1_times_three.xlsx".to_string()),
+            })
+            .expect("OxDoc opens and the engine ingests the committed W011 fixture");
+        document
+    }
+
+    /// The loaded fixture's single grid, addressed exactly the way a skin
+    /// addresses it — `sheets[0].grid_node_id` off the snapshot, never a
+    /// host-composed string — with dtc-j7n8.5's silent-pass closure kept: the
+    /// grid exists and carries cells before anything else is read from it.
+    fn loaded_sheet1_grid(state: &WorkspaceState) -> (dnacalc_skin_ir::NodeId, &GridProjection) {
+        assert_eq!(
+            state.sheets.len(),
+            1,
+            "one tab-strip row (a defaulted snapshot has none): {:?}",
+            state.sheets
+        );
+        let grid_id = state.sheets[0].grid_node_id.clone();
+        let grid = state.grids.get(&grid_id).unwrap_or_else(|| {
+            panic!(
+                "Sheet1's grid {grid_id:?} is projected; grids = {:?}",
+                state.grids.keys().collect::<Vec<_>>()
+            )
+        });
+        assert!(
+            !grid.cells.is_empty(),
+            "Sheet1's projected cell list is empty (the defaulted-snapshot silent pass)"
+        );
+        (grid_id, grid)
+    }
+
+    /// Locate one projected cell by 1-based `(row, col)`, failing with the
+    /// whole projected cell list when it is missing.
+    fn projected_cell(grid: &GridProjection, row: u32, col: u32) -> &GridCellProjection {
+        grid.cells
+            .iter()
+            .find(|cell| cell.row == row && cell.col == col)
+            .unwrap_or_else(|| panic!("no projected cell at ({row}, {col}) in {:#?}", grid.cells))
+    }
+
+    /// The `Calculated` tick a projected cell's provenance carries; any other
+    /// provenance (`Stale`, `FileCached`, none) fails naming the cell.
+    fn calculated_tick(label: &str, cell: &GridCellProjection) -> u64 {
+        match cell.provenance {
+            Some(ValueProvenanceProjection::Calculated { tick_id }) => tick_id,
+            ref other => panic!("{label} is not engine-Calculated: {other:?}"),
+        }
+    }
+
+    fn number(raw: &str) -> NodeValueProjection {
+        NodeValueProjection::Number {
+            raw: raw.to_string(),
+            display: raw.to_string(),
+        }
+    }
+
+    fn log_cell(stage: &str, label: &str, cell: &GridCellProjection) {
+        println!(
+            "W011 edit [{stage}] {label} ({}, {}) kind={:?} literal_text={:?} source_text={:?} \
+             value={:?} value_epoch={} provenance={:?}",
+            cell.row,
+            cell.col,
+            cell.authored.as_ref().map(|authored| authored.kind),
+            cell.authored
+                .as_ref()
+                .and_then(|authored| authored.literal_text.as_deref()),
+            cell.authored
+                .as_ref()
+                .and_then(|authored| authored.source_text.as_deref()),
+            cell.value,
+            cell.value_epoch,
+            cell.provenance
+        );
+    }
+
+    /// The receipt's single `GridCellEntered` change: `(grid, row, col,
+    /// outcome)`. Searched, not slice-matched, so dtc-j7n8.18's `GridChanged`
+    /// alongside it will not change this contract.
+    fn grid_cell_entered_change(
+        receipt: &IntentReceipt,
+    ) -> (
+        &dnacalc_skin_ir::NodeId,
+        u32,
+        u32,
+        &GridEntryOutcomeProjection,
+    ) {
+        let entered: Vec<_> = receipt
+            .delta
+            .changes
+            .iter()
+            .filter_map(|change| match change {
+                WorkspaceDeltaChange::GridCellEntered {
+                    grid_node_id,
+                    row,
+                    col,
+                    outcome,
+                } => Some((grid_node_id, *row, *col, outcome)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            entered.len(),
+            1,
+            "exactly one GridCellEntered change on an accepted entry receipt: {:?}",
+            receipt.delta.changes
+        );
+        entered[0]
+    }
+
+    /// dtc-j7n8.6 acceptance (1) — THE campaign edit proof, on real bytes.
+    /// Open the fixture through `OpenXlsxBytes`, dispatch
+    /// `WorkspaceIntent::EnterGridCell { A1, "10" }` addressed by the grid id
+    /// the snapshot handed out, and prove from the receipt AND a fresh
+    /// snapshot that the LOADED workbook really recalculated: the receipt is
+    /// accepted with a `GridCellEntered { Literal 10 }` change; post-edit,
+    /// `A1` = 10, `B1` = 30 with `Calculated` provenance on a tick NEWER than
+    /// the open-recalc tick and an advanced `value_epoch`; and `B1`'s
+    /// authored source text is STILL `=A1*3` — an edit of `A1` never
+    /// rewrites `B1`'s authored truth. Authored kinds are asserted before
+    /// values on both snapshots (the GridRect token-mismatch blank order,
+    /// dtc-j7n8.5). Pre/post values, epochs and tick ids are logged.
+    #[test]
+    fn enter_grid_cell_on_loaded_fixture_recalculates_dependent() {
+        let mut document = open_w011_fixture_document();
+
+        // PRE: the loaded truth, read through the skin's own mount surface.
+        let before = document.snapshot();
+        let (grid_id, grid_before) = loaded_sheet1_grid(&before);
+        let a1_before = projected_cell(grid_before, 1, 1);
+        let b1_before = projected_cell(grid_before, 1, 2);
+        log_cell("pre", "A1", a1_before);
+        log_cell("pre", "B1", b1_before);
+        assert_eq!(
+            a1_before.authored.as_ref().map(|authored| authored.kind),
+            Some(GridAuthoredKindProjection::Literal),
+            "A1 authored Literal at open (None = token-mismatch blank)"
+        );
+        assert_eq!(
+            b1_before.authored.as_ref().map(|authored| authored.kind),
+            Some(GridAuthoredKindProjection::Formula),
+            "B1 authored Formula at open (None = token-mismatch blank)"
+        );
+        assert_eq!(a1_before.value, number("7"), "A1 = 7 at open");
+        assert_eq!(b1_before.value, number("21"), "B1 = A1*3 = 21 at open");
+        let open_tick = calculated_tick("B1 at open", b1_before);
+        let b1_epoch_before = b1_before.value_epoch;
+        let projection_epoch_before = grid_before.projection_epoch;
+        println!(
+            "W011 edit [pre] open-recalc tick={open_tick} B1 value_epoch={b1_epoch_before} \
+             projection_epoch={projection_epoch_before}"
+        );
+
+        // EDIT: A1 7 -> 10 through the intent. The grid id is the one the
+        // snapshot projected — the same `sheet:{node}` address a skin
+        // round-trips — never composed here from engine internals.
+        let receipt = document.dispatch(WorkspaceIntent::EnterGridCell {
+            grid: grid_id.clone(),
+            row: 1,
+            col: 1,
+            text: "10".to_string(),
+        });
+        println!("W011 edit: receipt = {receipt:?}");
+        assert!(
+            receipt.accepted,
+            "'10' into A1 of the loaded fixture is accepted: {:?}",
+            receipt.error
+        );
+        let (entered_grid, row, col, outcome) = grid_cell_entered_change(&receipt);
+        assert_eq!(*entered_grid, grid_id, "the receipt names the edited grid");
+        assert_eq!((row, col), (1, 1), "the receipt names A1");
+        match outcome {
+            GridEntryOutcomeProjection::Literal { value } => assert_eq!(
+                *value,
+                number("10"),
+                "OxFml classified '10' as a literal and the receipt carries it"
+            ),
+            other => panic!("expected the Literal outcome, got {other:?}"),
+        }
+
+        // POST: a fresh snapshot of LIVE truth.
+        let after = document.snapshot();
+        let (grid_id_after, grid_after) = loaded_sheet1_grid(&after);
+        assert_eq!(
+            grid_id_after, grid_id,
+            "the grid identity is stable across the edit"
+        );
+        let a1_after = projected_cell(grid_after, 1, 1);
+        let b1_after = projected_cell(grid_after, 1, 2);
+        log_cell("post", "A1", a1_after);
+        log_cell("post", "B1", b1_after);
+        let a1_authored = a1_after
+            .authored
+            .as_ref()
+            .expect("A1 carries authored metadata after the edit");
+        let b1_authored = b1_after
+            .authored
+            .as_ref()
+            .expect("B1 carries authored metadata after the edit");
+        assert_eq!(a1_authored.kind, GridAuthoredKindProjection::Literal);
+        assert_eq!(
+            a1_authored.literal_text.as_deref(),
+            Some("10"),
+            "A1's authored literal text is the entered 10"
+        );
+        assert_eq!(b1_authored.kind, GridAuthoredKindProjection::Formula);
+        assert_eq!(
+            b1_authored.source_text.as_deref(),
+            Some("=A1*3"),
+            "an edit of A1 never rewrites B1's authored truth"
+        );
+        assert_eq!(a1_after.value, number("10"), "A1 = 10 after the edit");
+        assert_eq!(
+            b1_after.value,
+            number("30"),
+            "B1 = A1*3 = 30: the edit really recalculated the LOADED workbook"
+        );
+        let edit_tick = calculated_tick("B1 after the edit", b1_after);
+        println!(
+            "W011 edit [post] edit tick={edit_tick} (open-recalc tick={open_tick}) \
+             B1 value_epoch={} (was {b1_epoch_before}) projection_epoch={} (was {projection_epoch_before})",
+            b1_after.value_epoch, grid_after.projection_epoch
+        );
+        assert!(
+            edit_tick > open_tick,
+            "B1's 30 is Calculated on a tick NEWER than the open-recalc tick ({edit_tick} > {open_tick})"
+        );
+        assert!(
+            b1_after.value_epoch > b1_epoch_before,
+            "B1's value_epoch advanced ({} > {b1_epoch_before})",
+            b1_after.value_epoch
+        );
+        assert!(
+            grid_after.projection_epoch > projection_epoch_before,
+            "the grid's projection_epoch advanced ({} > {projection_epoch_before})",
+            grid_after.projection_epoch
+        );
+        assert_eq!(
+            grid_after.cells.len(),
+            2,
+            "the edit added no cell (exactly A1 and B1 remain): {:#?}",
+            grid_after.cells
+        );
+
+        // Automatic mode: the edit itself drained; nothing is left dirty.
+        let calc = after.workbook_calc.as_ref().expect("workbook_calc is Some");
+        assert_eq!(calc.mode, CalcModeProjection::Automatic);
+        assert!(
+            calc.sheets.iter().all(|sheet| !sheet.dirty),
+            "under Automatic the edit drained itself: {:?}",
+            calc.sheets
+        );
+    }
+
+    /// dtc-j7n8.6 acceptance (1), formula half: formula text into `B1`
+    /// itself is ACCEPTED by the ENGINE on the loaded session — OxCalc's
+    /// three-way literal/formula/clear branch with OxFml as the sole
+    /// interpretation authority; no host-side `=` classification exists and
+    /// the former `=`-prefix typed rejection exists nowhere in code. The
+    /// receipt is `GridCellEntered { Formula }` with no unresolved names and
+    /// the freshly published 40 (`A1` was first edited to 10, so the new
+    /// formula reads LIVE truth), and a snapshot shows `B1` authored
+    /// `=A1*4` = 40, `Calculated`. This retires the stale "literal-only +
+    /// typed rejection" register line IN CODE.
+    ///
+    /// SAVE SCOPE, kept honest: a formula-TEXT change on an existing cell is
+    /// save-RESTRICTED — OxDoc's round-trip policy needs a synchronized
+    /// `FormulaTopology` and typed-rejects it otherwise (dtc-j7n8.7 documents
+    /// that `UnsupportedRoundTripFeature` path). This test therefore never
+    /// saves, and any assertion that must see the file's truth again rebuilds
+    /// a fresh session rather than reusing this one.
+    #[test]
+    fn enter_grid_cell_formula_text_on_loaded_fixture_is_accepted() {
+        let mut document = open_w011_fixture_document();
+        let before = document.snapshot();
+        let (grid_id, _) = loaded_sheet1_grid(&before);
+
+        // A1 -> 10 first, so the new formula reads live truth (B1 = 30 here).
+        let literal = document.dispatch(WorkspaceIntent::EnterGridCell {
+            grid: grid_id.clone(),
+            row: 1,
+            col: 1,
+            text: "10".to_string(),
+        });
+        assert!(
+            literal.accepted,
+            "A1 -> 10 is accepted: {:?}",
+            literal.error
+        );
+
+        // Formula text into B1 itself. Nothing host-side looks at the `=`.
+        let receipt = document.dispatch(WorkspaceIntent::EnterGridCell {
+            grid: grid_id.clone(),
+            row: 1,
+            col: 2,
+            text: "=A1*4".to_string(),
+        });
+        println!("W011 formula edit: receipt = {receipt:?}");
+        assert!(
+            receipt.accepted,
+            "formula text into a loaded formula cell is ACCEPTED by the engine's three-way branch: {:?}",
+            receipt.error
+        );
+        let (entered_grid, row, col, outcome) = grid_cell_entered_change(&receipt);
+        assert_eq!(*entered_grid, grid_id);
+        assert_eq!((row, col), (1, 2), "the receipt names B1");
+        match outcome {
+            GridEntryOutcomeProjection::Formula {
+                unresolved_names,
+                value,
+            } => {
+                assert!(
+                    unresolved_names.is_empty(),
+                    "=A1*4 references no defined names: {unresolved_names:?}"
+                );
+                assert_eq!(
+                    *value,
+                    number("40"),
+                    "the receipt carries the freshly published B1 = A1*4 = 40"
+                );
+            }
+            other => panic!("expected the Formula outcome, got {other:?}"),
+        }
+
+        let after = document.snapshot();
+        let (_, grid_after) = loaded_sheet1_grid(&after);
+        let b1 = projected_cell(grid_after, 1, 2);
+        log_cell("post-formula", "B1", b1);
+        let b1_authored = b1
+            .authored
+            .as_ref()
+            .expect("B1 carries authored metadata after the formula edit");
+        assert_eq!(b1_authored.kind, GridAuthoredKindProjection::Formula);
+        assert_eq!(
+            b1_authored.source_text.as_deref(),
+            Some("=A1*4"),
+            "B1's authored truth is now the entered formula text"
+        );
+        assert_eq!(b1.value, number("40"), "B1 = A1*4 = 40");
+        assert!(
+            matches!(
+                b1.provenance,
+                Some(ValueProvenanceProjection::Calculated { .. })
+            ),
+            "B1's 40 is a fresh engine value: {:?}",
+            b1.provenance
+        );
+
+        // This session is now save-RESTRICTED (formula text changed) and is
+        // never saved. Later assertions rebuild a fresh session: the file's
+        // truth is untouched by the live edit.
+        drop(document);
+        let fresh = open_w011_fixture_document().snapshot();
+        let (_, grid_fresh) = loaded_sheet1_grid(&fresh);
+        let b1_fresh = projected_cell(grid_fresh, 1, 2);
+        assert_eq!(
+            b1_fresh
+                .authored
+                .as_ref()
+                .and_then(|authored| authored.source_text.as_deref()),
+            Some("=A1*3"),
+            "a fresh session is the file's truth again"
+        );
+        assert_eq!(b1_fresh.value, number("21"));
+    }
+
+    /// dtc-j7n8.6 acceptance (1), Recalculate half: after the Automatic-mode
+    /// edit the existing no-op receipt contract holds on the LOADED session
+    /// (the mirror of `recalculate_intent_with_nothing_dirty_is_a_noop_receipt`
+    /// below, on real bytes): `Recalculate` is accepted, its `CalcStateChanged`
+    /// delta carries `last_recalc_tick == None` (nothing was dirty, no tick
+    /// minted), no sheet is dirty, no `GridChanged` is emitted — and LIVE
+    /// truth is exactly what the edit published: `B1` = 30 on the edit's own
+    /// tick and epoch.
+    #[test]
+    fn recalculate_intent_after_automatic_edit_on_loaded_fixture_is_a_noop_receipt() {
+        let mut document = open_w011_fixture_document();
+        let before = document.snapshot();
+        let (grid_id, _) = loaded_sheet1_grid(&before);
+
+        let edit = document.dispatch(WorkspaceIntent::EnterGridCell {
+            grid: grid_id.clone(),
+            row: 1,
+            col: 1,
+            text: "10".to_string(),
+        });
+        assert!(edit.accepted, "A1 -> 10 is accepted: {:?}", edit.error);
+        let edited = document.snapshot();
+        let (_, grid_edited) = loaded_sheet1_grid(&edited);
+        let b1_edited = projected_cell(grid_edited, 1, 2);
+        log_cell("post-edit", "B1", b1_edited);
+        assert_eq!(
+            b1_edited.value,
+            number("30"),
+            "Automatic mode: the edit itself recalculated; no F9 needed"
+        );
+        let edit_tick = calculated_tick("B1 after the edit", b1_edited);
+
+        // F9 with nothing dirty.
+        let receipt = document.dispatch(WorkspaceIntent::Recalculate);
+        println!("W011 recalc no-op: receipt = {receipt:?}");
+        assert!(
+            receipt.accepted,
+            "Recalculate is accepted even as a no-op on the loaded session"
+        );
+        match receipt.delta.changes.as_slice() {
+            [WorkspaceDeltaChange::CalcStateChanged(projection)] => {
+                assert_eq!(projection.mode, CalcModeProjection::Automatic);
+                assert_eq!(
+                    projection.last_recalc_tick, None,
+                    "nothing was dirty after the Automatic edit, so no tick is minted"
+                );
+                assert!(
+                    projection.sheets.iter().all(|sheet| !sheet.dirty),
+                    "no sheet is dirty: {:?}",
+                    projection.sheets
+                );
+            }
+            other => panic!("expected exactly one CalcStateChanged change, got {other:?}"),
+        }
+        assert!(
+            !receipt
+                .delta
+                .changes
+                .iter()
+                .any(|change| matches!(change, WorkspaceDeltaChange::GridChanged(_))),
+            "a no-op Recalculate emits no GridChanged"
+        );
+
+        // The no-op left LIVE truth exactly as the edit published it.
+        let after = document.snapshot();
+        let (_, grid_after) = loaded_sheet1_grid(&after);
+        let b1_after = projected_cell(grid_after, 1, 2);
+        log_cell("post-recalc", "B1", b1_after);
+        assert_eq!(b1_after.value, number("30"), "B1 stays 30");
+        assert_eq!(
+            calculated_tick("B1 after the no-op", b1_after),
+            edit_tick,
+            "a no-op recalc mints no tick: B1 keeps the edit's tick"
+        );
+        assert_eq!(
+            b1_after.value_epoch, b1_edited.value_epoch,
+            "a no-op recalc advances no value epoch"
+        );
+    }
+
+    // ------------------------------------------------------------------
     // H6 acceptance: cell-entry intents end-to-end.
     // ------------------------------------------------------------------
 

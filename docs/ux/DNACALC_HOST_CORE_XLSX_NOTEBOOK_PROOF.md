@@ -31,8 +31,8 @@ Build the first visible reference host for the full stack:
    lives in the host (see "Upstream Work" for what is local vs upstream).
 6. Publish workbook sheets and cells through Skin IR.
 7. Render them in a B1 Pluto-style notebook skin.
-8. Edit a grid cell through `WorkspaceIntent::EditGridCell` (literal content
-   only in W011; see "Edit scope").
+8. Edit a grid cell through `WorkspaceIntent::EnterGridCell` (the engine's
+   three-way literal/formula/clear branch; see "Edit scope").
 9. Recalculate dependents through OxCalc and emit `GridChanged`.
 10. Save/download a round-tripped `.xlsx` through OxDoc.
 
@@ -76,7 +76,7 @@ The decisive boundary comes from the OxDoc host-boundary document:
   cell kind (empty/literal/formula) aligns with `NodeContentKind`;
   classification tint (C2) applies to grid cells only once U-DEP-grade
   dependency metadata reaches grid projections — it is **out of scope for the
-  W011 read-only slice**, not re-derived ad hoc; `EditGridCell` is mutation
+  W011 read-only slice**, not re-derived ad hoc; `EnterGridCell` is mutation
   surface (1) applied to grid cells.
 - **Skin state.** The workbook notebook persists skin state (scroll, collapse,
   layout) through the §A2 interim `SkinStatePersistenceStore`, targeting the
@@ -102,8 +102,9 @@ DnaTreeCalc:
   relocations (`SharedSkinStateHandle`, `InMemoryDispatcher`,
   `SkinRegistry`/`RegisteredSkin`).
 - `WorkspaceIntent` already carries `SetGridInterest`; `WorkspaceDeltaChange`
-  already carries `GridChanged` and `GridOverlaysChanged`. There is **no**
-  `EditGridCell` anywhere, and the grid path is read-only end to end.
+  already carries `GridChanged` and `GridOverlaysChanged`. **Stale since H6:**
+  `WorkspaceIntent::EnterGridCell` dispatches end to end (`dtc-j7n8.6` proves
+  it on the loaded fixture).
 - `GridCellProjection` carried only `row/col/value/value_epoch` at survey
   time — no authored kind, no formula source text, no editability. **Stale
   since H3/H5:** it now carries `authored: Option<GridAuthoredCellProjection>`
@@ -389,27 +390,23 @@ this; the fixture proof does not gate on it.
 
 ## Edit scope (W011)
 
-`EditGridCell { grid, row, col, content }` accepts **literal content only**
-(numbers, text) in W011:
+`WorkspaceIntent::EnterGridCell { grid, row, col, text }` is the universal
+entry verb (H6). The engine's `enter_grid_cell` does the three-way
+literal/formula/clear branch with OxFml as the sole interpretation authority
+(OxCalc `consumer.rs`); the receipt carries `GridCellEntered { outcome }`
+(`Literal`/`Formula`/`Cleared`). `dtc-j7n8.6` proves it on the xlsx-loaded
+fixture: `A1` 7 → 10 publishes `B1` = 30, and `=A1*4` into `B1` is accepted
+(no host-side `=` classification; the former `=`-prefix and no-`ClearCell`
+typed rejections no longer exist in code). The typed rejections that remain
+are the engine's own: unparseable formula text (diagnostics on the receipt)
+and non-editable targets (spill/merged followers, table-structural cells).
 
-- Content beginning with `=` is answered with a typed rejection receipt
-  (`FormulaEditingNotYetSupported`) — never silently ignored. Two independent
-  blockers gate formula editing: OxCalc exposes no public formula binding
-  (`normal_form_key` derivation is `pub(super)`; handover ask (b)), and OxDoc
-  round-trip save rejects formula additions/text changes
-  (`validate_roundtrip_formula_policy`).
-- Empty content is likewise rejected with a typed receipt: OxCalc has no
-  consumer-level `ClearCell` verb.
-- Read-only formula-result/spill/table constraints are enforced by
-  OxCalc/host receipts, not skin-side guesses.
-
-When formula editing lands, the documented shape is edit classification at
-intent time — `SaveExpressible` (literal edit on existing cell; cached-value
-refresh of existing formula) vs `SaveRestricted` (new formula, formula-text
-change, styled-cell edit) — with `SaveRestricted` accepted into the live model
-but reflected immediately in `DocumentStatus.save_restrictions` and rejected
-typed at `SaveActiveXlsx`. That machinery is not W011 scope; the literal-only
-scope plus typed rejections is.
+Save scope is narrower than edit scope: a formula-text change or a new cell
+is accepted into the live model but is save-restricted (OxDoc's round-trip
+policy needs a synchronized `FormulaTopology`; `dtc-j7n8.7` documents the
+typed `UnsupportedRoundTripFeature` rejection). The `SaveExpressible` /
+`SaveRestricted` classification and `DocumentStatus.save_restrictions`
+machinery remain a later shape, not W011 scope.
 
 ## Save path (W011)
 
@@ -470,8 +467,8 @@ existing** (dtc-hj2.5), never on upstream implementations landing.
   `consumer.rs:5065`) — signature:
   `bind_grid_formula(&self, workspace_id, node_id, address: &ExcelGridCellAddress, source_text: &str, channel: FormulaChannelKind) -> Result<Option<BoundGridFormula>, OxCalcDocumentError>`.
   This is now the one public binding authority (D4 C10: "the only key mint");
-  W011's `FormulaEditingNotYetSupported` rejection for `=`-prefixed edit
-  content is liftable.
+  W011's former `=`-prefix typed rejection is lifted: `EnterGridCell` binds
+  formula text through it (`dtc-j7n8.6`).
 
 - **(e) defined-name seeding is the second hard blocker, immediately behind
   (b) — ask upstream to land them together.** There is no consumer-level way
@@ -646,7 +643,7 @@ All of Wave 2 runs native-first; the browser is not required until Wave 4.
 
 ### Wave 3 - Edit, Recalc, Save
 
-Add `EditGridCell` (literal-only scope), route it through
+Route `EnterGridCell` (the engine's three-way branch; `dtc-j7n8.6`) through
 `apply_grid_edit(SetCell)`, update projections via `poll_grid_changes` →
 `GridChanged`, and save through the whole-model-projection recipe. The save
 proof (dtc-hj2.10) is **native tests over byte buffers** — it does not wait
@@ -672,7 +669,7 @@ Epic: `dtc-hj2` - `W011: dnacalc_host_core_xlsx_notebook_proof`.
 | `dtc-hj2.5` | Raise OxCalc/OxDoc handovers + `[U-INGEST]` lane | `dtc-hj2.1` |
 | `dtc-hj2.6` | Open `.xlsx` through OxDoc into OxCalc (host-side ingest, fixture, authored-metadata IR) | `dtc-hj2.4`, `dtc-hj2.5` |
 | `dtc-hj2.7` | Render read-only B1 notebook from `GridProjection` | `dtc-hj2.6` |
-| `dtc-hj2.8` | Add `EditGridCell` (literal-only) and recalc loop | `dtc-hj2.7`, `dtc-hj2.5` |
+| `dtc-hj2.8` | `EnterGridCell` edit + recalc loop (landed as `dtc-j7n8.6`) | `dtc-hj2.7`, `dtc-hj2.5` |
 | `dtc-hj2.9` | Add browser `.xlsx` open/download UI | `dtc-hj2.7` |
 | `dtc-hj2.10` | Save/reopen existing-cell edits (native proof) | `dtc-hj2.8`, `dtc-hj2.5` |
 | `dtc-hj2.11` | Prove notebook plus companion skin layout | `dtc-hj2.8` |
@@ -694,8 +691,9 @@ to `dtc-hj2.9` and epic closure, in either order. The `dtc-hj2.5` edges mean
   rejection plus a typed names-present note from the OxDoc name catalog —
   never silent `#NAME?` cells for names the file defines.
 - Edit proof: edit `A1` to `10`; `B1` becomes `30` through OxCalc and the
-  notebook consumes `GridChanged`. Typing `=A1+1` into a cell yields the typed
-  `FormulaEditingNotYetSupported` receipt, visibly surfaced.
+  notebook consumes `GridChanged`. Typing `=A1*4` into `B1` is accepted by the
+  engine's three-way branch (`GridCellEntered { Formula }`, `dtc-j7n8.6`) and
+  makes the document save-restricted — never a silent drop.
 - Save proof: reopening the saved bytes with `LoadProfile::full()` asserts all
   three: `A1 == Number(10)`; `B1` formula text `== Some("A1*3")`; **and `B1`
   cached `== Number(30)`**. The save ledger contains no `Dropped` entries for
@@ -729,7 +727,7 @@ W011 also needs targeted checks:
   no `leptos`;
 - oxdoc wasm spike: `cargo check -p oxdoc-model -p oxdoc-xlsx --target
   wasm32-unknown-unknown` (result recorded in dtc-hj2.3);
-- Skin IR protocol tests: serde round-trip for `EditGridCell`, delta coverage
+- Skin IR protocol tests: serde round-trip for `EnterGridCell`, delta coverage
   (`delta_coverage_is_total`), `apply_delta` mirror application;
 - host-core tests for open/edit/recalc/save command sequencing over byte
   buffers;
@@ -755,8 +753,9 @@ a standing design aim but does not gate the first host proof.
 
 - Do not build a broad Excel importer in W011. The first target is host
   lifecycle proof, not general workbook fidelity.
-- Do not implement formula-content editing in W011 (typed rejection instead);
-  do not reimplement `normal_form_key` derivation host-side.
+- Do not classify `=`-prefixed text host-side (the engine's three-way branch
+  owns it; `dtc-j7n8.6`); do not reimplement `normal_form_key` derivation
+  host-side.
 - Do not let the notebook call OxDoc, OxCalc, browser file APIs, or host
   internals directly.
 - Do not create tree-named core crates for new generic infrastructure. Naming
