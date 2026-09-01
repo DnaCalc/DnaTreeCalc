@@ -9,6 +9,19 @@
 //! the tree dispatcher already uses, so dependent cells recalc live (edit A1 →
 //! B1 updates) with no delta-application machinery.
 //!
+//! ## Commands (W011, dtc-j7n8.8)
+//!
+//! `WorkspaceIntent` mutates the *open model*; [`HostCommand`] manages
+//! *documents and files*. [`WorkbookHostDispatcher::execute_host_command`] is
+//! the one door a shell has to the command surface — open `.xlsx` bytes
+//! (`OpenXlsxBytes`, replacing the session's document and republishing the
+//! snapshot) and save the active workbook back to bytes (`SaveActiveXlsx`,
+//! handing the bytes to the caller untouched). Skins never call OxDoc, OxCalc
+//! or file APIs; the shell owns file I/O (dialogs, drag-drop, fetch) and hands
+//! a plain byte buffer in or takes one out. The demo mount ([`Self::new_demo`])
+//! is untouched by this: it is an in-memory workbook with no backing source, so
+//! a save on it is host-core's typed `NoBackingSource` refusal, never a panic.
+//!
 //! ## `!Send` handling
 //!
 //! [`Dispatcher`] is `Send + Sync`, but a `DocumentSession` is **neither**
@@ -23,7 +36,10 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use dnacalc_host_core::{DocumentSession, WorkbookSessionError, build_demo_workbook};
+use dnacalc_host_core::{
+    DocumentSession, HostCommand, HostCommandError, HostCommandOutcome, WorkbookSession,
+    WorkbookSessionError, XLSX_WORKSPACE_ID, build_demo_workbook,
+};
 use dnatreecalc_skin_framework::{
     Dispatcher, IntentReceipt, SelectionState, SharedSkinStateHandle, SharedStateChange,
     SharedStateOrigin, WorkspaceDelta, WorkspaceIntent, WorkspaceState,
@@ -39,6 +55,31 @@ thread_local! {
 
 static NEXT_WORKBOOK_SESSION_ID: AtomicU64 = AtomicU64::new(1);
 
+/// A [`HostCommand`] this dispatcher could not carry through to a successful
+/// outcome. The session's own refusal travels as host-core's typed
+/// [`HostCommandError`] **untouched** (OxDoc's `XlsxError`, the engine's
+/// error, `NoBackingSource`, `UnsupportedByModel` — all data, never a
+/// formatted string); the one dispatcher-level arm is the command analogue of
+/// the `GenericEngineRejection` receipt [`Dispatcher::dispatch`] answers with
+/// when the session id does not resolve on the calling thread.
+// `large_enum_variant`: `Command` wraps `HostCommandError` by value (which
+// wraps the engine error by value — host-core's documented convention) and
+// `SessionUnavailable` is one `u64`. Boxing would break the `#[from]`/`?`
+// conversion `execute_host_command` relies on for no caller benefit (one host
+// call per command, not a hot loop). Kept by-value for consistency.
+#[allow(clippy::large_enum_variant)]
+#[derive(Debug, thiserror::Error)]
+pub enum WorkbookHostCommandError {
+    /// The document session rejected the command — host-core's typed error,
+    /// passed through as-is.
+    #[error(transparent)]
+    Command(#[from] HostCommandError),
+    /// The dispatcher's session id did not resolve on this thread (never on
+    /// the single wasm main thread that created it).
+    #[error("workbook session {session_id} did not resolve on this thread")]
+    SessionUnavailable { session_id: u64 },
+}
+
 /// A `Dispatcher` over one host-core workbook document, publishing its full
 /// projection snapshot into the shared workspace signal.
 pub struct WorkbookHostDispatcher {
@@ -50,6 +91,11 @@ pub struct WorkbookHostDispatcher {
     next_projection_seq: AtomicU64,
 }
 
+// `result_large_err`: `WorkbookSessionError` / `WorkbookHostCommandError` are
+// returned by value to match the crate-wide convention (host-core's own
+// `WorkbookSession` and the sibling `TreeWorkspaceSessionError`); these are
+// one-shot mount / open / save calls, not a hot `Result`-returning loop.
+#[allow(clippy::result_large_err)]
 impl WorkbookHostDispatcher {
     /// Adopt a host-core [`DocumentSession`], seed the workspace signal with its
     /// initial snapshot, and select the first sheet's grid so a lens has a
@@ -75,23 +121,12 @@ impl WorkbookHostDispatcher {
             next_projection_seq: AtomicU64::new(1),
         };
         let initial = dispatcher.publish_snapshot();
-        // Land the caret on the first grid-backed sheet so the Sheet/Workbook
-        // lens opens with a concrete selection rather than empty.
-        if let Some(first_grid) = initial.grids.keys().next().cloned() {
-            dispatcher
-                .selection
-                .set(SelectionState::with_primary(Some(first_grid)));
-        }
+        dispatcher.select_first_grid(&initial);
         dispatcher
     }
 
     /// Build the Phase-0 demonstration workbook (two sheets, live formulas) and
     /// wrap it in a dispatcher. The `?wb=1` mount path uses this.
-    // `result_large_err`: `WorkbookSessionError` is returned by value to match
-    // the crate-wide convention (host-core's own `WorkbookSession` and the
-    // sibling `TreeWorkspaceSessionError`); this is a one-shot mount call, not a
-    // hot `Result`-returning loop.
-    #[allow(clippy::result_large_err)]
     pub fn new_demo(
         workspace: RwSignal<WorkspaceState>,
         latest_delta: RwSignal<WorkspaceDelta>,
@@ -106,6 +141,83 @@ impl WorkbookHostDispatcher {
             selection,
             shared,
         ))
+    }
+
+    /// Open `.xlsx` bytes through OxDoc, ingest them into the engine
+    /// ([`WorkbookSession::open_xlsx_bytes`], W011) and wrap the opened
+    /// workbook in a dispatcher — the mount entry point for a shell that
+    /// already holds a document's bytes (a file dialog, drag-drop, a fetch).
+    /// `name` is the user-facing document name the bytes arrived under.
+    ///
+    /// OxDoc's rejection of the bytes (a corrupt zip, a missing part, an XML
+    /// error) comes back as [`WorkbookSessionError::Xlsx`] and the engine's
+    /// rejection of the stream as [`WorkbookSessionError::OxCalc`] — typed
+    /// data, never a panic; nothing is mounted on failure.
+    pub fn new_from_xlsx_bytes(
+        bytes: &[u8],
+        name: Option<String>,
+        workspace: RwSignal<WorkspaceState>,
+        latest_delta: RwSignal<WorkspaceDelta>,
+        selection: RwSignal<SelectionState>,
+        shared: Option<SharedSkinStateHandle>,
+    ) -> Result<Self, WorkbookSessionError> {
+        let session = WorkbookSession::open_xlsx_bytes(XLSX_WORKSPACE_ID, bytes, name)?;
+        Ok(Self::new(
+            DocumentSession::Workbook(session),
+            workspace,
+            latest_delta,
+            selection,
+            shared,
+        ))
+    }
+
+    /// Execute one [`HostCommand`] against the owned document session and
+    /// keep the signals honest about the result:
+    ///
+    /// - [`HostCommandOutcome::Opened`] — the session now holds the opened
+    ///   workbook (the previous document dropped inside host-core), so the
+    ///   full snapshot is republished, the caret moves to the loaded
+    ///   workbook's first grid (the old grid ids no longer exist), and a
+    ///   revision-inert delta carrying the new projection sequence is
+    ///   published so delta observers see the swap.
+    /// - [`HostCommandOutcome::Saved`] — the bytes and OxDoc's save ledger are
+    ///   passed through untouched: the caller owns the bytes (the shell
+    ///   persists them wherever they go), and host-core guarantees the save
+    ///   neither replaced nor mutated the session, so nothing is republished.
+    /// - [`HostCommandOutcome::Dispatched`] — exactly the
+    ///   [`Dispatcher::dispatch`] behaviour: an accepted receipt republishes
+    ///   the snapshot and the receipt's delta; a rejected one changes nothing.
+    ///
+    /// On failure the session is exactly as host-core left it (an open that
+    /// fails leaves the previous document in place; a refused save mutates
+    /// nothing) and the signals are not touched.
+    pub fn execute_host_command(
+        &self,
+        command: HostCommand,
+    ) -> Result<HostCommandOutcome, WorkbookHostCommandError> {
+        // The `WORKBOOK_SESSIONS` borrow ends with this closure; every
+        // `publish_*` below re-borrows the map and so must run OUTSIDE it.
+        let outcome = self
+            .with_session(|session| session.execute(command))
+            .ok_or(WorkbookHostCommandError::SessionUnavailable {
+                session_id: self.session_id,
+            })??;
+        match &outcome {
+            HostCommandOutcome::Opened { .. } => {
+                let state = self.publish_snapshot();
+                self.select_first_grid(&state);
+                self.publish_unchanged_delta();
+            }
+            HostCommandOutcome::Dispatched(receipt) => self.publish_after_receipt(receipt),
+            HostCommandOutcome::Saved { .. } => {}
+            // `HostCommandOutcome` is `#[non_exhaustive]`: an outcome this
+            // dispatcher does not know yet publishes nothing (the session
+            // may have changed, but no arm has claimed what to show) and is
+            // still returned to the caller, so wiring it is a visible follow-up
+            // rather than a silent one.
+            _ => {}
+        }
+        Ok(outcome)
     }
 
     /// Run a closure against the owned session, or `None` if the id does not
@@ -133,6 +245,27 @@ impl WorkbookHostDispatcher {
         let delta = WorkspaceDelta::unchanged(seq);
         self.latest_delta.set(delta.clone());
         delta
+    }
+
+    /// Land the caret on the first grid-backed sheet of `state` so the
+    /// Sheet/Workbook lens opens with a concrete selection rather than empty
+    /// (used on mount and after a document swap).
+    fn select_first_grid(&self, state: &WorkspaceState) {
+        if let Some(first_grid) = state.grids.keys().next().cloned() {
+            self.selection
+                .set(SelectionState::with_primary(Some(first_grid)));
+        }
+    }
+
+    /// After a model intent answered by the session: an accepted receipt
+    /// republishes the full snapshot (dependents recalc live in every open
+    /// lens) and the receipt's own delta; a rejected receipt publishes
+    /// nothing (host-core guarantees no mutation on that path).
+    fn publish_after_receipt(&self, receipt: &IntentReceipt) {
+        if receipt.accepted {
+            self.publish_snapshot();
+            self.latest_delta.set(receipt.delta.clone());
+        }
     }
 }
 
@@ -182,10 +315,7 @@ impl Dispatcher for WorkbookHostDispatcher {
                             },
                         )
                     });
-                if receipt.accepted {
-                    self.publish_snapshot();
-                    self.latest_delta.set(receipt.delta.clone());
-                }
+                self.publish_after_receipt(&receipt);
                 receipt
             }
         }

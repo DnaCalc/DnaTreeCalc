@@ -332,6 +332,24 @@ fn execute(&mut self, cmd: HostCommand) -> Result<HostCommandOutcome, HostComman
 // write_save_request; never replaces or mutates the session; a RichTree session
 // is HostCommandError::UnsupportedByModel, an in-memory workbook is
 // WorkbookSessionError::NoBackingSource; see §"Save path (W011)").
+// App wiring (dtc-j7n8.8, byte-buffer level): dnatreecalc-host re-exports
+// HostCommand / HostCommandError / HostCommandOutcome / LoadRecalcPath /
+// WorkbookSessionError on its facade (dnacalc-app reaches host-core THROUGH it;
+// host-core stays a dev-dependency of the app). WorkbookHostDispatcher::
+// execute_host_command carries a command to the thread_local session and keeps
+// the signals honest — Opened republishes the full snapshot, moves the caret to
+// the loaded workbook's first grid and publishes a revision-inert delta on the
+// new seq; Saved passes bytes + save_ledger through untouched (the shell owns
+// the bytes; nothing republished); Dispatched = the intent path — and
+// new_from_xlsx_bytes mounts a dispatcher straight from bytes. The dispatcher-
+// level WorkbookHostCommandError wraps HostCommandError untouched plus a
+// SessionUnavailable arm (the command analogue of the GenericEngineRejection
+// receipt). dnacalc-app's adapter builds open_xlsx_command / save_xlsx_command
+// and reads typed OpenOutcome / SaveOutcome / CommandRejection back (the
+// command-level UnsupportedByModel { model, command } mapped explicitly). No
+// skin calls OxDoc, OxCalc or a file API; the visible open/save UI is Wave 1.5
+// (dtc-j7n8.10). App-level proof over the COMMITTED fixture binary:
+// dnacalc-app adapter::tests::commands::app_opens_fixture_edits_and_saves_through_commands.
 
 fn document_status(&self) -> DocumentStatus; // { dirty: bool, save_restrictions: Vec<..> }
 ```

@@ -26,7 +26,7 @@ pub use session::{
     DnaTreeWorkspaceDocument, TreeWorkspaceCollectionDependencyProjection, TreeWorkspaceSession,
     TreeWorkspaceSessionError,
 };
-pub use workbook_dispatcher::WorkbookHostDispatcher;
+pub use workbook_dispatcher::{WorkbookHostCommandError, WorkbookHostDispatcher};
 pub use worker_proxy::{
     DeliverOutcome, HostSessionExecutor, SessionExecutor, SubmitDecision, WorkerProxyCore,
 };

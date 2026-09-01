@@ -10,6 +10,16 @@
 pub mod app;
 pub mod model;
 
+/// The host-core command surface [`app::WorkbookHostDispatcher`] wraps (W011,
+/// dtc-j7n8.8), re-exported so a shell names it through this facade instead of
+/// taking `dnacalc-host-core` as a normal dependency (the Calc app reaches
+/// host-core THROUGH this crate by design). `LoadRecalcPath` is the typed
+/// field of an `Opened` outcome a shell shows; `WorkbookSessionError` is the
+/// payload of `HostCommandError::Workbook` and the error of the constructors.
+pub use dnacalc_host_core::{
+    HostCommand, HostCommandError, HostCommandOutcome, LoadRecalcPath, WorkbookSessionError,
+};
+
 #[cfg(test)]
 mod tests {
     use crate::model::{NodeContentKind, WorkspaceFixture, WorkspaceModel, WorkspaceNodeFixture};
