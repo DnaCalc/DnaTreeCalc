@@ -25,8 +25,20 @@
 //!
 //! Compiled only under `cfg(test)`: `oxdoc_conformance` is a dev-dependency
 //! and must never become a normal one.
+//!
+//! The raw-reopen helpers below (`open_xlsx_raw`, `raw_sheet_cells`, …) are
+//! the save tests' FILE-truth probe (dtc-j7n8.7): they walk OxDoc's own
+//! events of a package with no engine involvement, because an engine readout
+//! after a reload would recalculate and mask a stale cached formula value.
 
+use std::io::Cursor;
 use std::path::{Path, PathBuf};
+
+use oxdoc_model::{
+    CellPayload, DocumentEvent, DocumentFidelityLedger, DocumentFidelityLedgerEntry,
+    FidelityDisposition, PackedCellAddr,
+};
+use oxdoc_xlsx::{HostOwnedXlsxSource, LoadProfile, open_host_owned_xlsx_source};
 
 /// Walk from this crate's manifest dir (`src/dnacalc-host-core`) to the repo
 /// root. Relative on purpose — no absolute paths in tests.
@@ -37,6 +49,25 @@ pub(crate) const W011_FIXTURE_PARTS_REL: &str = "fixtures/w011/a1_times_three/pa
 
 /// Repo-relative location of the committed binary fixture (app click-through).
 pub(crate) const W011_FIXTURE_XLSX_REL: &str = "fixtures/w011/a1_times_three.xlsx";
+
+/// Repo-relative location of the POST-EDIT saved bytes (`A1 = 10`, `B1`
+/// cached 30) the `#[ignore]`d generator `emit_saved_fixture_for_excel_compare`
+/// (`workbook.rs`, dtc-j7n8.7) writes for the Wave 2 Excel comparison
+/// (dtc-j7n8.11): under the BUILD dir, never the repo — a derived artifact,
+/// regenerated on demand.
+pub(crate) const W011_SAVED_FIXTURE_TARGET_REL: &str = "target/w011/a1_times_three_saved.xlsx";
+
+/// The exact `XlsxError::UnsupportedRoundTripFeature` message OxDoc emits
+/// when a save projects a cell the opened package does not have (the W011
+/// `C1 = 5` cell add), observed 2026-09-01 against OxDoc `786ef0c`: the
+/// surgical worksheet merge (`worksheet_xml_with_surgical_cell_replacements`,
+/// oxdoc-xlsx `lib.rs`) compares the original and projected cell KEY SETS
+/// and refuses without naming the cell. dtc-j7n8.7 pre-registered this
+/// branch ("if the observed message does not name C1, widen the assertion to
+/// the exact observed text — never delete it"), so the refusal tests pin this
+/// text verbatim; an upstream wording change fails them loudly, on purpose.
+pub(crate) const OXDOC_CELL_ADD_REJECTION: &str =
+    "adding or removing cells in metadata-aware round-trip is not supported yet";
 
 /// The exact part names the fixture consists of (zip entry names, sorted).
 pub(crate) const W011_FIXTURE_PART_NAMES: [&str; 5] = [
@@ -59,6 +90,11 @@ pub(crate) fn w011_fixture_parts_dir() -> PathBuf {
 /// Path of the committed binary fixture.
 pub(crate) fn w011_fixture_xlsx_path() -> PathBuf {
     repo_root().join(W011_FIXTURE_XLSX_REL)
+}
+
+/// Path of the generated post-edit saved fixture (build dir).
+pub(crate) fn w011_saved_fixture_target_path() -> PathBuf {
+    repo_root().join(W011_SAVED_FIXTURE_TARGET_REL)
 }
 
 /// The `a1_times_three` workbook as `.xlsx` bytes, zipped in memory from the
@@ -85,16 +121,90 @@ pub(crate) fn w011_committed_xlsx_bytes() -> Vec<u8> {
     })
 }
 
+/// Open `.xlsx` bytes through OxDoc under [`LoadProfile::full()`] — the
+/// profile the W011 host lifecycle uses, because only `full()` materializes
+/// the `FormulaTopology` a later save needs — with NO engine involvement: the
+/// returned source's `source_context.events()` are the file's raw truth. This
+/// is the reopen every save test walks; an engine readout after a reload
+/// would recalculate and mask a stale cached value.
+pub(crate) fn open_xlsx_raw(bytes: &[u8]) -> HostOwnedXlsxSource {
+    open_host_owned_xlsx_source(Cursor::new(bytes), LoadProfile::full())
+        .unwrap_or_else(|err| panic!("OxDoc rejected the xlsx bytes: {err} / {err:?}"))
+}
+
+/// Every `(address, payload)` pair the `CellChunk` events of the sheet named
+/// `sheet_name` carry, in stream order — one sheet's raw cell truth, straight
+/// from OxDoc's events. Fails naming the sheet when the package has none of
+/// that name.
+pub(crate) fn raw_sheet_cells(
+    source: &HostOwnedXlsxSource,
+    sheet_name: &str,
+) -> Vec<(PackedCellAddr, CellPayload)> {
+    let events = source.source_context.events();
+    let mut in_sheet = false;
+    let mut found = false;
+    let mut cells = Vec::new();
+    for event in events {
+        match event {
+            DocumentEvent::SheetBegin(sheet) => {
+                in_sheet = sheet.name == sheet_name;
+                found |= in_sheet;
+            }
+            DocumentEvent::SheetEnd { .. } => in_sheet = false,
+            DocumentEvent::CellChunk(chunk) if in_sheet => {
+                cells.extend(chunk.cells.iter().cloned());
+            }
+            _ => {}
+        }
+    }
+    assert!(found, "no sheet named {sheet_name:?} in {events:#?}");
+    cells
+}
+
+/// The raw payload at 1-based `(row, col)`, failing with the whole cell list
+/// when the cell is absent.
+pub(crate) fn raw_cell_payload(
+    cells: &[(PackedCellAddr, CellPayload)],
+    row: u32,
+    col: u32,
+) -> &CellPayload {
+    let addr = PackedCellAddr::from_one_based(row, col)
+        .unwrap_or_else(|| panic!("({row}, {col}) is not a 1-based cell address"));
+    cells
+        .iter()
+        .find(|(cell_addr, _)| *cell_addr == addr)
+        .map(|(_, payload)| payload)
+        .unwrap_or_else(|| panic!("no cell at ({row}, {col}) in {cells:?}"))
+}
+
+/// Print every ledger entry under `label` (`--nocapture` evidence).
+pub(crate) fn log_ledger(label: &str, ledger: &DocumentFidelityLedger) {
+    println!("{label}: {} entries", ledger.entries.len());
+    for entry in &ledger.entries {
+        println!("{label}: {} -> {:?}", entry.subject, entry.disposition);
+    }
+}
+
+/// The ledger's `Dropped` entries — the visible-loss signal a save test
+/// asserts empty (never silenced, never filtered away).
+pub(crate) fn dropped_entries(
+    ledger: &DocumentFidelityLedger,
+) -> Vec<&DocumentFidelityLedgerEntry> {
+    ledger
+        .entries
+        .iter()
+        .filter(|entry| matches!(entry.disposition, FidelityDisposition::Dropped { .. }))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use oxdoc_model::{
-        CachedValueProvenance, CalcMode, CellChunk, CellPayload, DateSystem, DocumentEvent,
-        FidelityDisposition, FormulaCachedValueState, FormulaRecordKind, FormulaTextKind,
-        FormulaTopology, PackedCellAddr, ProjectionStatus, SheetRef, WorkbookHeader,
+        CachedValueProvenance, CalcMode, CellChunk, DateSystem, FormulaCachedValueState,
+        FormulaRecordKind, FormulaTextKind, FormulaTopology, ProjectionStatus, SheetRef,
+        WorkbookHeader,
     };
-    use oxdoc_xlsx::{HostOwnedXlsxSource, LoadProfile, open_host_owned_xlsx_source};
-    use std::io::Cursor;
 
     fn a1() -> PackedCellAddr {
         PackedCellAddr::from_one_based(1, 1).unwrap()
@@ -104,12 +214,10 @@ mod tests {
         PackedCellAddr::from_one_based(1, 2).unwrap()
     }
 
-    /// Open `.xlsx` bytes through OxDoc under the full profile — the profile
-    /// the W011 host lifecycle uses, because only `full()` materializes the
-    /// `FormulaTopology` the later save needs.
+    /// Open the W011 fixture bytes through OxDoc under the full profile (the
+    /// shared raw-reopen helper, named for the fixture in these tests).
     fn open_full(bytes: &[u8]) -> HostOwnedXlsxSource {
-        open_host_owned_xlsx_source(Cursor::new(bytes), LoadProfile::full())
-            .unwrap_or_else(|err| panic!("OxDoc rejected the W011 fixture bytes: {err}"))
+        open_xlsx_raw(bytes)
     }
 
     fn cell_payload(cells: &[(PackedCellAddr, CellPayload)], addr: PackedCellAddr) -> &CellPayload {

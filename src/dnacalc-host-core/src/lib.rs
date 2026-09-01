@@ -624,7 +624,7 @@ fn workspace_intent_kind(intent: &WorkspaceIntent) -> &'static str {
 
 /// A [`HostCommand`] executor over a document session: the H2 dispatch arm
 /// (routing through [`DocumentSession::dispatch`]) and the W011 document-open
-/// arm (dtc-j7n8.3).
+/// (dtc-j7n8.3) and document-save (dtc-j7n8.7) arms.
 // `result_large_err`: `HostCommandError` wraps `WorkbookSessionError` by
 // value, which in turn wraps the engine's `OxCalcDocumentError` by value — the
 // same by-value convention `workbook.rs` documents; a command execution is a
@@ -643,6 +643,18 @@ impl DocumentSession {
     ///   document is what a future `SessionEngine::init` does). On failure
     ///   `self` is left untouched and OxDoc's typed `XlsxError` comes back as
     ///   [`HostCommandError::Workbook`]`(`[`WorkbookSessionError::Xlsx`]`)`.
+    /// - `SaveActiveXlsx` (dtc-j7n8.7) saves a `Workbook` session back to
+    ///   `.xlsx` bytes through [`WorkbookSession::save_xlsx_bytes`] — the
+    ///   engine's whole-model projection (fresh formula caches) round-tripped
+    ///   by OxDoc against the opened package — and returns
+    ///   [`HostCommandOutcome::Saved`]`{ bytes, save_ledger }`. A save never
+    ///   replaces or mutates the session. Typed refusals, never panics: a
+    ///   `RichTree` session is [`HostCommandError::UnsupportedByModel`]; a
+    ///   workbook not opened from bytes is
+    ///   [`WorkbookSessionError::NoBackingSource`]; an edit outside OxDoc's
+    ///   round-trip policy (a cell add, a formula-text change) is OxDoc's
+    ///   `XlsxError::UnsupportedRoundTripFeature` inside
+    ///   [`WorkbookSessionError::Xlsx`], with the live model left intact.
     pub fn execute(
         &mut self,
         command: HostCommand,
@@ -650,6 +662,22 @@ impl DocumentSession {
         match command {
             HostCommand::DispatchWorkspaceIntent(intent) => {
                 Ok(HostCommandOutcome::Dispatched(self.dispatch(intent)))
+            }
+            HostCommand::SaveActiveXlsx => {
+                let model = self.model_name();
+                let DocumentSession::Workbook(session) = self else {
+                    return Err(HostCommandError::UnsupportedByModel {
+                        model,
+                        command: "SaveActiveXlsx",
+                    });
+                };
+                // Read-only on the session: the engine projects LIVE truth
+                // (fresh caches), OxDoc merges it onto the opened package,
+                // and the bytes go back to the caller — nothing here is
+                // replaced or rebased (dirty tracking and rebasing the source
+                // on the saved bytes are later beads).
+                let (bytes, save_ledger) = session.save_xlsx_bytes()?;
+                Ok(HostCommandOutcome::Saved { bytes, save_ledger })
             }
             HostCommand::OpenXlsxBytes { bytes, name } => {
                 let session =
@@ -1511,6 +1539,293 @@ mod tests {
         assert_eq!(
             b1_after.value_epoch, b1_edited.value_epoch,
             "a no-op recalc advances no value epoch"
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // W011 (dtc-j7n8.7): `HostCommand::SaveActiveXlsx` end to end — the
+    // save proof at the command surface a host actually calls, and the
+    // typed-refusal lanes (RichTree, no backing source, out-of-scope
+    // edit). The decisive assertion is on the REOPENED BYTES' raw OxDoc
+    // events, never on an engine readout after a reload (which would
+    // recalculate and mask a stale cache).
+    // ------------------------------------------------------------------
+
+    use crate::xlsx_fixture::{
+        OXDOC_CELL_ADD_REJECTION, dropped_entries, log_ledger, open_xlsx_raw, raw_cell_payload,
+        raw_sheet_cells,
+    };
+    use oxdoc_model::CellPayload;
+    use oxdoc_xlsx::XlsxError;
+    use oxdoc_xlsx::model::DocumentFidelityLedger;
+
+    /// Execute `SaveActiveXlsx`, destructure the `Saved` outcome, and log
+    /// the byte count and every ledger entry.
+    fn execute_save(
+        stage: &str,
+        document: &mut DocumentSession,
+    ) -> (Vec<u8>, DocumentFidelityLedger) {
+        let outcome = document
+            .execute(HostCommand::SaveActiveXlsx)
+            .unwrap_or_else(|err| panic!("SaveActiveXlsx [{stage}] failed: {err} / {err:?}"));
+        match outcome {
+            HostCommandOutcome::Saved { bytes, save_ledger } => {
+                println!("W011 SaveActiveXlsx [{stage}]: {} bytes", bytes.len());
+                log_ledger(
+                    &format!("W011 SaveActiveXlsx [{stage}] ledger"),
+                    &save_ledger,
+                );
+                (bytes, save_ledger)
+            }
+            other => panic!("expected Saved, got {other:?}"),
+        }
+    }
+
+    /// dtc-j7n8.7 acceptance (1)/(2) at the command surface — THE campaign
+    /// save proof through the commands a host actually issues:
+    /// `OpenXlsxBytes` -> `EnterGridCell { A1, "10" }` (dispatch; LIVE `B1`
+    /// = 30) -> `SaveActiveXlsx` returns `Saved { bytes, save_ledger }` with
+    /// no `Dropped` entry; the SAVED bytes reopened RAW through OxDoc (no
+    /// engine) carry `A1 = Number(10)` and `B1 = Formula { text: "A1*3",
+    /// cached: Number(30) }` — the cached `<v>` is the fresh 30, not the
+    /// file's stale 21. The save replaces nothing (same opened workbook,
+    /// LIVE still 30), and a second `OpenXlsxBytes` of the saved bytes
+    /// closes the full loop at the command surface: `Opened` reports one
+    /// literal + one bound formula, the snapshot shows `A1` authored 10 and
+    /// `B1` authored `=A1*3` = 30 (authored kinds asserted before values,
+    /// the token-mismatch blank order).
+    #[test]
+    fn execute_save_active_xlsx_after_edit_returns_bytes_with_cached_30() {
+        let mut document = open_w011_fixture_document();
+        let (grid_id, _) = loaded_sheet1_grid(&document.snapshot());
+
+        let receipt = document.dispatch(WorkspaceIntent::EnterGridCell {
+            grid: grid_id.clone(),
+            row: 1,
+            col: 1,
+            text: "10".to_string(),
+        });
+        assert!(
+            receipt.accepted,
+            "A1 -> 10 is accepted: {:?}",
+            receipt.error
+        );
+        let live = document.snapshot();
+        let (_, grid_live) = loaded_sheet1_grid(&live);
+        let b1_live = projected_cell(grid_live, 1, 2);
+        log_cell("pre-save", "B1", b1_live);
+        assert_eq!(
+            b1_live.value,
+            number("30"),
+            "LIVE truth before the save: B1 = A1*3 = 30"
+        );
+
+        let (bytes, save_ledger) = execute_save("after edit", &mut document);
+        assert!(!bytes.is_empty(), "the save produced package bytes");
+        let dropped = dropped_entries(&save_ledger);
+        assert!(
+            dropped.is_empty(),
+            "no Dropped ledger entries (the fixture has no calc chain to drop): {dropped:?}"
+        );
+
+        // A save replaces nothing: still the opened workbook, LIVE still 30.
+        assert_eq!(document.model_name(), "Workbook");
+        let DocumentSession::Workbook(session) = &document else {
+            panic!("the session survives the save as a Workbook, got {document:?}");
+        };
+        assert_eq!(session.workspace_id().as_str(), XLSX_WORKSPACE_ID);
+        assert_eq!(session.document_name(), Some("a1_times_three.xlsx"));
+        let after_save = document.snapshot();
+        let (_, grid_after_save) = loaded_sheet1_grid(&after_save);
+        assert_eq!(
+            projected_cell(grid_after_save, 1, 2).value,
+            number("30"),
+            "LIVE truth is untouched by the save"
+        );
+
+        // FILE truth of the SAVED bytes — raw OxDoc events, no engine.
+        let reopened = open_xlsx_raw(&bytes);
+        log_ledger(
+            "W011 SaveActiveXlsx reopen load ledger",
+            &reopened.load_ledger,
+        );
+        let cells = raw_sheet_cells(&reopened, "Sheet1");
+        println!("W011 SaveActiveXlsx reopen: raw Sheet1 cells = {cells:?}");
+        assert_eq!(cells.len(), 2, "exactly A1 and B1: {cells:?}");
+        let a1 = raw_cell_payload(&cells, 1, 1);
+        let b1 = raw_cell_payload(&cells, 1, 2);
+        println!("W011 SaveActiveXlsx reopen: A1 payload = {a1:?}");
+        println!("W011 SaveActiveXlsx reopen: B1 payload = {b1:?}");
+        assert_eq!(
+            a1,
+            &CellPayload::Number(10.0),
+            "A1 is saved as the edited literal 10"
+        );
+        assert_eq!(
+            b1,
+            &CellPayload::Formula {
+                region: None,
+                text: Some("A1*3".to_string()),
+                cached: Some(Box::new(CellPayload::Number(30.0))),
+            },
+            "THE TRAP: B1 keeps its formula text A1*3 AND its cached <v> is the fresh 30, \
+             not the file's stale 21"
+        );
+
+        // Full loop at the command surface: open the saved bytes.
+        let outcome = document
+            .execute(HostCommand::OpenXlsxBytes {
+                bytes,
+                name: Some("a1_times_three_saved.xlsx".to_string()),
+            })
+            .expect("the saved bytes open through OxDoc and ingest into the engine");
+        let HostCommandOutcome::Opened {
+            cells,
+            formulas_bound,
+            recalc_path,
+            ..
+        } = &outcome
+        else {
+            panic!("expected Opened, got {outcome:?}");
+        };
+        assert_eq!((*cells, *formulas_bound), (1, 1), "A1 literal, B1 bound");
+        assert_eq!(*recalc_path, LoadRecalcPath::Automatic);
+        let reloaded = document.snapshot();
+        let (_, grid_reloaded) = loaded_sheet1_grid(&reloaded);
+        let a1_reloaded = projected_cell(grid_reloaded, 1, 1);
+        let b1_reloaded = projected_cell(grid_reloaded, 1, 2);
+        log_cell("reloaded", "A1", a1_reloaded);
+        log_cell("reloaded", "B1", b1_reloaded);
+        let a1_authored = a1_reloaded
+            .authored
+            .as_ref()
+            .expect("A1 carries authored metadata (None = token-mismatch blank)");
+        let b1_authored = b1_reloaded
+            .authored
+            .as_ref()
+            .expect("B1 carries authored metadata (None = token-mismatch blank)");
+        assert_eq!(a1_authored.kind, GridAuthoredKindProjection::Literal);
+        assert_eq!(a1_authored.literal_text.as_deref(), Some("10"));
+        assert_eq!(b1_authored.kind, GridAuthoredKindProjection::Formula);
+        assert_eq!(b1_authored.source_text.as_deref(), Some("=A1*3"));
+        assert_eq!(a1_reloaded.value, number("10"), "A1 = 10 reloaded");
+        assert_eq!(
+            b1_reloaded.value,
+            number("30"),
+            "B1 = A1*3 = 30 on the reloaded document"
+        );
+    }
+
+    /// dtc-j7n8.7 acceptance (2): `SaveActiveXlsx` on a `RichTree` session
+    /// is the typed [`HostCommandError::UnsupportedByModel`] — no workbook,
+    /// no OxDoc source — never a panic; the session is untouched.
+    #[test]
+    fn save_active_xlsx_on_rich_tree_session_is_typed_unsupported_by_model() {
+        let mut document = DocumentSession::RichTree(RichTreeSession::new());
+
+        let error = document
+            .execute(HostCommand::SaveActiveXlsx)
+            .expect_err("a RichTree session has no workbook to save");
+        match &error {
+            HostCommandError::UnsupportedByModel { model, command } => {
+                assert_eq!(*model, "RichTree");
+                assert_eq!(*command, "SaveActiveXlsx");
+            }
+            other => panic!("expected UnsupportedByModel, got {other:?}"),
+        }
+        println!("HostCommandError (Display): {error}");
+        assert_eq!(
+            document.model_name(),
+            "RichTree",
+            "the session is untouched"
+        );
+    }
+
+    /// dtc-j7n8.7 acceptance (2): `SaveActiveXlsx` on an in-memory workbook
+    /// (the demo, no OxDoc source) is the typed
+    /// `HostCommandError::Workbook(WorkbookSessionError::NoBackingSource)`;
+    /// the demo session is untouched.
+    #[test]
+    fn save_active_xlsx_on_workbook_without_source_is_typed_error() {
+        let mut document = DocumentSession::Workbook(build_demo_workbook().unwrap());
+
+        let error = document
+            .execute(HostCommand::SaveActiveXlsx)
+            .expect_err("an in-memory workbook has no OxDoc source to round-trip against");
+        match &error {
+            HostCommandError::Workbook(WorkbookSessionError::NoBackingSource) => {}
+            other => panic!("expected Workbook(NoBackingSource), got {other:?}"),
+        }
+        println!("HostCommandError (Display): {error}");
+
+        let DocumentSession::Workbook(session) = &document else {
+            panic!("the demo session survives the refused save, got {document:?}");
+        };
+        assert_eq!(session.workspace_id().as_str(), "workbook:demo");
+        assert!(session.xlsx_source().is_none());
+        assert_eq!(session.sheets().unwrap().len(), 2);
+    }
+
+    /// dtc-j7n8.7 acceptance (2), errors typed end to end: a cell ADD (`C1`
+    /// is empty in the fixture) is accepted into the live model but is
+    /// save-restricted, and `SaveActiveXlsx` returns OxDoc's
+    /// `UnsupportedRoundTripFeature` — pinned to the exact observed text,
+    /// `OXDOC_CELL_ADD_REJECTION`, which does not name the cell (OxDoc's
+    /// surgical merge compares cell key sets) — inside
+    /// `HostCommandError::Workbook(WorkbookSessionError::Xlsx(_))` — no
+    /// bytes, no panic — while the live session keeps `C1 = 5`.
+    #[test]
+    fn save_active_xlsx_of_out_of_scope_edit_is_typed_rejection_end_to_end() {
+        let mut document = open_w011_fixture_document();
+        let (grid_id, _) = loaded_sheet1_grid(&document.snapshot());
+
+        let receipt = document.dispatch(WorkspaceIntent::EnterGridCell {
+            grid: grid_id.clone(),
+            row: 1,
+            col: 3,
+            text: "5".to_string(),
+        });
+        assert!(
+            receipt.accepted,
+            "C1 = 5 is accepted live (edit scope is wider than save scope): {:?}",
+            receipt.error
+        );
+
+        let error = document
+            .execute(HostCommand::SaveActiveXlsx)
+            .expect_err("a cell add is refused by OxDoc's round-trip policy");
+        match &error {
+            HostCommandError::Workbook(WorkbookSessionError::Xlsx(
+                XlsxError::UnsupportedRoundTripFeature(message),
+            )) => {
+                println!("W011 SaveActiveXlsx [C1 add]: typed OxDoc rejection = {message:?}");
+                assert_eq!(
+                    message.as_str(),
+                    OXDOC_CELL_ADD_REJECTION,
+                    "the rejection is OxDoc's cell add/remove refusal, pinned to the observed \
+                     text (it does not name C1: the surgical merge compares cell key sets)"
+                );
+            }
+            other => {
+                panic!("expected Workbook(Xlsx(UnsupportedRoundTripFeature(_))), got {other:?}")
+            }
+        }
+        println!("HostCommandError (Display): {error}");
+
+        // The refused save left LIVE truth intact: C1 = 5 alongside A1/B1.
+        let state = document.snapshot();
+        let (_, grid) = loaded_sheet1_grid(&state);
+        assert_eq!(
+            grid.cells.len(),
+            3,
+            "A1, B1 and the added C1: {:#?}",
+            grid.cells
+        );
+        assert_eq!(projected_cell(grid, 1, 3).value, number("5"), "C1 = 5 live");
+        assert_eq!(
+            projected_cell(grid, 1, 2).value,
+            number("21"),
+            "B1 = 21 live"
         );
     }
 

@@ -170,9 +170,12 @@ not docs):
 - **OxDoc save-path limits (load-bearing for W011 scope):** there is no
   granular per-cell modeled edit — `ModeledEdit(Replace(CellChunk))` replaces
   ALL cell chunks for a sheet and a partial chunk fails downstream as cell
-  removal. The supported cell-edit path is
-  `WorkbookModelOutput::whole_model_projection` over a host-mutated clone of
-  the session event stream. Round-trip save rejects (typed
+  removal. The supported cell-edit path is a `WorkbookModelOutput`
+  whole-model projection produced by the ENGINE
+  (`project_workbook_model_output`, landed as `save_xlsx_bytes` in
+  dtc-j7n8.7) — never a host-mutated clone of the session event stream (that
+  2026-07 recipe is superseded; see "Save path (W011)"). Round-trip save
+  rejects (typed
   `UnsupportedRoundTripFeature`, never silent): adding/removing cells,
   adding/removing formulas, formula text changes without synchronized
   FormulaTopology edits, and edits to cells whose start tag carries any
@@ -312,7 +315,7 @@ pub enum HostCommand {
 fn execute(&mut self, cmd: HostCommand) -> Result<HostCommandOutcome, HostCommandError>;
 // HostCommandOutcome::Opened { name, sheet_count, cells, formulas_bound,
 //                              recalc_path, load_ledger }   // landed dtc-j7n8.3 + .4
-//                  ::Saved  { bytes: Vec<u8>, save_ledger: DocumentFidelityLedger }
+//                  ::Saved  { bytes: Vec<u8>, save_ledger: DocumentFidelityLedger } // landed dtc-j7n8.7
 //                  ::Dispatched(IntentReceipt) | ::LayoutSet | ::Closed
 // HostCommandError wraps oxdoc_xlsx::XlsxError (incl. UnsupportedRoundTripFeature)
 // as data, not strings — landed as HostCommandError::Workbook(WorkbookSessionError::Xlsx(_))
@@ -322,9 +325,13 @@ fn execute(&mut self, cmd: HostCommand) -> Result<HostCommandOutcome, HostComman
 // is ingested into the engine through OxCalc's own load_workbook_model verb —
 // the engine's WorkbookLoadReport is kept as WorkbookSession::load_report, and
 // ingest-created grids are addressed under the `book:{workspace}` token the
-// session's single workbook-token authority derives per origin) and
+// session's single workbook-token authority derives per origin),
 // DispatchWorkspaceIntent (always Ok — intent rejections travel inside the
-// IntentReceipt).
+// IntentReceipt), and SaveActiveXlsx (dtc-j7n8.7: WorkbookSession::save_xlsx_bytes
+// — OxCalc's project_workbook_model_output round-tripped by OxDoc's
+// write_save_request; never replaces or mutates the session; a RichTree session
+// is HostCommandError::UnsupportedByModel, an in-memory workbook is
+// WorkbookSessionError::NoBackingSource; see §"Save path (W011)").
 
 fn document_status(&self) -> DocumentStatus; // { dirty: bool, save_restrictions: Vec<..> }
 ```
@@ -410,27 +417,54 @@ machinery remain a later shape, not W011 scope.
 
 ## Save path (W011)
 
-The narrow first save is existing-cell literal edits plus engine-driven
-cached-value refresh of existing formulas, via the **whole-model projection**
-recipe (the only supported cell-edit path in OxDoc today):
+Landed in `dtc-j7n8.7` as `WorkbookSession::save_xlsx_bytes` /
+`HostCommand::SaveActiveXlsx`. The narrow first save is existing-cell literal
+edits plus engine-driven cached-value refresh of existing formulas, and the
+recipe is **engine projection, never host patching**:
 
-1. Host-core keeps a `WorkbookEditLedger` of applied grid edits (it authored
-   every seed and every `OxCalcTreeGridOp`).
-2. At save: clone `source_context.events()`; replace A1's payload with
-   `CellPayload::Number(10.0)` and B1's with `CellPayload::Formula { region:
-   None, text: Some("A1*3") /* unchanged from load */, cached:
-   Some(Box::new(CellPayload::Number(30.0))) }` — the cached value taken from
-   OxCalc's post-recalc readout.
-3. Wrap with `WorkbookModelOutput::whole_model_projection(events)`; call
+1. The engine projects the whole model:
+   `OxCalcDocumentContext::project_workbook_model_output(&workspace_id)`
+   (OxCalc W062 R6.6, invariant C12) — one `WholeModelProjection { events }`.
+   Tier A is re-derived from the calc model (header from calc settings,
+   sheets in registry order, authored cells as literals or `Formula { text
+   /* leading '=' stripped for the wire */, cached }`); Tier B (style tables,
+   sheet views, dimensions, the present-but-empty differential style table)
+   replays verbatim from the sealed ingest facts; `CalcChainHint` is omitted.
+   Every formula cell's `cached` is read FRESH from the published readout at
+   projection time — fresh-cache-by-construction. Under `CalcMode::Manual`
+   with undrained edits this writes the last CALCULATED caches (Excel's own
+   last-calculated semantics for a manual workbook saved without a recalc);
+   the W011 fixture is `Automatic`, so an edit drains before any save.
+2. OxDoc round-trips it against the opened package:
    `write_save_request(XlsxSaveRequest::round_trip(&source_context, &output),
-   Cursor::new(Vec::new()))`.
-4. Surface the returned `DocumentFidelityLedger` through
-   `HostCommandOutcome::Saved`.
+   Cursor::new(Vec::new()))` (the writer needs `Write + Seek`). The host never
+   touches zip or XML.
+3. The bytes and OxDoc's `DocumentFidelityLedger` surface as
+   `HostCommandOutcome::Saved { bytes, save_ledger }`; the shell owns file
+   I/O. A save neither replaces nor mutates the session, and its FILE truth
+   (`xlsx_source`) is not rebased on the saved bytes — a later bead with
+   dirty tracking decides that.
 
-Do **not** use `WorkbookModelEditKind::Replace(CellChunk)` for cell edits.
-OxCalc is not asked for output in W011 — a future authored-cells-changed
-readout is the (downgraded) handover ask (d); a first-class granular
-`CellEdit` modeled edit is a non-blocking OxDoc handover ask.
+The proof is **file-level**: the acceptance tests
+(`save_after_edit_reopens_with_cached_30`,
+`execute_save_active_xlsx_after_edit_returns_bytes_with_cached_30`) reopen the
+SAVED bytes through OxDoc and assert the raw `B1` payload `Formula { text:
+"A1*3", cached: Number(30) }` — an engine readout after a reload would
+recalculate and mask a stale cache. Typed refusals, never panics: an edit
+outside OxDoc's round-trip policy (cell add/remove, formula add/remove, a
+formula-text change without a synchronized `FormulaTopology`, styled cell
+start tags) is `HostCommandError::Workbook(WorkbookSessionError::Xlsx(
+XlsxError::UnsupportedRoundTripFeature(_)))` with the live model left intact;
+an in-memory workbook has no source to round-trip and is
+`WorkbookSessionError::NoBackingSource`; a `RichTree` session is
+`HostCommandError::UnsupportedByModel`. Any formula-cell payload change (a
+pure cached refresh included) drops `xl/calcChain.xml` with a `Dropped`
+ledger entry when the package carries one — the fixture carries none, and
+calc-chain byte identity is never asserted.
+
+The 2026-07 recipe (clone `source_context.events()`, patch `A1`/`B1` by hand,
+keep a `WorkbookEditLedger`) is superseded and must not return; do **not**
+use `WorkbookModelEditKind::Replace(CellChunk)` for cell edits either.
 
 No silent loss is allowed: anything outside the narrow edit scope is preserved
 or rejected with a visible typed reason, never dropped.

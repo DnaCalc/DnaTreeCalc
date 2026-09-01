@@ -33,6 +33,10 @@
 //! **SKIN truth** is a [`WorkspaceState`] snapshot: what renders, a capture of
 //! LIVE truth that is stale the moment it is taken. Never read one truth
 //! expecting another's answer; ingest copies FILE into LIVE exactly once.
+//! A save ([`WorkbookSession::save_xlsx_bytes`]) goes the other way, once per
+//! call: the engine projects LIVE truth (fresh formula caches) and OxDoc
+//! merges it onto the FILE truth's package image; the bytes go back to the
+//! caller, and FILE truth here stays the opened package.
 
 use std::collections::BTreeMap;
 
@@ -48,7 +52,11 @@ use oxcalc_core::grid::geometry::GridRect;
 use oxcalc_core::grid::machine::GridEngineValidationMode;
 use oxcalc_core::oxdoc_ingest::WorkbookLoadReport;
 use oxcalc_core::structural::TreeNodeId;
-use oxdoc_xlsx::{HostOwnedXlsxSource, LoadProfile, XlsxError, open_host_owned_xlsx_source};
+use oxdoc_xlsx::model::DocumentFidelityLedger;
+use oxdoc_xlsx::{
+    HostOwnedXlsxSource, LoadProfile, XlsxError, XlsxSaveRequest, open_host_owned_xlsx_source,
+    write_save_request,
+};
 use oxfunc_core::value::CalcValue;
 
 use crate::grid_publication::{grid_authored_cell_projection, grid_projection_for};
@@ -167,12 +175,20 @@ pub struct WorkbookSession {
 pub enum WorkbookSessionError {
     #[error("engine rejected the workbook operation")]
     OxCalc(#[from] OxCalcDocumentError),
-    /// OxDoc rejected the `.xlsx` bytes on open (W011, dtc-j7n8.3) — or, in
-    /// later beads, the round-trip save. OxDoc's typed [`XlsxError`] travels
-    /// as data (a corrupt zip, a missing part, an XML error in a named part,
-    /// an `UnsupportedRoundTripFeature`), never flattened to a string.
+    /// OxDoc rejected the `.xlsx` bytes on open (W011, dtc-j7n8.3) or the
+    /// round-trip save (dtc-j7n8.7). OxDoc's typed [`XlsxError`] travels as
+    /// data (a corrupt zip, a missing part, an XML error in a named part, an
+    /// `UnsupportedRoundTripFeature` describing the edit the save policy
+    /// refuses), never flattened to a string.
     #[error("OxDoc rejected the xlsx package")]
     Xlsx(#[from] XlsxError),
+    /// The workbook was not opened from `.xlsx` bytes, so there is no OxDoc
+    /// source package to round-trip a save against (W011, dtc-j7n8.7): an
+    /// in-memory workbook ([`WorkbookSession::create`], the demo) cannot be
+    /// saved as xlsx until a fresh-export lane exists. A typed refusal, never
+    /// a panic and never an empty package.
+    #[error("the workbook session has no backing xlsx source to save against")]
+    NoBackingSource,
     /// A cell write or read addressed a node that carries no grid backing —
     /// `set_grid_cell_value` / `grid_view` returned `Ok(None)`. In H2 every
     /// sheet is grid-backed at creation, so this is an internal-invariant
@@ -365,6 +381,83 @@ impl WorkbookSession {
     #[must_use]
     pub fn document_name(&self) -> Option<&str> {
         self.xlsx.as_ref().and_then(|state| state.name.as_deref())
+    }
+
+    /// Save the workbook back to `.xlsx` bytes through OxDoc (W011,
+    /// dtc-j7n8.7): the engine projects the WHOLE model to a neutral
+    /// `oxdoc-model` output stream (`project_workbook_model_output`, OxCalc
+    /// W062 R6.6 / C12) and OxDoc round-trips it against the source package
+    /// this session was opened from (`write_save_request`, round-trip mode).
+    /// Returns the package bytes plus OxDoc's save ledger — what was
+    /// preserved, projected, or dropped — as typed data. Read-only on the
+    /// session: the projection never advances the revision, and the OxDoc
+    /// source is borrowed, not consumed.
+    ///
+    /// ## The stale-cache trap, and why this is the only save path
+    ///
+    /// The silent failure this seam is most likely to produce is a file whose
+    /// `A1` says 10 while `B1`'s cached `<v>` still says 21. Two things close
+    /// it. (1) The event stream is never hand-patched here: the projection is
+    /// engine truth end to end — Tier A (header from calc settings, sheets in
+    /// registry order, authored cells as literals or `Formula { text, cached }`
+    /// with the leading `=` stripped for the wire) re-derived from the calc
+    /// model, Tier B (style tables, sheet views, dimensions, the
+    /// present-but-empty differential style table) replayed verbatim from the
+    /// sealed ingest facts, `CalcChainHint` omitted — and every formula
+    /// cell's `cached` is read FRESH from the published readout at projection
+    /// time (C12: fresh-cache-by-construction). The 2026-07 "clone the source
+    /// events and patch `A1`/`B1`" recipe is superseded and must not return.
+    /// (2) The proof is file-level: the acceptance test reopens the SAVED
+    /// bytes through OxDoc and asserts the raw `B1` payload
+    /// (`Formula { text: "A1*3", cached: Number(30) }`); an engine readout
+    /// after a reload would recalculate and mask a stale cache.
+    ///
+    /// The projection reads the current publication whatever its provenance:
+    /// under `CalcMode::Manual` with undrained edits it writes the last
+    /// CALCULATED caches — the pre-edit values, Excel's own last-calculated
+    /// semantics for a manual workbook saved without a recalc. The Wave 1
+    /// fixture is `Automatic`, so an edit drains before any save and the
+    /// caches are always fresh; the Manual lane is dtc-j7n8.13.
+    ///
+    /// ## What OxDoc's round-trip policy accepts
+    ///
+    /// Existing-cell literal edits and cached-value refresh of existing
+    /// formula cells (OxDoc regenerates the whole `<c>` element) — the W011
+    /// scope. Refused with a typed [`XlsxError::UnsupportedRoundTripFeature`]
+    /// (a `String`-payload variant; discriminate by observed message, never
+    /// by wording assumed in advance): cell add/remove, formula add/remove, a
+    /// formula-text change without a synchronized `FormulaTopology`, styled
+    /// cell start tags. Any formula-cell payload change — a pure cached
+    /// refresh included — makes OxDoc drop `xl/calcChain.xml` (a perf hint
+    /// with no fidelity content) with a `Dropped` ledger entry when the
+    /// package carries one; the W011 fixture carries none. Never assert
+    /// calc-chain byte identity.
+    ///
+    /// The session's own FILE truth is untouched by a save: `xlsx_source()`
+    /// still holds the package the workbook was opened from, and the returned
+    /// bytes are the caller's to persist (the shell owns file I/O). Dirty
+    /// tracking / `DocumentStatus` and rebasing the source on the saved bytes
+    /// are later beads. An in-memory workbook ([`WorkbookSession::create`],
+    /// the demo) has no source to round-trip against and is refused with
+    /// [`WorkbookSessionError::NoBackingSource`].
+    pub fn save_xlsx_bytes(
+        &self,
+    ) -> Result<(Vec<u8>, DocumentFidelityLedger), WorkbookSessionError> {
+        let source = self
+            .xlsx_source()
+            .ok_or(WorkbookSessionError::NoBackingSource)?;
+        // Engine truth, whole model, fresh caches (C12). Never hand-patched.
+        let output = self
+            .context
+            .project_workbook_model_output(&self.workspace_id)?;
+        // OxDoc's writer needs `Write + Seek` (the zip central directory), so
+        // a bare `Vec<u8>` is not enough — a cursor over one is.
+        let mut cursor = std::io::Cursor::new(Vec::new());
+        let save_ledger = write_save_request(
+            XlsxSaveRequest::round_trip(&source.source_context, &output),
+            &mut cursor,
+        )?;
+        Ok((cursor.into_inner(), save_ledger))
     }
 
     /// The underlying engine context (H4, `defined_names.rs`'s own module
@@ -1550,5 +1643,375 @@ mod tests {
             }
             other => panic!("expected WorkbookSessionError::Xlsx, got {other:?}"),
         }
+    }
+
+    // ------------------------------------------------------------------
+    // W011 (dtc-j7n8.7): SAVE — the campaign's decisive seam. The engine
+    // projects the whole model with fresh formula caches (C12), OxDoc
+    // round-trips it against the opened package, and the proof is on the
+    // REOPENED BYTES' raw OxDoc events — never on an engine readout after
+    // a reload, which would recalculate and mask a stale cached value.
+    // ------------------------------------------------------------------
+
+    use crate::xlsx_fixture::{
+        OXDOC_CELL_ADD_REJECTION, dropped_entries, log_ledger, open_xlsx_raw, raw_cell_payload,
+        raw_sheet_cells, w011_saved_fixture_target_path,
+    };
+    use oxdoc_model::{CellPayload, DocumentEvent, FormulaRecordKind, PackedCellAddr};
+
+    /// `B1`'s wire payload: the Normal formula `A1*3` (leading `=` stripped,
+    /// the xlsx `<f>` convention) with `cached` as the file's `<v>`.
+    fn b1_formula_cached(cached: f64) -> CellPayload {
+        CellPayload::Formula {
+            region: None,
+            text: Some("A1*3".to_string()),
+            cached: Some(Box::new(CellPayload::Number(cached))),
+        }
+    }
+
+    /// Save the session, log the byte count and every ledger entry, and
+    /// assert the ledger dropped nothing (the fixture has no calc chain, the
+    /// one part a formula-cache refresh legitimately drops).
+    fn save_and_log(stage: &str, session: &WorkbookSession) -> (Vec<u8>, DocumentFidelityLedger) {
+        let (bytes, ledger) = session
+            .save_xlsx_bytes()
+            .unwrap_or_else(|err| panic!("save_xlsx_bytes [{stage}] failed: {err} / {err:?}"));
+        println!("W011 save [{stage}]: {} bytes", bytes.len());
+        log_ledger(&format!("W011 save [{stage}] ledger"), &ledger);
+        assert!(!bytes.is_empty(), "the save produced package bytes");
+        let dropped = dropped_entries(&ledger);
+        assert!(
+            dropped.is_empty(),
+            "no Dropped ledger entries [{stage}]: {dropped:?}"
+        );
+        (bytes, ledger)
+    }
+
+    /// Reopen saved bytes RAW through OxDoc (no engine), logging the load
+    /// ledger.
+    fn reopen_raw(stage: &str, bytes: &[u8]) -> HostOwnedXlsxSource {
+        let reopened = open_xlsx_raw(bytes);
+        log_ledger(
+            &format!("W011 reopen [{stage}] load ledger"),
+            &reopened.load_ledger,
+        );
+        reopened
+    }
+
+    /// Sheet1's raw `(A1, B1)` payloads of a reopened package, logged, after
+    /// asserting they are the only two cells (no cell the conservative
+    /// round-trip policy would have had to add or drop).
+    fn a1_b1(stage: &str, reopened: &HostOwnedXlsxSource) -> (CellPayload, CellPayload) {
+        let cells = raw_sheet_cells(reopened, "Sheet1");
+        println!("W011 reopen [{stage}]: raw Sheet1 cells = {cells:?}");
+        assert_eq!(
+            cells.len(),
+            2,
+            "exactly A1 and B1 in the saved file [{stage}]: {cells:?}"
+        );
+        let a1 = raw_cell_payload(&cells, 1, 1).clone();
+        let b1 = raw_cell_payload(&cells, 1, 2).clone();
+        println!("W011 reopen [{stage}]: A1 payload = {a1:?}");
+        println!("W011 reopen [{stage}]: B1 payload = {b1:?}");
+        (a1, b1)
+    }
+
+    /// dtc-j7n8.7 acceptance (1) — THE campaign save proof, on real bytes.
+    /// Open the fixture -> `enter_grid_cell(A1, "10")` (LIVE `B1` = 30) ->
+    /// `save_xlsx_bytes` -> the ledger dropped nothing -> reopen the SAVED
+    /// bytes RAW through OxDoc and walk the events: `A1` is `Number(10.0)`
+    /// and `B1` is exactly `Formula { region: None, text: Some("A1*3"),
+    /// cached: Some(Number(30.0)) }` — formula text preserved AND the cached
+    /// `<v>` refreshed to 30, not the file's stale 21. This file-level
+    /// assertion is the trap-killer: an engine readout after a reload would
+    /// recalculate 30 from `A1 = 10` and mask a stale cache. Then: the
+    /// reopened package still materializes `B1`'s `FormulaTopology` record
+    /// (a later save from the saved file stays possible); the session's own
+    /// FILE truth is untouched by the save (its source still says cached
+    /// 21, LIVE still says 30); and the full loop closes — the saved bytes
+    /// open into a fresh session with `A1` authored 10, `B1` authored
+    /// `=A1*3`, published 30.
+    #[test]
+    fn save_after_edit_reopens_with_cached_30() {
+        let mut session = open_w011_fixture();
+        let sheet = only_sheet(&session);
+        session
+            .enter_grid_cell(sheet, 1, 1, "10")
+            .expect("A1 -> 10 on the loaded fixture");
+        assert_eq!(
+            session.grid_cell_value(sheet, 1, 2).unwrap(),
+            Some(CalcValue::number(30.0)),
+            "LIVE truth before the save: B1 = A1*3 = 30 (Automatic mode drained the edit)"
+        );
+
+        let (bytes, _ledger) = save_and_log("after edit", &session);
+
+        // FILE truth of the SAVED bytes — raw OxDoc events, no engine.
+        let reopened = reopen_raw("after edit", &bytes);
+        let (a1, b1) = a1_b1("after edit", &reopened);
+        assert_eq!(
+            a1,
+            CellPayload::Number(10.0),
+            "A1 is saved as the edited literal 10"
+        );
+        assert_eq!(
+            b1,
+            b1_formula_cached(30.0),
+            "THE TRAP: B1 keeps its formula text A1*3 AND its cached <v> is the fresh 30, \
+             not the file's stale 21"
+        );
+
+        // The saved package still carries B1's formula record under full().
+        let records: Vec<_> = reopened
+            .source_context
+            .events()
+            .iter()
+            .filter_map(|event| match event {
+                DocumentEvent::FormulaTopology(topology) => Some(&topology.records),
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        println!("W011 reopen [after edit]: formula records = {records:?}");
+        assert_eq!(
+            records.len(),
+            1,
+            "B1 is still the only formula record in the saved file: {records:?}"
+        );
+        assert_eq!(
+            records[0].address,
+            PackedCellAddr::from_one_based(1, 2).unwrap(),
+            "the record is B1's"
+        );
+        assert_eq!(records[0].kind, FormulaRecordKind::Normal);
+        assert_eq!(records[0].text.as_deref(), Some("A1*3"));
+
+        // The session's own FILE truth is untouched by the save: its source is
+        // still the opened package (cached 21); LIVE truth is still 30. The
+        // saved bytes are the caller's — the three truths stay distinct.
+        let source_cells = raw_sheet_cells(
+            session
+                .xlsx_source()
+                .expect("the OxDoc source stays owned across a save"),
+            "Sheet1",
+        );
+        assert_eq!(
+            raw_cell_payload(&source_cells, 1, 2),
+            &b1_formula_cached(21.0),
+            "the opened source keeps the file's cached 21 after a save"
+        );
+        assert_eq!(
+            session.grid_cell_value(sheet, 1, 2).unwrap(),
+            Some(CalcValue::number(30.0)),
+            "LIVE truth is untouched by the save"
+        );
+
+        // Full loop: the saved bytes open into a fresh session.
+        let reloaded = WorkbookSession::open_xlsx_bytes(
+            XLSX_WORKSPACE_ID,
+            &bytes,
+            Some("a1_times_three_saved.xlsx".to_string()),
+        )
+        .expect("the saved bytes open through OxDoc and ingest into the engine");
+        let reloaded_sheet = only_sheet(&reloaded);
+        let authored = reloaded
+            .grid_authored_cells(reloaded_sheet, 1, 1, 1, 2)
+            .unwrap();
+        let a1_authored = authored
+            .iter()
+            .find(|cell| cell.row == 1 && cell.col == 1)
+            .expect("A1 is in the requested window");
+        let b1_authored = authored
+            .iter()
+            .find(|cell| cell.row == 1 && cell.col == 2)
+            .expect("B1 is in the requested window");
+        let a1_value = reloaded.grid_cell_value(reloaded_sheet, 1, 1).unwrap();
+        let b1_value = reloaded.grid_cell_value(reloaded_sheet, 1, 2).unwrap();
+        println!(
+            "W011 full loop: A1 authored kind={:?} literal_text={:?} value={a1_value:?}",
+            a1_authored.kind, a1_authored.literal_text
+        );
+        println!(
+            "W011 full loop: B1 authored kind={:?} source_text={:?} value={b1_value:?}",
+            b1_authored.kind, b1_authored.source_text
+        );
+        assert_eq!(a1_authored.kind, GridAuthoredKindProjection::Literal);
+        assert_eq!(
+            a1_authored.literal_text.as_deref(),
+            Some("10"),
+            "A1 reloads as the authored literal 10"
+        );
+        assert_eq!(b1_authored.kind, GridAuthoredKindProjection::Formula);
+        assert_eq!(
+            b1_authored.source_text.as_deref(),
+            Some("=A1*3"),
+            "B1 reloads as the authored formula, leading `=` restored by the engine"
+        );
+        assert_eq!(a1_value, Some(CalcValue::number(10.0)), "A1 = 10");
+        assert_eq!(
+            b1_value,
+            Some(CalcValue::number(30.0)),
+            "B1 = A1*3 = 30 on the reloaded session"
+        );
+    }
+
+    /// dtc-j7n8.7 acceptance (1), the no-edit lane: saving straight after
+    /// the open round-trips cleanly (no Dropped entry) and the reopened
+    /// bytes are the file's own truth — `A1` 7, `B1` `A1*3` cached 21. The
+    /// cached 21 is PROJECTED, not copied: the Automatic open-recalc
+    /// recomputed 21, so the projection's fresh cache equals the stored one.
+    /// The reopened stream is the opened source's stream: a no-op save
+    /// neither gains nor loses a document event.
+    #[test]
+    fn save_without_edit_round_trips_cleanly() {
+        let session = open_w011_fixture();
+        let (bytes, _ledger) = save_and_log("no edit", &session);
+
+        let reopened = reopen_raw("no edit", &bytes);
+        let (a1, b1) = a1_b1("no edit", &reopened);
+        assert_eq!(a1, CellPayload::Number(7.0), "A1 is still the file's 7");
+        assert_eq!(
+            b1,
+            b1_formula_cached(21.0),
+            "B1 keeps its formula text and the recomputed-equals-stored cached 21"
+        );
+        assert_eq!(
+            reopened.source_context.events(),
+            session
+                .xlsx_source()
+                .expect("the OxDoc source stays owned")
+                .source_context
+                .events(),
+            "a no-op save reopens as the same document event stream"
+        );
+    }
+
+    /// dtc-j7n8.7 acceptance (1), the refusal lane: `C1` is EMPTY in the
+    /// fixture, so entering `C1 = 5` is a cell ADD — accepted into the live
+    /// model (edit scope is wider than save scope) but outside OxDoc's
+    /// conservative round-trip policy. The save is refused with the typed
+    /// `WorkbookSessionError::Xlsx(XlsxError::UnsupportedRoundTripFeature(msg))`
+    /// whose text is pinned to the EXACT message observed
+    /// (`OXDOC_CELL_ADD_REJECTION`): OxDoc's surgical worksheet merge
+    /// compares the original and projected cell KEY SETS and refuses
+    /// without naming the cell — the bead's pre-registered "does not name
+    /// C1" branch, so the assertion was widened to the observed text, never
+    /// dropped. No bytes are produced (the `Ok` arm with its bytes is the
+    /// failure the match refuses), and the live model survives the refusal
+    /// untouched. The full message is logged for the close report.
+    #[test]
+    fn save_of_out_of_scope_edit_is_typed_rejection() {
+        let mut session = open_w011_fixture();
+        let sheet = only_sheet(&session);
+        session
+            .enter_grid_cell(sheet, 1, 3, "5")
+            .expect("the live model accepts C1 = 5: edit scope is wider than save scope");
+        assert_eq!(
+            session.grid_cell_value(sheet, 1, 3).unwrap(),
+            Some(CalcValue::number(5.0)),
+            "C1 = 5 live"
+        );
+
+        let refusal = session.save_xlsx_bytes();
+        match &refusal {
+            Ok((bytes, ledger)) => panic!(
+                "a cell add must be refused by OxDoc's round-trip policy, but the save \
+                 produced {} bytes with ledger {ledger:?}",
+                bytes.len()
+            ),
+            Err(WorkbookSessionError::Xlsx(
+                xlsx @ XlsxError::UnsupportedRoundTripFeature(message),
+            )) => {
+                println!("W011 save [C1 add]: typed OxDoc rejection = {message:?}");
+                println!("W011 save [C1 add]: Display = {xlsx}");
+                assert_eq!(
+                    message.as_str(),
+                    OXDOC_CELL_ADD_REJECTION,
+                    "the rejection is OxDoc's cell add/remove refusal, pinned to the observed \
+                     text (it does not name C1: the surgical merge compares cell key sets)"
+                );
+            }
+            Err(other) => panic!(
+                "expected WorkbookSessionError::Xlsx(UnsupportedRoundTripFeature(_)), \
+                 got {other} / {other:?}"
+            ),
+        }
+
+        // The refused save mutated nothing: LIVE truth still holds C1 = 5
+        // and B1 = 21; FILE truth is still the two-cell opened package.
+        assert_eq!(
+            session.grid_cell_value(sheet, 1, 3).unwrap(),
+            Some(CalcValue::number(5.0)),
+            "C1 = 5 survives the refused save"
+        );
+        assert_eq!(
+            session.grid_cell_value(sheet, 1, 2).unwrap(),
+            Some(CalcValue::number(21.0)),
+            "B1 = 21 survives the refused save"
+        );
+        assert_eq!(
+            raw_sheet_cells(session.xlsx_source().unwrap(), "Sheet1").len(),
+            2,
+            "the opened source is still the two-cell package"
+        );
+    }
+
+    /// dtc-j7n8.7 acceptance (1)/(2): an in-memory workbook (the demo) has no
+    /// OxDoc source to round-trip against — `save_xlsx_bytes` refuses with
+    /// the typed [`WorkbookSessionError::NoBackingSource`], never a panic
+    /// and never an empty package.
+    #[test]
+    fn save_on_session_without_source_is_typed_error() {
+        let session = build_demo_workbook().unwrap();
+        assert!(session.xlsx_source().is_none(), "the demo has no source");
+
+        match session.save_xlsx_bytes() {
+            Err(WorkbookSessionError::NoBackingSource) => {
+                println!(
+                    "W011 save [no source]: typed refusal = {}",
+                    WorkbookSessionError::NoBackingSource
+                );
+            }
+            Ok((bytes, ledger)) => panic!(
+                "an in-memory workbook has no source to round-trip against, but the save \
+                 produced {} bytes with ledger {ledger:?}",
+                bytes.len()
+            ),
+            Err(other) => panic!("expected NoBackingSource, got {other} / {other:?}"),
+        }
+    }
+
+    /// Generator, not a check (dtc-j7n8.7 acceptance (4)): writes the
+    /// POST-EDIT saved bytes (`A1` = 10, `B1` cached 30) to
+    /// `target/w011/a1_times_three_saved.xlsx` — the build dir, never the
+    /// repo — so Wave 2 (dtc-j7n8.11) has an Excel-openable artifact to
+    /// compare against. `#[ignore]`d so the normal suite writes nothing; run
+    /// it manually:
+    ///
+    /// `cargo test -p dnacalc-host-core --offline emit_saved_fixture_for_excel_compare -- --ignored --nocapture`
+    #[test]
+    #[ignore = "generator: writes target/w011/a1_times_three_saved.xlsx (the post-edit save) for the Wave 2 Excel comparison; run with --ignored"]
+    fn emit_saved_fixture_for_excel_compare() {
+        let mut session = open_w011_fixture();
+        let sheet = only_sheet(&session);
+        session.enter_grid_cell(sheet, 1, 1, "10").unwrap();
+        let (bytes, _ledger) = save_and_log("excel compare", &session);
+
+        let path = w011_saved_fixture_target_path();
+        let dir = path.parent().expect("the target path has a parent dir");
+        std::fs::create_dir_all(dir)
+            .unwrap_or_else(|err| panic!("failed to create {}: {err}", dir.display()));
+        std::fs::write(&path, &bytes)
+            .unwrap_or_else(|err| panic!("failed to write {}: {err}", path.display()));
+        println!("wrote {} ({} bytes)", path.display(), bytes.len());
+
+        // What is on disk reopens with the fresh cache — the acceptance
+        // test's file-level check, on the written file.
+        let on_disk = std::fs::read(&path)
+            .unwrap_or_else(|err| panic!("failed to read back {}: {err}", path.display()));
+        let reopened = reopen_raw("excel compare, from disk", &on_disk);
+        let (a1, b1) = a1_b1("excel compare, from disk", &reopened);
+        assert_eq!(a1, CellPayload::Number(10.0));
+        assert_eq!(b1, b1_formula_cached(30.0));
     }
 }
