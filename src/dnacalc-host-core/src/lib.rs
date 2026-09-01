@@ -909,6 +909,112 @@ mod tests {
         );
     }
 
+    use dnacalc_skin_ir::GridAuthoredKindProjection;
+
+    /// dtc-j7n8.5, the infallible mount surface: `DocumentSession::snapshot`
+    /// degrades an internal-invariant error to `WorkspaceState::default()`,
+    /// so a skin mounting an opened workbook could be handed an empty
+    /// default that "renders" nothing and fails no caller — the silent-pass
+    /// mode `workbook.rs`'s `snapshot_of_loaded_fixture_projects_authored_and_provenance`
+    /// closes at the `Result` surface. This closes it at the surface a skin
+    /// actually calls: after `OpenXlsxBytes`, the snapshot is the loaded
+    /// fixture — its identity, `Sheet1`, and both cells with their authored
+    /// kinds (asserted before the values, the token-mismatch blank order)
+    /// and `Calculated` values.
+    #[test]
+    fn snapshot_of_loaded_fixture_through_document_session_is_not_defaulted() {
+        let mut document = DocumentSession::Workbook(build_demo_workbook().unwrap());
+        document
+            .execute(HostCommand::OpenXlsxBytes {
+                bytes: w011_fixture_bytes(),
+                name: Some("a1_times_three.xlsx".to_string()),
+            })
+            .expect("OxDoc opens and the engine ingests the committed W011 fixture");
+
+        let state = document.snapshot();
+        assert_ne!(
+            state,
+            WorkspaceState::default(),
+            "the mount surface handed a skin the empty default instead of the opened workbook"
+        );
+        assert_eq!(state.workspace_id, XLSX_WORKSPACE_ID);
+        assert_eq!(
+            state.grids.len(),
+            1,
+            "one grid, Sheet1's: {:?}",
+            state.grids.keys()
+        );
+        assert_eq!(state.sheets.len(), 1);
+        assert_eq!(state.sheets[0].display_name, "Sheet1");
+        let grid = &state.grids[&state.sheets[0].grid_node_id];
+        assert!(!grid.cells.is_empty(), "Sheet1's projected cells are empty");
+        assert_eq!(grid.cells.len(), 2, "A1 and B1: {:#?}", grid.cells);
+
+        let cell = |row: u32, col: u32| {
+            grid.cells
+                .iter()
+                .find(|cell| cell.row == row && cell.col == col)
+                .unwrap_or_else(|| {
+                    panic!("no projected cell at ({row}, {col}) in {:#?}", grid.cells)
+                })
+        };
+        let a1 = cell(1, 1);
+        let b1 = cell(1, 2);
+        for cell in [a1, b1] {
+            println!(
+                "W011 mount snapshot: cell ({}, {}) kind={:?} source_text={:?} value={:?} provenance={:?}",
+                cell.row,
+                cell.col,
+                cell.authored.as_ref().map(|authored| authored.kind),
+                cell.authored
+                    .as_ref()
+                    .and_then(|authored| authored.source_text.as_deref()),
+                cell.value,
+                cell.provenance
+            );
+        }
+        // Authored kinds first: a `None` is the GridRect token-mismatch blank.
+        assert_eq!(
+            a1.authored.as_ref().map(|authored| authored.kind),
+            Some(GridAuthoredKindProjection::Literal),
+            "A1 authored Literal"
+        );
+        assert_eq!(
+            b1.authored.as_ref().map(|authored| authored.kind),
+            Some(GridAuthoredKindProjection::Formula),
+            "B1 authored Formula"
+        );
+        assert_eq!(
+            b1.authored
+                .as_ref()
+                .and_then(|authored| authored.source_text.as_deref()),
+            Some("=A1*3")
+        );
+        assert_eq!(
+            a1.value,
+            NodeValueProjection::Number {
+                raw: "7".to_string(),
+                display: "7".to_string(),
+            }
+        );
+        assert_eq!(
+            b1.value,
+            NodeValueProjection::Number {
+                raw: "21".to_string(),
+                display: "21".to_string(),
+            }
+        );
+        assert!(
+            matches!(
+                b1.provenance,
+                Some(ValueProvenanceProjection::Calculated { .. })
+            ),
+            "B1 is Calculated by the open-recalc, not FileCached: {:?}",
+            b1.provenance
+        );
+        assert!(grid.authored_epoch > 0, "authored_epoch > 0");
+    }
+
     /// Executing `OpenXlsxBytes` with bytes that are not a zip is a typed
     /// error — OxDoc's `XlsxError` as data inside
     /// `HostCommandError::Workbook(WorkbookSessionError::Xlsx(_))` — never a

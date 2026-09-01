@@ -1308,6 +1308,227 @@ mod tests {
         }
     }
 
+    // ------------------------------------------------------------------
+    // W011 (dtc-j7n8.5): SKIN truth of the loaded workbook — the snapshot
+    // a skin mounts from carries authored metadata + provenance.
+    // ------------------------------------------------------------------
+
+    use dnacalc_skin_ir::{CalcModeProjection, GridCellProjection};
+
+    /// Locate one projected cell by 1-based `(row, col)`, failing with the
+    /// whole projected cell list when it is missing.
+    fn projected_cell(cells: &[GridCellProjection], row: u32, col: u32) -> &GridCellProjection {
+        cells
+            .iter()
+            .find(|cell| cell.row == row && cell.col == col)
+            .unwrap_or_else(|| panic!("no projected cell at ({row}, {col}) in {cells:#?}"))
+    }
+
+    /// dtc-j7n8.5 acceptance: the SKIN truth of the loaded fixture.
+    /// `snapshot()` over the xlsx-opened session — the exact
+    /// [`WorkspaceState`] a skin mounts from, assembled by the existing
+    /// `grid_projection_for` fold (no new IR) — carries `Sheet1`'s grid with
+    /// `A1` and `B1` populated, each with its authored metadata AND its
+    /// provenance: `A1` `Literal` `"7"` = `7`, `B1` `Formula` `"=A1*3"` =
+    /// `21`, both `Calculated` (the fixture's `calcMode="auto"` open-recalc
+    /// replaced the file cache, so `FileCached` never shows on this lane —
+    /// its first live assertion is the Wave 3 Manual-mode lane,
+    /// dtc-j7n8.13), and `authored_epoch > 0`. This projection is what the
+    /// skins consume, so it is what makes the `B1` notebook render real
+    /// later without any skin change.
+    ///
+    /// Assertion ORDER is the point. Two silent-pass modes exist because the
+    /// mount surface (`DocumentSession::snapshot`, `lib.rs`) is infallible
+    /// via `unwrap_or_default`, so a defaulted snapshot "passes" vacuous
+    /// assertions: (i) an empty grids map / empty cell list — the cells are
+    /// asserted non-empty FIRST; (ii) populated values with EMPTY authored
+    /// metadata — exactly what a mismatched `GridRect` workbook token yields,
+    /// since `grid_authored_view` returns blanks, never an error, on a token
+    /// miss (see [`WorkbookSession::workbook_token`]) — so `authored.is_some()`
+    /// with the right kind is asserted for BOTH `A1` and `B1` before any
+    /// value, provenance, or epoch assertion. No direct engine readout: the
+    /// snapshot is the surface under test.
+    #[test]
+    fn snapshot_of_loaded_fixture_projects_authored_and_provenance() {
+        let session = open_w011_fixture();
+        let sheet = only_sheet(&session);
+
+        let state = session
+            .snapshot()
+            .expect("snapshot() over the loaded fixture is Ok, not an internal-invariant error");
+
+        // (i) Close the empty-snapshot silent pass FIRST: the grids map holds
+        // Sheet1's grid, and that grid holds cells.
+        assert!(
+            !state.grids.is_empty(),
+            "an empty grids map is the defaulted-snapshot silent pass this test exists to catch: {state:#?}"
+        );
+        let grid_id = sheet_grid_node_id(sheet);
+        let grid = state.grids.get(&grid_id).unwrap_or_else(|| {
+            panic!(
+                "Sheet1's grid {grid_id:?} is projected; grids = {:?}",
+                state.grids.keys().collect::<Vec<_>>()
+            )
+        });
+        println!(
+            "W011 snapshot: grid {:?} grid_id={:?} cells={} projection_epoch={} authored_epoch={}",
+            grid.grid_node_id,
+            grid.grid_id,
+            grid.cells.len(),
+            grid.projection_epoch,
+            grid.authored_epoch
+        );
+        assert!(
+            !grid.cells.is_empty(),
+            "Sheet1's projected cell list is empty: the ingest published nothing into the snapshot"
+        );
+        for cell in &grid.cells {
+            println!(
+                "W011 snapshot: cell ({}, {}) kind={:?} literal_text={:?} source_text={:?} \
+                 editability={:?} value={:?} value_epoch={} provenance={:?}",
+                cell.row,
+                cell.col,
+                cell.authored.as_ref().map(|authored| authored.kind),
+                cell.authored
+                    .as_ref()
+                    .and_then(|authored| authored.literal_text.as_deref()),
+                cell.authored
+                    .as_ref()
+                    .and_then(|authored| authored.source_text.as_deref()),
+                cell.authored.as_ref().map(|authored| &authored.editability),
+                cell.value,
+                cell.value_epoch,
+                cell.provenance
+            );
+        }
+        assert_eq!(
+            grid.cells.len(),
+            2,
+            "exactly A1 and B1 are published (no extra cells the conservative save would reject): {:#?}",
+            grid.cells
+        );
+
+        // (ii) Close the blank-authored silent pass BEFORE any value
+        // assertion: both cells carry authored metadata of the right kind.
+        // A `None` here is the GridRect token-mismatch blank, not a missing
+        // cell — the cell list above already proved the cells exist.
+        let a1 = projected_cell(&grid.cells, 1, 1);
+        let b1 = projected_cell(&grid.cells, 1, 2);
+        let a1_authored = a1.authored.as_ref().expect(
+            "A1 carries authored metadata (None = blank readout from a mismatched GridRect workbook token)",
+        );
+        let b1_authored = b1.authored.as_ref().expect(
+            "B1 carries authored metadata (None = blank readout from a mismatched GridRect workbook token)",
+        );
+        assert_eq!(
+            a1_authored.kind,
+            GridAuthoredKindProjection::Literal,
+            "A1 is an authored literal, not a blank (Empty) readout"
+        );
+        assert_eq!(
+            b1_authored.kind,
+            GridAuthoredKindProjection::Formula,
+            "B1 is an authored formula, not a blank (Empty) readout"
+        );
+
+        // A1: the file's literal 7 — authored text, computed value, provenance.
+        assert_eq!((a1_authored.row, a1_authored.col), (1, 1));
+        assert_eq!(a1_authored.literal_text.as_deref(), Some("7"));
+        assert_eq!(
+            a1_authored.source_text, None,
+            "a literal carries no formula source text"
+        );
+        assert_eq!(a1_authored.editability, GridEditabilityProjection::Editable);
+        assert_eq!(
+            a1.value,
+            NodeValueProjection::Number {
+                raw: "7".to_string(),
+                display: "7".to_string(),
+            },
+            "A1 = 7"
+        );
+        assert!(
+            matches!(
+                a1.provenance,
+                Some(ValueProvenanceProjection::Calculated { .. })
+            ),
+            "A1's published 7 is engine-Calculated by the open-recalc: {:?}",
+            a1.provenance
+        );
+
+        // B1: the formula, recalculated on open — authored source text with
+        // the leading `=` the engine restores, computed 21, Calculated (NOT
+        // FileCached: the Automatic open-recalc replaced the file's cache).
+        assert_eq!((b1_authored.row, b1_authored.col), (1, 2));
+        assert_eq!(
+            b1_authored.source_text.as_deref(),
+            Some("=A1*3"),
+            "B1's authored source text is the formula, never its computed value"
+        );
+        assert_eq!(
+            b1_authored.literal_text, None,
+            "a formula cell carries no literal text (its 21 is a computed value, not authored)"
+        );
+        assert_eq!(b1_authored.editability, GridEditabilityProjection::Editable);
+        assert_eq!(
+            b1.value,
+            NodeValueProjection::Number {
+                raw: "21".to_string(),
+                display: "21".to_string(),
+            },
+            "B1 = A1*3 = 21"
+        );
+        assert!(
+            matches!(
+                b1.provenance,
+                Some(ValueProvenanceProjection::Calculated { .. })
+            ),
+            "B1's 21 is engine-Calculated under calcMode=auto, not FileCached: {:?}",
+            b1.provenance
+        );
+
+        // Epochs: the loaded window carries authored data, so the projection
+        // reports a live authored epoch — not the un-authored default 0.
+        assert!(
+            grid.authored_epoch > 0,
+            "authored_epoch must be > 0 for a window carrying authored cells, got {}",
+            grid.authored_epoch
+        );
+        assert!(
+            grid.projection_epoch > 0,
+            "projection_epoch reflects the open-recalc, got {}",
+            grid.projection_epoch
+        );
+
+        // The rest of the state is the loaded workbook, not a default.
+        assert_eq!(state.workspace_id, XLSX_WORKSPACE_ID);
+        assert_eq!(state.profile, "strict-excel-grid");
+        assert_eq!(grid.grid_node_key, NodeKey::from_engine_id(sheet.0));
+        assert_eq!(
+            state.sheets.len(),
+            1,
+            "one tab-strip row: {:?}",
+            state.sheets
+        );
+        assert_eq!(state.sheets[0].display_name, "Sheet1");
+        assert_eq!(state.sheets[0].grid_node_id, grid_id);
+        let calc = state.workbook_calc.as_ref().expect("workbook_calc is Some");
+        assert_eq!(
+            calc.mode,
+            CalcModeProjection::Automatic,
+            "the fixture pins calcMode=\"auto\""
+        );
+        assert_eq!(calc.sheets.len(), 1);
+        assert!(
+            !calc.sheets[0].dirty,
+            "the open-recalc drained everything: nothing is stale after load"
+        );
+        assert!(
+            state.defined_names.entries.is_empty(),
+            "the fixture defines no names"
+        );
+    }
+
     /// An in-memory workbook has no OxDoc source and no document name — the
     /// demo path is untouched by the open lane.
     #[test]

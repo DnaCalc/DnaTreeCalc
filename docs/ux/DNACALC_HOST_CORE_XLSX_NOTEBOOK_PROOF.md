@@ -104,10 +104,19 @@ DnaTreeCalc:
 - `WorkspaceIntent` already carries `SetGridInterest`; `WorkspaceDeltaChange`
   already carries `GridChanged` and `GridOverlaysChanged`. There is **no**
   `EditGridCell` anywhere, and the grid path is read-only end to end.
-- `GridCellProjection` carries only `row/col/value/value_epoch` — **no
-  authored kind, no formula source text, no editability**. B1 cannot render
-  `=A1*3` from today's projection; dtc-hj2.6 owns the authored-metadata IR
-  extension.
+- `GridCellProjection` carried only `row/col/value/value_epoch` at survey
+  time — no authored kind, no formula source text, no editability. **Stale
+  since H3/H5:** it now carries `authored: Option<GridAuthoredCellProjection>`
+  (kind, literal_text, source_text, editability) and `provenance:
+  Option<ValueProvenanceProjection>` (`Calculated` / `Stale` / `FileCached`),
+  and host-core's `grid_projection_for` folds both. dtc-j7n8.5 verified that
+  fold over the LOADED fixture (`snapshot_of_loaded_fixture_projects_authored_and_provenance`,
+  `workbook.rs`; `snapshot_of_loaded_fixture_through_document_session_is_not_defaulted`,
+  `lib.rs`): `A1` `Literal` `"7"` = 7, `B1` `Formula` `"=A1*3"` = 21, both
+  `Calculated` under the fixture's `calcMode="auto"` open-recalc,
+  `authored_epoch > 0`. `FileCached` gets its first live assertion in the
+  Manual-mode lane (dtc-j7n8.13). B1 renders `=A1*3` from today's projection
+  with no skin change.
 - `src/dnatreecalc-host`'s `TreeWorkspaceSession` (session.rs, ~10k lines) is
   already Leptos-free and owns the `OxCalcTreeContext` + node-id maps; grid
   interest is delegated to OxCalc, not stored in the session. The Leptos
