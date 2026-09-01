@@ -50,6 +50,13 @@ thiserror = "2.0"
 oxcalc_core = { package = "oxcalc-core", path = "../OxCalc/src/oxcalc-core" }
 oxfml_core = { path = "../OxFml/crates/oxfml_core" }
 oxfunc_core = { path = "../OxFunc/crates/oxfunc_core" }
+# OxDoc (W011, dtc-j7n8.1): the document model + xlsx package layer host-core
+# opens/saves real `.xlsx` bytes through. Same underscore-alias pattern as
+# `oxcalc_core` for the hyphenated upstream names. `oxdoc_conformance` is a
+# dev-only consumer (fixture zipper, dtc-j7n8.2) -- never a normal dependency.
+oxdoc_model = { package = "oxdoc-model", path = "../OxDoc/crates/oxdoc-model" }
+oxdoc_xlsx = { package = "oxdoc-xlsx", path = "../OxDoc/crates/oxdoc-xlsx" }
+oxdoc_conformance = { package = "oxdoc-conformance", path = "../OxDoc/crates/oxdoc-conformance" }
 
 # Keep local/browser debug artifacts small enough to compile and instantiate.
 # The skin suite's Leptos view types produce very large debuginfo on Windows;

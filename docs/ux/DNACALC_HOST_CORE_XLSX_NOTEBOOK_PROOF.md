@@ -133,11 +133,15 @@ DnaTreeCalc:
 - The browser shell is `.dnatree`/localStorage oriented; there is **zero**
   file-picker/download plumbing and `dnatreecalc-web`'s web-sys features lack
   `File`/`FileList`/`FileReader`/`HtmlInputElement`/`HtmlAnchorElement`.
-- The workspace has **no oxdoc dependency**; `[workspace.dependencies]` carries
-  only `oxcalc_core`/`oxfml_core`/`oxfunc_core` sibling path deps. Trunk builds
-  `dnatreecalc-web` from the root `index.html`; `wasm-bindgen` is pinned
-  `=0.2.117`; the root `Cargo.toml` `[profile.dev]` strips debuginfo to avoid
-  Windows paging failures — new crates must inherit these.
+- The workspace's oxdoc dependency landed with dtc-j7n8.1 (W011-S1):
+  `[workspace.dependencies]` carries `oxdoc_model`/`oxdoc_xlsx` (plus dev-only
+  `oxdoc_conformance`) beside the `oxcalc_core`/`oxfml_core`/`oxfunc_core`
+  sibling path deps, and `dnacalc-host-core` takes `oxdoc_model`/`oxdoc_xlsx` as
+  normal deps; `cargo check --target wasm32-unknown-unknown` of `dnacalc-app` and
+  `dnatreecalc-web` stayed green after the edge landed (no cfg-gate needed).
+  Trunk builds `dnatreecalc-web` from the root `index.html`; `wasm-bindgen` is
+  pinned `=0.2.117`; the root `Cargo.toml` `[profile.dev]` strips debuginfo to
+  avoid Windows paging failures — new crates must inherit these.
 - `workspace.rs` carries ~230 uncommitted lines adding `NodeClassification`
   (contract C2, pure + tested). Committing it is a precondition of dtc-hj2.2;
   it lands verbatim in `dnacalc-skin-ir`.

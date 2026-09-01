@@ -15,7 +15,6 @@ pub struct SkinProtocolSession {
 }
 
 impl SkinProtocolSession {
-    #[must_use]
     pub fn new(
         document_id: impl Into<String>,
         runtime_profile: RuntimeProfileProjection,

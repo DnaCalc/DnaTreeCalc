@@ -26,6 +26,19 @@ use dnacalc_arch_gates::{
 /// why the P-gate/T0-gate/inverted control stay at plain `normal`.
 const F_GATE_EDGES: &str = "normal,build";
 
+/// The F-gate's forbidden crate-name prefixes: no `oxcalc*` (the OneCalc
+/// forcing function, REDESIGN_PROGRAM.md D5) and — since W011 (dtc-j7n8.1),
+/// when `dnacalc-host-core` took `oxdoc-model`/`oxdoc-xlsx` as normal
+/// dependencies — no `oxdoc*` either. The Bench tier is the formula tier
+/// (`oxfml*`/`oxfunc*` are its point and stay allowed); a document-model or
+/// xlsx-package crate reaching a Bench crate would mean the Calc/document
+/// tier leaked across the F-line. Before dtc-j7n8.1 the no-oxdoc half of this
+/// rule was only written down; the three F-gate tests below now enforce it,
+/// and `inverted_control_host_core_contains_oxdoc` proves the `oxdoc` prefix
+/// really matches something in this workspace so the exclusion cannot pass
+/// vacuously.
+const F_GATE_FORBIDDEN_PREFIXES: &[&str] = &["oxcalc", "oxdoc"];
+
 /// T0-gate — `dnacalc-skin-ir` (the wire-protocol tier, T0) stays free of
 /// Leptos and of every engine (`ox*`) crate anywhere in its resolved
 /// graph. REDESIGN_PROGRAM.md D5: "T0 - Protocol | serde only -- no
@@ -40,29 +53,32 @@ fn t0_gate_skin_ir_has_no_leptos_or_ox() {
 /// carries no `oxcalc*` crate. REDESIGN_PROGRAM.md D5: "F-gate: the Bench
 /// app's resolved dependency graph contains no `oxcalc*` crate." Checked
 /// over `normal,build` edges (dtc-1tk.4 finding H4a) so a `build.rs`
-/// dependency can't slip an `oxcalc*` edge past the gate.
+/// dependency can't slip an `oxcalc*` edge past the gate. Since dtc-j7n8.1
+/// the same gate also forbids `oxdoc*` (see [`F_GATE_FORBIDDEN_PREFIXES`]);
+/// the test name keeps its historical `no_oxcalc` spelling.
 #[test]
 fn f_gate_bench_host_has_no_oxcalc() {
     let tree = run_cargo_tree_with_edges("dnacalc-bench-host", F_GATE_EDGES);
-    assert_graph_excludes("F-gate", &tree, &["oxcalc"]);
+    assert_graph_excludes("F-gate", &tree, F_GATE_FORBIDDEN_PREFIXES);
 }
 
 /// F-gate — the Bench app's desktop (Tauri) host. Same law as the browser
-/// host above; both compose the Bench app (SHELL_SPEC.md section 1).
+/// host above (no `oxcalc*`, no `oxdoc*`); both compose the Bench app
+/// (SHELL_SPEC.md section 1).
 #[test]
 fn f_gate_bench_desktop_has_no_oxcalc() {
     let tree = run_cargo_tree_with_edges("dnacalc-bench-desktop", F_GATE_EDGES);
-    assert_graph_excludes("F-gate", &tree, &["oxcalc"]);
+    assert_graph_excludes("F-gate", &tree, F_GATE_FORBIDDEN_PREFIXES);
 }
 
 /// F-gate — the Bench *app* crate (dtc-tsc.9). It composes the TP shell +
 /// bridge over the Bench host, so it inherits oxfml/oxfunc — but never
-/// oxcalc. This keeps the F-gate honest at the app-composition boundary,
-/// not just the host boundary.
+/// oxcalc, and never oxdoc. This keeps the F-gate honest at the
+/// app-composition boundary, not just the host boundary.
 #[test]
 fn f_gate_bench_app_has_no_oxcalc() {
     let tree = run_cargo_tree_with_edges("dnacalc-bench-app", F_GATE_EDGES);
-    assert_graph_excludes("F-gate", &tree, &["oxcalc"]);
+    assert_graph_excludes("F-gate", &tree, F_GATE_FORBIDDEN_PREFIXES);
 }
 
 // NOTE (dtc-1tk.4 finding H4b): there is deliberately no
@@ -185,6 +201,43 @@ fn p_gate_tp_crates_have_no_ox() {
 fn inverted_control_host_core_contains_oxcalc() {
     let tree = run_cargo_tree("dnacalc-host-core");
     assert_graph_includes("Inverted control", &tree, "oxcalc");
+}
+
+/// Inverted control for the W011 xlsx slice (dtc-j7n8.1) — `dnacalc-host-core`
+/// *does* contain both `oxdoc-model` and `oxdoc-xlsx`, on purpose: it opens
+/// and saves real `.xlsx` bytes through OxDoc (the file-backed workbook
+/// lifecycle of epic dtc-j7n8), and host-core may take OxDoc because it
+/// already takes OxCalc. This is the `oxdoc` twin of
+/// `inverted_control_host_core_contains_oxcalc`, and it is what keeps the
+/// widened F-gate honest: [`F_GATE_FORBIDDEN_PREFIXES`] now forbids `oxdoc*`
+/// in the Bench crates, and if the oxdoc edges silently vanished from the
+/// workspace (or a crate rename made the `oxdoc` prefix match nothing), the
+/// `oxdoc` half of those three exclusions would pass vacuously forever.
+///
+/// The two crates are asserted separately, not as one `oxdoc` prefix:
+/// `oxdoc-model` was already reachable transitively through `oxcalc-core`
+/// before this bead, so a single-prefix check could keep passing after
+/// host-core's own `oxdoc-xlsx` edge (the one that carries the package
+/// open/save surface) had been dropped. `assert_graph_includes` takes one
+/// prefix, so it is called once per crate; both matched lines are printed so
+/// `--nocapture` shows the exact resolved edges.
+///
+/// Like its oxcalc twin, this test must NEVER be "fixed" by loosening or
+/// deleting it. If host-core ever legitimately stops opening xlsx through
+/// OxDoc, retarget the control at whichever crate becomes the document
+/// anchor -- don't just remove the assertion.
+#[test]
+fn inverted_control_host_core_contains_oxdoc() {
+    let tree = run_cargo_tree("dnacalc-host-core");
+    for required in ["oxdoc-model", "oxdoc-xlsx"] {
+        assert_graph_includes("Inverted control (oxdoc)", &tree, required);
+        let (name, line) = find_crate_prefixed(&tree, required)
+            .expect("assert_graph_includes just proved a matching crate line exists");
+        println!(
+            "inverted_control_host_core_contains_oxdoc: `{required}` matched `{name}` via line: \
+             `{line}`"
+        );
+    }
 }
 
 /// TC-gate (S4.P1, epic calc- / dtc-c0wf) — `dnacalc-host-core` (the TC/Calc

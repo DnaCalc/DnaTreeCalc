@@ -22,12 +22,19 @@
 //!
 //! ## H2 scope
 //!
-//! H2 stands up the crate seam: the [`DocumentSession`] enum, [`WorkbookSession`]
+//! H2 stood up the crate seam: the [`DocumentSession`] enum, [`WorkbookSession`]
 //! over one [`OxCalcDocumentContext`] (create workspace + add sheets + the
 //! `set_grid_cell_value` write path), the [`HostCommand`] skeleton, the
 //! [`ProjectionPublisher`] publication seam, and the Send/Sync audit below. The
-//! universal `EnterGridCell` authored-entry verb, the tree-session migration
-//! into host-core, xlsx, and the worker are all out of H2 scope.
+//! universal `EnterGridCell` authored-entry verb landed in H6 (below); the
+//! RichTree session migration into host-core (S4.P3 — the tree model layer
+//! already moved here in S4.P2, see [`tree`]) and the worker are still
+//! pending. xlsx is no longer excluded: the file-backed workbook lifecycle
+//! lands with the W011 successor slice (epic `dtc-j7n8`) — host-core takes
+//! `oxdoc_model`/`oxdoc_xlsx` directly (dtc-j7n8.1) and OxCalc's R6
+//! `oxdoc-model` ingest has landed upstream, so `HostCommand::OpenXlsxBytes`/
+//! `SaveActiveXlsx` are host wiring of real `.xlsx` bytes through OxDoc, not a
+//! new engine.
 //!
 //! ## H6 scope
 //!

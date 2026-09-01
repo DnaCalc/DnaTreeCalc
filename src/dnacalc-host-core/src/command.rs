@@ -3,11 +3,15 @@
 //!
 //! Boundary rule (proof doc §`dnacalc-host-core`): `WorkspaceIntent` mutates
 //! the *open model*; `HostCommand` manages *documents, files, and layout*. H2
-//! stands up the skeleton with the one arm it can execute end to end —
+//! stood up the skeleton with the one arm it could execute end to end —
 //! [`HostCommand::DispatchWorkspaceIntent`] — and the publication seam. The
-//! file/xlsx arms (`OpenXlsxBytes`, `SaveActiveXlsx`) are a NON-goal of H2 and
-//! land with the xlsx lane at R6; the enum is `#[non_exhaustive]` so adding
-//! them later is not a breaking change.
+//! file/xlsx arms (`OpenXlsxBytes`, `SaveActiveXlsx`) land with the W011
+//! successor slice (epic `dtc-j7n8`): OxCalc's R6 `oxdoc-model` ingest has
+//! landed upstream and host-core takes `oxdoc_model`/`oxdoc_xlsx` directly
+//! (dtc-j7n8.1), so what remains is host wiring of real `.xlsx` bytes through
+//! OxDoc — not a new engine, and never a raw ZIP/XML bypass. The boundary rule
+//! above stands for those arms; the enum is `#[non_exhaustive]` so adding them
+//! is not a breaking change.
 
 use dnacalc_skin_ir::{IntentReceipt, WorkspaceIntent};
 

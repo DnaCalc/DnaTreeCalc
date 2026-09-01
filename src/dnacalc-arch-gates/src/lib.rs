@@ -13,15 +13,21 @@
 //!    graph.
 //! 2. **F-gate** (the OneCalc forcing function) — the Bench app's three
 //!    host/app crates, `dnacalc-bench-host`, `dnacalc-bench-desktop`, and
-//!    `dnacalc-bench-app`, carry no `oxcalc*` crate. `oxfml*`/`oxfunc*` are
-//!    the point of the Bench tier and stay allowed; one positive control
-//!    per crate asserts `oxfml*` really is present, so the gate cannot pass
-//!    because a Bench crate quietly stopped depending on the formula
-//!    engine altogether. `dnacalc-bench-app-desktop` (the Tauri shell that
-//!    wraps `dnacalc-bench-app`'s built WASM as a static `frontendDist`
-//!    asset) is deliberately **not** F-gated on its own: it carries zero
-//!    `dnacalc-*` crate edges at all (the frontend is loaded as a file, not
-//!    a Cargo dependency), so a gate on it would be vacuous by
+//!    `dnacalc-bench-app`, carry no `oxcalc*` crate and — since W011
+//!    (dtc-j7n8.1), when `dnacalc-host-core` took `oxdoc-model`/`oxdoc-xlsx`
+//!    as normal dependencies — no `oxdoc*` crate either (the forbidden
+//!    prefix list is `tests/gates.rs`'s `F_GATE_FORBIDDEN_PREFIXES`). The
+//!    Bench tier is the formula tier: `oxfml*`/`oxfunc*` are its point and
+//!    stay allowed, while a document-model or xlsx-package crate reaching
+//!    a Bench crate would mean the Calc/document tier leaked across the
+//!    F-line — so the no-oxdoc rule is enforced, not merely written. One
+//!    positive control per crate asserts `oxfml*` really is present, so
+//!    the gate cannot pass because a Bench crate quietly stopped depending
+//!    on the formula engine altogether. `dnacalc-bench-app-desktop` (the
+//!    Tauri shell that wraps `dnacalc-bench-app`'s built WASM as a static
+//!    `frontendDist` asset) is deliberately **not** F-gated on its own: it
+//!    carries zero `dnacalc-*` crate edges at all (the frontend is loaded as
+//!    a file, not a Cargo dependency), so a gate on it would be vacuous by
 //!    construction — see the removed `f_gate_bench_app_desktop_has_no_oxcalc`
 //!    test note in `tests/gates.rs`; its coverage lives entirely in the
 //!    `dnacalc-bench-app` gate.
@@ -29,7 +35,10 @@
 //!    tier) carries no `ox*` crate anywhere in its graph — skins speak
 //!    Skin IR only.
 //! 4. **Inverted control** — `dnacalc-host-core` (the TC/Calc tier) *does*
-//!    contain `oxcalc*`. This is deliberately the opposite of gates 1-3:
+//!    contain `oxcalc*`, and (since dtc-j7n8.1) both `oxdoc-model` and
+//!    `oxdoc-xlsx` — one control per engine prefix the F-gate forbids, so
+//!    each forbidden prefix is proven to match something real in this
+//!    workspace. This is deliberately the opposite of gates 1-3:
 //!    if dependency resolution or the harness itself silently broke (for
 //!    example a `cargo tree` invocation that quietly returns empty
 //!    output, or a crate rename nobody updated these tests for), gates

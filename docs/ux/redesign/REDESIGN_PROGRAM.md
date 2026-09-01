@@ -136,10 +136,12 @@ is what lets one formula workbench serve both products.
 "Edge scope", for the exact `cargo tree -e <edges>` scope each gate below asserts and why it
 is not uniformly the whole graph):
 - **F-gate (the OneCalc forcing function):** `dnacalc-bench-host`, `dnacalc-bench-desktop`, and
-  `dnacalc-bench-app`'s resolved dependency graphs contain no `oxcalc*` crate, checked over
-  `normal,build` edges (dtc-1tk.4 finding H4a: widened from `normal`-only so a Tauri build
-  script can't smuggle an `oxcalc*` edge past the gate). Each of the three crates has its own
-  `oxfml*` positive control. Continuous, per-commit, stronger than the old repo boundary.
+  `dnacalc-bench-app`'s resolved dependency graphs contain no `oxcalc*` crate and (since W011,
+  dtc-j7n8.1, when `dnacalc-host-core` took `oxdoc-model`/`oxdoc-xlsx` as normal dependencies) no
+  `oxdoc*` crate, checked over `normal,build` edges (dtc-1tk.4 finding H4a: widened from
+  `normal`-only so a Tauri build script can't smuggle an `oxcalc*` edge past the gate). Each of
+  the three crates has its own `oxfml*` positive control. Continuous, per-commit, stronger than
+  the old repo boundary.
   `dnacalc-bench-app-desktop` is deliberately not F-gated on its own — it carries zero
   `dnacalc-*` crate edges (its WASM frontend is a static asset, not a Cargo dependency), so a
   gate on it would be vacuous; its coverage lives in the `dnacalc-bench-app` gate.

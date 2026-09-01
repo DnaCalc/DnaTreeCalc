@@ -11,6 +11,8 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 oxcalc_core.workspace = true
 oxfunc_core.workspace = true
+oxdoc_model.workspace = true
+oxdoc_xlsx.workspace = true
 dnacalc-skin-ir = { path = "../dnacalc-skin-ir" }
 
 [lints]
