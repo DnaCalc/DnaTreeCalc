@@ -70,3 +70,52 @@ Fable 5 session conversation log:
 (~1.5 MB JSONL). The durable state is the bead graph + git, not the chat;
 consult the log only for provenance questions the beads and close reasons
 cannot answer.
+
+## 2026-09-01 — Ingest-green: `dtc-j7n8.1`–`.4` landed; save-seam blocker filed (Fable 5.1 session)
+
+**Product status:** a DnaTreeCalc host opens the committed W011 fixture
+(`fixtures/w011/a1_times_three.xlsx`; readable parts under
+`fixtures/w011/a1_times_three/parts/`) through OxDoc with `LoadProfile::full()`,
+owns the `HostOwnedXlsxSource` next to the live `OxCalcDocumentContext`,
+ingests it via `load_workbook_model`, and reports A1 = 7 and B1 `=A1*3`
+published 21 (Calculated, Automatic). `enter_grid_cell` on the loaded fixture
+recalculates B1 to 30. Grid address tokens route through one host-side
+authority (`book:{workspace}` for ingested grids, bare id for seeded grids),
+pinned against the engine by a two-origin test. `HostCommand::OpenXlsxBytes`
+exists with typed OxDoc errors and a fallible `DocumentSession::execute`.
+Not yet: Skin IR projection verification (.5), the dispatch-level edit proof
+(.6), save (.7), app wiring (.8).
+
+**Evidence:** commits `5b8e73b` (.1 deps; F-gate widened to oxdoc), `bd82a59`
+(.2 fixture + OxDoc open acceptance test), `63a5af4` (workspace rustfmt,
+`dtc-xwa3`), `e7018e5` (.3 OpenXlsxBytes), `64b92fe` (.4 ingest) — all on
+`origin/main`. Each bead was closed with its test names and independently
+verified by two refuters (acceptance/tests, ownership/guardrails) before push.
+`cargo test -p dnacalc-host-core --offline` = 61 passed (baseline 51);
+`cargo test -p dnacalc-arch-gates --offline` green incl. the new
+`inverted_control_host_core_contains_oxdoc`; wasm32 `cargo check` of
+`dnacalc-app` and `dnatreecalc-web` green before and after the oxdoc edge (no
+cfg-gate needed). Sibling repos untouched (OxDoc `786ef0c`, OxCalc `752a269d`
+at the time of these commits).
+
+**Blocker (typed, pre-registered before `.7` starts):** an out-of-repo probe by
+the orchestrator showed `oxdoc_xlsx::write_save_request` rejecting OxCalc's
+`project_workbook_model_output` stream of this exact fixture — with and
+without the edit — as
+`UnsupportedRoundTripFeature("changing differential style metadata during round-trip is not supported yet (DifferentialStyles Workbook)")`.
+Root cause: a full-profile OxDoc load always emits an (empty)
+`DifferentialStyleTable` and marks the surface Materialized; OxCalc ingests it
+but re-emits it only when non-empty. With that one event replayed the same
+probe saves cleanly (no `Dropped` ledger entries) and reopens with B1 formula
+text preserved and **cached 30** — so the cached-value trap itself does not
+bite. Fix owned by OxCalc bead `calc-5kqg.70` (presence-aware store, replay
+when present); DnaTreeCalc blocker `dtc-rpdy` blocks `dtc-j7n8.7`; handover
+`HANDOVER_OXCALC_w011_projection_replays_empty_dxf_table.md`. The OxCalc fix
+runs serialized ahead of `.5`–`.7` because OxCalc is a path dependency the
+relay compiles.
+
+**Still open:** `.5` projection verification, `.6` edit proof, `.7` save
+(blocked on `dtc-rpdy`), `.8` app wiring, `.9` charter footnote; then Waves
+1.5–3. Housekeeping filed in passing: `dtc-g43s` (pre-existing
+`walking_skeleton` flake under multi-package `cargo test`; test
+`dnatreecalc-host` solo), `dtc-lxz9` closed as duplicate of `dtc-xwa3`.
