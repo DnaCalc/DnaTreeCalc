@@ -118,10 +118,7 @@ pub fn build_render_plan(grid: &GridProjection, m: &GridMetrics, v: &Viewport) -
             // [1, max_cols] is malformed for this grid (rows/cols are 1-based).
             // Skipping it keeps the plan↔hit_test round-trip exact — `hit_test`
             // clamps to the same extent, so a planned cell is always hittable.
-            if cell.row < 1
-                || cell.row > grid.max_rows
-                || cell.col < 1
-                || cell.col > grid.max_cols
+            if cell.row < 1 || cell.row > grid.max_rows || cell.col < 1 || cell.col > grid.max_cols
             {
                 return None;
             }
@@ -259,9 +256,7 @@ pub fn value_text(value: &NodeValueProjection) -> String {
 mod tests {
     use super::*;
     use crate::geometry::{HitTarget, hit_test};
-    use dnacalc_skin_ir::{
-        GridCellProjection, GridOverlayBundle, GridProjection, NodeId, NodeKey,
-    };
+    use dnacalc_skin_ir::{GridCellProjection, GridOverlayBundle, GridProjection, NodeId, NodeKey};
 
     fn cell(row: u32, col: u32, value: NodeValueProjection) -> GridCellProjection {
         GridCellProjection {
@@ -353,7 +348,10 @@ mod tests {
     fn build_render_plan_plans_exactly_the_on_screen_windowed_cells() {
         let m = GridMetrics::default();
         // A viewport that shows the first ~3 columns and ~5 rows of data.
-        let v = viewport(m.header_w + 3.0 * m.col_width, m.header_h + 5.0 * m.row_height);
+        let v = viewport(
+            m.header_w + 3.0 * m.col_width,
+            m.header_h + 5.0 * m.row_height,
+        );
 
         // Cells across a wide address span: some on screen, some off to the
         // right / below.
@@ -380,7 +378,10 @@ mod tests {
         let planned: std::collections::BTreeSet<(u32, u32)> =
             plan.cells.iter().map(|c| (c.row, c.col)).collect();
 
-        assert_eq!(planned, expected, "plan must equal the on-screen windowed cells");
+        assert_eq!(
+            planned, expected,
+            "plan must equal the on-screen windowed cells"
+        );
         // Every planned address is one the host actually provided (no fabrication).
         let provided: std::collections::BTreeSet<(u32, u32)> =
             source.iter().map(|c| (c.row, c.col)).collect();
@@ -591,7 +592,11 @@ mod tests {
             (702, "ZZ"),
             (703, "AAA"),
         ] {
-            assert_eq!(col_label(col), expected, "column {col} labels as {expected}");
+            assert_eq!(
+                col_label(col),
+                expected,
+                "column {col} labels as {expected}"
+            );
         }
     }
 

@@ -120,15 +120,19 @@ pub fn interpret_receipt(receipt: &IntentReceipt) -> CellOutcome {
 /// commit hit the intended cell and nothing else.
 #[must_use]
 pub fn entered_cell(receipt: &IntentReceipt) -> Option<(NodeId, u32, u32)> {
-    receipt.delta.changes.iter().find_map(|change| match change {
-        WorkspaceDeltaChange::GridCellEntered {
-            grid_node_id,
-            row,
-            col,
-            ..
-        } => Some((grid_node_id.clone(), *row, *col)),
-        _ => None,
-    })
+    receipt
+        .delta
+        .changes
+        .iter()
+        .find_map(|change| match change {
+            WorkspaceDeltaChange::GridCellEntered {
+                grid_node_id,
+                row,
+                col,
+                ..
+            } => Some((grid_node_id.clone(), *row, *col)),
+            _ => None,
+        })
 }
 
 /// A compact display string for a projected cell value (the outcome chip's
@@ -230,8 +234,14 @@ mod tests {
         let after = derive_entries(&document.snapshot());
         let (_, _, _, r3c1_after) = cell_block(&after, 3, 1);
         let (_, _, _, r2c1_after) = cell_block(&after, 2, 1);
-        assert_eq!(r3c1_after, "6", "the target block now shows the formula result");
-        assert_eq!(r2c1_after, "2", "the sibling block is untouched by the commit");
+        assert_eq!(
+            r3c1_after, "6",
+            "the target block now shows the formula result"
+        );
+        assert_eq!(
+            r2c1_after, "2",
+            "the sibling block is untouched by the commit"
+        );
     }
 
     /// A literal commit into the block's own cell classifies as `Literal` and
@@ -243,7 +253,8 @@ mod tests {
         let before = derive_entries(&document.snapshot());
         let (grid, row, col, _) = cell_block(&before, 2, 1);
 
-        let receipt = document.dispatch(enter_cell_intent(grid.clone(), row, col, "99".to_string()));
+        let receipt =
+            document.dispatch(enter_cell_intent(grid.clone(), row, col, "99".to_string()));
         assert_eq!(entered_cell(&receipt), Some((grid, 2, 1)));
         assert_eq!(
             interpret_receipt(&receipt),
@@ -284,6 +295,9 @@ mod tests {
         // No mutation on the rejected path.
         let after = derive_entries(&document.snapshot());
         let (_, _, _, r5c1_after) = cell_block(&after, 5, 1);
-        assert_eq!(r5c1_after, r5c1_before, "a rejected commit does not mutate the cell");
+        assert_eq!(
+            r5c1_after, r5c1_before,
+            "a rejected commit does not mutate the cell"
+        );
     }
 }

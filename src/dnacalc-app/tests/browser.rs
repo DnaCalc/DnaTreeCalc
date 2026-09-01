@@ -115,7 +115,8 @@ fn commit_block_edit(area: &web_sys::HtmlTextAreaElement, text: &str) {
     init.set_key("Enter");
     init.set_bubbles(true);
     init.set_cancelable(true);
-    let event = web_sys::KeyboardEvent::new_with_keyboard_event_init_dict("keydown", &init).unwrap();
+    let event =
+        web_sys::KeyboardEvent::new_with_keyboard_event_init_dict("keydown", &init).unwrap();
     let target: web_sys::EventTarget = area.clone().unchecked_into();
     target.dispatch_event(&event).unwrap();
 }
@@ -153,7 +154,8 @@ fn commit_degrade(host: &web_sys::HtmlElement) {
     init.set_key("Enter");
     init.set_bubbles(true);
     init.set_cancelable(true);
-    let event = web_sys::KeyboardEvent::new_with_keyboard_event_init_dict("keydown", &init).unwrap();
+    let event =
+        web_sys::KeyboardEvent::new_with_keyboard_event_init_dict("keydown", &init).unwrap();
     let target: web_sys::EventTarget = area.unchecked_into();
     target.dispatch_event(&event).unwrap();
 }
@@ -166,7 +168,8 @@ fn press_chord(target: &web_sys::EventTarget, key: &str, ctrl: bool, alt: bool, 
     init.set_shift_key(shift);
     init.set_bubbles(true);
     init.set_cancelable(true);
-    let event = web_sys::KeyboardEvent::new_with_keyboard_event_init_dict("keydown", &init).unwrap();
+    let event =
+        web_sys::KeyboardEvent::new_with_keyboard_event_init_dict("keydown", &init).unwrap();
     target.dispatch_event(&event).unwrap();
 }
 
@@ -244,9 +247,12 @@ async fn calc_stage_switch_reprojects_and_preserves_continuity_surface() {
         query(&host, "[data-testid=\"sheet-root\"]").is_none(),
         "switching is re-projection: only one stage mounts at a time"
     );
-    let before = query(&host, "[data-testid=\"calc-stage-model\"] .calc-stage__continuity")
-        .and_then(|el| el.get_attribute("data-selection"))
-        .expect("continuity readout on the Model stage");
+    let before = query(
+        &host,
+        "[data-testid=\"calc-stage-model\"] .calc-stage__continuity",
+    )
+    .and_then(|el| el.get_attribute("data-selection"))
+    .expect("continuity readout on the Model stage");
 
     // Switch away to Notebook (tearing Model down) and then back to Model — a
     // full re-projection round trip the shared continuity state must survive.
@@ -270,9 +276,12 @@ async fn calc_stage_switch_reprojects_and_preserves_continuity_surface() {
 
     // The shared continuity state survived the round trip (same value the
     // re-mounted Model stage reads back).
-    let after = query(&host, "[data-testid=\"calc-stage-model\"] .calc-stage__continuity")
-        .and_then(|el| el.get_attribute("data-selection"))
-        .expect("continuity readout on the Model stage after the round trip");
+    let after = query(
+        &host,
+        "[data-testid=\"calc-stage-model\"] .calc-stage__continuity",
+    )
+    .and_then(|el| el.get_attribute("data-selection"))
+    .expect("continuity readout on the Model stage after the round trip");
     assert_eq!(
         before, after,
         "continuity state survives a full re-projection round trip"
@@ -461,7 +470,11 @@ async fn calc_notebook_renders_reactive_block_list() {
     // the cell (`R3C1`, unique across both demo sheets) and the value region
     // reads its computed value `3`.
     let a3_value = notebook_block_value(&host, "R3C1").expect("a block names Sheet1 A3");
-    assert_eq!(a3_value.trim(), "3", "Sheet1 A3's block value region reads 3");
+    assert_eq!(
+        a3_value.trim(),
+        "3",
+        "Sheet1 A3's block value region reads 3"
+    );
     // Each block carries its classification chip.
     assert!(
         query(&host, "[data-testid=\"notebook-classification\"]").is_some(),
@@ -494,7 +507,9 @@ async fn calc_notebook_renders_reactive_block_list() {
         "A6 literal classifies as free_value"
     );
     assert_eq!(
-        notebook_block_value(&host, "R6C1").as_deref().map(str::trim),
+        notebook_block_value(&host, "R6C1")
+            .as_deref()
+            .map(str::trim),
         Some("42"),
         "A6 block's value region shows the literal 42"
     );
@@ -514,7 +529,9 @@ async fn calc_notebook_renders_reactive_block_list() {
         "A6 reclassifies literal (free_value) -> formula (output)"
     );
     assert_eq!(
-        notebook_block_value(&host, "R6C1").as_deref().map(str::trim),
+        notebook_block_value(&host, "R6C1")
+            .as_deref()
+            .map(str::trim),
         Some("6"),
         "A6 block's value region now shows the formula result 6"
     );
@@ -544,12 +561,16 @@ async fn calc_notebook_block_edit_writes_its_own_cell_not_a_sibling() {
     // Before: R3C1 (A3) reads 3, its sibling R2C1 (A2) reads 2, and neither has
     // a committed outcome yet.
     assert_eq!(
-        notebook_block_value(&host, "R3C1").as_deref().map(str::trim),
+        notebook_block_value(&host, "R3C1")
+            .as_deref()
+            .map(str::trim),
         Some("3"),
         "Sheet1 A3 seeds as 3"
     );
     assert_eq!(
-        notebook_block_value(&host, "R2C1").as_deref().map(str::trim),
+        notebook_block_value(&host, "R2C1")
+            .as_deref()
+            .map(str::trim),
         Some("2"),
         "Sheet1 A2 (the sibling) seeds as 2"
     );
@@ -565,7 +586,9 @@ async fn calc_notebook_block_edit_writes_its_own_cell_not_a_sibling() {
 
     // The target block updated: value 6 (A1 + A5 = 1 + 5) and outcome `formula`.
     assert_eq!(
-        notebook_block_value(&host, "R3C1").as_deref().map(str::trim),
+        notebook_block_value(&host, "R3C1")
+            .as_deref()
+            .map(str::trim),
         Some("6"),
         "the edited block's value region now shows the formula result 6"
     );
@@ -577,7 +600,9 @@ async fn calc_notebook_block_edit_writes_its_own_cell_not_a_sibling() {
 
     // The sibling block is untouched — the commit hit R3C1, not R2C1.
     assert_eq!(
-        notebook_block_value(&host, "R2C1").as_deref().map(str::trim),
+        notebook_block_value(&host, "R2C1")
+            .as_deref()
+            .map(str::trim),
         Some("2"),
         "the sibling block R2C1 is unchanged by the R3C1 commit"
     );
@@ -704,7 +729,10 @@ async fn calc_notebook_create_name_empty_name_is_honest_no_op() {
     let create_button = query(&host, "[data-testid=\"notebook-create-name\"]")
         .expect("the Create button reveals")
         .unchecked_into::<web_sys::HtmlButtonElement>();
-    assert!(create_button.disabled(), "Create is disabled with an empty name");
+    assert!(
+        create_button.disabled(),
+        "Create is disabled with an empty name"
+    );
     let hint =
         query(&host, "[data-testid=\"notebook-add-name-hint\"]").expect("the hint element mounts");
     assert!(
@@ -773,7 +801,9 @@ async fn calc_notebook_reviewer_persona_renders_read_only() {
     );
     // The readable content that must SURVIVE the persona flip: Sheet1 A3 reads 3.
     assert_eq!(
-        notebook_block_value(&host, "R3C1").as_deref().map(str::trim),
+        notebook_block_value(&host, "R3C1")
+            .as_deref()
+            .map(str::trim),
         Some("3"),
         "Sheet1 A3's value region reads 3 as Author"
     );
@@ -815,7 +845,9 @@ async fn calc_notebook_reviewer_persona_renders_read_only() {
         "the R3C1 block still renders — content is readable"
     );
     assert_eq!(
-        notebook_block_value(&host, "R3C1").as_deref().map(str::trim),
+        notebook_block_value(&host, "R3C1")
+            .as_deref()
+            .map(str::trim),
         Some("3"),
         "R3C1's value region still reads 3 for a Reviewer"
     );
@@ -989,7 +1021,11 @@ async fn calc_degrade_edits_cell_with_honest_three_way_outcome() {
         "Calc mounts the DEGRADE bridge (pre-G1 honest path)"
     );
     assert!(
-        query(&host, ".dna-bridge--degrade .dna-bridge__seg--role-function").is_none(),
+        query(
+            &host,
+            ".dna-bridge--degrade .dna-bridge__seg--role-function"
+        )
+        .is_none(),
         "degrade mode never paints token-role classes"
     );
 
@@ -999,7 +1035,10 @@ async fn calc_degrade_edits_cell_with_honest_three_way_outcome() {
     commit_degrade(&host);
     next_tick().await;
     let outcome = query(&host, "[data-testid=\"calc-outcome\"]").expect("outcome renders");
-    assert_eq!(outcome.get_attribute("data-outcome").as_deref(), Some("literal"));
+    assert_eq!(
+        outcome.get_attribute("data-outcome").as_deref(),
+        Some("literal")
+    );
 
     // Formula (=A1+A5 over the demo workbook = 6).
     set_degrade_text(&host, "=A1+A5");
@@ -1007,7 +1046,10 @@ async fn calc_degrade_edits_cell_with_honest_three_way_outcome() {
     commit_degrade(&host);
     next_tick().await;
     let outcome = query(&host, "[data-testid=\"calc-outcome\"]").expect("outcome renders");
-    assert_eq!(outcome.get_attribute("data-outcome").as_deref(), Some("formula"));
+    assert_eq!(
+        outcome.get_attribute("data-outcome").as_deref(),
+        Some("formula")
+    );
 
     // Cleared (empty commit).
     set_degrade_text(&host, "");
@@ -1015,7 +1057,10 @@ async fn calc_degrade_edits_cell_with_honest_three_way_outcome() {
     commit_degrade(&host);
     next_tick().await;
     let outcome = query(&host, "[data-testid=\"calc-outcome\"]").expect("outcome renders");
-    assert_eq!(outcome.get_attribute("data-outcome").as_deref(), Some("cleared"));
+    assert_eq!(
+        outcome.get_attribute("data-outcome").as_deref(),
+        Some("cleared")
+    );
 
     // Rejected (an unparseable formula) — typed rejection surfaces.
     set_degrade_text(&host, "=1+");
@@ -1023,7 +1068,10 @@ async fn calc_degrade_edits_cell_with_honest_three_way_outcome() {
     commit_degrade(&host);
     next_tick().await;
     let outcome = query(&host, "[data-testid=\"calc-outcome\"]").expect("outcome renders");
-    assert_eq!(outcome.get_attribute("data-outcome").as_deref(), Some("rejected"));
+    assert_eq!(
+        outcome.get_attribute("data-outcome").as_deref(),
+        Some("rejected")
+    );
     assert!(
         query(&host, ".dna-bridge__rejection").is_some(),
         "the degrade editor underlines the entry rejection"
@@ -1454,8 +1502,8 @@ async fn calc_sheet_tab_in_editor_commits_and_moves_right() {
     // F2 opens the overlay editor at A1 (nothing selected → the origin).
     press_f2();
     next_tick().await;
-    let editor = query(&host, "[data-testid=\"sheet-cell-editor\"]")
-        .expect("F2 opens the overlay at A1");
+    let editor =
+        query(&host, "[data-testid=\"sheet-cell-editor\"]").expect("F2 opens the overlay at A1");
     assert_eq!(
         editor.get_attribute("data-cell").as_deref(),
         Some("1:1"),

@@ -498,8 +498,8 @@ pub fn BenchApp(
     // command deck's Save/Open track REAL host truth instead of the old
     // hardcoded `false`, and the mast dirty-dot picks up edits even though
     // Bench has no `workbook_calc` projection of its own.
-    let initial_persistence = with_bench_host(host_id, |host| shell_persistence_from_host(host))
-        .unwrap_or_default();
+    let initial_persistence =
+        with_bench_host(host_id, |host| shell_persistence_from_host(host)).unwrap_or_default();
     let persistence = RwSignal::new(initial_persistence);
 
     // The host's real `HostCapabilityProjection` (SHELL_SPEC §7 mechanism
@@ -529,9 +529,7 @@ pub fn BenchApp(
             if let Some(next) = with_bench_host(host_id, |host| host.projection()) {
                 projection.set(next);
             }
-            if let Some(next) =
-                with_bench_host(host_id, |host| shell_persistence_from_host(host))
-            {
+            if let Some(next) = with_bench_host(host_id, |host| shell_persistence_from_host(host)) {
                 persistence.set(next);
             }
         }
@@ -613,13 +611,11 @@ pub fn BenchApp(
         }
     };
     let on_set_font_color = Callback::new(move |color: Option<String>| {
-        let changed =
-            with_bench_host(host_id, |host| host.set_font_color(color)).unwrap_or(false);
+        let changed = with_bench_host(host_id, |host| host.set_font_color(color)).unwrap_or(false);
         reproject_after(changed);
     });
     let on_set_fill_color = Callback::new(move |color: Option<String>| {
-        let changed =
-            with_bench_host(host_id, |host| host.set_fill_color(color)).unwrap_or(false);
+        let changed = with_bench_host(host_id, |host| host.set_fill_color(color)).unwrap_or(false);
         reproject_after(changed);
     });
     let on_set_cf_rule = Callback::new(
@@ -630,8 +626,7 @@ pub fn BenchApp(
         },
     );
     let on_remove_cf_rule = Callback::new(move |index: usize| {
-        let changed =
-            with_bench_host(host_id, |host| host.remove_cf_rule(index)).unwrap_or(false);
+        let changed = with_bench_host(host_id, |host| host.remove_cf_rule(index)).unwrap_or(false);
         reproject_after(changed);
     });
     let on_set_locale = Callback::new(move |tag: String| {
@@ -639,8 +634,7 @@ pub fn BenchApp(
         reproject_after(changed);
     });
     let on_set_date1904 = Callback::new(move |enabled: bool| {
-        let changed =
-            with_bench_host(host_id, |host| host.set_date1904(enabled)).unwrap_or(false);
+        let changed = with_bench_host(host_id, |host| host.set_date1904(enabled)).unwrap_or(false);
         reproject_after(changed);
     });
 

@@ -923,7 +923,14 @@ mod tests {
         let labels: Vec<_> = NUMBER_FORMAT_PRESETS.iter().map(|p| p.label).collect();
         assert_eq!(
             labels,
-            ["General", "Thousands", "Currency", "Date", "Percent", "Scientific"]
+            [
+                "General",
+                "Thousands",
+                "Currency",
+                "Date",
+                "Percent",
+                "Scientific"
+            ]
         );
         // General authors an absent code (the host's General default).
         assert_eq!(NUMBER_FORMAT_PRESETS[0].authored_code(), None);

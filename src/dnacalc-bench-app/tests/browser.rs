@@ -71,7 +71,8 @@ fn press_chord(target: &web_sys::EventTarget, key: &str, ctrl: bool, alt: bool, 
     init.set_shift_key(shift);
     init.set_bubbles(true);
     init.set_cancelable(true);
-    let event = web_sys::KeyboardEvent::new_with_keyboard_event_init_dict("keydown", &init).unwrap();
+    let event =
+        web_sys::KeyboardEvent::new_with_keyboard_event_init_dict("keydown", &init).unwrap();
     target.dispatch_event(&event).unwrap();
 }
 
@@ -213,10 +214,7 @@ async fn bench_command_deck_save_disabled_but_open_enabled_on_browser() {
         Some("false"),
         "browser has no real Save adapter wired yet — must render honestly disabled"
     );
-    assert_eq!(
-        save.get_attribute("aria-disabled").as_deref(),
-        Some("true")
-    );
+    assert_eq!(save.get_attribute("aria-disabled").as_deref(), Some("true"));
     assert!(
         save.get_attribute("title")
             .unwrap_or_default()

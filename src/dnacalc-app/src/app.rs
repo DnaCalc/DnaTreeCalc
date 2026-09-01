@@ -203,10 +203,12 @@ pub fn CalcApp(runtime: RuntimeContext) -> impl IntoView {
         // Enter `advance` is irrelevant here — commit either way.
         BridgeEvent::CommitRequested { .. } => {
             let text = text_buffer.get_untracked();
-            let grid = workspace_ro
-                .with_untracked(|state| state.sheets.first().map(|sheet| sheet.grid_node_id.clone()));
+            let grid = workspace_ro.with_untracked(|state| {
+                state.sheets.first().map(|sheet| sheet.grid_node_id.clone())
+            });
             if let Some(grid) = grid {
-                let receipt = dispatch_for_events.dispatch(enter_grid_cell_intent(grid, text.clone()));
+                let receipt =
+                    dispatch_for_events.dispatch(enter_grid_cell_intent(grid, text.clone()));
                 let resolved = interpret_receipt(&receipt);
                 match &resolved {
                     CellOutcome::Rejected(diagnostics) => {

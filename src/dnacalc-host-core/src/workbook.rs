@@ -123,9 +123,10 @@ impl WorkbookSession {
         // backing) also runs the brute-force reference engine and compares —
         // a live correctness heartbeat without paying the full-sheet oracle
         // sweep on every keystroke. Suites/CI use DualValidated.
-        let mut context = OxCalcDocumentContext::new(
-            GridEngineValidationMode::DualValidatedSampled { one_in: 16 },
-        );
+        let mut context =
+            OxCalcDocumentContext::new(GridEngineValidationMode::DualValidatedSampled {
+                one_in: 16,
+            });
         let workspace_id = context.create_workspace(
             OxCalcTreeWorkspaceCreate::new(workspace_id)
                 .with_root_symbol(WORKBOOK_ROOT_SYMBOL)

@@ -359,7 +359,11 @@ async fn font_locale_and_cf_authoring_round_trip_through_host() {
     set_input(&host, "[data-testid=\"font-colour\"]", "#d02a23", "change");
     settle().await;
     assert!(
-        query(&host, "[data-testid=\"font-fill\"] [data-colour=\"#d02a23\"]").is_some(),
+        query(
+            &host,
+            "[data-testid=\"font-fill\"] [data-colour=\"#d02a23\"]"
+        )
+        .is_some(),
         "the authored font colour round-trips into the panel swatch via host truth"
     );
 
@@ -384,7 +388,12 @@ async fn font_locale_and_cf_authoring_round_trip_through_host() {
     // Author a cell-value rule (default operator greaterThan) with a threshold
     // and a fill colour, then add it.
     set_input(&host, "[data-testid=\"cf-threshold-1\"]", "100", "input");
-    set_input(&host, "[data-testid=\"cf-fill-colour\"]", "#006600", "change");
+    set_input(
+        &host,
+        "[data-testid=\"cf-fill-colour\"]",
+        "#006600",
+        "change",
+    );
     click(&host, "[data-testid=\"cf-add-rule\"]");
     settle().await;
     assert!(

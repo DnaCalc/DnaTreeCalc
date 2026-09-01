@@ -503,7 +503,10 @@ mod tests {
     fn entry_classification_maps_authored_metadata_per_kind() {
         // Empty / RichStub -> Empty, regardless of a covering name.
         let empty = authored_cell(1, 1, GridAuthoredKindProjection::Empty, None, None);
-        assert_eq!(entry_classification(&empty, None), NodeClassification::Empty);
+        assert_eq!(
+            entry_classification(&empty, None),
+            NodeClassification::Empty
+        );
         let rich_stub = authored_cell(1, 1, GridAuthoredKindProjection::RichStub, None, None);
         assert_eq!(
             entry_classification(&rich_stub, None),
@@ -595,7 +598,12 @@ mod tests {
     fn derive_entries_skips_empty_authored_cells() {
         let mut ws = WorkspaceState::default();
         let empty = authored_cell(1, 1, GridAuthoredKindProjection::Empty, None, None);
-        let cells = vec![cell_projection(1, 1, NodeValueProjection::Empty, Some(empty))];
+        let cells = vec![cell_projection(
+            1,
+            1,
+            NodeValueProjection::Empty,
+            Some(empty),
+        )];
         ws.grids
             .insert(NodeId::new("Sheet1"), grid_projection(cells, Vec::new()));
 
@@ -638,7 +646,10 @@ mod tests {
             name: "GrowthRate".to_string(),
             value_text: "0.12".to_string(),
         });
-        assert!(receipt.accepted, "CreateNamedValue is accepted: {receipt:?}");
+        assert!(
+            receipt.accepted,
+            "CreateNamedValue is accepted: {receipt:?}"
+        );
 
         let after_snapshot = document.snapshot();
         let after = derive_entries(&after_snapshot);
@@ -650,7 +661,10 @@ mod tests {
             .find(|entry| entry.display_name == "GrowthRate")
             .expect("GrowthRate derives as a Name entry");
         let NotebookEntryKind::Name { name, backing_cell } = &name_entry.kind else {
-            panic!("GrowthRate must derive as NotebookEntryKind::Name, got {:?}", name_entry.kind);
+            panic!(
+                "GrowthRate must derive as NotebookEntryKind::Name, got {:?}",
+                name_entry.kind
+            );
         };
         assert_eq!(name.scope, DefinedNameScopeProjection::Workbook);
         assert!(!name.is_dynamic);
@@ -667,7 +681,11 @@ mod tests {
         // (ii) No spurious Cell entry leaks for the `_names` backing sheet
         // itself: the third (newly-created) grid contributes ZERO "Other
         // cells" entries to the notebook.
-        assert_eq!(after_snapshot.grids.len(), 3, "the `_names` sheet was lazily created");
+        assert_eq!(
+            after_snapshot.grids.len(),
+            3,
+            "the `_names` sheet was lazily created"
+        );
         let names_grid = after_snapshot
             .grids
             .keys()
@@ -713,15 +731,20 @@ mod tests {
             col: 1,
             text: "=GrowthRate*2".to_string(),
         });
-        assert!(entry_receipt.accepted, "the referencing formula is accepted: {entry_receipt:?}");
+        assert!(
+            entry_receipt.accepted,
+            "the referencing formula is accepted: {entry_receipt:?}"
+        );
 
         let after2 = derive_entries(&document.snapshot());
         let a6 = after2
             .iter()
             .find_map(|entry| match &entry.kind {
-                NotebookEntryKind::Cell { grid, authored, value }
-                    if *grid == sheet1_grid && authored.row == 6 && authored.col == 1 =>
-                {
+                NotebookEntryKind::Cell {
+                    grid,
+                    authored,
+                    value,
+                } if *grid == sheet1_grid && authored.row == 6 && authored.col == 1 => {
                     Some(value.clone())
                 }
                 _ => None,

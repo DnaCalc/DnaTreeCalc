@@ -218,9 +218,7 @@ fn apply_one_formula_skin_intent(
         } => with_active_formula_space(state, formula_space_id, |state| {
             let host_rule = skin_cf_authoring_to_host(rule);
             match rule_index {
-                Some(index) => {
-                    update_active_conditional_formatting_rule(state, index, host_rule)
-                }
+                Some(index) => update_active_conditional_formatting_rule(state, index, host_rule),
                 None => add_active_conditional_formatting_rule(state, host_rule).is_some(),
             }
         }),
@@ -2727,17 +2725,19 @@ mod tests {
         for (operator, threshold) in [("greaterThan", "100"), ("lessThan", "0")] {
             assert!(apply_skin_intent_to_host_state(
                 &mut state,
-                one(dnacalc_skin_ir::OneFormulaIntent::SetConditionalFormatRule {
-                    formula_space_id: id(),
-                    rule_index: None,
-                    rule: dnacalc_skin_ir::ConditionalFormatRuleAuthoring {
-                        rule_kind: "cell_value".to_string(),
-                        operator: Some(operator.to_string()),
-                        thresholds: vec![threshold.to_string()],
-                        font_color: None,
-                        fill_color: Some("#FFCCCC".to_string()),
-                    },
-                }),
+                one(
+                    dnacalc_skin_ir::OneFormulaIntent::SetConditionalFormatRule {
+                        formula_space_id: id(),
+                        rule_index: None,
+                        rule: dnacalc_skin_ir::ConditionalFormatRuleAuthoring {
+                            rule_kind: "cell_value".to_string(),
+                            operator: Some(operator.to_string()),
+                            thresholds: vec![threshold.to_string()],
+                            font_color: None,
+                            fill_color: Some("#FFCCCC".to_string()),
+                        },
+                    }
+                ),
             ));
         }
         assert_eq!(
@@ -2753,25 +2753,29 @@ mod tests {
         // Replace rule #0 with a `between` rule.
         assert!(apply_skin_intent_to_host_state(
             &mut state,
-            one(dnacalc_skin_ir::OneFormulaIntent::SetConditionalFormatRule {
-                formula_space_id: id(),
-                rule_index: Some(0),
-                rule: dnacalc_skin_ir::ConditionalFormatRuleAuthoring {
-                    rule_kind: "cell_value".to_string(),
-                    operator: Some("between".to_string()),
-                    thresholds: vec!["1".to_string(), "9".to_string()],
-                    font_color: None,
-                    fill_color: None,
-                },
-            }),
+            one(
+                dnacalc_skin_ir::OneFormulaIntent::SetConditionalFormatRule {
+                    formula_space_id: id(),
+                    rule_index: Some(0),
+                    rule: dnacalc_skin_ir::ConditionalFormatRuleAuthoring {
+                        rule_kind: "cell_value".to_string(),
+                        operator: Some("between".to_string()),
+                        thresholds: vec!["1".to_string(), "9".to_string()],
+                        font_color: None,
+                        fill_color: None,
+                    },
+                }
+            ),
         ));
         // Remove rule #1.
         assert!(apply_skin_intent_to_host_state(
             &mut state,
-            one(dnacalc_skin_ir::OneFormulaIntent::RemoveConditionalFormatRule {
-                formula_space_id: id(),
-                rule_index: 1,
-            }),
+            one(
+                dnacalc_skin_ir::OneFormulaIntent::RemoveConditionalFormatRule {
+                    formula_space_id: id(),
+                    rule_index: 1,
+                }
+            ),
         ));
         {
             let rules = &state
@@ -2787,10 +2791,12 @@ mod tests {
         // Out-of-range removal is an honest no-op.
         assert!(!apply_skin_intent_to_host_state(
             &mut state,
-            one(dnacalc_skin_ir::OneFormulaIntent::RemoveConditionalFormatRule {
-                formula_space_id: id(),
-                rule_index: 99,
-            }),
+            one(
+                dnacalc_skin_ir::OneFormulaIntent::RemoveConditionalFormatRule {
+                    formula_space_id: id(),
+                    rule_index: 99,
+                }
+            ),
         ));
     }
 

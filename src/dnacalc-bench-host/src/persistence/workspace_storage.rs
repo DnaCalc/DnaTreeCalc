@@ -691,8 +691,10 @@ mod tests {
 
         // Use a scratch directory under `target/` so the test
         // never touches the user's real config dir.
-        let scratch =
-            std::env::temp_dir().join(format!("dnacalc-bench-workspace-test-{}", std::process::id(),));
+        let scratch = std::env::temp_dir().join(format!(
+            "dnacalc-bench-workspace-test-{}",
+            std::process::id(),
+        ));
         if scratch.exists() {
             let _ = std::fs::remove_dir_all(&scratch);
         }

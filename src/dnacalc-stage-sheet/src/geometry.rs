@@ -716,6 +716,9 @@ mod tests {
             first == 1 || !on_screen(first - 1),
             "the column before the first is off screen"
         );
-        assert!(!on_screen(last + 1), "the column after the last is off screen");
+        assert!(
+            !on_screen(last + 1),
+            "the column after the last is off screen"
+        );
     }
 }

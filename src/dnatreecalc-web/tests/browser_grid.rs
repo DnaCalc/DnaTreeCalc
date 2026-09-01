@@ -342,8 +342,14 @@ fn set_url_search(search: &str) {
 }
 
 /// Find and click a skin-switcher tab (or any button) by its visible text.
-fn find_by_text(host: &web_sys::Element, selector: &str, text: &str) -> Option<web_sys::HtmlElement> {
-    let nodes = host.query_selector_all(selector).expect("query_selector_all");
+fn find_by_text(
+    host: &web_sys::Element,
+    selector: &str,
+    text: &str,
+) -> Option<web_sys::HtmlElement> {
+    let nodes = host
+        .query_selector_all(selector)
+        .expect("query_selector_all");
     for index in 0..nodes.length() {
         let node = nodes.item(index)?;
         let element: web_sys::HtmlElement = node.dyn_into().expect("element is an HtmlElement");

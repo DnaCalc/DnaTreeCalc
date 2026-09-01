@@ -111,7 +111,9 @@ fn press_key(input: &web_sys::HtmlInputElement, key: &str) {
     init.set_cancelable(true);
     let event = web_sys::KeyboardEvent::new_with_keyboard_event_init_dict("keydown", &init)
         .expect("construct keydown event");
-    input.dispatch_event(&event).expect("dispatch keydown event");
+    input
+        .dispatch_event(&event)
+        .expect("dispatch keydown event");
 }
 
 /// Mount the shared editor over a fixed backing cell with the given dispatcher,
@@ -121,7 +123,11 @@ fn mount_editor(
     mount_id: &str,
     initial_text: &str,
     dispatch: Arc<dyn Dispatcher>,
-) -> (web_sys::HtmlElement, RwSignal<bool>, RwSignal<EntryFeedback>) {
+) -> (
+    web_sys::HtmlElement,
+    RwSignal<bool>,
+    RwSignal<EntryFeedback>,
+) {
     let host = fresh_mount_point(mount_id);
     let editing = RwSignal::new(true);
     let feedback = RwSignal::new(EntryFeedback::None);
@@ -208,7 +214,10 @@ async fn commit_via_enter_dispatches_exactly_one_enter_grid_cell() {
         enters.len()
     );
     let WorkspaceIntent::EnterGridCell {
-        grid, row, col, text,
+        grid,
+        row,
+        col,
+        text,
     } = &enters[0]
     else {
         unreachable!()
@@ -335,11 +344,8 @@ fn click(element: &web_sys::Element) {
 async fn create_name_button_dispatches_single_create_named_value() {
     let dispatcher = RecordingDispatcher::new();
     let dispatch: Arc<dyn Dispatcher> = Arc::new(dispatcher.clone());
-    let (host, open) = mount_name_form(
-        "dtc-n3-create",
-        DefinedNamesProjection::default(),
-        dispatch,
-    );
+    let (host, open) =
+        mount_name_form("dtc-n3-create", DefinedNamesProjection::default(), dispatch);
     next_tick().await;
 
     let name_input = name_form_input(&host, ".dtc-name-form__name");
@@ -372,19 +378,21 @@ async fn duplicate_name_renders_inline_rejection_and_form_stays_open() {
     let dispatcher = RecordingDispatcher::new();
     let dispatch: Arc<dyn Dispatcher> = Arc::new(dispatcher.clone());
     let mut catalog = DefinedNamesProjection::default();
-    catalog.entries.push(dnatreecalc_skin_framework::DefinedNameProjection {
-        scope: DefinedNameScopeProjection::Sheet(NodeId::new("_names")),
-        name: "rate".to_string(),
-        target: dnatreecalc_skin_framework::DefinedNameTargetProjection::Static(
-            dnatreecalc_skin_framework::GridRectProjection {
-                top_row: 1,
-                left_col: 1,
-                bottom_row: 1,
-                right_col: 1,
-            },
-        ),
-        is_dynamic: false,
-    });
+    catalog
+        .entries
+        .push(dnatreecalc_skin_framework::DefinedNameProjection {
+            scope: DefinedNameScopeProjection::Sheet(NodeId::new("_names")),
+            name: "rate".to_string(),
+            target: dnatreecalc_skin_framework::DefinedNameTargetProjection::Static(
+                dnatreecalc_skin_framework::GridRectProjection {
+                    top_row: 1,
+                    left_col: 1,
+                    bottom_row: 1,
+                    right_col: 1,
+                },
+            ),
+            is_dynamic: false,
+        });
     let (host, open) = mount_name_form("dtc-n3-duplicate", catalog, dispatch);
     next_tick().await;
 

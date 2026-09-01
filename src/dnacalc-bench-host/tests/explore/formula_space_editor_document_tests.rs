@@ -76,7 +76,8 @@ fn ex_03_formula_edit_intent_preserves_raw_cell_entry_path_for_direct_values() {
             cursor_offset: 5,
             analysis_stage: EditorAnalysisStage::SyntaxOnly,
             formatting_request: None,
-            scenario_policy: dnacalc_bench_host::adapters::oxfml::ScenarioPolicyRequest::Deterministic,
+            scenario_policy:
+                dnacalc_bench_host::adapters::oxfml::ScenarioPolicyRequest::Deterministic,
             skip_runtime_evaluation: false,
             recalc_mode: dnacalc_bench_host::adapters::oxfml::RecalcModeRequest::Auto,
             language_tag: "en-US".to_string(),

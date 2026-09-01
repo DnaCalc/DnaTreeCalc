@@ -281,7 +281,10 @@ mod tests {
 
         // Recalculate (F9) drains the seed; the sheet summary flips clean.
         let outcome = session.recalculate().unwrap();
-        assert!(outcome.drained_any(), "F9 drained the brand-new cell's seed");
+        assert!(
+            outcome.drained_any(),
+            "F9 drained the brand-new cell's seed"
+        );
         let tick = outcome.tick_id.expect("a drain mints a tick");
         let projection_after = session.workbook_calc_projection(Some(tick)).unwrap();
         assert!(

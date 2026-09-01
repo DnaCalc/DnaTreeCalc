@@ -393,9 +393,7 @@ impl StageSurface for NotebookStage {
                     ev.stop_propagation();
                     keyboard_status.set(Some(reason.to_string()));
                 }
-                ActionAvailability::Live
-                    if !persona_allows_authoring(persona.get_untracked()) =>
-                {
+                ActionAvailability::Live if !persona_allows_authoring(persona.get_untracked()) => {
                     // S2.9 reactive persona gate: every `Live` Notebook action is
                     // an AUTHORING verb (open this block's editor, commit-and-
                     // advance, new name), so a non-authoring persona (Reviewer /
@@ -467,8 +465,7 @@ impl StageSurface for NotebookStage {
                         commit_block(&keydown_dispatch, &key, state);
                         // Read the (re-projected) workspace untracked so the
                         // keydown handler never subscribes to it.
-                        let next =
-                            keydown_workspace.with_untracked(|ws| next_cell_key(ws, &key));
+                        let next = keydown_workspace.with_untracked(|ws| next_cell_key(ws, &key));
                         if let Some(next) = next {
                             focused_block.set(Some(next.clone()));
                             focus_request.set(Some(FocusRequest::Article(next)));
@@ -661,7 +658,12 @@ fn event_target_is_text_entry(ev: &leptos::ev::KeyboardEvent) -> bool {
 fn event_in_block(ev: &leptos::ev::KeyboardEvent) -> bool {
     ev.target()
         .and_then(|target| target.dyn_into::<leptos::web_sys::Element>().ok())
-        .and_then(|element| element.closest("article.dna-notebook__block").ok().flatten())
+        .and_then(|element| {
+            element
+                .closest("article.dna-notebook__block")
+                .ok()
+                .flatten()
+        })
         .is_some()
 }
 
@@ -716,9 +718,9 @@ fn next_cell_key(ws: &WorkspaceState, current: &BlockKey) -> Option<BlockKey> {
     let keys: Vec<BlockKey> = model::derive_entries(ws)
         .into_iter()
         .filter_map(|entry| match entry.kind {
-            NotebookEntryKind::Cell {
-                grid, authored, ..
-            } => Some((grid, authored.row, authored.col)),
+            NotebookEntryKind::Cell { grid, authored, .. } => {
+                Some((grid, authored.row, authored.col))
+            }
             NotebookEntryKind::Name { .. } | NotebookEntryKind::Table { .. } => None,
         })
         .collect();
@@ -736,9 +738,9 @@ fn live_block_keys(entries: &[NotebookEntry]) -> HashSet<BlockKey> {
     entries
         .iter()
         .filter_map(|entry| match &entry.kind {
-            NotebookEntryKind::Cell {
-                grid, authored, ..
-            } => Some((grid.clone(), authored.row, authored.col)),
+            NotebookEntryKind::Cell { grid, authored, .. } => {
+                Some((grid.clone(), authored.row, authored.col))
+            }
             NotebookEntryKind::Name { .. } | NotebookEntryKind::Table { .. } => None,
         })
         .collect()
@@ -827,9 +829,7 @@ fn render_block(
     // is edited through its backing cell, not fabricated a target — SHELL_SPEC
     // §6 honesty).
     let edit_view = match &entry.kind {
-        NotebookEntryKind::Cell {
-            grid, authored, ..
-        } => render_cell_editor(
+        NotebookEntryKind::Cell { grid, authored, .. } => render_cell_editor(
             grid, authored, dispatch, preview, workspace, editors, owner, authoring,
         ),
         // A Name block is edited through its backing cell, never a fabricated
@@ -1053,12 +1053,8 @@ fn render_cell_editor(
         // spatial meaning here — commit the block either way.
         BridgeEvent::CommitRequested { .. } => {
             let text = state.edit_text.get_untracked();
-            let receipt = commit_dispatch.dispatch(enter_cell_intent(
-                commit_grid.clone(),
-                row,
-                col,
-                text,
-            ));
+            let receipt =
+                commit_dispatch.dispatch(enter_cell_intent(commit_grid.clone(), row, col, text));
             let resolved = interpret_receipt(&receipt);
             if let CellOutcome::Rejected(diagnostics) = &resolved {
                 // Keep the rejected text intact so the user can fix it; underline
@@ -1075,8 +1071,8 @@ fn render_cell_editor(
         BridgeEvent::RevertRequested => {
             // Esc: drop the in-progress edit back to the cell's current authored
             // text (read live from host truth), and clear the transient outcome.
-            let authored_now = workspace
-                .with_untracked(|ws| current_authored_seed(ws, &commit_grid, row, col));
+            let authored_now =
+                workspace.with_untracked(|ws| current_authored_seed(ws, &commit_grid, row, col));
             state.edit_text.set(authored_now);
             state.rejections.set(Vec::new());
             state.outcome.set(None);
@@ -1599,7 +1595,11 @@ fn authored_seed_text(authored: &GridAuthoredCellProjection) -> String {
 fn current_authored_seed(ws: &WorkspaceState, grid: &NodeId, row: u32, col: u32) -> String {
     ws.grids
         .get(grid)
-        .and_then(|grid| grid.cells.iter().find(|cell| cell.row == row && cell.col == col))
+        .and_then(|grid| {
+            grid.cells
+                .iter()
+                .find(|cell| cell.row == row && cell.col == col)
+        })
         .and_then(|cell| cell.authored.as_ref())
         .map(authored_seed_text)
         .unwrap_or_default()
@@ -1669,7 +1669,10 @@ fn render_value(value: &NodeValueProjection) -> AnyView {
 /// window resolved one, else an honest passthrough — the dynamic name's source
 /// text, or a "not in window" note for a static name outside the current
 /// window. Never a fabricated value.
-fn render_name_value(name: &DefinedNameProjection, backing: &Option<GridCellProjection>) -> AnyView {
+fn render_name_value(
+    name: &DefinedNameProjection,
+    backing: &Option<GridCellProjection>,
+) -> AnyView {
     if let Some(cell) = backing {
         return render_value(&cell.value);
     }
@@ -1925,10 +1928,7 @@ mod tests {
             "TRUE"
         );
         // Marker variants never vanish — they render as parenthesized notes.
-        assert_eq!(
-            scalar_value_text(&NodeValueProjection::Empty),
-            "(empty)"
-        );
+        assert_eq!(scalar_value_text(&NodeValueProjection::Empty), "(empty)");
         assert_eq!(
             scalar_value_text(&NodeValueProjection::Unevaluated),
             "(unevaluated)"
@@ -1982,9 +1982,9 @@ mod tests {
         let cell_keys: Vec<BlockKey> = model::derive_entries(&ws)
             .into_iter()
             .filter_map(|entry| match entry.kind {
-                NotebookEntryKind::Cell {
-                    grid, authored, ..
-                } => Some((grid, authored.row, authored.col)),
+                NotebookEntryKind::Cell { grid, authored, .. } => {
+                    Some((grid, authored.row, authored.col))
+                }
                 NotebookEntryKind::Name { .. } | NotebookEntryKind::Table { .. } => None,
             })
             .collect();
@@ -2022,7 +2022,10 @@ mod tests {
     /// pass through unchanged.
     #[test]
     fn css_escape_attr_value_neutralizes_quote_and_backslash() {
-        assert_eq!(css_escape_attr_value("sheet:Sheet1|3|1"), "sheet:Sheet1|3|1");
+        assert_eq!(
+            css_escape_attr_value("sheet:Sheet1|3|1"),
+            "sheet:Sheet1|3|1"
+        );
         assert_eq!(css_escape_attr_value("a\"b"), "a\\\"b");
         assert_eq!(css_escape_attr_value("a\\b"), "a\\\\b");
     }
@@ -2045,9 +2048,9 @@ mod tests {
         let expected: HashSet<BlockKey> = entries
             .iter()
             .filter_map(|entry| match &entry.kind {
-                NotebookEntryKind::Cell {
-                    grid, authored, ..
-                } => Some((grid.clone(), authored.row, authored.col)),
+                NotebookEntryKind::Cell { grid, authored, .. } => {
+                    Some((grid.clone(), authored.row, authored.col))
+                }
                 _ => None,
             })
             .collect();
@@ -2448,7 +2451,10 @@ mod tests {
     #[test]
     fn describe_delete_impact_reports_honest_counts_from_real_fields() {
         let summary = describe_delete_impact(&canned_impact());
-        assert!(summary.contains("clears this cell"), "legal delete is stated");
+        assert!(
+            summary.contains("clears this cell"),
+            "legal delete is stated"
+        );
         assert!(
             summary.contains("2 dependent(s) orphaned"),
             "the 2 orphaned dependents surface verbatim: {summary}"

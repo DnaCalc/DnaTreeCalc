@@ -124,15 +124,19 @@ pub fn interpret_receipt(receipt: &IntentReceipt) -> CellOutcome {
 /// proving a commit hit the intended cell and nothing else.
 #[must_use]
 pub fn entered_cell(receipt: &IntentReceipt) -> Option<(NodeId, u32, u32)> {
-    receipt.delta.changes.iter().find_map(|change| match change {
-        WorkspaceDeltaChange::GridCellEntered {
-            grid_node_id,
-            row,
-            col,
-            ..
-        } => Some((grid_node_id.clone(), *row, *col)),
-        _ => None,
-    })
+    receipt
+        .delta
+        .changes
+        .iter()
+        .find_map(|change| match change {
+            WorkspaceDeltaChange::GridCellEntered {
+                grid_node_id,
+                row,
+                col,
+                ..
+            } => Some((grid_node_id.clone(), *row, *col)),
+            _ => None,
+        })
 }
 
 /// A compact display string for a projected cell value (the outcome's value
@@ -250,7 +254,8 @@ mod tests {
 
         // Commit through the cell's OWN address (the guard: the intent can only
         // carry the coordinates the selected cell handed us).
-        let receipt = document.dispatch(enter_cell_intent(grid.clone(), 3, 1, "=A1+A5".to_string()));
+        let receipt =
+            document.dispatch(enter_cell_intent(grid.clone(), 3, 1, "=A1+A5".to_string()));
 
         // (1) The write targeted exactly R3C1 on this grid.
         assert_eq!(
@@ -271,8 +276,14 @@ mod tests {
         let after = document.snapshot();
         let (_, r3c1_after) = cell(&after, 3, 1);
         let (_, r2c1_after) = cell(&after, 2, 1);
-        assert_eq!(r3c1_after, "6", "the target cell now shows the formula result");
-        assert_eq!(r2c1_after, "2", "the sibling cell is untouched by the commit");
+        assert_eq!(
+            r3c1_after, "6",
+            "the target cell now shows the formula result"
+        );
+        assert_eq!(
+            r2c1_after, "2",
+            "the sibling cell is untouched by the commit"
+        );
     }
 
     /// A literal commit into the cell's own address classifies as `Literal` and
@@ -324,7 +335,10 @@ mod tests {
         // No mutation on the rejected path.
         let after = document.snapshot();
         let (_, r5c1_after) = cell(&after, 5, 1);
-        assert_eq!(r5c1_after, r5c1_before, "a rejected commit does not mutate the cell");
+        assert_eq!(
+            r5c1_after, r5c1_before,
+            "a rejected commit does not mutate the cell"
+        );
     }
 
     /// The overlay seed + editability read host truth: a literal cell seeds its

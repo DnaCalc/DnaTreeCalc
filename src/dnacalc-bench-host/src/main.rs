@@ -411,8 +411,10 @@ fn print_help() {
 
 fn load_config_or_default(
     config_xml: Option<&PathBuf>,
-) -> Result<dnacalc_bench_host::services::programmatic_testing::ProgrammaticVerificationConfig, String>
-{
+) -> Result<
+    dnacalc_bench_host::services::programmatic_testing::ProgrammaticVerificationConfig,
+    String,
+> {
     match config_xml {
         Some(path) => load_verification_config_xml(path),
         None => Ok(default_verification_config()),

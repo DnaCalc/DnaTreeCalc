@@ -161,9 +161,10 @@ fn typing_an_invalid_formula_surfaces_a_diagnostic_in_the_result_view() {
     // the diagnostic so a future drill-down can render the squiggle.
     let mut state = fresh_state_with_active_space();
     let mut document = sample_editor_document("=SUM(");
-    document.live_diagnostics = dnacalc_bench_host::test_support::live_diagnostic_snapshot_with(vec![
-        dnacalc_bench_host::test_support::make_live_diagnostic("diag-1", "unmatched '('", 4, 1),
-    ]);
+    document.live_diagnostics =
+        dnacalc_bench_host::test_support::live_diagnostic_snapshot_with(vec![
+            dnacalc_bench_host::test_support::make_live_diagnostic("diag-1", "unmatched '('", 4, 1),
+        ]);
     let bridge = DiagnosticFakeBridge { document };
 
     apply_live_editor_input(

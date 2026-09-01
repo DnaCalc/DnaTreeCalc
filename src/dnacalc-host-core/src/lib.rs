@@ -50,8 +50,8 @@ pub mod defined_names;
 pub mod demo;
 pub mod grid_publication;
 pub mod persistence;
-pub mod skin_protocol;
 pub mod present;
+pub mod skin_protocol;
 pub mod tree;
 pub mod workbook;
 // W011 (dtc-j7n8.2): test-only access to the committed `a1_times_three` xlsx
@@ -73,8 +73,8 @@ pub use grid_publication::{
     grid_authored_cell_projection, grid_overlay_bundle_for, grid_projection_for,
     grid_value_projection,
 };
-pub use present::present_grid_entry_rejection;
 pub use persistence::LocalFileSkinStatePersistenceStore;
+pub use present::present_grid_entry_rejection;
 pub use skin_protocol::SkinProtocolSession;
 pub use workbook::{
     WorkbookSession, WorkbookSessionError, parse_sheet_grid_node_id, sheet_grid_node_id,

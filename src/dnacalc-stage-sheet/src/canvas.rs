@@ -52,10 +52,12 @@ use crate::render_plan::RenderPlan;
 /// Fonts are not a `--dna-*` token (Strand tokenizes color/spacing, not the
 /// sheet's fixed grid type), so the stack is a constant, mirroring the mono
 /// stack `SHEET_CSS` already declares for the crate.
-const SHEET_CELL_FONT: &str = "12px 'Recursive Mono','Cascadia Code',Consolas,ui-monospace,monospace";
+const SHEET_CELL_FONT: &str =
+    "12px 'Recursive Mono','Cascadia Code',Consolas,ui-monospace,monospace";
 /// The header-strip label font — the same stack a hair smaller than the cell
 /// font, so A1 column letters / row numbers read as chrome, not data.
-const SHEET_HEADER_FONT: &str = "11px 'Recursive Mono','Cascadia Code',Consolas,ui-monospace,monospace";
+const SHEET_HEADER_FONT: &str =
+    "11px 'Recursive Mono','Cascadia Code',Consolas,ui-monospace,monospace";
 
 /// Horizontal padding inside a cell before its text, in CSS px.
 const CELL_TEXT_PAD: f64 = 4.0;
@@ -271,10 +273,24 @@ pub fn draw_render_plan(
     ctx.set_text_align("center");
     ctx.set_font(&palette.header_font);
     for header in &plan.col_headers {
-        draw_centered_label(ctx, &header.label, header.rect.x, header.rect.y, header.rect.w, header.rect.h);
+        draw_centered_label(
+            ctx,
+            &header.label,
+            header.rect.x,
+            header.rect.y,
+            header.rect.w,
+            header.rect.h,
+        );
     }
     for header in &plan.row_headers {
-        draw_centered_label(ctx, &header.label, header.rect.x, header.rect.y, header.rect.w, header.rect.h);
+        draw_centered_label(
+            ctx,
+            &header.label,
+            header.rect.x,
+            header.rect.y,
+            header.rect.w,
+            header.rect.h,
+        );
     }
 }
 
@@ -502,7 +518,13 @@ fn draw_table_overlay(
 ) {
     let range_px = overlay_pixel_rect(m, v, &table.table_range);
     let range_style = overlay_edge_style(&table.table_range);
-    stroke_overlay_rect(ctx, &range_px, range_style, &palette.accent, TABLE_LINE_WIDTH);
+    stroke_overlay_rect(
+        ctx,
+        &range_px,
+        range_style,
+        &palette.accent,
+        TABLE_LINE_WIDTH,
+    );
 
     if let Some(header) = &table.header_rect {
         let px = overlay_pixel_rect(m, v, header);
@@ -510,7 +532,14 @@ fn draw_table_overlay(
         ctx.save();
         ctx.set_stroke_style_str(&palette.accent);
         ctx.set_line_width(TABLE_LINE_WIDTH);
-        stroke_edge(ctx, px.x, px.y + px.h, px.x + px.w, px.y + px.h, header.clipped_bottom);
+        stroke_edge(
+            ctx,
+            px.x,
+            px.y + px.h,
+            px.x + px.w,
+            px.y + px.h,
+            header.clipped_bottom,
+        );
         ctx.restore();
     }
     if let Some(totals) = &table.totals_rect {
@@ -635,7 +664,14 @@ pub fn draw_overlays(
 /// caller has already set `text_align("center")`, `text_baseline("middle")`,
 /// the font, and the fill color — this only owns the clip + placement so the
 /// two header loops share one implementation.
-fn draw_centered_label(ctx: &CanvasRenderingContext2d, label: &str, x: f64, y: f64, w: f64, h: f64) {
+fn draw_centered_label(
+    ctx: &CanvasRenderingContext2d,
+    label: &str,
+    x: f64,
+    y: f64,
+    w: f64,
+    h: f64,
+) {
     ctx.save();
     ctx.begin_path();
     ctx.rect(x, y, w, h);
@@ -679,7 +715,10 @@ mod tests {
             ("cell_font", &palette.cell_font),
             ("header_font", &palette.header_font),
         ] {
-            assert!(!value.is_empty(), "fallback palette slot {slot} must not be empty");
+            assert!(
+                !value.is_empty(),
+                "fallback palette slot {slot} must not be empty"
+            );
         }
         // The color slots are the cockpit-light hexes Strand emits, so the
         // fallback matches the default theme rather than an arbitrary color.
@@ -718,7 +757,12 @@ mod tests {
 
     /// An overlay rect with no `clipped_*` flags set — the common fixture for
     /// [`overlay_pixel_rect`] geometry tests, which don't care about clipping.
-    fn overlay_rect(top_row: u32, left_col: u32, bottom_row: u32, right_col: u32) -> GridOverlayRect {
+    fn overlay_rect(
+        top_row: u32,
+        left_col: u32,
+        bottom_row: u32,
+        right_col: u32,
+    ) -> GridOverlayRect {
         GridOverlayRect {
             top_row,
             left_col,

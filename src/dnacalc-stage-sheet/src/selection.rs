@@ -633,8 +633,14 @@ mod tests {
         ] {
             assert_eq!(typed_char(key), expected, "key {key:?}");
         }
-        for control in ["Enter", "ArrowUp", "F2", "Tab", "Home", "Escape", "", "\u{1b}"] {
-            assert_eq!(typed_char(control), None, "key {control:?} is not printable");
+        for control in [
+            "Enter", "ArrowUp", "F2", "Tab", "Home", "Escape", "", "\u{1b}",
+        ] {
+            assert_eq!(
+                typed_char(control),
+                None,
+                "key {control:?} is not printable"
+            );
         }
     }
 }

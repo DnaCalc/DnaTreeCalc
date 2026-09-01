@@ -152,8 +152,7 @@ mod tests {
         );
 
         // Formula (references seeded cells A1 + A5 = 1 + 5 = 6).
-        let receipt =
-            document.dispatch(enter_grid_cell_intent(grid.clone(), "=A1+A5".to_string()));
+        let receipt = document.dispatch(enter_grid_cell_intent(grid.clone(), "=A1+A5".to_string()));
         match interpret_receipt(&receipt) {
             CellOutcome::Formula { value, unresolved } => {
                 assert_eq!(value, "6");

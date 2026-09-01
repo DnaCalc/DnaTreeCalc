@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use dnacalc_host_core::grid_publication::grid_authored_cell_projection;
 use dnatreecalc_skin_framework::{
     AuthoringScope, BindingDiagnosticProjection, CalcRunProjection, CalcRunStateProjection,
     CandidateNodeProjection, CandidateProjection, ComparativeColumnProjection,
@@ -13,10 +14,9 @@ use dnatreecalc_skin_framework::{
     FormulaBindPreviewInputKind, FormulaBindPreviewProfileViolationKindProjection,
     FormulaBindPreviewProfileViolationProjection, FormulaBindPreviewProjection,
     FormulaReferenceInsertionProjection, FormulaReferenceInsertionTarget,
-    GridAuthoredCellProjection, GridCellProjection,
-    GridMergedOverlayDescriptor, GridOverlayBundle, GridOverlayRect, GridProjection,
-    GridSpillOverlayDescriptor, GridTableColumnBand, GridTableOverlayDescriptor,
-    InitialNodeContentProjection, InvalidationReasonProjection,
+    GridAuthoredCellProjection, GridCellProjection, GridMergedOverlayDescriptor, GridOverlayBundle,
+    GridOverlayRect, GridProjection, GridSpillOverlayDescriptor, GridTableColumnBand,
+    GridTableOverlayDescriptor, InitialNodeContentProjection, InvalidationReasonProjection,
     MutationImpactBlockedReasonProjection, MutationImpactIntentProjection,
     MutationImpactProjection, NameCollisionProjection, NodeAttributePatch, NodeCalcStateProjection,
     NodeContentKind as FrameworkContentKind, NodeId, NodeInvalidationProjection, NodeKey,
@@ -36,7 +36,6 @@ use dnatreecalc_skin_framework::{
     TableRowInput, TableRowProjection, TreeReferenceCollectionFamilyProjection,
     TreeReferenceCollectionProjection, WorkspaceRevisionProjection, WorkspaceState,
 };
-use dnacalc_host_core::grid_publication::grid_authored_cell_projection;
 use oxcalc_core::consumer::OxCalcTreeRunState;
 use oxcalc_core::consumer::{
     CandidateOverlayHandle, OxCalcDocumentContext, OxCalcDocumentContextOptions,
@@ -5482,8 +5481,7 @@ impl TreeWorkspaceSession {
             .ok_or_else(|| TreeWorkspaceSessionError::ProjectionOutOfSync {
                 node: format!("grid {node}"),
             })?;
-        let authored =
-            authored_cells_for(&self.context, &self.workspace_id, tree_node_id, &view)?;
+        let authored = authored_cells_for(&self.context, &self.workspace_id, tree_node_id, &view)?;
         Ok(grid_projection_for(
             &view,
             node.clone(),
@@ -7795,9 +7793,7 @@ fn grid_projection_for(
             // from the engine's `grid_authored_view`, windowed to exactly the
             // cells this projection carries (mirroring host-core's workbook
             // fill path, `grid_publication::grid_authored_cell_projection`).
-            authored: authored
-                .get(&(cell.address.row, cell.address.col))
-                .cloned(),
+            authored: authored.get(&(cell.address.row, cell.address.col)).cloned(),
             // H5 compiler-forced arm (K1b/N1 lane file, not H5's Owns list):
             // the tree-model session has no CalcMode concept, so it fills no
             // provenance either.
@@ -7851,10 +7847,30 @@ fn authored_cells_for(
     let Some(first) = view.cells.first() else {
         return Ok(BTreeMap::new());
     };
-    let top_row = view.cells.iter().map(|cell| cell.address.row).min().unwrap_or(first.address.row);
-    let bottom_row = view.cells.iter().map(|cell| cell.address.row).max().unwrap_or(first.address.row);
-    let left_col = view.cells.iter().map(|cell| cell.address.col).min().unwrap_or(first.address.col);
-    let right_col = view.cells.iter().map(|cell| cell.address.col).max().unwrap_or(first.address.col);
+    let top_row = view
+        .cells
+        .iter()
+        .map(|cell| cell.address.row)
+        .min()
+        .unwrap_or(first.address.row);
+    let bottom_row = view
+        .cells
+        .iter()
+        .map(|cell| cell.address.row)
+        .max()
+        .unwrap_or(first.address.row);
+    let left_col = view
+        .cells
+        .iter()
+        .map(|cell| cell.address.col)
+        .min()
+        .unwrap_or(first.address.col);
+    let right_col = view
+        .cells
+        .iter()
+        .map(|cell| cell.address.col)
+        .max()
+        .unwrap_or(first.address.col);
     let window = GridRect::new(
         first.address.workbook_id.clone(),
         first.address.sheet_id.clone(),

@@ -130,23 +130,20 @@ pub const fn tier_degrade_reason(tier: Tier) -> Option<&'static str> {
 /// The Structure-tier honest-degrade note: the labeled-block renderer is not
 /// built, so the Detail grid is held at the legibility floor and this note
 /// explains the semantic tier is absent.
-pub const STRUCTURE_TIER_DEFERRED_REASON: &str =
-    "Structure tier (named ranges, tables and spills as labeled blocks) isn't built yet — \
+pub const STRUCTURE_TIER_DEFERRED_REASON: &str = "Structure tier (named ranges, tables and spills as labeled blocks) isn't built yet — \
      showing the Detail grid held at the legibility floor.";
 
 /// The District-tier honest-degrade note: the used-range map renderer is not
 /// built, so the Detail grid is held at the legibility floor and this note
 /// explains the semantic tier is absent.
-pub const DISTRICT_TIER_DEFERRED_REASON: &str =
-    "District tier (the used-range map, continuous with Atlas) isn't built yet — \
+pub const DISTRICT_TIER_DEFERRED_REASON: &str = "District tier (the used-range map, continuous with Atlas) isn't built yet — \
      showing the Detail grid held at the legibility floor.";
 
 /// The honest bounded-scale interest note (S3.9): the workbook dispatcher treats
 /// `SetGridInterest` as a no-op today (G4 unbuilt), so the stage renders the
 /// host's already-windowed cells as-is with no client-side virtualization, and
 /// windowing / prefetch / multi-rect interest are deferred to G4. Cites `G4`.
-pub const BOUNDED_SCALE_INTEREST_NOTE: &str =
-    "Scrolling renders the host's full bounded window as-is; viewport windowing, prefetch \
+pub const BOUNDED_SCALE_INTEREST_NOTE: &str = "Scrolling renders the host's full bounded window as-is; viewport windowing, prefetch \
      and multi-rect interest arrive with G4.";
 
 /// The honest degrade reason for a Ctrl+arrow edge-jump: the data-aware jump
@@ -167,7 +164,13 @@ pub const EDGE_JUMP_DEGRADE_REASON: &str =
 /// `0`, and a degenerate `band_size` falls back to a non-negative clamp, so the
 /// function is total and never produces `NaN`/negative scroll.
 #[must_use]
-pub fn clamp_scroll(scroll: f64, extent: u32, band_size: f64, header: f64, viewport_len: f64) -> f64 {
+pub fn clamp_scroll(
+    scroll: f64,
+    extent: u32,
+    band_size: f64,
+    header: f64,
+    viewport_len: f64,
+) -> f64 {
     if !scroll.is_finite() {
         return 0.0;
     }
@@ -208,7 +211,13 @@ pub fn clamp_scroll(scroll: f64, extent: u32, band_size: f64, header: f64, viewp
 /// reveal an in-extent band, whose far edge is within the grid content, so the
 /// forward target `far − data_len` is always ≤ [`clamp_scroll`]'s maximum.
 #[must_use]
-pub fn reveal_scroll(band: u32, band_size: f64, header: f64, viewport_len: f64, scroll: f64) -> f64 {
+pub fn reveal_scroll(
+    band: u32,
+    band_size: f64,
+    header: f64,
+    viewport_len: f64,
+    scroll: f64,
+) -> f64 {
     if !scroll.is_finite() {
         return 0.0;
     }
@@ -336,10 +345,22 @@ mod tests {
         assert_eq!(zoom_tier(4.0), Tier::Detail);
         assert_eq!(zoom_tier(1.0), Tier::Detail);
         assert_eq!(zoom_tier(0.6), Tier::Detail, "0.6 is the Detail floor");
-        assert_eq!(zoom_tier(0.5999), Tier::Structure, "just below 0.6 is Structure");
+        assert_eq!(
+            zoom_tier(0.5999),
+            Tier::Structure,
+            "just below 0.6 is Structure"
+        );
         assert_eq!(zoom_tier(0.3), Tier::Structure);
-        assert_eq!(zoom_tier(0.15), Tier::Structure, "0.15 is the Structure floor");
-        assert_eq!(zoom_tier(0.1499), Tier::District, "just below 0.15 is District");
+        assert_eq!(
+            zoom_tier(0.15),
+            Tier::Structure,
+            "0.15 is the Structure floor"
+        );
+        assert_eq!(
+            zoom_tier(0.1499),
+            Tier::District,
+            "just below 0.15 is District"
+        );
         assert_eq!(zoom_tier(0.05), Tier::District);
         // Guard: a non-finite factor resolves to the safe, legible tier.
         assert_eq!(zoom_tier(f64::NAN), Tier::Detail);
@@ -351,9 +372,18 @@ mod tests {
     #[test]
     fn clamp_zoom_bounds_the_factor() {
         assert!((clamp_zoom(1.0) - 1.0).abs() < 1e-9);
-        assert!((clamp_zoom(0.05) - ZOOM_MIN).abs() < 1e-9, "below min clamps up");
-        assert!((clamp_zoom(10.0) - ZOOM_MAX).abs() < 1e-9, "above max clamps down");
-        assert!((clamp_zoom(f64::NAN) - 1.0).abs() < 1e-9, "NaN resets to 1.0");
+        assert!(
+            (clamp_zoom(0.05) - ZOOM_MIN).abs() < 1e-9,
+            "below min clamps up"
+        );
+        assert!(
+            (clamp_zoom(10.0) - ZOOM_MAX).abs() < 1e-9,
+            "above max clamps down"
+        );
+        assert!(
+            (clamp_zoom(f64::NAN) - 1.0).abs() < 1e-9,
+            "NaN resets to 1.0"
+        );
     }
 
     /// `legible_factor` is the legibility floor: Detail zoom passes through, and
@@ -362,7 +392,10 @@ mod tests {
     /// readable.
     #[test]
     fn legible_factor_never_drops_below_the_floor() {
-        assert!((legible_factor(2.0) - 2.0).abs() < 1e-9, "zoom-in passes through");
+        assert!(
+            (legible_factor(2.0) - 2.0).abs() < 1e-9,
+            "zoom-in passes through"
+        );
         assert!((legible_factor(1.0) - 1.0).abs() < 1e-9);
         assert!(
             (legible_factor(0.6) - 0.6).abs() < 1e-9,
@@ -411,14 +444,26 @@ mod tests {
         let (extent, band, header, vp) = (100u32, 22.0, 22.0, 200.0);
         let max = 2200.0 - 178.0 + 44.0;
 
-        assert_eq!(clamp_scroll(-50.0, extent, band, header, vp), 0.0, "never negative");
+        assert_eq!(
+            clamp_scroll(-50.0, extent, band, header, vp),
+            0.0,
+            "never negative"
+        );
         assert_eq!(clamp_scroll(0.0, extent, band, header, vp), 0.0);
-        assert_eq!(clamp_scroll(500.0, extent, band, header, vp), 500.0, "mid passes through");
+        assert_eq!(
+            clamp_scroll(500.0, extent, band, header, vp),
+            500.0,
+            "mid passes through"
+        );
         assert!(
             (clamp_scroll(1.0e9, extent, band, header, vp) - max).abs() < 1e-9,
             "never past the used range + margin"
         );
-        assert_eq!(clamp_scroll(f64::NAN, extent, band, header, vp), 0.0, "NaN resets to 0");
+        assert_eq!(
+            clamp_scroll(f64::NAN, extent, band, header, vp),
+            0.0,
+            "NaN resets to 0"
+        );
     }
 
     /// A grid that already fits the viewport clamps every scroll to 0 (there is
@@ -439,7 +484,11 @@ mod tests {
     #[test]
     fn scroll_coalescer_collapses_n_deltas_to_one_summed_apply() {
         let mut coalescer = ScrollCoalescer::new();
-        assert_eq!(coalescer.take_pending(), None, "nothing pending before any note");
+        assert_eq!(
+            coalescer.take_pending(),
+            None,
+            "nothing pending before any note"
+        );
 
         coalescer.note_delta(10.0, 0.0);
         coalescer.note_delta(5.0, -3.0);
@@ -461,11 +510,19 @@ mod tests {
         let mut coalescer = ScrollCoalescer::new();
         coalescer.note_delta(f64::NAN, 5.0);
         coalescer.note_delta(10.0, f64::INFINITY);
-        assert_eq!(coalescer.take_pending(), None, "only non-finite deltas → nothing pending");
+        assert_eq!(
+            coalescer.take_pending(),
+            None,
+            "only non-finite deltas → nothing pending"
+        );
 
         coalescer.note_delta(4.0, 4.0);
         coalescer.note_delta(f64::NAN, f64::NAN);
-        assert_eq!(coalescer.take_pending(), Some((4.0, 4.0)), "the finite delta survives");
+        assert_eq!(
+            coalescer.take_pending(),
+            Some((4.0, 4.0)),
+            "the finite delta survives"
+        );
     }
 
     /// `edge_dir_from_key` recognizes exactly the four arrow keys and nothing
@@ -522,11 +579,17 @@ mod tests {
         // Unscrolled, band 9's far edge is 9·22 = 198 > 0 + 178 → scroll forward to
         // 198 − 178 = 20, so band 9's far edge lands exactly on the data-area edge.
         let s = reveal_scroll(9, band_size, header, vp, 0.0);
-        assert!((s - 20.0).abs() < 1e-9, "band 9 far edge flush to the viewport far edge");
+        assert!(
+            (s - 20.0).abs() < 1e-9,
+            "band 9 far edge flush to the viewport far edge"
+        );
         // And after that scroll the band is genuinely fully inside the data window.
         let near = (9.0 - 1.0) * band_size;
         let far = 9.0 * band_size;
-        assert!(near >= s - 1e-9 && far <= s + data_len + 1e-9, "band 9 now fully visible");
+        assert!(
+            near >= s - 1e-9 && far <= s + data_len + 1e-9,
+            "band 9 now fully visible"
+        );
     }
 
     /// After one reveal, EVERY navigated band lands fully inside the data window
@@ -540,7 +603,10 @@ mod tests {
         for &start in &[0.0, 60.0, 500.0, 5000.0] {
             for band in 1..=60u32 {
                 let s = reveal_scroll(band, band_size, header, vp, start);
-                assert!(s >= 0.0, "scroll never negative (band {band}, start {start})");
+                assert!(
+                    s >= 0.0,
+                    "scroll never negative (band {band}, start {start})"
+                );
                 let near = (f64::from(band) - 1.0) * band_size;
                 let far = f64::from(band) * band_size;
                 assert!(
@@ -559,7 +625,10 @@ mod tests {
         for band in 1..=60u32 {
             let once = reveal_scroll(band, band_size, header, vp, 3000.0);
             let twice = reveal_scroll(band, band_size, header, vp, once);
-            assert!((once - twice).abs() < 1e-9, "band {band} reveal must be stable");
+            assert!(
+                (once - twice).abs() < 1e-9,
+                "band {band} reveal must be stable"
+            );
         }
     }
 
@@ -569,17 +638,33 @@ mod tests {
     #[test]
     fn reveal_scroll_guards_degenerate_inputs() {
         // NaN scroll → the early-return 0 (independent of the band).
-        assert_eq!(reveal_scroll(9, 22.0, 22.0, 200.0, f64::NAN), 0.0, "NaN scroll → 0");
+        assert_eq!(
+            reveal_scroll(9, 22.0, 22.0, 200.0, f64::NAN),
+            0.0,
+            "NaN scroll → 0"
+        );
         // A negative scroll is clamped to 0; band 1 is visible there, so the reveal
         // is a no-op and the result stays 0 (isolating the negative→0 guard from the
         // reveal itself — a band that needs revealing would legitimately move off 0).
-        assert_eq!(reveal_scroll(1, 22.0, 22.0, 200.0, -50.0), 0.0, "negative scroll → 0");
+        assert_eq!(
+            reveal_scroll(1, 22.0, 22.0, 200.0, -50.0),
+            0.0,
+            "negative scroll → 0"
+        );
         // Degenerate band size: scroll passes through (clamped ≥ 0).
         assert_eq!(reveal_scroll(9, 0.0, 22.0, 200.0, 130.0), 130.0);
         assert_eq!(reveal_scroll(9, f64::NAN, 22.0, 200.0, 130.0), 130.0);
         // No data area (viewport not yet measured, or header wider than viewport):
         // leave the scroll as-is, never scroll a band into a zero-height window.
-        assert_eq!(reveal_scroll(9, 22.0, 22.0, 0.0, 130.0), 130.0, "size-0 viewport → no-op");
-        assert_eq!(reveal_scroll(9, 22.0, 22.0, 10.0, 130.0), 130.0, "header ≥ viewport → no-op");
+        assert_eq!(
+            reveal_scroll(9, 22.0, 22.0, 0.0, 130.0),
+            130.0,
+            "size-0 viewport → no-op"
+        );
+        assert_eq!(
+            reveal_scroll(9, 22.0, 22.0, 10.0, 130.0),
+            130.0,
+            "header ≥ viewport → no-op"
+        );
     }
 }

@@ -378,10 +378,8 @@ impl BenchHost {
     /// contract [`Self::set_number_format`] documents; returns `true`
     /// when the value actually changed (so the caller re-projects).
     fn author_format(&mut self, intent: OneFormulaIntent) -> bool {
-        let changed = apply_skin_intent_to_host_state(
-            &mut self.state,
-            SkinIntent::OneFormula(intent),
-        );
+        let changed =
+            apply_skin_intent_to_host_state(&mut self.state, SkinIntent::OneFormula(intent));
         if changed {
             let _ = refresh_active_formula_space(&*self.bridge, &mut self.state);
         }
