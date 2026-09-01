@@ -21,6 +21,18 @@
 //! (§A.2: "skins never see engine addresses or `TreeNodeId`") that the
 //! `WorkspaceIntent`-level dispatch in `crate::lib` needs to resolve
 //! `EnterGridCell { grid: NodeId, .. }` to an engine sheet node.
+//!
+//! ## The three truths (W011) — a constraint, not narration
+//!
+//! An opened workbook has three owners; "what is the value of B1" has a
+//! different correct answer at each. **FILE truth** is the OxDoc source
+//! (`xlsx_source`): the loaded bytes, the fidelity ledger, what a round-trip
+//! save preserves — B1 is the file's cached `21` until a save projects a fresh
+//! cache. **LIVE truth** is the [`OxCalcDocumentContext`]: authored cells,
+//! published values, provenance — B1 is what the engine last published.
+//! **SKIN truth** is a [`WorkspaceState`] snapshot: what renders, a capture of
+//! LIVE truth that is stale the moment it is taken. Never read one truth
+//! expecting another's answer; ingest copies FILE into LIVE exactly once.
 
 use std::collections::BTreeMap;
 
@@ -34,6 +46,7 @@ use oxcalc_core::consumer::{
 use oxcalc_core::grid::coords::{ExcelGridBounds, ExcelGridCellAddress};
 use oxcalc_core::grid::geometry::GridRect;
 use oxcalc_core::grid::machine::GridEngineValidationMode;
+use oxcalc_core::oxdoc_ingest::WorkbookLoadReport;
 use oxcalc_core::structural::TreeNodeId;
 use oxdoc_xlsx::{HostOwnedXlsxSource, LoadProfile, XlsxError, open_host_owned_xlsx_source};
 use oxfunc_core::value::CalcValue;
@@ -76,18 +89,38 @@ const WORKBOOK_ROOT_SYMBOL: &str = "__dnacalc_workbook__";
 /// itself.
 pub const XLSX_WORKSPACE_ID: &str = "workbook:xlsx";
 
+/// The workbook token OxCalc's ingest stamps on every grid it creates:
+/// `book:{workspace}` (OxCalc `consumer.rs`, the Tier-A load plan's
+/// `workbook_token`; `oxdoc_ingest.rs`'s own `ingested_address` test helper
+/// derives the same). Half of the address-token trap: a grid loaded through
+/// `load_workbook_model` is addressable **only** under this token.
+fn ingested_workbook_token(workspace_id: &OxCalcTreeWorkspaceId) -> String {
+    format!("book:{}", workspace_id.as_str())
+}
+
+/// The workbook token a hand-seeded grid carries: the bare workspace id, the
+/// `GridBackingSeed.workbook_id` [`WorkbookSession::add_sheet`] has always
+/// given a sheet created in memory ([`WorkbookSession::create`], the demo).
+fn seeded_workbook_token(workspace_id: &OxCalcTreeWorkspaceId) -> String {
+    workspace_id.as_str().to_string()
+}
+
 /// The host-owned OxDoc side of a workbook opened from `.xlsx` bytes (W011,
 /// dtc-j7n8.3): the source package session kept for the later round-trip
-/// save, the byte-free model context OxCalc ingest reads, and the load
-/// ledger — plus the user-facing document name the bytes arrived under.
+/// save, the byte-free model context, and the load ledger — plus the
+/// user-facing document name the bytes arrived under and, since dtc-j7n8.4,
+/// the engine's own [`WorkbookLoadReport`] for the ingest of that source.
 ///
 /// Per the OxDoc host-boundary contract the **host** owns this bundle; OxDoc
 /// keeps no live document. It lives next to (never inside) the engine context
-/// — one calculation-state pot, one source-package pot, both owned here.
+/// — one calculation-state pot, one source-package pot, both owned here. The
+/// event stream is **not** copied here: the engine reads it straight from
+/// `source.source_context.events()` at ingest and the source keeps it.
 #[derive(Debug)]
 struct XlsxSourceState {
     source: HostOwnedXlsxSource,
     name: Option<String>,
+    load_report: WorkbookLoadReport,
 }
 
 /// One open strict-Excel workbook: a single [`OxCalcDocumentContext`] plus the
@@ -107,6 +140,14 @@ struct XlsxSourceState {
 pub struct WorkbookSession {
     context: OxCalcDocumentContext,
     workspace_id: OxCalcTreeWorkspaceId,
+    /// The single workbook-token authority (dtc-j7n8.4): the `workbook_id`
+    /// half of every engine grid address this session composes. Set once per
+    /// origin at construction — [`seeded_workbook_token`] for
+    /// [`WorkbookSession::create`], [`ingested_workbook_token`] for
+    /// [`WorkbookSession::open_xlsx_bytes`] — and read only through
+    /// [`WorkbookSession::workbook_token`]. See that accessor for why a
+    /// mismatch is a silent failure, never an error.
+    workbook_token: String,
     /// Default grid geometry for freshly-added sheets (strict-Excel bounds).
     bounds: ExcelGridBounds,
     /// `Some` iff this workbook was opened from `.xlsx` bytes; an in-memory
@@ -154,19 +195,42 @@ impl WorkbookSession {
     ///
     /// The `workspace_id` is the caller-chosen stable document identity.
     pub fn create(workspace_id: impl Into<String>) -> Result<Self, WorkbookSessionError> {
-        Self::with_xlsx_source(workspace_id, None)
+        let mut context = Self::new_context();
+        let workspace_id = context.create_workspace(Self::workspace_create(workspace_id))?;
+        // Hand-seeded grids (`add_sheet`) carry the bare workspace id as their
+        // workbook token — the create-origin half of the token authority.
+        let workbook_token = seeded_workbook_token(&workspace_id);
+        Ok(Self::from_parts(
+            context,
+            workspace_id,
+            workbook_token,
+            None,
+        ))
     }
 
-    /// Open a workbook session from `.xlsx` bytes through OxDoc (W011,
-    /// dtc-j7n8.3): OxDoc parses the package under [`LoadProfile::full()`]
-    /// and the host takes ownership of the resulting [`HostOwnedXlsxSource`]
-    /// (source package session for the later save, byte-free model context,
-    /// load ledger). The engine side is constructed exactly as
-    /// [`WorkbookSession::create`] does — one context, one workbook workspace,
-    /// no sheets yet: ingesting the OxDoc events into the engine is the next
-    /// bead (dtc-j7n8.4), so until then the calc side of an opened workbook is
-    /// empty while [`WorkbookSession::xlsx_source`] carries everything the
-    /// file said.
+    /// Open a workbook session from `.xlsx` bytes through OxDoc and ingest it
+    /// into the engine (W011, dtc-j7n8.3 + dtc-j7n8.4): OxDoc parses the
+    /// package under [`LoadProfile::full()`], the host takes ownership of the
+    /// resulting [`HostOwnedXlsxSource`] (source package session for the
+    /// later save, byte-free model context, load ledger), and the engine's
+    /// own `load_workbook_model` verb creates the workbook workspace and loads
+    /// the source's `DocumentEvent` stream into it in one transaction — the
+    /// same choreography OxCalc's `w011_five_step_round_trip_contract` proves
+    /// on a hand-built stream, here on the real bytes. Under the file's
+    /// `calcMode="auto"` the load issues Excel's open-recalc, so published
+    /// values come back engine-`Calculated` (the file's cached values are
+    /// replaced, not trusted); a `manual` file would render `FileCached` until
+    /// an explicit recalculate. The report of what loaded is engine truth,
+    /// surfaced as [`WorkbookSession::load_report`], never re-derived here.
+    ///
+    /// The events go straight from `source.source_context.events()` into the
+    /// engine — no host-side `DocumentEvent -> GridBackingSeed` translation
+    /// (that 2026-07 shim is superseded by the engine verb), no second copy of
+    /// the stream, no host-side formula classification: bind authority is the
+    /// engine's single key mint. Ingest-created grids are addressed under the
+    /// `book:`-prefixed workbook token ([`ingested_workbook_token`]), which is
+    /// why this origin sets the token authority differently from
+    /// [`WorkbookSession::create`].
     ///
     /// `LoadProfile::full()` is mandatory, not a preference: the `Default`
     /// values-only profile omits `formula_topology`, and OxDoc's round-trip
@@ -175,8 +239,9 @@ impl WorkbookSession {
     ///
     /// Any OxDoc rejection (a corrupt zip, a missing part, an XML error) is
     /// returned as [`WorkbookSessionError::Xlsx`] carrying the typed
-    /// [`XlsxError`] — never a panic, never a string. Host code never parses
-    /// zip or XML itself; OxDoc is the xlsx crate.
+    /// [`XlsxError`]; an engine rejection of the stream comes back as
+    /// [`WorkbookSessionError::OxCalc`] — never a panic, never a string. Host
+    /// code never parses zip or XML itself; OxDoc is the xlsx crate.
     ///
     /// `name` is the user-facing document name the bytes arrived under (a
     /// file name, typically); it is identity for people, not for the engine —
@@ -187,45 +252,99 @@ impl WorkbookSession {
         name: Option<String>,
     ) -> Result<Self, WorkbookSessionError> {
         let source = open_host_owned_xlsx_source(std::io::Cursor::new(bytes), LoadProfile::full())?;
-        Self::with_xlsx_source(workspace_id, Some(XlsxSourceState { source, name }))
-    }
-
-    /// The one construction path: one context under the interactive
-    /// validation mode, one workbook workspace, strict-Excel bounds, and the
-    /// (optional) host-owned OxDoc source stored alongside. `create` and
-    /// `open_xlsx_bytes` differ only in what they pass here, so an opened
-    /// workbook can never drift from an in-memory one in engine shape.
-    fn with_xlsx_source(
-        workspace_id: impl Into<String>,
-        xlsx: Option<XlsxSourceState>,
-    ) -> Result<Self, WorkbookSessionError> {
-        // Engine validation spend is an explicit choice (OxCalc O-20, no
-        // Default on purpose). The interactive host samples the dual-engine
-        // oracle: every 16th recalc (and always the first recalc of a fresh
-        // backing) also runs the brute-force reference engine and compares —
-        // a live correctness heartbeat without paying the full-sheet oracle
-        // sweep on every keystroke. Suites/CI use DualValidated.
-        let mut context =
-            OxCalcDocumentContext::new(GridEngineValidationMode::DualValidatedSampled {
-                one_in: 16,
-            });
-        let workspace_id = context.create_workspace(
-            OxCalcTreeWorkspaceCreate::new(workspace_id)
-                .with_root_symbol(WORKBOOK_ROOT_SYMBOL)
-                .as_workbook(),
+        let mut context = Self::new_context();
+        // `load_workbook_model` creates the workspace itself (forcing the
+        // Workbook role) and commits the whole stream as one revision; a
+        // prior `create_workspace` here would collide, so there is none.
+        let (workspace_id, load_report) = context.load_workbook_model(
+            Self::workspace_create(workspace_id),
+            source.source_context.events(),
         )?;
-        Ok(Self {
+        let workbook_token = ingested_workbook_token(&workspace_id);
+        Ok(Self::from_parts(
             context,
             workspace_id,
+            workbook_token,
+            Some(XlsxSourceState {
+                source,
+                name,
+                load_report,
+            }),
+        ))
+    }
+
+    /// The one engine context both origins stand on. Engine validation spend
+    /// is an explicit choice (OxCalc O-20, no Default on purpose). The
+    /// interactive host samples the dual-engine oracle: every 16th recalc (and
+    /// always the first recalc of a fresh backing) also runs the brute-force
+    /// reference engine and compares — a live correctness heartbeat without
+    /// paying the full-sheet oracle sweep on every keystroke. Suites/CI use
+    /// DualValidated.
+    fn new_context() -> OxCalcDocumentContext {
+        OxCalcDocumentContext::new(GridEngineValidationMode::DualValidatedSampled { one_in: 16 })
+    }
+
+    /// The one workspace-create request both origins use: the caller's stable
+    /// id, the workbook root symbol, the Workbook role — so an opened workbook
+    /// can never drift from an in-memory one in engine shape.
+    fn workspace_create(workspace_id: impl Into<String>) -> OxCalcTreeWorkspaceCreate {
+        OxCalcTreeWorkspaceCreate::new(workspace_id)
+            .with_root_symbol(WORKBOOK_ROOT_SYMBOL)
+            .as_workbook()
+    }
+
+    /// Assemble the session once the engine side exists; strict-Excel bounds
+    /// for both origins.
+    fn from_parts(
+        context: OxCalcDocumentContext,
+        workspace_id: OxCalcTreeWorkspaceId,
+        workbook_token: String,
+        xlsx: Option<XlsxSourceState>,
+    ) -> Self {
+        Self {
+            context,
+            workspace_id,
+            workbook_token,
             bounds: ExcelGridBounds::strict_excel(),
             xlsx,
-        })
+        }
     }
 
     /// The workbook's stable workspace id.
     #[must_use]
     pub fn workspace_id(&self) -> &OxCalcTreeWorkspaceId {
         &self.workspace_id
+    }
+
+    /// The single workbook-token authority (dtc-j7n8.4): the `workbook_id`
+    /// half of every [`ExcelGridCellAddress`] / [`GridRect`] this session
+    /// composes for the engine. Every token consumer — `address_for`,
+    /// `grid_authored_cells`, `defined_names.rs`'s `grid_rect_for`, and the
+    /// `GridBackingSeed` in `add_sheet` — routes through here, never through
+    /// `workspace_id` directly.
+    ///
+    /// Why this is an authority and not a convention: the engine looks grid
+    /// addresses up by **equality**, workbook token included. A mismatched
+    /// token is never an error — `enter_grid_cell` misses (`Ok(None)`), and
+    /// `grid_authored_view(Some(rect))` synthesizes addresses from
+    /// `rect.workbook_id` and returns a **blank** readout for every cell. The
+    /// two origins differ exactly here: `create()` seeds grids under the bare
+    /// workspace id, `open_xlsx_bytes()` gets ingest-created grids under
+    /// `book:{workspace}`.
+    #[must_use]
+    pub(crate) fn workbook_token(&self) -> &str {
+        &self.workbook_token
+    }
+
+    /// The engine's own report of what [`WorkbookSession::open_xlsx_bytes`]
+    /// loaded (dtc-j7n8.4) — sheet/literal/bound-formula counts, the recalc
+    /// path the load ran (`Automatic` open-recalc vs `Manual` render-from-
+    /// cache), the ingest fidelity ledger, bind degradations — or `None` for
+    /// an in-memory workbook. Engine truth, surfaced as-is: the host never
+    /// re-derives these counts from the source.
+    #[must_use]
+    pub fn load_report(&self) -> Option<&WorkbookLoadReport> {
+        self.xlsx.as_ref().map(|state| &state.load_report)
     }
 
     /// The host-owned OxDoc source this workbook was opened from — `None` for
@@ -285,7 +404,11 @@ impl WorkbookSession {
         // allocator. `add_sheet` guarantees a fresh node id, so this is unique.
         let sheet_grid_id = format!("sheet:{}", node_id.0);
         let seed = GridBackingSeed {
-            workbook_id: self.workspace_id.as_str().to_string(),
+            // Routed through the token authority so a sheet added to an
+            // opened workbook is addressable under the same token as its
+            // ingested siblings (the fourth token site, dormant on the open
+            // path itself).
+            workbook_id: self.workbook_token().to_string(),
             sheet_id: sheet_grid_id,
             bounds: self.bounds,
             authored: Vec::new(),
@@ -362,10 +485,12 @@ impl WorkbookSession {
             .collect())
     }
 
-    /// Build a strict-Excel cell address in a sheet's own grid namespace.
+    /// Build a strict-Excel cell address in a sheet's own grid namespace —
+    /// the workbook half from the token authority, the sheet half the
+    /// `sheet:{node}` string both origins share.
     fn address_for(&self, sheet: TreeNodeId, row: u32, col: u32) -> ExcelGridCellAddress {
         ExcelGridCellAddress::new(
-            self.workspace_id.as_str(),
+            self.workbook_token(),
             format!("sheet:{}", sheet.0),
             row,
             col,
@@ -452,8 +577,11 @@ impl WorkbookSession {
         bottom_row: u32,
         right_col: u32,
     ) -> Result<Vec<GridAuthoredCellProjection>, WorkbookSessionError> {
+        // The GridRect half of the token trap: the engine synthesizes every
+        // address in the window from `rect.workbook_id`, so a wrong token here
+        // reads back blanks, never an error. Token authority only.
         let window = GridRect::new(
-            self.workspace_id.as_str(),
+            self.workbook_token(),
             format!("sheet:{}", sheet.0),
             top_row,
             left_col,
@@ -809,8 +937,8 @@ mod tests {
     /// Opening the real W011 fixture bytes hands the host the OxDoc source
     /// bundle: `xlsx_source()` is `Some`, its model context lists exactly the
     /// one sheet `Sheet1`, its load ledger dropped nothing, and the document
-    /// name round-trips. The engine side is deliberately still empty — the
-    /// ingest bead (dtc-j7n8.4) fills it from these very events.
+    /// name round-trips. Since dtc-j7n8.4 the engine side is populated from
+    /// these very events, so the engine's own sheet list agrees with OxDoc's.
     #[test]
     fn open_xlsx_bytes_owns_source_and_reports_ledger() {
         let bytes = w011_fixture_bytes();
@@ -858,11 +986,326 @@ mod tests {
             "the package session exposes the eager document event stream"
         );
 
-        // The engine side is an empty workbook workspace until ingest lands.
-        assert!(
-            session.sheets().unwrap().is_empty(),
-            "dtc-j7n8.3 opens the source only; engine sheets arrive with dtc-j7n8.4"
+        // The engine side was ingested from the same events (dtc-j7n8.4): its
+        // own sheet list is OxDoc's sheet list.
+        let engine_sheet_names: Vec<String> = session
+            .sheets()
+            .unwrap()
+            .into_iter()
+            .map(|row| row.display_name)
+            .collect();
+        assert_eq!(
+            engine_sheet_names, sheet_names,
+            "the engine enumerates exactly the sheets OxDoc's model context lists"
         );
+    }
+
+    // ------------------------------------------------------------------
+    // W011 (dtc-j7n8.4): ingest through the engine's `load_workbook_model`.
+    // ------------------------------------------------------------------
+
+    use crate::xlsx_fixture::w011_fixture_parts_dir;
+    use dnacalc_skin_ir::ValueProvenanceProjection;
+    use oxcalc_core::oxdoc_ingest::LoadRecalcPath;
+
+    /// Open the W011 fixture bytes into a session (the shape every ingest
+    /// test below starts from), logging the fixture path for `--nocapture`.
+    fn open_w011_fixture() -> WorkbookSession {
+        println!("W011 fixture parts: {}", w011_fixture_parts_dir().display());
+        WorkbookSession::open_xlsx_bytes(
+            XLSX_WORKSPACE_ID,
+            &w011_fixture_bytes(),
+            Some("a1_times_three.xlsx".to_string()),
+        )
+        .expect("OxDoc opens and the engine ingests the committed W011 fixture")
+    }
+
+    /// The single grid-backed sheet of an opened W011 fixture session.
+    fn only_sheet(session: &WorkbookSession) -> TreeNodeId {
+        let sheets = session.sheets().unwrap();
+        assert_eq!(
+            sheets.len(),
+            1,
+            "the fixture has exactly one sheet: {sheets:?}"
+        );
+        sheets[0].node_id
+    }
+
+    /// dtc-j7n8.4 acceptance (2)/(6): opening the real fixture bytes INGESTS.
+    /// The engine's load report says one sheet, one literal (`A1`), one bound
+    /// formula (`B1`), the `Automatic` open-recalc path; `Sheet1` enumerates
+    /// grid-backed from the engine; `A1` publishes `7` and `B1` publishes
+    /// `21` with `Calculated` provenance (the open-recalc replaced the file's
+    /// cached value, not trusted it); and the authored readout over the
+    /// `(1,1)-(1,2)` window — the GridRect half of the token trap, which
+    /// returns blanks on a wrong token — shows `A1` `Literal` and `B1`
+    /// `Formula` with source text `=A1*3` (the leading `=` restored by the
+    /// engine on ingest, exactly as OxCalc's own contract test proves).
+    #[test]
+    fn open_fixture_ingests_and_publishes_calculated_21() {
+        let session = open_w011_fixture();
+
+        // The load report is engine truth, surfaced — not re-derived.
+        let report = session
+            .load_report()
+            .expect("a workbook opened from xlsx bytes carries its load report");
+        println!(
+            "W011 ingest: load report sheets={} cells={} formulas_bound={} recalc_path={:?} \
+             engine_recalcs_at_load={} bind_degradations={} not_calc_modeled={} ledger_rows={}",
+            report.sheets,
+            report.cells,
+            report.formulas_bound,
+            report.recalc_path,
+            report.engine_recalcs_at_load,
+            report.bind_degradations.len(),
+            report.not_calc_modeled,
+            report.ledger.len()
+        );
+        assert_eq!(report.sheets, 1, "one sheet created");
+        assert_eq!(
+            report.cells, 1,
+            "A1 is the one literal; B1 is a formula and is counted in formulas_bound, not here"
+        );
+        assert_eq!(
+            report.formulas_bound, 1,
+            "B1 bound through the engine's single key mint"
+        );
+        assert_eq!(
+            report.recalc_path,
+            LoadRecalcPath::Automatic,
+            "the fixture pins calcMode=auto, so the load took the open-recalc path"
+        );
+        // `engine_recalcs_at_load` counts drained sheets, not calls; a
+        // literal-only sheet contributes 0, so never assert `== sheet count`.
+        // The formula-bearing Sheet1 must have drained at least once.
+        assert!(
+            report.engine_recalcs_at_load > 0,
+            "the Automatic open-recalc ran at least one engine pass, got {}",
+            report.engine_recalcs_at_load
+        );
+        assert!(
+            report.bind_degradations.is_empty(),
+            "=A1*3 binds cleanly: {:?}",
+            report.bind_degradations
+        );
+        assert!(
+            session.xlsx_source().is_some(),
+            "the OxDoc source stays owned for the save"
+        );
+
+        // Sheets now come from the engine.
+        let sheets = session.sheets().unwrap();
+        assert_eq!(sheets.len(), 1, "exactly one engine sheet: {sheets:?}");
+        assert_eq!(sheets[0].display_name, "Sheet1");
+        assert!(sheets[0].grid_backed, "the ingested sheet is grid-backed");
+        assert_eq!(sheets[0].sheet_position, 0);
+        let sheet = sheets[0].node_id;
+
+        // Published values: the ExcelGridCellAddress half of the token trap.
+        let a1 = session.grid_cell_value(sheet, 1, 1).unwrap();
+        let b1 = session.grid_cell_value(sheet, 1, 2).unwrap();
+        let b1_provenance = session.grid_cell_provenance(sheet, 1, 2).unwrap();
+        println!("W011 ingest: A1 published value = {a1:?}");
+        println!("W011 ingest: B1 published value = {b1:?} provenance = {b1_provenance:?}");
+        assert_eq!(
+            a1,
+            Some(CalcValue::number(7.0)),
+            "A1 = 7 (the file's literal)"
+        );
+        assert_eq!(
+            b1,
+            Some(CalcValue::number(21.0)),
+            "B1 = A1*3 = 21, computed by the open-recalc"
+        );
+        assert!(
+            matches!(
+                b1_provenance,
+                Some(ValueProvenanceProjection::Calculated { .. })
+            ),
+            "the Automatic open-recalc made B1 engine-Calculated, not FileCached: {b1_provenance:?}"
+        );
+
+        // Authored metadata over the (1,1)-(1,2) window: the GridRect half of
+        // the token trap. Blank readouts here are the silent failure this
+        // assertion exists to catch.
+        let authored = session.grid_authored_cells(sheet, 1, 1, 1, 2).unwrap();
+        let a1_authored = authored
+            .iter()
+            .find(|cell| cell.row == 1 && cell.col == 1)
+            .expect("A1 is in the requested window");
+        let b1_authored = authored
+            .iter()
+            .find(|cell| cell.row == 1 && cell.col == 2)
+            .expect("B1 is in the requested window");
+        println!(
+            "W011 ingest: A1 authored kind={:?} literal_text={:?}",
+            a1_authored.kind, a1_authored.literal_text
+        );
+        println!(
+            "W011 ingest: B1 authored kind={:?} source_text={:?} editability={:?}",
+            b1_authored.kind, b1_authored.source_text, b1_authored.editability
+        );
+        assert_eq!(
+            a1_authored.kind,
+            GridAuthoredKindProjection::Literal,
+            "A1 is an authored literal, not a blank readout"
+        );
+        assert_eq!(a1_authored.literal_text.as_deref(), Some("7"));
+        assert_eq!(
+            b1_authored.kind,
+            GridAuthoredKindProjection::Formula,
+            "B1 is an authored formula, not a blank readout"
+        );
+        assert_eq!(
+            b1_authored.source_text.as_deref(),
+            Some("=A1*3"),
+            "the engine restores the leading `=` the file stores without"
+        );
+        assert_eq!(b1_authored.editability, GridEditabilityProjection::Editable);
+    }
+
+    /// dtc-j7n8.4 acceptance (3), the token-trap sentinel: entering `A1 = 10`
+    /// through the session's own `enter_grid_cell` on the LOADED fixture takes
+    /// the engine's literal branch and recalculates the dependent `B1` to
+    /// `30`. If this fails with `SheetNotGridBacked` (the engine's `Ok(None)`
+    /// miss) or `B1` stays `21`, the workbook token is wrong — fix the address
+    /// authority, never bypass with raw engine calls.
+    #[test]
+    fn open_fixture_edit_smoke_dependent_recalculates() {
+        let mut session = open_w011_fixture();
+        let sheet = only_sheet(&session);
+
+        // Baseline straight from the load.
+        assert_eq!(
+            session.grid_cell_value(sheet, 1, 2).unwrap(),
+            Some(CalcValue::number(21.0)),
+            "B1 = 21 at load"
+        );
+
+        let outcome = session
+            .enter_grid_cell(sheet, 1, 1, "10")
+            .expect("A1 on the loaded sheet is addressable under the session's workbook token");
+        assert!(
+            matches!(outcome, GridCellEntryOutcome::Literal { .. }),
+            "'10' takes the engine's literal branch, got {outcome:?}"
+        );
+
+        let a1 = session.grid_cell_value(sheet, 1, 1).unwrap();
+        let b1 = session.grid_cell_value(sheet, 1, 2).unwrap();
+        let b1_provenance = session.grid_cell_provenance(sheet, 1, 2).unwrap();
+        println!("W011 edit smoke: A1 = {a1:?}");
+        println!("W011 edit smoke: B1 = {b1:?} provenance = {b1_provenance:?}");
+        assert_eq!(a1, Some(CalcValue::number(10.0)), "A1 = 10 after the edit");
+        assert_eq!(
+            b1,
+            Some(CalcValue::number(30.0)),
+            "B1 = A1*3 = 30: the edit really recalculated the loaded workbook"
+        );
+        assert!(
+            matches!(
+                b1_provenance,
+                Some(ValueProvenanceProjection::Calculated { .. })
+            ),
+            "B1's 30 is a fresh engine value: {b1_provenance:?}"
+        );
+
+        // An edit of A1 never rewrites B1's authored truth.
+        let b1_authored = session
+            .grid_authored_cells(sheet, 1, 2, 1, 2)
+            .unwrap()
+            .into_iter()
+            .find(|cell| cell.row == 1 && cell.col == 2)
+            .expect("B1 is in the requested window");
+        assert_eq!(b1_authored.kind, GridAuthoredKindProjection::Formula);
+        assert_eq!(b1_authored.source_text.as_deref(), Some("=A1*3"));
+    }
+
+    /// dtc-j7n8.4 acceptance (7): the workbook-token authority yields the
+    /// token the ENGINE actually keys each origin's grids under — proven
+    /// against the engine's own published and authored addresses, not against
+    /// a string the host chose. `create()` grids carry the bare workspace id;
+    /// `open_xlsx_bytes()` grids carry `book:{workspace}`; and a sheet added
+    /// to an opened workbook (the fourth site, the `GridBackingSeed`) lands
+    /// under the same token as its ingested siblings.
+    #[test]
+    fn workbook_token_matches_engine_addresses_for_both_origins() {
+        // create() origin.
+        let mut created = WorkbookSession::create("workbook:token-create").unwrap();
+        let created_sheet = created.add_sheet("Sheet1").unwrap();
+        created.enter_grid_cell(created_sheet, 1, 1, "1").unwrap();
+        let created_view = created
+            .context()
+            .grid_view(created.workspace_id(), created_sheet)
+            .unwrap()
+            .unwrap();
+        assert!(
+            !created_view.cells.is_empty(),
+            "the seeded grid published A1"
+        );
+        for cell in &created_view.cells {
+            assert_eq!(
+                cell.address.workbook_id,
+                created.workbook_token(),
+                "create(): the engine keys the seeded grid under the authority's token"
+            );
+        }
+        assert_eq!(created.workbook_token(), "workbook:token-create");
+
+        // open_xlsx_bytes() origin.
+        let mut opened = open_w011_fixture();
+        let opened_sheet = only_sheet(&opened);
+        let opened_view = opened
+            .context()
+            .grid_view(opened.workspace_id(), opened_sheet)
+            .unwrap()
+            .unwrap();
+        assert!(!opened_view.cells.is_empty(), "ingest published A1 and B1");
+        for cell in &opened_view.cells {
+            assert_eq!(
+                cell.address.workbook_id,
+                opened.workbook_token(),
+                "open: the engine keys the ingested grid under the authority's token"
+            );
+        }
+        // The authored side too (no window = the engine's own sparse keys).
+        let opened_authored = opened
+            .context()
+            .grid_authored_view(opened.workspace_id(), opened_sheet, None)
+            .unwrap()
+            .unwrap();
+        assert_eq!(opened_authored.len(), 2, "A1 and B1 are authored");
+        for readout in &opened_authored {
+            assert_eq!(readout.address.workbook_id, opened.workbook_token());
+        }
+        assert_eq!(
+            opened.workbook_token(),
+            format!("book:{XLSX_WORKSPACE_ID}"),
+            "ingest-created grids live under the `book:` prefix"
+        );
+        assert_eq!(opened.workspace_id().as_str(), XLSX_WORKSPACE_ID);
+        println!(
+            "W011 token authority: create() -> {:?}, open_xlsx_bytes() -> {:?}",
+            created.workbook_token(),
+            opened.workbook_token()
+        );
+
+        // Fourth site: a sheet added to the OPENED workbook is seeded under
+        // the ingested token, so it is addressable through the same authority.
+        let added = opened.add_sheet("Sheet2").unwrap();
+        opened.enter_grid_cell(added, 1, 1, "5").unwrap();
+        assert_eq!(
+            opened.grid_cell_value(added, 1, 1).unwrap(),
+            Some(CalcValue::number(5.0)),
+            "a sheet added after open is addressable under the session's token"
+        );
+        let added_view = opened
+            .context()
+            .grid_view(opened.workspace_id(), added)
+            .unwrap()
+            .unwrap();
+        for cell in &added_view.cells {
+            assert_eq!(cell.address.workbook_id, opened.workbook_token());
+        }
     }
 
     /// An in-memory workbook has no OxDoc source and no document name — the

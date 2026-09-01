@@ -16,6 +16,7 @@
 //! change.
 
 use dnacalc_skin_ir::{IntentReceipt, WorkspaceIntent};
+use oxcalc_core::oxdoc_ingest::LoadRecalcPath;
 use oxdoc_xlsx::model::DocumentFidelityLedger;
 
 use crate::workbook::WorkbookSessionError;
@@ -55,14 +56,22 @@ pub enum HostCommandOutcome {
     /// rejection receipt when a family does not support the intent).
     Dispatched(IntentReceipt),
     /// `OpenXlsxBytes` succeeded: the active session is now the opened
-    /// workbook. `name` echoes the command's document name, `sheet_count` is
-    /// what OxDoc's model context enumerated for the package (the engine's own
-    /// sheet list follows with ingest, dtc-j7n8.4), and `load_ledger` is
-    /// OxDoc's fidelity ledger for the load — what was preserved, projected,
-    /// or dropped — carried as typed data so a shell can show it.
+    /// workbook, ingested into the engine (dtc-j7n8.4). `name` echoes the
+    /// command's document name; `sheet_count` is the engine's own sheet
+    /// enumeration after ingest; `cells` (literal cells folded into authored
+    /// truth), `formulas_bound` (formula cells bound into the calc graph), and
+    /// `recalc_path` (`Automatic` open-recalc vs `Manual` render-from-cache,
+    /// from the file's own `calcPr`) are the salient fields of the engine's
+    /// `WorkbookLoadReport` — engine truth, surfaced as-is (the full report is
+    /// [`crate::WorkbookSession::load_report`]); and `load_ledger` is OxDoc's
+    /// fidelity ledger for the load — what was preserved, projected, or
+    /// dropped — carried as typed data so a shell can show it.
     Opened {
         name: Option<String>,
         sheet_count: usize,
+        cells: u32,
+        formulas_bound: u32,
+        recalc_path: LoadRecalcPath,
         load_ledger: DocumentFidelityLedger,
     },
 }
@@ -80,8 +89,9 @@ pub enum HostCommandOutcome {
 pub enum HostCommandError {
     /// The workbook session rejected the command — on `OpenXlsxBytes`, OxDoc
     /// rejected the bytes ([`WorkbookSessionError::Xlsx`]) or the engine
-    /// rejected standing up the workbook workspace
-    /// ([`WorkbookSessionError::OxCalc`]).
+    /// rejected loading the document stream into a workbook workspace
+    /// (`load_workbook_model`, [`WorkbookSessionError::OxCalc`] — e.g. a
+    /// `WorkbookIngestRejected` stream/sink mismatch).
     #[error("the workbook session rejected the host command")]
     Workbook(#[from] WorkbookSessionError),
 }

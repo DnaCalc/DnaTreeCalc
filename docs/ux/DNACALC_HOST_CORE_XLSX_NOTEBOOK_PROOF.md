@@ -300,15 +300,21 @@ pub enum HostCommand {
 }
 
 fn execute(&mut self, cmd: HostCommand) -> Result<HostCommandOutcome, HostCommandError>;
-// HostCommandOutcome::Opened { name, sheet_count, load_ledger }   // landed dtc-j7n8.3
+// HostCommandOutcome::Opened { name, sheet_count, cells, formulas_bound,
+//                              recalc_path, load_ledger }   // landed dtc-j7n8.3 + .4
 //                  ::Saved  { bytes: Vec<u8>, save_ledger: DocumentFidelityLedger }
 //                  ::Dispatched(IntentReceipt) | ::LayoutSet | ::Closed
 // HostCommandError wraps oxdoc_xlsx::XlsxError (incl. UnsupportedRoundTripFeature)
 // as data, not strings — landed as HostCommandError::Workbook(WorkbookSessionError::Xlsx(_))
 // (dtc-j7n8.3). Landed so far: OpenXlsxBytes (replaces the active session on
 // success, leaves it untouched on failure; the host owns the HostOwnedXlsxSource
-// via WorkbookSession::xlsx_source) and DispatchWorkspaceIntent (always Ok —
-// intent rejections travel inside the IntentReceipt).
+// via WorkbookSession::xlsx_source; since dtc-j7n8.4 the source's event stream
+// is ingested into the engine through OxCalc's own load_workbook_model verb —
+// the engine's WorkbookLoadReport is kept as WorkbookSession::load_report, and
+// ingest-created grids are addressed under the `book:{workspace}` token the
+// session's single workbook-token authority derives per origin) and
+// DispatchWorkspaceIntent (always Ok — intent rejections travel inside the
+// IntentReceipt).
 
 fn document_status(&self) -> DocumentStatus; // { dirty: bool, save_restrictions: Vec<..> }
 ```

@@ -93,6 +93,9 @@ use oxfunc_core::value::CalcValue;
 // Re-export the engine document surface name the enum is built over, so callers
 // name it through host-core rather than reaching into `oxcalc_core` directly.
 pub use oxcalc_core::consumer::OxCalcDocumentContext;
+// Likewise the engine's load-report types an `Opened` outcome / a
+// `WorkbookSession::load_report` reader needs to name (dtc-j7n8.4).
+pub use oxcalc_core::oxdoc_ingest::{LoadRecalcPath, WorkbookLoadReport};
 
 /// The general-tree document model family — the seam placeholder for the
 /// existing `TreeWorkspaceSession` (scenarios, sweeps, revision cursors,
@@ -651,19 +654,28 @@ impl DocumentSession {
             HostCommand::OpenXlsxBytes { bytes, name } => {
                 let session =
                     WorkbookSession::open_xlsx_bytes(XLSX_WORKSPACE_ID, &bytes, name.clone())?;
-                // `open_xlsx_bytes` always stores the source it just opened;
-                // the outcome facts are read from that host-owned bundle
-                // (the engine has no sheets of its own until ingest,
-                // dtc-j7n8.4).
-                let source = session
+                // The sheet count is the engine's own enumeration after
+                // ingest (dtc-j7n8.4); the load facts come from the engine's
+                // report and the ledger from the host-owned OxDoc bundle —
+                // `open_xlsx_bytes` always stores both, by construction.
+                let sheet_count = session.sheets()?.len();
+                let report = session
+                    .load_report()
+                    .expect("a workbook opened from xlsx bytes carries its engine load report");
+                let (cells, formulas_bound, recalc_path) =
+                    (report.cells, report.formulas_bound, report.recalc_path);
+                let load_ledger = session
                     .xlsx_source()
-                    .expect("a workbook opened from xlsx bytes owns its OxDoc source");
-                let sheet_count = source.model_context.sheets.len();
-                let load_ledger = source.load_ledger.clone();
+                    .expect("a workbook opened from xlsx bytes owns its OxDoc source")
+                    .load_ledger
+                    .clone();
                 *self = DocumentSession::Workbook(session);
                 Ok(HostCommandOutcome::Opened {
                     name,
                     sheet_count,
+                    cells,
+                    formulas_bound,
+                    recalc_path,
                     load_ledger,
                 })
             }
@@ -808,10 +820,12 @@ mod tests {
     use oxdoc_model::FidelityDisposition;
 
     /// Executing `OpenXlsxBytes` with the real W011 fixture bytes over the
-    /// demo workbook replaces the active session with the opened workbook
-    /// (the demo's `Sheet2` and `workbook:demo` identity are gone; the OxDoc
-    /// source is owned) and returns the typed `Opened { sheet_count: 1, .. }`
-    /// outcome carrying the load ledger.
+    /// demo workbook replaces the active session with the opened, ingested
+    /// workbook (the demo's `Sheet2` and `workbook:demo` identity are gone;
+    /// the OxDoc source is owned; the engine holds `Sheet1` with `B1 = 21`)
+    /// and returns the typed `Opened` outcome carrying the engine's load
+    /// facts (`sheet_count`, `cells`, `formulas_bound`, `recalc_path`) and
+    /// OxDoc's load ledger.
     #[test]
     fn execute_open_xlsx_bytes_replaces_session_and_returns_opened() {
         let mut document = DocumentSession::Workbook(build_demo_workbook().unwrap());
@@ -828,13 +842,26 @@ mod tests {
         let HostCommandOutcome::Opened {
             name,
             sheet_count,
+            cells,
+            formulas_bound,
+            recalc_path,
             load_ledger,
         } = &outcome
         else {
             panic!("expected Opened, got {outcome:?}");
         };
         assert_eq!(name.as_deref(), Some("a1_times_three.xlsx"));
-        assert_eq!(*sheet_count, 1, "OxDoc's model context lists one sheet");
+        assert_eq!(
+            *sheet_count, 1,
+            "the engine enumerates one sheet after ingest"
+        );
+        assert_eq!(*cells, 1, "A1 is the one literal");
+        assert_eq!(*formulas_bound, 1, "B1 bound");
+        assert_eq!(
+            *recalc_path,
+            LoadRecalcPath::Automatic,
+            "the fixture's calcMode=auto took the open-recalc path"
+        );
         assert!(
             !load_ledger
                 .entries
@@ -860,15 +887,25 @@ mod tests {
         );
 
         // The demo session really was replaced, not merged: its second sheet
-        // and its `workbook:demo` identity are gone.
+        // and its `workbook:demo` identity are gone, and the engine holds the
+        // ingested fixture (`Sheet1`, `B1 = A1*3 = 21`) instead.
         assert_ne!(session.workspace_id().as_str(), "workbook:demo");
+        let sheets = session.sheets().unwrap();
         assert!(
-            !session
-                .sheets()
-                .unwrap()
-                .iter()
-                .any(|row| row.display_name == "Sheet2"),
+            !sheets.iter().any(|row| row.display_name == "Sheet2"),
             "the demo's Sheet2 must not survive the open"
+        );
+        assert_eq!(sheets.len(), 1);
+        assert_eq!(sheets[0].display_name, "Sheet1");
+        assert_eq!(
+            session.grid_cell_value(sheets[0].node_id, 1, 2).unwrap(),
+            Some(CalcValue::number(21.0)),
+            "the opened session's engine state is the ingested fixture"
+        );
+        assert_eq!(
+            session.load_report().map(|report| report.sheets),
+            Some(1),
+            "the session keeps the engine's full load report"
         );
     }
 

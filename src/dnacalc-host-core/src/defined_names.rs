@@ -286,14 +286,17 @@ impl WorkbookSession {
 
     /// Build a [`GridRect`] over `anchor_sheet`'s own grid namespace from a
     /// projected 1-based rectangle (§A.2: the skin never composes the raw
-    /// engine `GridRect` itself).
+    /// engine `GridRect` itself). The workbook half comes from the session's
+    /// token authority (`workbook_token`, dtc-j7n8.4): on an opened workbook
+    /// the engine keys grids under `book:{workspace}`, and a rect built from
+    /// the bare workspace id would resolve to nothing — silently.
     fn grid_rect_for(
         &self,
         anchor_sheet: TreeNodeId,
         rect: GridRectProjection,
     ) -> Result<GridRect, WorkbookSessionError> {
         GridRect::new(
-            self.workspace_id().as_str(),
+            self.workbook_token(),
             sheet_grid_node_id(anchor_sheet).as_str().to_string(),
             rect.top_row,
             rect.left_col,
