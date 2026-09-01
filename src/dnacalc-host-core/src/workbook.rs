@@ -41,7 +41,7 @@
 use std::collections::BTreeMap;
 
 use dnacalc_skin_ir::{
-    GridAuthoredCellProjection, NodeId, NodeKey, SheetProjection, WorkspaceState,
+    GridAuthoredCellProjection, GridProjection, NodeId, NodeKey, SheetProjection, WorkspaceState,
 };
 use oxcalc_core::consumer::{
     GridBackingSeed, GridCellEntryOutcome, OxCalcDocumentContext, OxCalcDocumentError,
@@ -730,6 +730,57 @@ impl WorkbookSession {
             .ok_or(WorkbookSessionError::SheetNotGridBacked { node: sheet })
     }
 
+    /// The ONE recipe that turns an engine grid readout into the sheet's
+    /// windowed [`GridProjection`] — used by [`WorkbookSession::snapshot`] for
+    /// every sheet AND by the entry-verb dispatch (`lib.rs`) to build the
+    /// `GridChanged` delta from the post-edit view the engine hands back
+    /// (`GridCellEntryOutcome::{Literal, Formula, Cleared}::view`, dtc-j7n8.18).
+    /// One function, so the mirror patch a receipt carries and the fresh
+    /// snapshot a caller re-reads can never disagree about a grid.
+    ///
+    /// The authored window is the bounding box of the view's populated cells
+    /// (min/max row/col across `view.cells`), or `1..=1` when the sheet is
+    /// empty — the same "match the cells actually projected" window
+    /// `dnatreecalc-host`'s `authored_cells_for` derives, so every projected
+    /// cell finds its authored record. The grid is keyed by its stable
+    /// [`sheet_grid_node_id`] and carries `grid_node_key =
+    /// NodeKey::from_engine_id(sheet.0)`.
+    ///
+    /// `view` must be `sheet`'s readout (a `grid_view` / entry-verb view of
+    /// that node); the authored lookup reads `sheet` through the session's
+    /// own workbook token, so a view of another sheet would pair values with
+    /// the wrong authored records rather than fail.
+    pub fn grid_projection_from_view(
+        &self,
+        sheet: TreeNodeId,
+        view: &OxCalcTreeGridView,
+    ) -> Result<GridProjection, WorkbookSessionError> {
+        let (top_row, left_col, bottom_row, right_col) = view
+            .cells
+            .iter()
+            .fold(None, |acc: Option<(u32, u32, u32, u32)>, cell| {
+                let (r, c) = (cell.address.row, cell.address.col);
+                Some(match acc {
+                    None => (r, c, r, c),
+                    Some((tr, lc, br, rc)) => (tr.min(r), lc.min(c), br.max(r), rc.max(c)),
+                })
+            })
+            .unwrap_or((1, 1, 1, 1));
+
+        let authored = self
+            .grid_authored_cells(sheet, top_row, left_col, bottom_row, right_col)?
+            .into_iter()
+            .map(|cell| ((cell.row, cell.col), cell))
+            .collect::<BTreeMap<(u32, u32), _>>();
+
+        Ok(grid_projection_for(
+            view,
+            sheet_grid_node_id(sheet),
+            NodeKey::from_engine_id(sheet.0),
+            &authored,
+        ))
+    }
+
     /// The full-workspace projection: every grid-backed sheet's windowed
     /// [`GridProjection`], the workbook's complete defined-name catalog, and
     /// its calc-mode/recalc state, assembled into one [`WorkspaceState`] a skin
@@ -756,36 +807,8 @@ impl WorkbookSession {
                 .context
                 .grid_view(&self.workspace_id, sheet)?
                 .ok_or(WorkbookSessionError::SheetNotGridBacked { node: sheet })?;
-
-            // The authored window is the bounding box of the view's populated
-            // cells (or 1..=1 when empty), so the authored lookup lines up
-            // exactly with the cells the projection carries.
-            let (top_row, left_col, bottom_row, right_col) = view
-                .cells
-                .iter()
-                .fold(None, |acc: Option<(u32, u32, u32, u32)>, cell| {
-                    let (r, c) = (cell.address.row, cell.address.col);
-                    Some(match acc {
-                        None => (r, c, r, c),
-                        Some((tr, lc, br, rc)) => (tr.min(r), lc.min(c), br.max(r), rc.max(c)),
-                    })
-                })
-                .unwrap_or((1, 1, 1, 1));
-
-            let authored = self
-                .grid_authored_cells(sheet, top_row, left_col, bottom_row, right_col)?
-                .into_iter()
-                .map(|cell| ((cell.row, cell.col), cell))
-                .collect::<BTreeMap<(u32, u32), _>>();
-
-            let grid_node_id = sheet_grid_node_id(sheet);
-            let projection = grid_projection_for(
-                &view,
-                grid_node_id.clone(),
-                NodeKey::from_engine_id(sheet.0),
-                &authored,
-            );
-            grids.insert(grid_node_id, projection);
+            let projection = self.grid_projection_from_view(sheet, &view)?;
+            grids.insert(projection.grid_node_id.clone(), projection);
         }
 
         Ok(WorkspaceState {

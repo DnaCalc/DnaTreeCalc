@@ -977,9 +977,12 @@ pub enum WorkspaceDeltaChange {
     /// The receipt payload for a successful `EnterGridCell`/`ClearGridCell`
     /// write (H6, §A.2's verb-façade table: `GridCellEntered { outcome }`).
     /// This is a UI hint carrying the three-way outcome the entry verb
-    /// resolved to; the edited sheet's `GridChanged`/`GridAuthoredChanged`
-    /// (emitted alongside, per §A.3) are what the mirror actually patches —
-    /// this variant has no projection-state effect of its own.
+    /// resolved to; it has no projection-state effect of its own. What the
+    /// mirror actually patches is the edited sheet's `GridChanged`, which
+    /// host-core emits in the SAME delta (W011, dtc-j7n8.18) carrying the
+    /// complete windowed projection — values, provenance and the authored
+    /// layer — so the narrower `GridAuthoredChanged` is not needed beside it
+    /// (§A.3).
     GridCellEntered {
         grid_node_id: NodeId,
         row: u32,

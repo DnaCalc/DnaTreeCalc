@@ -9,6 +9,23 @@
 //! the tree dispatcher already uses, so dependent cells recalc live (edit A1 →
 //! B1 updates) with no delta-application machinery.
 //!
+//! ## Deltas vs the snapshot (W011, dtc-j7n8.18)
+//!
+//! An accepted entry receipt now carries the edited sheet's complete
+//! `GridChanged` beside its `GridCellEntered` hint, so a retained mirror
+//! could patch in place. This dispatcher deliberately KEEPS the snapshot
+//! republish: host-core stamps `from_seq`/`to_seq` = 0 on every receipt (it
+//! owns no projection-sequence authority), while the workspace signal carries
+//! this dispatcher's own monotonic `projection_seq` — so
+//! `session_channel::apply_delta` would report a sequence gap on every
+//! receipt, and the snapshot stays the one authoritative signal path. The
+//! receipt's delta is published on the delta signal as-is: a harmless double
+//! publish, because the patch and the snapshot come out of the same host-core
+//! recipe (`WorkbookSession::grid_projection_from_view`), which the app test
+//! `app_opens_fixture_edits_and_saves_through_commands` asserts cell for cell.
+//! Trusting deltas here would mean stamping sequences on this side of the
+//! seam — a later change, not a side effect of the receipt growing a patch.
+//!
 //! ## Commands (W011, dtc-j7n8.8)
 //!
 //! `WorkspaceIntent` mutates the *open model*; [`HostCommand`] manages
@@ -260,7 +277,10 @@ impl WorkbookHostDispatcher {
     /// After a model intent answered by the session: an accepted receipt
     /// republishes the full snapshot (dependents recalc live in every open
     /// lens) and the receipt's own delta; a rejected receipt publishes
-    /// nothing (host-core guarantees no mutation on that path).
+    /// nothing (host-core guarantees no mutation on that path). The delta's
+    /// `GridChanged` (dtc-j7n8.18) is NOT applied onto the workspace signal —
+    /// see the module doc: host-core stamps no sequence, the snapshot is the
+    /// authoritative path, and the delta rides alongside for delta observers.
     fn publish_after_receipt(&self, receipt: &IntentReceipt) {
         if receipt.accepted {
             self.publish_snapshot();

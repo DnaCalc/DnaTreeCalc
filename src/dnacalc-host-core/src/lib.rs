@@ -42,7 +42,11 @@
 //! `ClearGridCell` dispatch (this module), the three-way
 //! `GridCellEntered { outcome }` receipt payload, and the `present.rs` A.4
 //! error-presentation map from a rejected write to a typed [`IntentError`].
-//! Cross-sheet poll fan-out and skins are out of H6 scope (H7 and later).
+//! Since W011 (dtc-j7n8.18) an accepted entry receipt also carries the edited
+//! sheet's complete `GridChanged` projection alongside the `GridCellEntered`
+//! hint, so a retained mirror (`session_channel::apply_delta`) patches the
+//! sheet in place without a full snapshot. Cross-sheet poll fan-out and skins
+//! are out of H6 scope (H7 and later).
 
 pub mod calc;
 pub mod command;
@@ -268,7 +272,7 @@ fn dispatch_enter_grid_cell(
         Err(error) => return IntentReceipt::rejected(error),
     };
     match session.enter_grid_cell(sheet, row, col, text) {
-        Ok(outcome) => grid_cell_entered_receipt(grid, row, col, &outcome),
+        Ok(outcome) => grid_cell_entered_receipt(session, sheet, grid, row, col, &outcome),
         Err(error) => IntentReceipt::rejected(present_grid_entry_rejection(&error)),
     }
 }
@@ -284,19 +288,15 @@ fn dispatch_clear_grid_cell(
         Err(error) => return IntentReceipt::rejected(error),
     };
     match session.clear_grid_cell(sheet, row, col) {
-        Ok(_view) => {
-            let outcome = GridEntryOutcomeProjection::Cleared;
-            IntentReceipt::accepted().with_delta(WorkspaceDelta {
-                from_seq: 0,
-                to_seq: 0,
-                changes: vec![WorkspaceDeltaChange::GridCellEntered {
-                    grid_node_id: grid.clone(),
-                    row,
-                    col,
-                    outcome,
-                }],
-            })
-        }
+        Ok(view) => grid_entry_receipt(
+            session,
+            sheet,
+            grid,
+            row,
+            col,
+            GridEntryOutcomeProjection::Cleared,
+            &view,
+        ),
         Err(error) => IntentReceipt::rejected(present_grid_entry_rejection(&error)),
     }
 }
@@ -554,43 +554,101 @@ fn dispatch_move_sheet(
     }
 }
 
-/// Build the accepted `GridCellEntered` receipt (§A.2's verb-façade row) from
-/// the engine's three-way [`GridCellEntryOutcome`], mirroring its
-/// literal/formula/cleared value(s) into the wire projection.
+/// Build the accepted entry receipt (§A.2's verb-façade row) from the engine's
+/// three-way [`GridCellEntryOutcome`]: the outcome's literal/formula/cleared
+/// value(s) mirrored into the `GridCellEntered` wire projection, plus the
+/// edited sheet's `GridChanged` built from the post-edit view the outcome
+/// already carries (see [`grid_entry_receipt`]).
 fn grid_cell_entered_receipt(
+    session: &WorkbookSession,
+    sheet: oxcalc_core::structural::TreeNodeId,
     grid: &dnacalc_skin_ir::NodeId,
     row: u32,
     col: u32,
     outcome: &GridCellEntryOutcome,
 ) -> IntentReceipt {
-    let projected = match outcome {
-        GridCellEntryOutcome::Literal { value, .. } => GridEntryOutcomeProjection::Literal {
-            value: calc_value_projection(value),
-        },
+    let (projected, view) = match outcome {
+        GridCellEntryOutcome::Literal { value, view } => (
+            GridEntryOutcomeProjection::Literal {
+                value: calc_value_projection(value),
+            },
+            view,
+        ),
         GridCellEntryOutcome::Formula {
             unresolved_names,
             view,
             ..
-        } => GridEntryOutcomeProjection::Formula {
-            unresolved_names: unresolved_names.clone(),
-            value: view
-                .cells
-                .iter()
-                .find(|cell| cell.address.row == row && cell.address.col == col)
-                .map(|cell| calc_value_projection(&cell.value))
-                .unwrap_or(NodeValueProjection::Unevaluated),
-        },
-        GridCellEntryOutcome::Cleared { .. } => GridEntryOutcomeProjection::Cleared,
+        } => (
+            GridEntryOutcomeProjection::Formula {
+                unresolved_names: unresolved_names.clone(),
+                value: view
+                    .cells
+                    .iter()
+                    .find(|cell| cell.address.row == row && cell.address.col == col)
+                    .map(|cell| calc_value_projection(&cell.value))
+                    .unwrap_or(NodeValueProjection::Unevaluated),
+            },
+            view,
+        ),
+        GridCellEntryOutcome::Cleared { view } => (GridEntryOutcomeProjection::Cleared, view),
+    };
+    grid_entry_receipt(session, sheet, grid, row, col, projected, view)
+}
+
+/// The accepted receipt every grid entry verb (`EnterGridCell` in all three
+/// outcomes, `ClearGridCell`) answers with — TWO changes in ONE delta:
+///
+/// 1. `GridCellEntered { outcome }` — the UI hint (what the entered text
+///    resolved to); no projection-state effect of its own.
+/// 2. `GridChanged(projection)` — the edited sheet's complete windowed
+///    projection (values, epochs, provenance AND the authored layer), built
+///    by [`WorkbookSession::grid_projection_from_view`] from the post-edit
+///    `view` the engine handed back with the outcome — the very readout a
+///    fresh `snapshot()` would project, through the same function, so a
+///    mirror that patches this in place (`session_channel::apply_delta`) ends
+///    up cell-for-cell equal to a full snapshot without shipping one
+///    (dtc-j7n8.18; W011's "mirrors can patch" contract).
+///
+/// `from_seq`/`to_seq` stay `0`: host-core owns no projection-sequence
+/// authority yet — the executor that stamps sequences (the app dispatcher's
+/// snapshot republish, or a worker executor's `SessionResponse::for_receipt`)
+/// decides what a mirror sees. Emitting the patch here is what makes the
+/// delta-only path possible; choosing it is the executor's call.
+///
+/// The edit has ALREADY mutated the engine by the time this runs, so the
+/// receipt must stay `accepted` whatever happens next: if the projection
+/// cannot be built (the authored re-read fails — unreachable by construction
+/// on the sheet the engine just edited, but not a reason to `unwrap`), the
+/// receipt carries `FullReset` in place of the patch. `FullReset` is
+/// deliberately NOT mirror-applicable, so `apply_delta` reports a resync and
+/// a snapshot is shipped instead — the honest degrade: the edit landed, the
+/// mirror must resync — never a silent "nothing changed" delta over a
+/// changed grid.
+fn grid_entry_receipt(
+    session: &WorkbookSession,
+    sheet: oxcalc_core::structural::TreeNodeId,
+    grid: &dnacalc_skin_ir::NodeId,
+    row: u32,
+    col: u32,
+    outcome: GridEntryOutcomeProjection,
+    view: &oxcalc_core::consumer::OxCalcTreeGridView,
+) -> IntentReceipt {
+    let grid_change = match session.grid_projection_from_view(sheet, view) {
+        Ok(projection) => WorkspaceDeltaChange::GridChanged(projection),
+        Err(_) => WorkspaceDeltaChange::FullReset,
     };
     IntentReceipt::accepted().with_delta(WorkspaceDelta {
         from_seq: 0,
         to_seq: 0,
-        changes: vec![WorkspaceDeltaChange::GridCellEntered {
-            grid_node_id: grid.clone(),
-            row,
-            col,
-            outcome: projected,
-        }],
+        changes: vec![
+            WorkspaceDeltaChange::GridCellEntered {
+                grid_node_id: grid.clone(),
+                row,
+                col,
+                outcome,
+            },
+            grid_change,
+        ],
     })
 }
 
@@ -1172,9 +1230,53 @@ mod tests {
         );
     }
 
+    /// The receipt's single `GridChanged` change for `grid` — the edited
+    /// sheet's complete windowed projection a mirror patches in place
+    /// (dtc-j7n8.18). Exactly one per accepted entry receipt, naming the
+    /// edited grid, and never the `FullReset` degrade beside it: a missing,
+    /// doubled, or misaddressed patch is a contract break, not noise.
+    fn grid_changed_for<'a>(
+        receipt: &'a IntentReceipt,
+        grid: &dnacalc_skin_ir::NodeId,
+    ) -> &'a GridProjection {
+        let kinds: Vec<_> = receipt
+            .delta
+            .changes
+            .iter()
+            .map(dnacalc_skin_ir::session_channel::change_kind)
+            .collect();
+        let changed: Vec<&GridProjection> = receipt
+            .delta
+            .changes
+            .iter()
+            .filter_map(|change| match change {
+                WorkspaceDeltaChange::GridChanged(projection) => Some(projection),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            changed.len(),
+            1,
+            "exactly one GridChanged change on an accepted entry receipt: {kinds:?}"
+        );
+        assert_eq!(
+            changed[0].grid_node_id, *grid,
+            "the GridChanged names the edited grid"
+        );
+        assert!(
+            !receipt
+                .delta
+                .changes
+                .iter()
+                .any(|change| matches!(change, WorkspaceDeltaChange::FullReset)),
+            "no FullReset degrade rides beside a built GridChanged: {kinds:?}"
+        );
+        changed[0]
+    }
+
     /// The receipt's single `GridCellEntered` change: `(grid, row, col,
     /// outcome)`. Searched, not slice-matched, so dtc-j7n8.18's `GridChanged`
-    /// alongside it will not change this contract.
+    /// alongside it does not change this contract.
     fn grid_cell_entered_change(
         receipt: &IntentReceipt,
     ) -> (
@@ -1542,6 +1644,145 @@ mod tests {
         );
     }
 
+    /// dtc-j7n8.18 acceptance — mirror-patchable deltas, on real bytes. The
+    /// receipt from `EnterGridCell { A1, "10" }` on the loaded fixture carries
+    /// BOTH `GridCellEntered { Literal 10 }` AND `GridChanged` for Sheet1's
+    /// grid — and nothing else — and the `GridChanged` projection already
+    /// holds the refreshed `B1` = 30 (`Calculated` on a tick newer than the
+    /// open recalc) plus the authored layer (`A1` literal `10`, `B1` still
+    /// `=A1*3`). Then the decisive check: `session_channel::apply_delta`
+    /// patches the PRE-edit snapshot with the receipt's delta alone, and the
+    /// patched mirror equals a fresh post-edit `snapshot()` — the grid cell
+    /// for cell, and the whole `WorkspaceState` (under Automatic an entry
+    /// changes nothing outside the edited grid). No snapshot crossed the
+    /// boundary; the mirror shows `B1` = 30 from the delta.
+    #[test]
+    fn enter_grid_cell_on_loaded_fixture_receipt_carries_grid_changed_that_patches_a_mirror() {
+        use dnacalc_skin_ir::session_channel::{
+            apply_delta, change_kind, delta_is_fully_applicable,
+        };
+
+        let mut document = open_w011_fixture_document();
+        let before = document.snapshot();
+        let (grid_id, grid_before) = loaded_sheet1_grid(&before);
+        let b1_before = projected_cell(grid_before, 1, 2);
+        assert_eq!(b1_before.value, number("21"), "B1 = 21 at open");
+        let open_tick = calculated_tick("B1 at open", b1_before);
+
+        let receipt = document.dispatch(WorkspaceIntent::EnterGridCell {
+            grid: grid_id.clone(),
+            row: 1,
+            col: 1,
+            text: "10".to_string(),
+        });
+        let kinds: Vec<_> = receipt.delta.changes.iter().map(change_kind).collect();
+        println!(
+            "W011 mirror: receipt accepted={} changes={kinds:?}",
+            receipt.accepted
+        );
+        assert!(
+            receipt.accepted,
+            "A1 -> 10 is accepted: {:?}",
+            receipt.error
+        );
+
+        // BOTH changes on the ONE receipt, and only those two.
+        let (entered_grid, row, col, outcome) = grid_cell_entered_change(&receipt);
+        assert_eq!(*entered_grid, grid_id, "the hint names the edited grid");
+        assert_eq!((row, col), (1, 1), "the hint names A1");
+        match outcome {
+            GridEntryOutcomeProjection::Literal { value } => {
+                assert_eq!(*value, number("10"), "the hint carries the literal 10");
+            }
+            other => panic!("expected the Literal outcome, got {other:?}"),
+        }
+        let changed = grid_changed_for(&receipt, &grid_id);
+        assert_eq!(
+            kinds,
+            vec!["grid_cell_entered", "grid_changed"],
+            "exactly the UI hint and the mirror patch, in that order"
+        );
+
+        // The patch already carries the refreshed truth — values, provenance
+        // AND the authored layer — so a mirror needs nothing else.
+        let a1 = projected_cell(changed, 1, 1);
+        let b1 = projected_cell(changed, 1, 2);
+        log_cell("grid-changed", "A1", a1);
+        log_cell("grid-changed", "B1", b1);
+        assert_eq!(a1.value, number("10"), "the patch carries A1 = 10");
+        assert_eq!(
+            a1.authored.as_ref().map(|authored| authored.kind),
+            Some(GridAuthoredKindProjection::Literal)
+        );
+        assert_eq!(
+            a1.authored
+                .as_ref()
+                .and_then(|authored| authored.literal_text.as_deref()),
+            Some("10"),
+            "the patch carries A1's authored literal text"
+        );
+        assert_eq!(
+            b1.value,
+            number("30"),
+            "the GridChanged carries the REFRESHED B1 = A1*3 = 30"
+        );
+        assert_eq!(
+            b1.authored
+                .as_ref()
+                .and_then(|authored| authored.source_text.as_deref()),
+            Some("=A1*3"),
+            "the patch keeps B1's authored formula text"
+        );
+        let patch_tick = calculated_tick("B1 in the GridChanged", b1);
+        assert!(
+            patch_tick > open_tick,
+            "the patch's B1 is Calculated on the edit tick ({patch_tick} > {open_tick})"
+        );
+        assert_eq!(
+            changed.cells.len(),
+            2,
+            "the patch carries exactly A1 and B1: {:#?}",
+            changed.cells
+        );
+
+        // Mirror patch: pre-edit snapshot + this delta == fresh post-edit
+        // snapshot. The mirror never receives a snapshot.
+        assert!(
+            delta_is_fully_applicable(&receipt.delta),
+            "an executor may send this delta WITHOUT a snapshot: {kinds:?}"
+        );
+        let mut mirror = before.clone();
+        apply_delta(&mut mirror, &receipt.delta)
+            .expect("the entry receipt's delta patches a retained mirror in place");
+        let after = document.snapshot();
+        assert_eq!(
+            mirror.grids.get(&grid_id),
+            after.grids.get(&grid_id),
+            "the patched mirror's Sheet1 grid equals the fresh snapshot's, cell for cell"
+        );
+        assert_eq!(
+            mirror, after,
+            "under Automatic an entry changes nothing outside the edited grid: the patched \
+             mirror IS the fresh snapshot"
+        );
+        let b1_mirror = projected_cell(
+            mirror.grids.get(&grid_id).expect("the mirror holds Sheet1"),
+            1,
+            2,
+        );
+        log_cell("mirror", "B1", b1_mirror);
+        assert_eq!(
+            b1_mirror.value,
+            number("30"),
+            "the mirror shows B1 = 30 without ever receiving a snapshot"
+        );
+        assert_eq!(
+            calculated_tick("B1 in the mirror", b1_mirror),
+            patch_tick,
+            "the mirror's B1 carries the edit tick the patch carried"
+        );
+    }
+
     // ------------------------------------------------------------------
     // W011 (dtc-j7n8.7): `HostCommand::SaveActiveXlsx` end to end — the
     // save proof at the command surface a host actually calls, and the
@@ -1854,31 +2095,39 @@ mod tests {
         });
 
         assert!(receipt.accepted, "a plain number literal is accepted");
-        match receipt.delta.changes.as_slice() {
-            [
-                WorkspaceDeltaChange::GridCellEntered {
-                    grid_node_id,
-                    row,
-                    col,
-                    outcome,
-                },
-            ] => {
-                assert_eq!(*grid_node_id, grid);
-                assert_eq!(*row, 1);
-                assert_eq!(*col, 1);
-                match outcome {
-                    GridEntryOutcomeProjection::Literal { value } => assert_eq!(
-                        *value,
-                        NodeValueProjection::Number {
-                            raw: "10".to_string(),
-                            display: "10".to_string(),
-                        }
-                    ),
-                    other => panic!("expected Literal outcome, got {other:?}"),
+        // dtc-j7n8.18: the receipt carries the `GridCellEntered` hint AND
+        // the edited sheet's `GridChanged`; the hint is located, not
+        // slice-matched — every original assertion on it stands.
+        let (grid_node_id, row, col, outcome) = grid_cell_entered_change(&receipt);
+        assert_eq!(*grid_node_id, grid);
+        assert_eq!(row, 1);
+        assert_eq!(col, 1);
+        match outcome {
+            GridEntryOutcomeProjection::Literal { value } => assert_eq!(
+                *value,
+                NodeValueProjection::Number {
+                    raw: "10".to_string(),
+                    display: "10".to_string(),
                 }
-            }
-            other => panic!("expected exactly one GridCellEntered change, got {other:?}"),
+            ),
+            other => panic!("expected Literal outcome, got {other:?}"),
         }
+        // The patch beside the hint already carries the entered literal.
+        let changed = grid_changed_for(&receipt, &grid);
+        let a1 = projected_cell(changed, 1, 1);
+        assert_eq!(
+            a1.value,
+            NodeValueProjection::Number {
+                raw: "10".to_string(),
+                display: "10".to_string(),
+            },
+            "the GridChanged carries A1 = 10"
+        );
+        assert_eq!(
+            a1.authored.as_ref().map(|authored| authored.kind),
+            Some(GridAuthoredKindProjection::Literal),
+            "the GridChanged carries A1's authored layer"
+        );
     }
 
     /// H6 acceptance (1) + (2), formula half: `EnterGridCell` with a formula
@@ -1900,21 +2149,48 @@ mod tests {
             receipt.accepted,
             "a formula referencing an undefined name is still accepted (it self-heals)"
         );
-        match receipt.delta.changes.as_slice() {
-            [WorkspaceDeltaChange::GridCellEntered { outcome, .. }] => match outcome {
-                GridEntryOutcomeProjection::Formula {
-                    unresolved_names, ..
-                } => {
-                    assert_eq!(
-                        unresolved_names,
-                        &vec!["TaxRate".to_string()],
-                        "the undefined name surfaces on the Formula receipt"
-                    );
-                }
-                other => panic!("expected Formula outcome, got {other:?}"),
-            },
-            other => panic!("expected exactly one GridCellEntered change, got {other:?}"),
-        }
+        // dtc-j7n8.18: hint located beside the `GridChanged`, not
+        // slice-matched; the original assertion stands.
+        let (_, _, _, outcome) = grid_cell_entered_change(&receipt);
+        let hint_value = match outcome {
+            GridEntryOutcomeProjection::Formula {
+                unresolved_names,
+                value,
+            } => {
+                assert_eq!(
+                    unresolved_names,
+                    &vec!["TaxRate".to_string()],
+                    "the undefined name surfaces on the Formula receipt"
+                );
+                value
+            }
+            other => panic!("expected Formula outcome, got {other:?}"),
+        };
+        // The patch carries the bound formula's authored text and the same
+        // (unresolved-name, `#NAME?`) value the hint projected.
+        let changed = grid_changed_for(&receipt, &grid);
+        let a1 = projected_cell(changed, 1, 1);
+        println!("H6 formula: GridChanged A1 = {:?}", a1.value);
+        assert_eq!(
+            a1.authored.as_ref().map(|authored| authored.kind),
+            Some(GridAuthoredKindProjection::Formula)
+        );
+        assert_eq!(
+            a1.authored
+                .as_ref()
+                .and_then(|authored| authored.source_text.as_deref()),
+            Some("=TaxRate*2"),
+            "the GridChanged carries the authored formula text"
+        );
+        assert_eq!(
+            a1.value, *hint_value,
+            "the patch and the hint agree on the entered cell's value"
+        );
+        assert!(
+            matches!(a1.value, NodeValueProjection::Error(_)),
+            "an unresolved name evaluates to an error (#NAME?) until seeded: {:?}",
+            a1.value
+        );
     }
 
     /// H6 acceptance (1), empty-clears half: committing empty text through
@@ -1937,12 +2213,19 @@ mod tests {
         });
 
         assert!(receipt.accepted, "committing empty text is accepted");
-        match receipt.delta.changes.as_slice() {
-            [WorkspaceDeltaChange::GridCellEntered { outcome, .. }] => {
-                assert!(matches!(outcome, GridEntryOutcomeProjection::Cleared));
-            }
-            other => panic!("expected exactly one GridCellEntered change, got {other:?}"),
-        }
+        // dtc-j7n8.18: hint located beside the `GridChanged`, not
+        // slice-matched; the original assertion stands.
+        let (_, _, _, outcome) = grid_cell_entered_change(&receipt);
+        assert!(matches!(outcome, GridEntryOutcomeProjection::Cleared));
+        // The patch no longer carries the 10 that was in A1.
+        let changed = grid_changed_for(&receipt, &grid);
+        assert!(
+            !changed.cells.iter().any(|cell| {
+                cell.row == 1 && cell.col == 1 && cell.value != NodeValueProjection::Empty
+            }),
+            "no non-empty value remains at A1 in the GridChanged: {:#?}",
+            changed.cells
+        );
     }
 
     /// H6 acceptance (1), `ClearGridCell` half: clearing a literal cell
@@ -1968,12 +2251,27 @@ mod tests {
             receipt.accepted,
             "ClearGridCell on a literal cell is accepted"
         );
-        match receipt.delta.changes.as_slice() {
-            [WorkspaceDeltaChange::GridCellEntered { outcome, .. }] => {
-                assert!(matches!(outcome, GridEntryOutcomeProjection::Cleared));
-            }
-            other => panic!("expected exactly one GridCellEntered change, got {other:?}"),
-        }
+        // dtc-j7n8.18: hint located beside the `GridChanged`, not
+        // slice-matched; the original assertion stands.
+        let (_, _, _, outcome) = grid_cell_entered_change(&receipt);
+        assert!(matches!(outcome, GridEntryOutcomeProjection::Cleared));
+        // `ClearGridCell` patches the sheet too: A1 carries no value and no
+        // authored content in the GridChanged.
+        let changed = grid_changed_for(&receipt, &grid);
+        assert!(
+            changed
+                .cells
+                .iter()
+                .filter(|cell| cell.row == 1 && cell.col == 1)
+                .all(|cell| {
+                    cell.value == NodeValueProjection::Empty
+                        && cell.authored.as_ref().is_none_or(|authored| {
+                            authored.kind == dnacalc_skin_ir::GridAuthoredKindProjection::Empty
+                        })
+                }),
+            "A1 is value-empty and authored-empty in the GridChanged: {:#?}",
+            changed.cells
+        );
 
         let DocumentSession::Workbook(session) = &document else {
             unreachable!("workbook session")

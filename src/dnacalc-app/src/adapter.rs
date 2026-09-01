@@ -376,6 +376,46 @@ mod tests {
                 value: "42".to_string()
             }
         );
+        // dtc-j7n8.18 regression: the receipt now carries the edited sheet's
+        // `GridChanged` beside the `GridCellEntered` hint (two changes, not
+        // one). `interpret_receipt` SCANS for the hint, so the extra variant
+        // must not change its answer (asserted just above) — and the patch
+        // itself is the mirror-applicable projection carrying the entered
+        // value, so nothing about this receipt is a surprise to a mirror.
+        let kinds: Vec<_> = receipt
+            .delta
+            .changes
+            .iter()
+            .map(dnacalc_skin_ir::session_channel::change_kind)
+            .collect();
+        assert_eq!(
+            kinds,
+            vec!["grid_cell_entered", "grid_changed"],
+            "the entry receipt is exactly the hint plus the edited sheet's patch"
+        );
+        let patched = receipt
+            .delta
+            .changes
+            .iter()
+            .find_map(|change| match change {
+                WorkspaceDeltaChange::GridChanged(projection) => Some(projection),
+                _ => None,
+            })
+            .expect("an accepted entry receipt carries the edited sheet's GridChanged");
+        assert_eq!(
+            patched.grid_node_id, grid,
+            "the GridChanged names the edited grid"
+        );
+        let entered = patched
+            .cells
+            .iter()
+            .find(|cell| cell.row == TARGET_ROW && cell.col == TARGET_COL)
+            .expect("the patch carries the entered cell");
+        assert_eq!(
+            node_value_display(&entered.value),
+            "42",
+            "the patch carries the entered literal"
+        );
 
         // Formula (references seeded cells A1 + A5 = 1 + 5 = 6).
         let receipt = document.dispatch(enter_grid_cell_intent(grid.clone(), "=A1+A5".to_string()));
@@ -630,6 +670,44 @@ mod tests {
             );
             let edited = signals.workspace.get_untracked();
             assert_a1_b1("edited", &edited, "10", "30");
+
+            // dtc-j7n8.18: the receipt's delta — which the dispatcher also
+            // publishes on the delta signal — carries Sheet1's `GridChanged`
+            // with the REFRESHED B1 = 30, so a delta-only consumer sees the
+            // recalc without the snapshot the dispatcher republishes beside
+            // it; and the two agree cell for cell (the documented harmless
+            // double publish).
+            let patched = receipt
+                .delta
+                .changes
+                .iter()
+                .find_map(|change| match change {
+                    WorkspaceDeltaChange::GridChanged(projection) => Some(projection),
+                    _ => None,
+                })
+                .expect("the entry receipt carries Sheet1's GridChanged");
+            assert_eq!(patched.grid_node_id, grid_id, "the patch names Sheet1");
+            let b1_patched = patched
+                .cells
+                .iter()
+                .find(|cell| cell.row == 1 && cell.col == 2)
+                .expect("the patch carries B1");
+            log_cell("grid-changed", "B1", b1_patched);
+            assert_eq!(
+                node_value_display(&b1_patched.value),
+                "30",
+                "the GridChanged carries the refreshed B1 = 30"
+            );
+            assert_eq!(
+                signals.latest_delta.get_untracked(),
+                receipt.delta,
+                "the dispatcher publishes the receipt's delta on the delta signal"
+            );
+            assert_eq!(
+                Some(patched),
+                edited.grids.get(&grid_id),
+                "the published snapshot's Sheet1 grid equals the patch, cell for cell"
+            );
 
             // Save: bytes come back; the live model is untouched.
             let saved =

@@ -419,7 +419,14 @@ this; the fixture proof does not gate on it.
 entry verb (H6). The engine's `enter_grid_cell` does the three-way
 literal/formula/clear branch with OxFml as the sole interpretation authority
 (OxCalc `consumer.rs`); the receipt carries `GridCellEntered { outcome }`
-(`Literal`/`Formula`/`Cleared`). `dtc-j7n8.6` proves it on the xlsx-loaded
+(`Literal`/`Formula`/`Cleared`) plus, in the same delta, the edited sheet's
+complete `GridChanged` projection (values, provenance, authored layer — built
+by the one `WorkbookSession::grid_projection_from_view` recipe `snapshot()`
+also uses), so `session_channel::apply_delta` patches a retained mirror to
+exactly the fresh snapshot without shipping one (`dtc-j7n8.18`; the app
+dispatcher still republishes the snapshot because host-core stamps no
+projection sequence — documented in `workbook_dispatcher.rs`). A no-op
+`Recalculate` still emits no `GridChanged`. `dtc-j7n8.6` proves it on the xlsx-loaded
 fixture: `A1` 7 → 10 publishes `B1` = 30, and `=A1*4` into `B1` is accepted
 (no host-side `=` classification; the former `=`-prefix and no-`ClearCell`
 typed rejections no longer exist in code). The typed rejections that remain

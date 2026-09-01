@@ -189,8 +189,8 @@ pub fn is_delta_applicable(change: &WorkspaceDeltaChange) -> bool {
         | C::SheetsChanged(_) => true,
         // A UI hint only — there is no projection-state change to mirror.
         // GridCellEntered is the H6 entry-verb receipt payload: the edited
-        // sheet's GridChanged/GridAuthoredChanged (emitted alongside, §A.3)
-        // are what actually patches the mirror.
+        // sheet's GridChanged, which host-core emits in the same delta
+        // (dtc-j7n8.18), is what actually patches the mirror.
         C::FormulaReferenceInserted(_) | C::GridCellEntered { .. } => true,
         // Key-only, partial, collection-upsert, or full-reset: the snapshot is
         // authoritative and the proxy resyncs.
