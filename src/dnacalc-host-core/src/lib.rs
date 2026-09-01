@@ -64,7 +64,9 @@ pub use calc::{
     calc_mode_from_projection, calc_mode_projection, present_calc_rejection,
     value_provenance_projection,
 };
-pub use command::{HostCommand, HostCommandOutcome, ProjectionPublisher, RecordingPublisher};
+pub use command::{
+    HostCommand, HostCommandError, HostCommandOutcome, ProjectionPublisher, RecordingPublisher,
+};
 pub use defined_names::{
     DefinedNameTargetIntentInput, NAMES_BACKING_SHEET, present_defined_name_rejection,
 };
@@ -77,7 +79,8 @@ pub use persistence::LocalFileSkinStatePersistenceStore;
 pub use present::present_grid_entry_rejection;
 pub use skin_protocol::SkinProtocolSession;
 pub use workbook::{
-    WorkbookSession, WorkbookSessionError, parse_sheet_grid_node_id, sheet_grid_node_id,
+    WorkbookSession, WorkbookSessionError, XLSX_WORKSPACE_ID, parse_sheet_grid_node_id,
+    sheet_grid_node_id,
 };
 
 use dnacalc_skin_ir::{
@@ -616,14 +619,53 @@ fn workspace_intent_kind(intent: &WorkspaceIntent) -> &'static str {
     }
 }
 
-/// A [`HostCommand`] executor over a document session. H2 executes only the
-/// `DispatchWorkspaceIntent` arm (the enum's sole H2 variant), routing through
-/// [`DocumentSession::dispatch`].
+/// A [`HostCommand`] executor over a document session: the H2 dispatch arm
+/// (routing through [`DocumentSession::dispatch`]) and the W011 document-open
+/// arm (dtc-j7n8.3).
+// `result_large_err`: `HostCommandError` wraps `WorkbookSessionError` by
+// value, which in turn wraps the engine's `OxCalcDocumentError` by value — the
+// same by-value convention `workbook.rs` documents; a command execution is a
+// single host call, not a hot inner loop, so boxing buys nothing here.
+#[allow(clippy::result_large_err)]
 impl DocumentSession {
-    pub fn execute(&mut self, command: HostCommand) -> HostCommandOutcome {
+    /// Execute one host command against this session.
+    ///
+    /// - `DispatchWorkspaceIntent` is infallible at this level: it always
+    ///   returns `Ok(Dispatched(receipt))`, and any *rejection* of the intent
+    ///   travels **inside** the [`IntentReceipt`] (the H2 contract, unchanged
+    ///   by W011).
+    /// - `OpenXlsxBytes` opens the bytes through OxDoc under
+    ///   `LoadProfile::full()` and, on success, **replaces** `self` with the
+    ///   opened [`WorkbookSession`] (the previous session drops — opening a
+    ///   document is what a future `SessionEngine::init` does). On failure
+    ///   `self` is left untouched and OxDoc's typed `XlsxError` comes back as
+    ///   [`HostCommandError::Workbook`]`(`[`WorkbookSessionError::Xlsx`]`)`.
+    pub fn execute(
+        &mut self,
+        command: HostCommand,
+    ) -> Result<HostCommandOutcome, HostCommandError> {
         match command {
             HostCommand::DispatchWorkspaceIntent(intent) => {
-                HostCommandOutcome::Dispatched(self.dispatch(intent))
+                Ok(HostCommandOutcome::Dispatched(self.dispatch(intent)))
+            }
+            HostCommand::OpenXlsxBytes { bytes, name } => {
+                let session =
+                    WorkbookSession::open_xlsx_bytes(XLSX_WORKSPACE_ID, &bytes, name.clone())?;
+                // `open_xlsx_bytes` always stores the source it just opened;
+                // the outcome facts are read from that host-owned bundle
+                // (the engine has no sheets of its own until ingest,
+                // dtc-j7n8.4).
+                let source = session
+                    .xlsx_source()
+                    .expect("a workbook opened from xlsx bytes owns its OxDoc source");
+                let sheet_count = source.model_context.sheets.len();
+                let load_ledger = source.load_ledger.clone();
+                *self = DocumentSession::Workbook(session);
+                Ok(HostCommandOutcome::Opened {
+                    name,
+                    sheet_count,
+                    load_ledger,
+                })
             }
         }
     }
@@ -739,19 +781,130 @@ mod tests {
         let mut document =
             DocumentSession::Workbook(WorkbookSession::create("workbook:h2-publish").unwrap());
 
-        let outcome = document.execute(HostCommand::DispatchWorkspaceIntent(
-            WorkspaceIntent::CreateScenario {
-                scenario_id: "s1".to_string(),
-                name: "Downside".to_string(),
-                base_scenario_id: None,
-            },
-        ));
-        let HostCommandOutcome::Dispatched(receipt) = outcome;
+        let outcome = document
+            .execute(HostCommand::DispatchWorkspaceIntent(
+                WorkspaceIntent::CreateScenario {
+                    scenario_id: "s1".to_string(),
+                    name: "Downside".to_string(),
+                    base_scenario_id: None,
+                },
+            ))
+            .expect("dispatch never fails at the command level; rejections ride the receipt");
+        let HostCommandOutcome::Dispatched(receipt) = outcome else {
+            panic!("DispatchWorkspaceIntent yields Dispatched, got {outcome:?}");
+        };
         publisher.publish(&receipt);
 
         let published = publisher.published();
         assert_eq!(published.len(), 1);
         assert!(!published[0].accepted);
+    }
+
+    // ------------------------------------------------------------------
+    // W011 (dtc-j7n8.3): `HostCommand::OpenXlsxBytes` end to end.
+    // ------------------------------------------------------------------
+
+    use crate::xlsx_fixture::w011_fixture_bytes;
+    use oxdoc_model::FidelityDisposition;
+
+    /// Executing `OpenXlsxBytes` with the real W011 fixture bytes over the
+    /// demo workbook replaces the active session with the opened workbook
+    /// (the demo's `Sheet2` and `workbook:demo` identity are gone; the OxDoc
+    /// source is owned) and returns the typed `Opened { sheet_count: 1, .. }`
+    /// outcome carrying the load ledger.
+    #[test]
+    fn execute_open_xlsx_bytes_replaces_session_and_returns_opened() {
+        let mut document = DocumentSession::Workbook(build_demo_workbook().unwrap());
+        assert_eq!(document.model_name(), "Workbook");
+
+        let outcome = document
+            .execute(HostCommand::OpenXlsxBytes {
+                bytes: w011_fixture_bytes(),
+                name: Some("a1_times_three.xlsx".to_string()),
+            })
+            .expect("OxDoc opens the committed W011 fixture");
+        println!("OpenXlsxBytes outcome: {outcome:?}");
+
+        let HostCommandOutcome::Opened {
+            name,
+            sheet_count,
+            load_ledger,
+        } = &outcome
+        else {
+            panic!("expected Opened, got {outcome:?}");
+        };
+        assert_eq!(name.as_deref(), Some("a1_times_three.xlsx"));
+        assert_eq!(*sheet_count, 1, "OxDoc's model context lists one sheet");
+        assert!(
+            !load_ledger
+                .entries
+                .iter()
+                .any(|entry| matches!(entry.disposition, FidelityDisposition::Dropped { .. })),
+            "the fixture loads without dropped parts: {load_ledger:?}"
+        );
+
+        // The active session is now the opened workbook, still of the
+        // Workbook model family.
+        assert_eq!(document.model_name(), "Workbook");
+        let DocumentSession::Workbook(session) = &document else {
+            panic!("the opened document is a Workbook session, got {document:?}");
+        };
+        assert_eq!(session.workspace_id().as_str(), XLSX_WORKSPACE_ID);
+        assert_eq!(session.document_name(), Some("a1_times_three.xlsx"));
+        let source = session
+            .xlsx_source()
+            .expect("the host owns the OxDoc source after open");
+        assert_eq!(
+            source.load_ledger, *load_ledger,
+            "the outcome echoes the owned ledger"
+        );
+
+        // The demo session really was replaced, not merged: its second sheet
+        // and its `workbook:demo` identity are gone.
+        assert_ne!(session.workspace_id().as_str(), "workbook:demo");
+        assert!(
+            !session
+                .sheets()
+                .unwrap()
+                .iter()
+                .any(|row| row.display_name == "Sheet2"),
+            "the demo's Sheet2 must not survive the open"
+        );
+    }
+
+    /// Executing `OpenXlsxBytes` with bytes that are not a zip is a typed
+    /// error — OxDoc's `XlsxError` as data inside
+    /// `HostCommandError::Workbook(WorkbookSessionError::Xlsx(_))` — never a
+    /// string and never a panic; and the failed open leaves the active
+    /// session exactly as it was.
+    #[test]
+    fn open_invalid_bytes_is_typed_error_not_panic() {
+        let mut document = DocumentSession::Workbook(build_demo_workbook().unwrap());
+
+        let error = document
+            .execute(HostCommand::OpenXlsxBytes {
+                bytes: b"not a zip".to_vec(),
+                name: Some("garbage.xlsx".to_string()),
+            })
+            .expect_err("garbage bytes are rejected");
+        match &error {
+            HostCommandError::Workbook(WorkbookSessionError::Xlsx(xlsx)) => {
+                println!("typed OxDoc rejection (Display): {xlsx}");
+                println!("typed OxDoc rejection (Debug): {xlsx:?}");
+            }
+            other => panic!("expected HostCommandError::Workbook(Xlsx(_)), got {other:?}"),
+        }
+        println!("HostCommandError (Display): {error}");
+
+        // The active session is untouched by the failed open: still the demo
+        // workbook, with no OxDoc source and both of its sheets.
+        let DocumentSession::Workbook(session) = &document else {
+            panic!("the demo session survives a failed open, got {document:?}");
+        };
+        assert_eq!(session.workspace_id().as_str(), "workbook:demo");
+        assert!(session.xlsx_source().is_none());
+        assert_eq!(session.document_name(), None);
+        assert_eq!(session.sheets().unwrap().len(), 2);
     }
 
     // ------------------------------------------------------------------

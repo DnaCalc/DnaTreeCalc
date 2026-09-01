@@ -35,6 +35,7 @@ use oxcalc_core::grid::coords::{ExcelGridBounds, ExcelGridCellAddress};
 use oxcalc_core::grid::geometry::GridRect;
 use oxcalc_core::grid::machine::GridEngineValidationMode;
 use oxcalc_core::structural::TreeNodeId;
+use oxdoc_xlsx::{HostOwnedXlsxSource, LoadProfile, XlsxError, open_host_owned_xlsx_source};
 use oxfunc_core::value::CalcValue;
 
 use crate::grid_publication::{grid_authored_cell_projection, grid_projection_for};
@@ -66,21 +67,51 @@ pub fn parse_sheet_grid_node_id(node_id: &NodeId) -> Option<TreeNodeId> {
 /// tree root in diagnostics.
 const WORKBOOK_ROOT_SYMBOL: &str = "__dnacalc_workbook__";
 
+/// The stable workspace id [`crate::DocumentSession::execute`] gives a
+/// workbook opened from `.xlsx` bytes (`HostCommand::OpenXlsxBytes`). One
+/// constant, not the file name: the workspace id is an engine key that ends
+/// up inside every grid address, while the user-facing file name is carried
+/// separately as [`WorkbookSession::document_name`]. Opening a document
+/// replaces the active session, so a single open document never collides with
+/// itself.
+pub const XLSX_WORKSPACE_ID: &str = "workbook:xlsx";
+
+/// The host-owned OxDoc side of a workbook opened from `.xlsx` bytes (W011,
+/// dtc-j7n8.3): the source package session kept for the later round-trip
+/// save, the byte-free model context OxCalc ingest reads, and the load
+/// ledger — plus the user-facing document name the bytes arrived under.
+///
+/// Per the OxDoc host-boundary contract the **host** owns this bundle; OxDoc
+/// keeps no live document. It lives next to (never inside) the engine context
+/// — one calculation-state pot, one source-package pot, both owned here.
+#[derive(Debug)]
+struct XlsxSourceState {
+    source: HostOwnedXlsxSource,
+    name: Option<String>,
+}
+
 /// One open strict-Excel workbook: a single [`OxCalcDocumentContext`] plus the
-/// stable workspace id addressing its one workbook workspace.
+/// stable workspace id addressing its one workbook workspace — and, when the
+/// workbook was opened from `.xlsx` bytes, the host-owned OxDoc source it came
+/// from ([`WorkbookSession::xlsx_source`]).
 ///
 /// The context — and therefore this session — is **neither `Send` nor `Sync`**
 /// (it transitively holds a non-atomic `Rc<RichValue>` inside `CalcValue`); a
 /// session is a single-threaded value that stays on its owning thread. See the
 /// Send/Sync audit block in [`crate`] for the full finding and the W011 !Send
 /// disposition (the worker owns its own context; only serde receipts cross the
-/// thread boundary).
+/// thread boundary). The OxDoc source adds nothing new here: its package
+/// session holds `Arc<Mutex<..>>` caches, but it is owned by this
+/// single-threaded value and no `Send` bound is claimed anywhere.
 #[derive(Debug)]
 pub struct WorkbookSession {
     context: OxCalcDocumentContext,
     workspace_id: OxCalcTreeWorkspaceId,
     /// Default grid geometry for freshly-added sheets (strict-Excel bounds).
     bounds: ExcelGridBounds,
+    /// `Some` iff this workbook was opened from `.xlsx` bytes; an in-memory
+    /// workbook ([`WorkbookSession::create`], the demo) has no source.
+    xlsx: Option<XlsxSourceState>,
 }
 
 /// Errors a workbook session surfaces. Every arm wraps a typed engine error as
@@ -95,6 +126,12 @@ pub struct WorkbookSession {
 pub enum WorkbookSessionError {
     #[error("engine rejected the workbook operation")]
     OxCalc(#[from] OxCalcDocumentError),
+    /// OxDoc rejected the `.xlsx` bytes on open (W011, dtc-j7n8.3) — or, in
+    /// later beads, the round-trip save. OxDoc's typed [`XlsxError`] travels
+    /// as data (a corrupt zip, a missing part, an XML error in a named part,
+    /// an `UnsupportedRoundTripFeature`), never flattened to a string.
+    #[error("OxDoc rejected the xlsx package")]
+    Xlsx(#[from] XlsxError),
     /// A cell write or read addressed a node that carries no grid backing —
     /// `set_grid_cell_value` / `grid_view` returned `Ok(None)`. In H2 every
     /// sheet is grid-backed at creation, so this is an internal-invariant
@@ -117,6 +154,51 @@ impl WorkbookSession {
     ///
     /// The `workspace_id` is the caller-chosen stable document identity.
     pub fn create(workspace_id: impl Into<String>) -> Result<Self, WorkbookSessionError> {
+        Self::with_xlsx_source(workspace_id, None)
+    }
+
+    /// Open a workbook session from `.xlsx` bytes through OxDoc (W011,
+    /// dtc-j7n8.3): OxDoc parses the package under [`LoadProfile::full()`]
+    /// and the host takes ownership of the resulting [`HostOwnedXlsxSource`]
+    /// (source package session for the later save, byte-free model context,
+    /// load ledger). The engine side is constructed exactly as
+    /// [`WorkbookSession::create`] does — one context, one workbook workspace,
+    /// no sheets yet: ingesting the OxDoc events into the engine is the next
+    /// bead (dtc-j7n8.4), so until then the calc side of an opened workbook is
+    /// empty while [`WorkbookSession::xlsx_source`] carries everything the
+    /// file said.
+    ///
+    /// `LoadProfile::full()` is mandatory, not a preference: the `Default`
+    /// values-only profile omits `formula_topology`, and OxDoc's round-trip
+    /// save later rejects formula-cell work without it — the W011 cached
+    /// `B1 = 30` reopen depends on the topology being materialized here.
+    ///
+    /// Any OxDoc rejection (a corrupt zip, a missing part, an XML error) is
+    /// returned as [`WorkbookSessionError::Xlsx`] carrying the typed
+    /// [`XlsxError`] — never a panic, never a string. Host code never parses
+    /// zip or XML itself; OxDoc is the xlsx crate.
+    ///
+    /// `name` is the user-facing document name the bytes arrived under (a
+    /// file name, typically); it is identity for people, not for the engine —
+    /// the engine key is `workspace_id`.
+    pub fn open_xlsx_bytes(
+        workspace_id: impl Into<String>,
+        bytes: &[u8],
+        name: Option<String>,
+    ) -> Result<Self, WorkbookSessionError> {
+        let source = open_host_owned_xlsx_source(std::io::Cursor::new(bytes), LoadProfile::full())?;
+        Self::with_xlsx_source(workspace_id, Some(XlsxSourceState { source, name }))
+    }
+
+    /// The one construction path: one context under the interactive
+    /// validation mode, one workbook workspace, strict-Excel bounds, and the
+    /// (optional) host-owned OxDoc source stored alongside. `create` and
+    /// `open_xlsx_bytes` differ only in what they pass here, so an opened
+    /// workbook can never drift from an in-memory one in engine shape.
+    fn with_xlsx_source(
+        workspace_id: impl Into<String>,
+        xlsx: Option<XlsxSourceState>,
+    ) -> Result<Self, WorkbookSessionError> {
         // Engine validation spend is an explicit choice (OxCalc O-20, no
         // Default on purpose). The interactive host samples the dual-engine
         // oracle: every 16th recalc (and always the first recalc of a fresh
@@ -136,6 +218,7 @@ impl WorkbookSession {
             context,
             workspace_id,
             bounds: ExcelGridBounds::strict_excel(),
+            xlsx,
         })
     }
 
@@ -143,6 +226,26 @@ impl WorkbookSession {
     #[must_use]
     pub fn workspace_id(&self) -> &OxCalcTreeWorkspaceId {
         &self.workspace_id
+    }
+
+    /// The host-owned OxDoc source this workbook was opened from — `None` for
+    /// an in-memory workbook ([`WorkbookSession::create`], the demo). The
+    /// bundle is OxDoc's plain public-field triple: `source_context` (the
+    /// package session, whose `events()` are the document stream the ingest
+    /// bead reads and whose image the save bead round-trips), `model_context`
+    /// (byte-free sheet summaries and capabilities), and `load_ledger` (what
+    /// the load preserved, projected, or dropped).
+    #[must_use]
+    pub fn xlsx_source(&self) -> Option<&HostOwnedXlsxSource> {
+        self.xlsx.as_ref().map(|state| &state.source)
+    }
+
+    /// The user-facing document name the workbook was opened under (the file
+    /// name a host handed to `open_xlsx_bytes`) — `None` for an in-memory
+    /// workbook, and also `None` for bytes opened without a name.
+    #[must_use]
+    pub fn document_name(&self) -> Option<&str> {
+        self.xlsx.as_ref().and_then(|state| state.name.as_deref())
     }
 
     /// The underlying engine context (H4, `defined_names.rs`'s own module
@@ -694,5 +797,94 @@ mod tests {
             },
             "a fresh snapshot shows B1 = A1*10 = 70 after editing A1 to 7"
         );
+    }
+
+    // ------------------------------------------------------------------
+    // W011 (dtc-j7n8.3): host ownership of the OxDoc source on open.
+    // ------------------------------------------------------------------
+
+    use crate::xlsx_fixture::w011_fixture_bytes;
+    use oxdoc_model::FidelityDisposition;
+
+    /// Opening the real W011 fixture bytes hands the host the OxDoc source
+    /// bundle: `xlsx_source()` is `Some`, its model context lists exactly the
+    /// one sheet `Sheet1`, its load ledger dropped nothing, and the document
+    /// name round-trips. The engine side is deliberately still empty — the
+    /// ingest bead (dtc-j7n8.4) fills it from these very events.
+    #[test]
+    fn open_xlsx_bytes_owns_source_and_reports_ledger() {
+        let bytes = w011_fixture_bytes();
+        let session = WorkbookSession::open_xlsx_bytes(
+            XLSX_WORKSPACE_ID,
+            &bytes,
+            Some("a1_times_three.xlsx".to_string()),
+        )
+        .expect("OxDoc opens the committed W011 fixture");
+
+        assert_eq!(session.workspace_id().as_str(), XLSX_WORKSPACE_ID);
+        assert_eq!(session.document_name(), Some("a1_times_three.xlsx"));
+
+        let source = session
+            .xlsx_source()
+            .expect("a workbook opened from bytes owns its OxDoc source");
+
+        // Sheet summaries come from OxDoc's byte-free model context.
+        let sheet_names: Vec<&str> = source
+            .model_context
+            .sheets
+            .iter()
+            .map(|sheet| sheet.name.as_str())
+            .collect();
+        println!("W011 open: model_context sheets = {sheet_names:?}");
+        assert_eq!(sheet_names, ["Sheet1"], "exactly one sheet, named Sheet1");
+
+        // The load ledger dropped nothing (the fixture is five plain parts).
+        println!(
+            "W011 open: load ledger entries = {}",
+            source.load_ledger.entries.len()
+        );
+        let dropped: Vec<_> = source
+            .load_ledger
+            .entries
+            .iter()
+            .filter(|entry| matches!(entry.disposition, FidelityDisposition::Dropped { .. }))
+            .collect();
+        assert!(dropped.is_empty(), "no Dropped ledger entries: {dropped:?}");
+
+        // The source context carries the document stream the ingest bead
+        // reads (the fixture acceptance test pins its exact contents).
+        assert!(
+            !source.source_context.events().is_empty(),
+            "the package session exposes the eager document event stream"
+        );
+
+        // The engine side is an empty workbook workspace until ingest lands.
+        assert!(
+            session.sheets().unwrap().is_empty(),
+            "dtc-j7n8.3 opens the source only; engine sheets arrive with dtc-j7n8.4"
+        );
+    }
+
+    /// An in-memory workbook has no OxDoc source and no document name — the
+    /// demo path is untouched by the open lane.
+    #[test]
+    fn in_memory_workbook_has_no_xlsx_source() {
+        let session = build_demo_workbook().unwrap();
+        assert!(session.xlsx_source().is_none());
+        assert_eq!(session.document_name(), None);
+    }
+
+    /// Garbage bytes surface OxDoc's typed [`XlsxError`] as data inside
+    /// [`WorkbookSessionError::Xlsx`] — no panic, no string-typed error.
+    #[test]
+    fn open_xlsx_bytes_rejects_garbage_with_typed_xlsx_error() {
+        let error = WorkbookSession::open_xlsx_bytes(XLSX_WORKSPACE_ID, b"not a zip", None)
+            .expect_err("garbage bytes are rejected");
+        match &error {
+            WorkbookSessionError::Xlsx(xlsx) => {
+                println!("typed OxDoc rejection: {xlsx} / {xlsx:?}");
+            }
+            other => panic!("expected WorkbookSessionError::Xlsx, got {other:?}"),
+        }
     }
 }

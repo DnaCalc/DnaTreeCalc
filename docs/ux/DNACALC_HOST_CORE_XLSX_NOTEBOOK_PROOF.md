@@ -300,11 +300,15 @@ pub enum HostCommand {
 }
 
 fn execute(&mut self, cmd: HostCommand) -> Result<HostCommandOutcome, HostCommandError>;
-// HostCommandOutcome::Opened { document_id, load_ledger }
+// HostCommandOutcome::Opened { name, sheet_count, load_ledger }   // landed dtc-j7n8.3
 //                  ::Saved  { bytes: Vec<u8>, save_ledger: DocumentFidelityLedger }
 //                  ::Dispatched(IntentReceipt) | ::LayoutSet | ::Closed
 // HostCommandError wraps oxdoc_xlsx::XlsxError (incl. UnsupportedRoundTripFeature)
-// as data, not strings.
+// as data, not strings — landed as HostCommandError::Workbook(WorkbookSessionError::Xlsx(_))
+// (dtc-j7n8.3). Landed so far: OpenXlsxBytes (replaces the active session on
+// success, leaves it untouched on failure; the host owns the HostOwnedXlsxSource
+// via WorkbookSession::xlsx_source) and DispatchWorkspaceIntent (always Ok —
+// intent rejections travel inside the IntentReceipt).
 
 fn document_status(&self) -> DocumentStatus; // { dirty: bool, save_restrictions: Vec<..> }
 ```
