@@ -48,7 +48,7 @@ W001 → W002 → W005 → { W003, W004 } → W006 → W007 → W008 → W009 �
 
 Engine prerequisites in OxCalc/OxFml/OxFunc (Spec `model/CORE_MODEL_SPEC.md` §6) gate several worksets; those are coordinated via handovers, not owned here. New since the seed map: version-based undo (§6 item 13), table-node unpacking (§6 item 14 — Tables are a cross-repo build area, in scope), and node-as-function invocation (§6 item 15).
 
-**W011 pivot.** W011 is an explicit near-term integration pivot, not an item at the tail of the original tree-only sequence. It proves the DnaCalc host pattern for `.xlsx` workbooks while reusing and cleaning up the skin architecture that TreeCalc has already grown. It may proceed alongside existing open worksets where dependency edges allow; live execution truth stays in `br`.
+**W011 pivot.** W011 is an explicit near-term integration pivot, not an item at the tail of the original tree-only sequence. It proves the DnaCalc host pattern for `.xlsx` workbooks while reusing and cleaning up the skin architecture that TreeCalc has already grown. It may proceed alongside existing open worksets where dependency edges allow; live execution truth stays in `br`. The dual-profile hosting scope (tree workspaces + `.xlsx` grid workbooks through `dnacalc-host-core`) is now settled in `CHARTER.md` "Not a grid", evidenced by the host-core save/reopen tests (`dtc-j7n8.7`, cached `B1 = 30`).
 
 ---
 
