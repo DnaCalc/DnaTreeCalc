@@ -17,3 +17,11 @@ dnacalc-skin-ir = { path = "../dnacalc-skin-ir" }
 
 [lints]
 workspace = true
+
+# W011 (dtc-j7n8.2): dev-only fixture zipper. Host-core tests zip the readable
+# `fixtures/w011/a1_times_three/parts/**` into `.xlsx` bytes in memory through
+# `oxdoc_conformance::read_fixture_parts_as_xlsx` — OxDoc's own committed-parts
+# pattern — so this repo never takes a zip crate or touches xlsx bytes itself.
+# Never promote this to a normal dependency.
+[dev-dependencies]
+oxdoc_conformance.workspace = true

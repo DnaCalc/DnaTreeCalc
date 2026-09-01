@@ -1165,6 +1165,7 @@ version = "0.1.0"
 dependencies = [
  "dnacalc-skin-ir",
  "oxcalc-core",
+ "oxdoc-conformance",
  "oxdoc-model",
  "oxdoc-xlsx",
  "oxfunc_core",
@@ -3252,6 +3253,17 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.18",
+]
+
+[[package]]
+name = "oxdoc-conformance"
+version = "0.1.0"
+dependencies = [
+ "oxdoc-model",
+ "oxdoc-xlsx",
+ "serde",
+ "serde_json",
+ "zip",
 ]
 
 [[package]]

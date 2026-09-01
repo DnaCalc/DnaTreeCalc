@@ -714,6 +714,13 @@ W011 also needs targeted checks:
   (`delta_coverage_is_total`), `apply_delta` mirror application;
 - host-core tests for open/edit/recalc/save command sequencing over byte
   buffers;
+- W011 fixture: `fixtures/w011/a1_times_three/` — `parts/**` (readable XML) is
+  the source of truth and `a1_times_three.xlsx` the committed binary for the
+  click-through; host-core tests zip the parts in memory
+  (`src/dnacalc-host-core/src/xlsx_fixture.rs`, through the dev-only
+  `oxdoc_conformance`, never a zip crate) and
+  `w011_fixture_opens_through_oxdoc_with_two_cells` pins the binary to the
+  parts by OxDoc event-stream equality (dtc-j7n8.2);
 - browser click-through for open/edit/recalc/download;
 - OxDoc reopen assertions for saved bytes (including the cached-value
   assertion);

@@ -54,6 +54,11 @@ pub mod skin_protocol;
 pub mod present;
 pub mod tree;
 pub mod workbook;
+// W011 (dtc-j7n8.2): test-only access to the committed `a1_times_three` xlsx
+// fixture (parts zipped in memory through the dev-only `oxdoc_conformance`
+// crate, hence `cfg(test)`). Later W011 beads open the same bytes.
+#[cfg(test)]
+pub(crate) mod xlsx_fixture;
 
 pub use calc::{
     calc_mode_from_projection, calc_mode_projection, present_calc_rejection,
