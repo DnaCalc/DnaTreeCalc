@@ -1,0 +1,72 @@
+# W011 Fable run status
+
+Single running status note for the Fable Ultracode W011 campaign
+(`Foundation/notes/FABLE_ULTRACODE_WORK_INSTRUCTIONS_W011_2026-09-01.md`).
+Updated only at campaign milestones (phase-0-done, ingest-green, edit-green,
+save-green, or blocker), per the pack's coordination protocol.
+
+## 2026-09-01 — Phase 0 complete (Campaign A); session handover to Fable 5.1
+
+**Product status:** no product code changed yet. The bead graph is reconciled
+with HEAD and the successor epic `dtc-j7n8` (18 children, label `w011-fable`)
+is the sole execution state for the campaign.
+
+**Evidence:** commits `e80444b` and `4ed3f15` on `main` (pushed to
+`origin/main`); `br dep cycles` empty; `cargo test -p dnacalc-host-core
+--offline` = 51 passed (baseline, also the close evidence for `dtc-hj2.3/.4`);
+`br ready` at P0/P1 offers only `dtc-j7n8.1` plus the deliberately-untouched
+`dtc-c0wf.33`.
+
+**Still open:** all of Wave 1 (`dtc-j7n8.1` – `.9`), then Waves 1.5/2/3.
+
+### What Phase 0 did
+
+- Read the pack, `PROGRAM_INVESTIGATION_2026-08-30.md` §§2, 5–7, 15–16, 19,
+  the W011 proof doc, TreeCalc `AGENTS.md`/`OPERATIONS.md`/`CHARTER.md`, and
+  `HOUSEKEEPING_2026-08-31.md`.
+- Installed the three granted skills: `planning-workflow`, `beads-bv`,
+  `testing-conformance-harnesses` (already present: `beads-workflow`,
+  `agent-fungibility-philosophy`).
+- Verified seam ground truth in code with three read-only sweeps (OxDoc,
+  OxCalc, DnaTreeCalc). Everything load-bearing is written INTO the beads —
+  exact signatures, `LoadProfile::full()` requirement, the `book:{workspace_id}`
+  address-token trap (three host-side construction sites; `grid_authored_view`
+  returns blanks — never an error — on token mismatch), OxDoc's surgical-path
+  rejections, calcChain drop policy, the Manual-mode stale-cache caveat.
+- Reconciled the stale graph: closed `dtc-hj2.3`/`.4` (landed, evidence cited),
+  `dtc-hj2.5` (superseded by OxCalc W062 R5/R6 native verbs), the four empty
+  sample beads (`dtc-pg91`, `dtc-juyd`, `dtc-ga2e`, `dtc-5u1s`); parked
+  `dtc-hj2.6`–`.10` behind `dtc-j7n8` with blocked-on-successor edges and
+  PARKED notes. `dtc-hj2` itself stays OPEN (its closure needs browser UI,
+  multi-skin layout, strict-profile lanes — parked children).
+- Authored `dtc-j7n8.1`–`.18` and polished four rounds: self-review, the
+  agent-ergonomic rumination (single `workbook_token` authority; three-truths
+  doc comment), an adversarial fresh-context review (15 findings applied —
+  wasm blast radius of `oxdoc-xlsx`, corrected fixture-template facts, the
+  silent GridRect token failure, the `dnacalc-app` visibility compile blocker,
+  GridChanged split out as `.18`, fmt/clippy floor on every code bead), and
+  final validation.
+
+### Orchestration facts for the successor session
+
+- **Wave 1 is a serial relay, not a swarm**: `.1 → .2 → .3 → .4 → .5 → .6 →
+  .7 → .8` over three single-writer files (`command.rs`, `lib.rs`,
+  `workbook.rs`). Run ONE implementer until `.7` closes; fan out only after.
+- **Fable personally reviews the `dtc-j7n8.7` diff before close** (the
+  cached-B1=30 save trap). Its failure playbook is pre-registered in the bead.
+- Implementers claim ONLY beads labeled `w011-fable`; the subagent init prompt
+  is pack §9.1 verbatim. `dtc-c0wf.33`, `dtc-yo3`, Bench/frontend beads stay
+  untouched.
+- Beads are self-contained by design: implement from `br show <id>`, not from
+  the markdown pack. The pack remains binding for guardrails (§0, §11).
+- Commit per closed bead (`br sync --flush-only`; `git add` sources +
+  `.beads/issues.jsonl`); push `main` when an unblocking bead closes. No
+  force-push, no amending pushed commits, never bare `bv`.
+
+### Session archaeology (only if something seems missing)
+
+Fable 5 session conversation log:
+`C:\Users\GovertvanDrimmelen\.claude\projects\C--Work-DnaCalc\5a57b5cb-b665-438e-8e5a-97016334b694.jsonl`
+(~1.5 MB JSONL). The durable state is the bead graph + git, not the chat;
+consult the log only for provenance questions the beads and close reasons
+cannot answer.
