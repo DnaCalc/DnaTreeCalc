@@ -205,3 +205,33 @@ empty; all four siblings clean and pushed.
 
 Campaign stopped here per the pack (§2.3): the Wave 1 outcome is evidenced
 and no pre-authored bead remains that is not landed or typed-blocked.
+
+## 2026-09-02 — Wave 1.5 green: desktop click-through performed and `dtc-j7n8.10` closed
+
+**Product status:** a user of the DNA Calc desktop shell (`dnacalc-app-desktop`,
+Tauri 2 + WebView2) opens `fixtures/w011/a1_times_three.xlsx` through the
+native Open dialog, sees A1 = 7 / B1 = 21, sees the B1 editor seeded with
+`=A1*3`, edits A1 to 10 and watches B1 recalculate to 30 live, saves through the
+native Save dialog, reopens the saved file with A1 = 10 / B1 = 30 and the
+formula text intact, and gets an honest "open cancelled: nothing changed" on a
+cancelled Open. The saved file carries the refreshed cache in its XML
+(`<c r="B1"><f>A1*3</f><v>30</v></c>`) and is byte-identical (sha256
+`6ba5af8d…`) to the host-core generator's artifact and to the workbook OxXlPlay
+observed in real Excel — so the host-core, app-dispatcher, desktop and Excel
+evidence all describe the same bytes.
+
+**Evidence:** the eight-step manual script recorded on `dtc-j7n8.10` was
+executed by the orchestrator on the real desktop (desktop automation granted
+for the shell; per-step observations quoted in the bead's close reason).
+Build: wasm frontend + `wasm-bindgen` + `cargo build -p dnacalc-app-desktop
+--offline`; `dist/index.html` restored to the committed placeholder afterwards,
+tree clean; all shell processes killed. Closed `dtc-j7n8.10`; pushed.
+
+**Still open (UX findings from the click-through, filed as beads, not fixed):**
+`dtc-j7n8.25` — Ctrl+S does nothing while keyboard focus is inside the sheet
+stage (Ctrl+O and the command deck's Save work); `dtc-j7n8.26` — the sheet
+overlay editor does not take keyboard focus when opened by F2 or
+type-to-replace (each key re-seeds the buffer, Enter moves instead of
+committing) until its textarea is clicked, and no dirty marker is visible in
+the mast after an edit. Neither affects the byte-level round trip; both affect
+the keyboard-first editing experience the design intends.
