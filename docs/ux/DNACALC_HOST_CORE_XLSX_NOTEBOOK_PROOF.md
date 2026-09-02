@@ -115,9 +115,20 @@ DnaTreeCalc:
   `workbook.rs`; `snapshot_of_loaded_fixture_through_document_session_is_not_defaulted`,
   `lib.rs`): `A1` `Literal` `"7"` = 7, `B1` `Formula` `"=A1*3"` = 21, both
   `Calculated` under the fixture's `calcMode="auto"` open-recalc,
-  `authored_epoch > 0`. `FileCached` gets its first live assertion in the
-  Manual-mode lane (dtc-j7n8.13). B1 renders `=A1*3` from today's projection
-  with no skin change.
+  `authored_epoch > 0`. `FileCached` got its first live assertion in the
+  Manual-mode lane (dtc-j7n8.13, Wave 3a): the Manual twin fixture
+  `fixtures/w011/a1_times_three_manual/` (`calcMode="manual"`, otherwise
+  byte-identical) opens with `recalc_path == Manual`,
+  `engine_recalcs_at_load == 0`, `B1` = 21 `FileCached` and the sheet dirty
+  (F9 owed); `EnterGridCell { A1, "10" }` leaves `B1` at 21 `FileCached`
+  (the engine re-tags only `Calculated` values `Stale`); `Recalculate`
+  publishes 30 `Calculated { tick }`
+  (`manual_fixture_dispatch_keeps_file_cached_21_until_recalculate_then_30`,
+  `lib.rs`; `open_manual_fixture_renders_file_cached_21_with_zero_engine_passes`,
+  `workbook.rs`). Observed gap, pinned by those tests and owned by
+  `dtc-j7n8.24`: a Manual load publishes formula caches only, so the literal
+  `A1` has no published value and no projected cell until the first F9. B1
+  renders `=A1*3` from today's projection with no skin change.
 - `src/dnatreecalc-host`'s `TreeWorkspaceSession` (session.rs, ~10k lines) is
   already Leptos-free and owns the `OxCalcTreeContext` + node-id maps; grid
   interest is delegated to OxCalc, not stored in the session. The Leptos
@@ -472,7 +483,15 @@ recipe is **engine projection, never host patching**:
    projection time — fresh-cache-by-construction. Under `CalcMode::Manual`
    with undrained edits this writes the last CALCULATED caches (Excel's own
    last-calculated semantics for a manual workbook saved without a recalc);
-   the W011 fixture is `Automatic`, so an edit drains before any save.
+   the W011 fixture is `Automatic`, so an edit drains before any save. The
+   Manual lane proves the corollary at file level (dtc-j7n8.13,
+   `manual_mode_save_before_recalc_writes_last_calculated_cache`,
+   `workbook.rs`): on the Manual twin, `A1 -> 10` then save BEFORE
+   `Recalculate` reopens raw as `A1 = 10`, `B1 = Formula { "A1*3", cached:
+   21 }`, `calcMode` still Manual — honestly stale, as Excel writes it; after
+   `Recalculate` the save reopens with cached 30, and those bytes reload on
+   the Manual path with zero engine passes showing `B1` = 30 `FileCached` —
+   the cached-30 reopen with no engine pass that could mask it.
 2. OxDoc round-trips it against the opened package:
    `write_save_request(XlsxSaveRequest::round_trip(&source_context, &output),
    Cursor::new(Vec::new()))` (the writer needs `Write + Seek`). The host never

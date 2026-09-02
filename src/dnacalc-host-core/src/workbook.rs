@@ -2055,6 +2055,357 @@ mod tests {
         }
     }
 
+    // ------------------------------------------------------------------
+    // W011 Wave 3a (dtc-j7n8.13): the Manual calc-mode twin. Same bytes as
+    // the fixture above except `calcMode="manual"`, so the load runs ZERO
+    // engine passes and the workbook renders the file's caches (the first
+    // live `ValueProvenanceProjection::FileCached` assertions) until an
+    // explicit `recalculate()`; and the save-trap corollary — a save before
+    // the recalc writes the LAST CALCULATED cache (Excel's own semantics for
+    // a manual workbook saved without F9), a save after it writes 30.
+    // ------------------------------------------------------------------
+
+    use crate::xlsx_fixture::{w011_manual_fixture_bytes, w011_manual_fixture_parts_dir};
+    use oxdoc_model::CalcMode;
+
+    /// Open the Manual twin into a session, logging its parts path.
+    fn open_w011_manual_fixture() -> WorkbookSession {
+        println!(
+            "W011 manual fixture parts: {}",
+            w011_manual_fixture_parts_dir().display()
+        );
+        WorkbookSession::open_xlsx_bytes(
+            XLSX_WORKSPACE_ID,
+            &w011_manual_fixture_bytes(),
+            Some("a1_times_three_manual.xlsx".to_string()),
+        )
+        .expect("OxDoc opens and the engine ingests the committed W011 Manual twin")
+    }
+
+    /// The calc mode the one `WorkbookHeader` of a reopened package carries.
+    fn raw_header_calc_mode(stage: &str, reopened: &HostOwnedXlsxSource) -> CalcMode {
+        let modes: Vec<CalcMode> = reopened
+            .source_context
+            .events()
+            .iter()
+            .filter_map(|event| match event {
+                DocumentEvent::WorkbookHeader(header) => Some(header.calc_mode),
+                _ => None,
+            })
+            .collect();
+        println!("W011 reopen [{stage}]: header calc modes = {modes:?}");
+        assert_eq!(modes.len(), 1, "exactly one WorkbookHeader [{stage}]");
+        modes[0]
+    }
+
+    /// Log and return one cell's published value + provenance.
+    fn published(
+        stage: &str,
+        session: &WorkbookSession,
+        sheet: TreeNodeId,
+        label: &str,
+        row: u32,
+        col: u32,
+    ) -> (Option<CalcValue>, Option<ValueProvenanceProjection>) {
+        let value = session.grid_cell_value(sheet, row, col).unwrap();
+        let provenance = session.grid_cell_provenance(sheet, row, col).unwrap();
+        println!(
+            "W011 manual [{stage}]: {label} published = {value:?} provenance = {provenance:?}"
+        );
+        (value, provenance)
+    }
+
+    /// dtc-j7n8.13 acceptance (1): opening the Manual twin takes the engine's
+    /// Manual load path — `recalc_path == Manual`, `engine_recalcs_at_load ==
+    /// 0` (the perf-counter proof that no engine pass ran), `B1` still bound
+    /// through the single key mint — and the workbook renders the FILE's
+    /// caches: `B1` publishes `21` with provenance `FileCached` (the first
+    /// live assertion of `ValueProvenanceProjection::FileCached`; the auto
+    /// lane's open-recalc never shows it). The calc projection says `Manual`
+    /// and the sheet DIRTY — the load seeds it so the first F9 drains it —
+    /// and `B1`'s authored text is `=A1*3` — bound, not evaluated.
+    ///
+    /// Two engine facts pinned as observed (dtc-j7n8.24 tracks them; flip
+    /// the asserts when it lands): on a formula-bearing sheet the load
+    /// publishes `FileCached` values for formula CACHES only — authored
+    /// literals are published by the sheet's own recalc (OxCalc load
+    /// staging, calc-5kqg.65), which under Manual never runs before F9 — so
+    /// `A1` has NO published value (`None`, provenance `None`) even though
+    /// its authored `literal_text` `"7"` reads back fine; and the sheet is
+    /// dirty straight after the open (F9 owed), not clean.
+    #[test]
+    fn open_manual_fixture_renders_file_cached_21_with_zero_engine_passes() {
+        let session = open_w011_manual_fixture();
+        let report = session
+            .load_report()
+            .expect("a workbook opened from xlsx bytes carries its load report");
+        println!(
+            "W011 manual ingest: load report sheets={} cells={} formulas_bound={} \
+             recalc_path={:?} engine_recalcs_at_load={} bind_degradations={}",
+            report.sheets,
+            report.cells,
+            report.formulas_bound,
+            report.recalc_path,
+            report.engine_recalcs_at_load,
+            report.bind_degradations.len(),
+        );
+        assert_eq!(
+            report.recalc_path,
+            LoadRecalcPath::Manual,
+            "calcMode=\"manual\" takes the engine's Manual render-from-cache path"
+        );
+        assert_eq!(
+            report.engine_recalcs_at_load, 0,
+            "a Manual-mode load runs ZERO engine passes (the perf-counter proof)"
+        );
+        assert_eq!(report.sheets, 1);
+        assert_eq!(report.cells, 1, "A1 is the one literal");
+        assert_eq!(
+            report.formulas_bound, 1,
+            "B1 is bound at load even though nothing is evaluated"
+        );
+        assert!(
+            report.bind_degradations.is_empty(),
+            "=A1*3 binds cleanly: {:?}",
+            report.bind_degradations
+        );
+
+        let sheet = only_sheet(&session);
+        let (a1, a1_provenance) = published("load", &session, sheet, "A1", 1, 1);
+        let (b1, b1_provenance) = published("load", &session, sheet, "B1", 1, 2);
+        assert_eq!(
+            b1,
+            Some(CalcValue::number(21.0)),
+            "B1 renders the file's cached 21 — no engine value exists yet"
+        );
+        assert_eq!(
+            b1_provenance,
+            Some(ValueProvenanceProjection::FileCached),
+            "B1's 21 is the FILE's cache, never evaluated by this engine"
+        );
+        assert_eq!(
+            (a1, a1_provenance),
+            (None, None),
+            "OBSERVED (dtc-j7n8.24): the Manual load publishes formula caches only; the \
+             literal A1 has no published value until the first F9"
+        );
+
+        let calc = session.workbook_calc_projection(None).unwrap();
+        assert_eq!(calc.mode, CalcModeProjection::Manual, "the file's mode");
+        assert_eq!(calc.sheets.len(), 1);
+        assert!(
+            calc.sheets[0].dirty,
+            "OBSERVED: a Manual load seeds the sheet dirty — the first F9 is owed"
+        );
+
+        let authored = session.grid_authored_cells(sheet, 1, 1, 1, 2).unwrap();
+        let a1_authored = authored
+            .iter()
+            .find(|cell| cell.row == 1 && cell.col == 1)
+            .expect("A1 is in the requested window");
+        let b1_authored = authored
+            .iter()
+            .find(|cell| cell.row == 1 && cell.col == 2)
+            .expect("B1 is in the requested window");
+        assert_eq!(a1_authored.kind, GridAuthoredKindProjection::Literal);
+        assert_eq!(
+            a1_authored.literal_text.as_deref(),
+            Some("7"),
+            "A1's authored literal is readable even though nothing published it"
+        );
+        assert_eq!(b1_authored.kind, GridAuthoredKindProjection::Formula);
+        assert_eq!(
+            b1_authored.source_text.as_deref(),
+            Some("=A1*3"),
+            "B1's formula is bound (leading `=` restored), just not evaluated"
+        );
+    }
+
+    /// dtc-j7n8.13 acceptance (2), the save-trap corollary, documented in
+    /// the name: under Manual, a save BEFORE `Recalculate` writes the LAST
+    /// CALCULATED cache. Open the Manual twin -> `A1 -> 10` (accepted; the
+    /// engine suppresses the recalc, so `B1` still publishes the file's 21,
+    /// `A1` still has no publication — see dtc-j7n8.24 — the sheet is dirty) ->
+    /// save -> the SAVED bytes reopened RAW through OxDoc carry `A1 =
+    /// Number(10)` beside `B1 = Formula { text: "A1*3", cached: Number(21)
+    /// }` and keep `calcMode` Manual. That is Excel's own behavior for a
+    /// manual workbook saved without F9 — the projection reads the current
+    /// publication whatever its provenance (`save_xlsx_bytes`'s contract),
+    /// and this test is the file-level proof it does, not a bug. Then
+    /// `recalculate()` (F9): a genuine drain, `B1` = 30 `Calculated` -> save
+    /// -> the saved bytes carry cached 30 -> and the full loop under Manual:
+    /// those bytes open into a fresh session on the Manual path with ZERO
+    /// engine passes and `B1` publishes 30 `FileCached` — the cached-30
+    /// reopen with no engine pass that could mask a stale cache.
+    ///
+    /// Provenance fact pinned here, straight from the engine's own contract
+    /// (`GridDerivedState::mark_published_stale`, OxCalc `consumer.rs`): the
+    /// Manual-mode edit re-tags only `Calculated` publications `Stale`; a
+    /// publication that is still `FileCached` (never freshly calculated, so
+    /// there is no live tick to carry into a stale marker) STAYS
+    /// `FileCached`. So `B1` after the edit is 21 `FileCached`, not `Stale`;
+    /// the undrained edit is visible through the sheet-level `dirty` flag
+    /// (`has_undrained_edits`), which is what the calc projection reports.
+    #[test]
+    fn manual_mode_save_before_recalc_writes_last_calculated_cache() {
+        let mut session = open_w011_manual_fixture();
+        let sheet = only_sheet(&session);
+
+        let outcome = session
+            .enter_grid_cell(sheet, 1, 1, "10")
+            .expect("A1 -> 10 on the Manual twin is accepted");
+        assert!(
+            matches!(outcome, GridCellEntryOutcome::Literal { .. }),
+            "'10' takes the engine's literal branch, got {outcome:?}"
+        );
+        let (a1, a1_provenance) = published("after edit", &session, sheet, "A1", 1, 1);
+        let (b1, b1_provenance) = published("after edit", &session, sheet, "B1", 1, 2);
+        assert_eq!(
+            b1,
+            Some(CalcValue::number(21.0)),
+            "Manual suppresses the recalc: B1 still publishes the file's 21, not 30"
+        );
+        assert_eq!(
+            b1_provenance,
+            Some(ValueProvenanceProjection::FileCached),
+            "a FileCached publication stays FileCached behind the undrained edit \
+             (the engine re-tags only Calculated values Stale)"
+        );
+        assert_eq!(
+            (a1, a1_provenance),
+            (None, None),
+            "Manual: A1's authored truth is 10 but nothing published it (dtc-j7n8.24) — \
+             the projection reads authored literals directly, so the save still writes 10"
+        );
+        let calc = session.workbook_calc_projection(None).unwrap();
+        assert_eq!(calc.mode, CalcModeProjection::Manual);
+        assert!(
+            calc.sheets[0].dirty,
+            "the undrained edit shows as the sheet's dirty flag"
+        );
+        let a1_authored = session
+            .grid_authored_cells(sheet, 1, 1, 1, 1)
+            .unwrap()
+            .into_iter()
+            .find(|cell| cell.row == 1 && cell.col == 1)
+            .expect("A1 is in the requested window");
+        assert_eq!(
+            a1_authored.literal_text.as_deref(),
+            Some("10"),
+            "authored truth is the edit"
+        );
+
+        // Save BEFORE the recalc: A1 = 10 beside B1's LAST CALCULATED 21.
+        let (stale_bytes, _ledger) = save_and_log("manual, before recalc", &session);
+        let reopened = reopen_raw("manual, before recalc", &stale_bytes);
+        let (a1_raw, b1_raw) = a1_b1("manual, before recalc", &reopened);
+        assert_eq!(
+            a1_raw,
+            CellPayload::Number(10.0),
+            "A1 is saved as the edited literal 10"
+        );
+        assert_eq!(
+            b1_raw,
+            b1_formula_cached(21.0),
+            "EXCEL LAST-CALCULATED SEMANTICS: saved before F9, B1 keeps its formula text and \
+             its cached <v> is the last calculated 21, not 30 — the file is honestly stale"
+        );
+        assert_eq!(
+            raw_header_calc_mode("manual, before recalc", &reopened),
+            CalcMode::Manual,
+            "the saved package keeps the workbook's Manual calc mode"
+        );
+
+        // F9: a genuine drain replaces the cache with the engine's own 30.
+        let outcome = session.recalculate().expect("Recalculate is accepted");
+        assert!(outcome.drained_any(), "F9 drains the undrained edit");
+        let (a1, a1_provenance) = published("after recalc", &session, sheet, "A1", 1, 1);
+        let (b1, b1_provenance) = published("after recalc", &session, sheet, "B1", 1, 2);
+        assert_eq!(b1, Some(CalcValue::number(30.0)), "B1 = A1*3 = 30 after F9");
+        assert!(
+            matches!(
+                b1_provenance,
+                Some(ValueProvenanceProjection::Calculated { .. })
+            ),
+            "B1's 30 is engine-Calculated: {b1_provenance:?}"
+        );
+        assert_eq!(
+            a1,
+            Some(CalcValue::number(10.0)),
+            "A1 publishes 10 after F9"
+        );
+        assert!(
+            matches!(
+                a1_provenance,
+                Some(ValueProvenanceProjection::Calculated { .. })
+            ),
+            "A1's 10 is engine-Calculated: {a1_provenance:?}"
+        );
+        assert!(
+            !session.workbook_calc_projection(None).unwrap().sheets[0].dirty,
+            "the drain cleared the dirty flag"
+        );
+
+        // Save AFTER the recalc: cached 30.
+        let (fresh_bytes, _ledger) = save_and_log("manual, after recalc", &session);
+        let reopened = reopen_raw("manual, after recalc", &fresh_bytes);
+        let (a1_raw, b1_raw) = a1_b1("manual, after recalc", &reopened);
+        assert_eq!(a1_raw, CellPayload::Number(10.0));
+        assert_eq!(
+            b1_raw,
+            b1_formula_cached(30.0),
+            "after F9 the save writes the fresh cached 30"
+        );
+        assert_eq!(
+            raw_header_calc_mode("manual, after recalc", &reopened),
+            CalcMode::Manual
+        );
+
+        // Full loop under Manual: the saved bytes reopen with ZERO engine
+        // passes and B1 renders the saved 30 as the FILE's cache — nothing
+        // ran that could have recomputed it.
+        let reloaded = WorkbookSession::open_xlsx_bytes(
+            XLSX_WORKSPACE_ID,
+            &fresh_bytes,
+            Some("a1_times_three_manual_saved.xlsx".to_string()),
+        )
+        .expect("the saved Manual bytes open through OxDoc and ingest into the engine");
+        let report = reloaded.load_report().unwrap();
+        assert_eq!(report.recalc_path, LoadRecalcPath::Manual);
+        assert_eq!(
+            report.engine_recalcs_at_load, 0,
+            "the reload ran no engine pass either"
+        );
+        let reloaded_sheet = only_sheet(&reloaded);
+        let (a1, _) = published("reloaded", &reloaded, reloaded_sheet, "A1", 1, 1);
+        let (b1, b1_provenance) = published("reloaded", &reloaded, reloaded_sheet, "B1", 1, 2);
+        assert_eq!(
+            a1, None,
+            "A1 is unpublished again on the Manual reload (dtc-j7n8.24)"
+        );
+        let a1_authored = reloaded
+            .grid_authored_cells(reloaded_sheet, 1, 1, 1, 1)
+            .unwrap()
+            .into_iter()
+            .find(|cell| cell.row == 1 && cell.col == 1)
+            .expect("A1 is in the requested window");
+        assert_eq!(
+            a1_authored.literal_text.as_deref(),
+            Some("10"),
+            "A1 reloads as the authored literal 10"
+        );
+        assert_eq!(
+            b1,
+            Some(CalcValue::number(30.0)),
+            "CACHED B1 = 30 ON REOPEN, rendered from the file with no engine pass"
+        );
+        assert_eq!(
+            b1_provenance,
+            Some(ValueProvenanceProjection::FileCached),
+            "the reloaded 30 is the saved file's cache, not a recomputation"
+        );
+    }
+
     /// Generator, not a check (dtc-j7n8.7 acceptance (4)): writes the
     /// POST-EDIT saved bytes (`A1` = 10, `B1` cached 30) to
     /// `target/w011/a1_times_three_saved.xlsx` — the build dir, never the

@@ -23,6 +23,15 @@
 //! - 1900 date system, `calcMode="auto"`, `B1` a Normal formula stored
 //!   without the leading `=`.
 //!
+//! The Wave 3a Manual twin (dtc-j7n8.13) lives beside it:
+//! `<repo>/fixtures/w011/a1_times_three_manual/{parts/,README.md}` plus the
+//! committed `a1_times_three_manual.xlsx`, byte-identical to the auto fixture
+//! except for `<calcPr calcMode="manual"/>`. Same zipping, same generator
+//! pattern (`regenerate_w011_manual_fixture_binary_from_parts`), same
+//! event-stream pin to the parts — and additionally pinned to the AUTO
+//! twin's stream with only the header's calc mode differing, so the two
+//! fixtures can never drift apart in anything but the mode.
+//!
 //! Compiled only under `cfg(test)`: `oxdoc_conformance` is a dev-dependency
 //! and must never become a normal one.
 //!
@@ -49,6 +58,12 @@ pub(crate) const W011_FIXTURE_PARTS_REL: &str = "fixtures/w011/a1_times_three/pa
 
 /// Repo-relative location of the committed binary fixture (app click-through).
 pub(crate) const W011_FIXTURE_XLSX_REL: &str = "fixtures/w011/a1_times_three.xlsx";
+
+/// Repo-relative location of the Manual twin's readable parts (dtc-j7n8.13).
+pub(crate) const W011_MANUAL_FIXTURE_PARTS_REL: &str = "fixtures/w011/a1_times_three_manual/parts";
+
+/// Repo-relative location of the Manual twin's committed binary.
+pub(crate) const W011_MANUAL_FIXTURE_XLSX_REL: &str = "fixtures/w011/a1_times_three_manual.xlsx";
 
 /// Repo-relative location of the POST-EDIT saved bytes (`A1 = 10`, `B1`
 /// cached 30) the `#[ignore]`d generator `emit_saved_fixture_for_excel_compare`
@@ -97,12 +112,21 @@ pub(crate) fn w011_saved_fixture_target_path() -> PathBuf {
     repo_root().join(W011_SAVED_FIXTURE_TARGET_REL)
 }
 
-/// The `a1_times_three` workbook as `.xlsx` bytes, zipped in memory from the
-/// committed parts. This is the byte source every W011 host-core test opens;
-/// later W011 beads (open command, ingest, edit/recalc, save/reopen) reuse it.
-pub(crate) fn w011_fixture_bytes() -> Vec<u8> {
-    let parts_dir = w011_fixture_parts_dir();
-    oxdoc_conformance::read_fixture_parts_as_xlsx(&parts_dir).unwrap_or_else(|err| {
+/// Directory holding the Manual twin's readable parts (dtc-j7n8.13).
+pub(crate) fn w011_manual_fixture_parts_dir() -> PathBuf {
+    repo_root().join(W011_MANUAL_FIXTURE_PARTS_REL)
+}
+
+/// Path of the Manual twin's committed binary.
+pub(crate) fn w011_manual_fixture_xlsx_path() -> PathBuf {
+    repo_root().join(W011_MANUAL_FIXTURE_XLSX_REL)
+}
+
+/// Zip a fixture's readable parts into `.xlsx` bytes in memory through
+/// OxDoc's own conformance zipper — the one byte source every W011 fixture
+/// (auto and Manual) is opened from.
+fn fixture_bytes_from_parts(parts_dir: &Path) -> Vec<u8> {
+    oxdoc_conformance::read_fixture_parts_as_xlsx(parts_dir).unwrap_or_else(|err| {
         panic!(
             "failed to zip the W011 fixture parts under {}: {err}",
             parts_dir.display()
@@ -110,15 +134,38 @@ pub(crate) fn w011_fixture_bytes() -> Vec<u8> {
     })
 }
 
-/// The committed binary fixture's bytes, read from disk.
-pub(crate) fn w011_committed_xlsx_bytes() -> Vec<u8> {
-    let path = w011_fixture_xlsx_path();
-    std::fs::read(&path).unwrap_or_else(|err| {
+/// A committed binary fixture's bytes, read from disk.
+fn committed_xlsx_bytes(path: &Path) -> Vec<u8> {
+    std::fs::read(path).unwrap_or_else(|err| {
         panic!(
             "failed to read the committed W011 fixture {}: {err}",
             path.display()
         )
     })
+}
+
+/// The `a1_times_three` workbook as `.xlsx` bytes, zipped in memory from the
+/// committed parts. This is the byte source every W011 host-core test opens;
+/// later W011 beads (open command, ingest, edit/recalc, save/reopen) reuse it.
+pub(crate) fn w011_fixture_bytes() -> Vec<u8> {
+    fixture_bytes_from_parts(&w011_fixture_parts_dir())
+}
+
+/// The committed binary fixture's bytes, read from disk.
+pub(crate) fn w011_committed_xlsx_bytes() -> Vec<u8> {
+    committed_xlsx_bytes(&w011_fixture_xlsx_path())
+}
+
+/// The Manual twin (`calcMode="manual"`, otherwise `a1_times_three`) as
+/// `.xlsx` bytes, zipped in memory from its committed parts — the byte
+/// source of the Wave 3a Manual calc-mode lane (dtc-j7n8.13).
+pub(crate) fn w011_manual_fixture_bytes() -> Vec<u8> {
+    fixture_bytes_from_parts(&w011_manual_fixture_parts_dir())
+}
+
+/// The Manual twin's committed binary bytes, read from disk.
+pub(crate) fn w011_manual_committed_xlsx_bytes() -> Vec<u8> {
+    committed_xlsx_bytes(&w011_manual_fixture_xlsx_path())
 }
 
 /// Open `.xlsx` bytes through OxDoc under [`LoadProfile::full()`] — the
@@ -398,6 +445,140 @@ mod tests {
         );
     }
 
+    /// The calc mode of the one `WorkbookHeader` in an event stream.
+    fn header_calc_mode(events: &[DocumentEvent]) -> CalcMode {
+        let headers: Vec<&WorkbookHeader> = events
+            .iter()
+            .filter_map(|event| match event {
+                DocumentEvent::WorkbookHeader(header) => Some(header),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            headers.len(),
+            1,
+            "exactly one WorkbookHeader in {events:#?}"
+        );
+        headers[0].calc_mode
+    }
+
+    /// Acceptance (dtc-j7n8.13): the Manual twin is `a1_times_three` with
+    /// exactly one difference — `calcMode="manual"`. Pinned at three levels
+    /// so the two fixtures can never drift apart in anything but the mode:
+    /// (1) the PARTS: same five names, every part byte-identical except
+    /// `xl/workbook.xml`, whose only textual difference is the `calcMode`
+    /// attribute value; (2) the OxDoc EVENT STREAM: the Manual twin's
+    /// header says `CalcMode::Manual`, and swapping that one field back to
+    /// `Automatic` makes the streams equal (so the two cells, the formula
+    /// topology, and every other event are identical); (3) the committed
+    /// BINARY: the same event stream and load ledger as its parts, under 5
+    /// KB, with no lossy ledger entry.
+    #[test]
+    fn w011_manual_fixture_is_the_auto_twin_with_calc_mode_manual() {
+        let auto_dir = w011_fixture_parts_dir();
+        let manual_dir = w011_manual_fixture_parts_dir();
+        println!("W011 auto fixture parts:   {}", auto_dir.display());
+        println!("W011 manual fixture parts: {}", manual_dir.display());
+
+        // (1) Parts: same names; byte-identical except workbook.xml, which
+        // differs only in the calcMode attribute value.
+        let mut manual_names = Vec::new();
+        collect_part_names(&manual_dir, &manual_dir, &mut manual_names);
+        manual_names.sort();
+        assert_eq!(manual_names, W011_FIXTURE_PART_NAMES);
+        for name in W011_FIXTURE_PART_NAMES {
+            let auto_part = std::fs::read_to_string(auto_dir.join(name)).unwrap();
+            let manual_part = std::fs::read_to_string(manual_dir.join(name)).unwrap();
+            if name == "xl/workbook.xml" {
+                assert!(
+                    auto_part.contains("<calcPr calcMode=\"auto\"/>"),
+                    "the auto fixture pins calcMode=\"auto\": {auto_part}"
+                );
+                assert!(
+                    manual_part.contains("<calcPr calcMode=\"manual\"/>"),
+                    "the Manual twin pins calcMode=\"manual\": {manual_part}"
+                );
+                assert_eq!(
+                    manual_part.replace("calcMode=\"manual\"", "calcMode=\"auto\""),
+                    auto_part,
+                    "xl/workbook.xml differs from the auto twin's in nothing but the calcMode value"
+                );
+            } else {
+                assert_eq!(
+                    manual_part, auto_part,
+                    "part {name} must be byte-identical to the auto twin's"
+                );
+            }
+        }
+
+        // (2) Event stream: Manual header; otherwise the auto stream.
+        let manual = open_full(&w011_manual_fixture_bytes());
+        let manual_events = manual.source_context.events();
+        assert_eq!(
+            header_calc_mode(manual_events),
+            CalcMode::Manual,
+            "OxDoc reads calcMode=\"manual\" into the WorkbookHeader"
+        );
+        let auto = open_full(&w011_fixture_bytes());
+        let auto_events = auto.source_context.events();
+        assert_eq!(header_calc_mode(auto_events), CalcMode::Automatic);
+        let manual_as_auto: Vec<DocumentEvent> = manual_events
+            .iter()
+            .cloned()
+            .map(|event| match event {
+                DocumentEvent::WorkbookHeader(mut header) => {
+                    header.calc_mode = CalcMode::Automatic;
+                    DocumentEvent::WorkbookHeader(header)
+                }
+                other => other,
+            })
+            .collect();
+        assert_eq!(
+            manual_as_auto.as_slice(),
+            auto_events,
+            "with the header's calc mode swapped back, the Manual twin's event stream IS the \
+             auto fixture's: same two cells, same B1 topology record, nothing else"
+        );
+        assert_eq!(manual.load_ledger, auto.load_ledger);
+        for entry in &manual.load_ledger.entries {
+            assert!(
+                matches!(
+                    entry.disposition,
+                    FidelityDisposition::Projected {
+                        status: ProjectionStatus::Direct,
+                        loss: None,
+                    }
+                ),
+                "ledger entry {} is not a direct lossless projection: {:?}",
+                entry.subject,
+                entry.disposition
+            );
+        }
+
+        // (3) The committed binary is the same workbook as its parts.
+        let xlsx_path = w011_manual_fixture_xlsx_path();
+        println!("W011 manual committed fixture: {}", xlsx_path.display());
+        let committed_bytes = w011_manual_committed_xlsx_bytes();
+        println!(
+            "W011 manual committed fixture size: {} bytes",
+            committed_bytes.len()
+        );
+        assert!(
+            committed_bytes.len() < 5 * 1024,
+            "committed Manual fixture must stay under 5 KB, got {} bytes",
+            committed_bytes.len()
+        );
+        let committed = open_full(&committed_bytes);
+        assert_eq!(
+            committed.source_context.events(),
+            manual_events,
+            "committed {} is out of sync with its parts; rerun \
+             regenerate_w011_manual_fixture_binary_from_parts with --ignored",
+            xlsx_path.display()
+        );
+        assert_eq!(committed.load_ledger, manual.load_ledger);
+    }
+
     fn collect_part_names(root: &Path, dir: &Path, names: &mut Vec<String>) {
         for entry in std::fs::read_dir(dir)
             .unwrap_or_else(|err| panic!("failed to read {}: {err}", dir.display()))
@@ -443,6 +624,44 @@ mod tests {
         assert_eq!(
             written.source_context.events(),
             from_parts.source_context.events()
+        );
+    }
+
+    /// Generator for the Manual twin (dtc-j7n8.13), the same shape as
+    /// `regenerate_w011_fixture_binary_from_parts`: rewrites
+    /// `fixtures/w011/a1_times_three_manual.xlsx` from its parts through
+    /// OxDoc's conformance zipper, then re-opens what it wrote. `#[ignore]`d
+    /// so the normal suite never writes into the repo:
+    ///
+    /// `cargo test -p dnacalc-host-core --offline regenerate_w011_manual_fixture_binary_from_parts -- --ignored`
+    #[test]
+    #[ignore = "generator: rewrites fixtures/w011/a1_times_three_manual.xlsx from parts/; run with --ignored when the parts change"]
+    fn regenerate_w011_manual_fixture_binary_from_parts() {
+        let parts_dir = w011_manual_fixture_parts_dir();
+        let xlsx_path = w011_manual_fixture_xlsx_path();
+        oxdoc_conformance::materialize_fixture_parts_to_xlsx(&parts_dir, &xlsx_path)
+            .unwrap_or_else(|err| {
+                panic!(
+                    "failed to materialize {} from {}: {err}",
+                    xlsx_path.display(),
+                    parts_dir.display()
+                )
+            });
+        println!(
+            "wrote {} ({} bytes) from {}",
+            xlsx_path.display(),
+            w011_manual_committed_xlsx_bytes().len(),
+            parts_dir.display()
+        );
+        let written = open_full(&w011_manual_committed_xlsx_bytes());
+        let from_parts = open_full(&w011_manual_fixture_bytes());
+        assert_eq!(
+            written.source_context.events(),
+            from_parts.source_context.events()
+        );
+        assert_eq!(
+            header_calc_mode(written.source_context.events()),
+            CalcMode::Manual
         );
     }
 }

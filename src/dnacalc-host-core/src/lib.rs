@@ -3219,6 +3219,227 @@ mod tests {
         );
     }
 
+    /// dtc-j7n8.13 (W011 Wave 3a) — the Manual calc-mode lane on REAL bytes,
+    /// through the commands and intents a host actually issues. The Manual
+    /// twin of the fixture (`calcMode="manual"`, otherwise `a1_times_three`)
+    /// opens with `Opened.recalc_path == Manual`; the mount snapshot shows
+    /// `workbook_calc` Manual, the sheet DIRTY (the load seeds it; F9 owed),
+    /// and `B1` = 21 with provenance `FileCached` (the file's cache, never
+    /// evaluated — the first time that variant is populated on a live
+    /// document). Pinned as observed (dtc-j7n8.24; flip when it lands): the
+    /// literal `A1` has NO projected cell at all before F9 — the Manual load
+    /// publishes formula caches only, and the grid projection is keyed off
+    /// published cells — although its authored `literal_text` is readable
+    /// through the session's authored window. `EnterGridCell { A1, "10" }`
+    /// is accepted (an entry receipt with its `GridChanged` patch, per
+    /// dtc-j7n8.18) but under Manual nothing recalculates: `B1` still 21,
+    /// still `FileCached` (the engine re-tags only `Calculated` values
+    /// `Stale`, see `manual_mode_save_before_recalc_writes_last_calculated_cache`
+    /// in `workbook.rs`), the sheet dirty on a fresh read. Then `Recalculate`:
+    /// accepted, its `CalcStateChanged` carries the drain's tick and Manual,
+    /// and the snapshot shows `B1` = 30 `Calculated { tick }`, `A1` = 10,
+    /// nothing dirty. Authored kinds are asserted before values (the
+    /// token-mismatch blank order, dtc-j7n8.5). The entry receipt's
+    /// `CalcStateChanged` gap under Manual is dtc-j7n8.20's, not asserted
+    /// here either way.
+    #[test]
+    fn manual_fixture_dispatch_keeps_file_cached_21_until_recalculate_then_30() {
+        let mut document = DocumentSession::Workbook(build_demo_workbook().unwrap());
+        let outcome = document
+            .execute(HostCommand::OpenXlsxBytes {
+                bytes: crate::xlsx_fixture::w011_manual_fixture_bytes(),
+                name: Some("a1_times_three_manual.xlsx".to_string()),
+            })
+            .expect("OxDoc opens and the engine ingests the committed W011 Manual twin");
+        println!("W011 manual OpenXlsxBytes outcome: {outcome:?}");
+        let HostCommandOutcome::Opened {
+            cells,
+            formulas_bound,
+            recalc_path,
+            ..
+        } = &outcome
+        else {
+            panic!("expected Opened, got {outcome:?}");
+        };
+        assert_eq!((*cells, *formulas_bound), (1, 1), "A1 literal, B1 bound");
+        assert_eq!(
+            *recalc_path,
+            LoadRecalcPath::Manual,
+            "the Manual twin takes the engine's Manual load path"
+        );
+
+        // Mount: Manual, dirty (F9 owed), and B1 renders the FILE's cache.
+        let mounted = document.snapshot();
+        let (grid_id, grid) = loaded_sheet1_grid(&mounted);
+        let calc = mounted
+            .workbook_calc
+            .as_ref()
+            .expect("a workbook snapshot carries workbook_calc");
+        assert_eq!(calc.mode, CalcModeProjection::Manual, "the file's mode");
+        assert!(
+            sheet_dirty_in(&mounted, &grid_id),
+            "OBSERVED: a Manual load seeds the sheet dirty — the first F9 is owed"
+        );
+        let projected_a1 = |grid: &GridProjection| {
+            grid.cells
+                .iter()
+                .find(|cell| cell.row == 1 && cell.col == 1)
+                .cloned()
+        };
+        println!("W011 manual mount: projected A1 = {:?}", projected_a1(grid));
+        assert_eq!(
+            projected_a1(grid),
+            None,
+            "OBSERVED (dtc-j7n8.24): the literal A1 has no projected cell before F9 — \
+             the Manual load publishes formula caches only"
+        );
+        let DocumentSession::Workbook(session) = &document else {
+            unreachable!("workbook session")
+        };
+        let sheet = workbook::parse_sheet_grid_node_id(&grid_id).unwrap();
+        let a1_authored = session
+            .grid_authored_cells(sheet, 1, 1, 1, 1)
+            .unwrap()
+            .into_iter()
+            .find(|cell| cell.row == 1 && cell.col == 1)
+            .expect("A1 is in the authored window even though nothing published it");
+        assert_eq!(a1_authored.literal_text.as_deref(), Some("7"));
+        let b1 = projected_cell(grid, 1, 2);
+        log_cell("manual mount", "B1", b1);
+        assert_eq!(
+            b1.authored.as_ref().map(|authored| authored.kind),
+            Some(GridAuthoredKindProjection::Formula),
+            "B1 authored Formula (None = token-mismatch blank)"
+        );
+        assert_eq!(
+            b1.authored
+                .as_ref()
+                .and_then(|authored| authored.source_text.as_deref()),
+            Some("=A1*3")
+        );
+        assert_eq!(b1.value, number("21"), "B1 renders the file's cached 21");
+        assert_eq!(
+            b1.provenance,
+            Some(ValueProvenanceProjection::FileCached),
+            "B1's 21 is FileCached on the live document: no engine pass ran"
+        );
+
+        // Edit under Manual: accepted, patched, NOT recalculated.
+        let receipt = document.dispatch(WorkspaceIntent::EnterGridCell {
+            grid: grid_id.clone(),
+            row: 1,
+            col: 1,
+            text: "10".to_string(),
+        });
+        let kinds: Vec<_> = receipt
+            .delta
+            .changes
+            .iter()
+            .map(dnacalc_skin_ir::session_channel::change_kind)
+            .collect();
+        println!(
+            "W011 manual edit: accepted={} changes={kinds:?}",
+            receipt.accepted
+        );
+        assert!(
+            receipt.accepted,
+            "A1 -> 10 is accepted under Manual: {:?}",
+            receipt.error
+        );
+        assert!(
+            kinds.contains(&"grid_cell_entered") && kinds.contains(&"grid_changed"),
+            "the entry receipt carries its entered change and the Sheet1 patch: {kinds:?}"
+        );
+        let edited = document.snapshot();
+        let (_, grid) = loaded_sheet1_grid(&edited);
+        println!(
+            "W011 manual edited: projected A1 = {:?}",
+            projected_a1(grid)
+        );
+        assert_eq!(
+            projected_a1(grid),
+            None,
+            "Manual: the edit published nothing, so A1 still has no projected cell \
+             (dtc-j7n8.24); its authored truth is 10"
+        );
+        let DocumentSession::Workbook(session) = &document else {
+            unreachable!("workbook session")
+        };
+        let a1_authored = session
+            .grid_authored_cells(sheet, 1, 1, 1, 1)
+            .unwrap()
+            .into_iter()
+            .find(|cell| cell.row == 1 && cell.col == 1)
+            .expect("A1 is in the authored window");
+        assert_eq!(
+            a1_authored.literal_text.as_deref(),
+            Some("10"),
+            "authored truth is the edit"
+        );
+        let b1 = projected_cell(grid, 1, 2);
+        log_cell("manual edited", "B1", b1);
+        assert_eq!(b1.value, number("21"), "Manual: B1 still shows 21, not 30");
+        assert_eq!(
+            b1.provenance,
+            Some(ValueProvenanceProjection::FileCached),
+            "B1's cache is still the file's — never Calculated, so never re-tagged Stale"
+        );
+        assert!(
+            sheet_dirty_in(&edited, &grid_id),
+            "a fresh read shows Sheet1 dirty behind the undrained edit"
+        );
+
+        // F9: the drain mints a tick, B1 = 30 Calculated on it.
+        let recalc_receipt = document.dispatch(WorkspaceIntent::Recalculate);
+        assert!(
+            recalc_receipt.accepted,
+            "Recalculate is accepted: {:?}",
+            recalc_receipt.error
+        );
+        let projection = recalc_receipt
+            .delta
+            .changes
+            .iter()
+            .find_map(|change| match change {
+                WorkspaceDeltaChange::CalcStateChanged(projection) => Some(projection),
+                _ => None,
+            })
+            .unwrap_or_else(|| {
+                panic!(
+                    "Recalculate carries a CalcStateChanged: {:?}",
+                    recalc_receipt.delta.changes
+                )
+            });
+        println!("W011 manual recalc: CalcStateChanged = {projection:?}");
+        assert_eq!(
+            projection.mode,
+            CalcModeProjection::Manual,
+            "F9 never flips the mode"
+        );
+        let tick = projection
+            .last_recalc_tick
+            .expect("a genuine drain mints a tick");
+        assert!(
+            projection.sheets.iter().all(|sheet| !sheet.dirty),
+            "the drain cleared every dirty flag: {:?}",
+            projection.sheets
+        );
+        let recalculated = document.snapshot();
+        let (_, grid) = loaded_sheet1_grid(&recalculated);
+        let a1 = projected_cell(grid, 1, 1);
+        let b1 = projected_cell(grid, 1, 2);
+        log_cell("manual recalculated", "A1", a1);
+        log_cell("manual recalculated", "B1", b1);
+        assert_eq!(b1.value, number("30"), "after Recalculate, B1 = A1*3 = 30");
+        assert_eq!(
+            b1.provenance,
+            Some(ValueProvenanceProjection::Calculated { tick_id: tick }),
+            "B1's 30 is Calculated on the drain's tick"
+        );
+        assert_eq!(a1.value, number("10"), "A1 publishes 10 after the drain");
+        assert!(!sheet_dirty_in(&recalculated, &grid_id));
+    }
+
     /// H5 acceptance (3): `Recalculate` with nothing dirty carries
     /// `drained_any == false` on the underlying outcome, surfaced as
     /// `last_recalc_tick == None` on the `CalcStateChanged` delta — the
