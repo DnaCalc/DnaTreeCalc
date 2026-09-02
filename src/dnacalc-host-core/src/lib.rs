@@ -42,11 +42,14 @@
 //! `ClearGridCell` dispatch (this module), the three-way
 //! `GridCellEntered { outcome }` receipt payload, and the `present.rs` A.4
 //! error-presentation map from a rejected write to a typed [`IntentError`].
-//! Since W011 (dtc-j7n8.18) an accepted entry receipt also carries the edited
-//! sheet's complete `GridChanged` projection alongside the `GridCellEntered`
-//! hint, so a retained mirror (`session_channel::apply_delta`) patches the
-//! sheet in place without a full snapshot. Cross-sheet poll fan-out and skins
-//! are out of H6 scope (H7 and later).
+//! Since W011 (dtc-j7n8.18) an accepted entry receipt also carries, beside
+//! the `GridCellEntered` hint, the edited sheet's complete `GridChanged`
+//! projection AND one `GridChanged` per other sheet whose projection the
+//! edit's cross-sheet recalc moved (found by a host-side pre/post peer diff,
+//! [`WorkbookSession::peer_grid_projections`]), so a retained mirror
+//! (`session_channel::apply_delta`) patches every changed sheet in place
+//! without a full snapshot. `Recalculate` fan-out (a genuine drain's
+//! `GridChanged`s) and skins are out of H6 scope (H7 and later).
 
 pub mod calc;
 pub mod command;
@@ -87,11 +90,15 @@ pub use workbook::{
     sheet_grid_node_id,
 };
 
+use std::collections::BTreeMap;
+
 use dnacalc_skin_ir::{
-    DefinedNameTargetIntent, GridEntryOutcomeProjection, IntentError, IntentReceipt,
-    NodeValueProjection, WorkspaceDelta, WorkspaceDeltaChange, WorkspaceIntent, WorkspaceState,
+    DefinedNameTargetIntent, GridEntryOutcomeProjection, GridProjection, IntentError,
+    IntentReceipt, NodeValueProjection, WorkspaceDelta, WorkspaceDeltaChange, WorkspaceIntent,
+    WorkspaceState,
 };
 use oxcalc_core::consumer::GridCellEntryOutcome;
+use oxcalc_core::structural::TreeNodeId;
 use oxfunc_core::value::CalcValue;
 
 // Re-export the engine document surface name the enum is built over, so callers
@@ -271,8 +278,15 @@ fn dispatch_enter_grid_cell(
         Ok(sheet) => sheet,
         Err(error) => return IntentReceipt::rejected(error),
     };
+    // Read BEFORE the engine mutates (see `grid_entry_receipt`): the only
+    // way to tell a peer sheet the edit's cross-sheet recalc moved from one
+    // it left alone. A rejected entry leaves the engine untouched, so the
+    // baseline is simply dropped on that path.
+    let peers_before = session.peer_grid_projections(sheet);
     match session.enter_grid_cell(sheet, row, col, text) {
-        Ok(outcome) => grid_cell_entered_receipt(session, sheet, grid, row, col, &outcome),
+        Ok(outcome) => {
+            grid_cell_entered_receipt(session, sheet, grid, row, col, &outcome, peers_before)
+        }
         Err(error) => IntentReceipt::rejected(present_grid_entry_rejection(&error)),
     }
 }
@@ -287,6 +301,9 @@ fn dispatch_clear_grid_cell(
         Ok(sheet) => sheet,
         Err(error) => return IntentReceipt::rejected(error),
     };
+    // Pre-edit peer baseline, as in `dispatch_enter_grid_cell`: a clear
+    // dirties cross-sheet readers of the cleared cell exactly like an entry.
+    let peers_before = session.peer_grid_projections(sheet);
     match session.clear_grid_cell(sheet, row, col) {
         Ok(view) => grid_entry_receipt(
             session,
@@ -296,6 +313,7 @@ fn dispatch_clear_grid_cell(
             col,
             GridEntryOutcomeProjection::Cleared,
             &view,
+            peers_before,
         ),
         Err(error) => IntentReceipt::rejected(present_grid_entry_rejection(&error)),
     }
@@ -554,18 +572,26 @@ fn dispatch_move_sheet(
     }
 }
 
+/// Every OTHER grid-backed sheet's projection in sheet order, as
+/// [`WorkbookSession::peer_grid_projections`] reads it — taken once before
+/// and once after an entry so the receipt can carry a `GridChanged` for each
+/// cross-sheet dependent the edit recalculated (see [`grid_entry_receipt`]).
+type PeerGridProjections = Result<Vec<(TreeNodeId, GridProjection)>, WorkbookSessionError>;
+
 /// Build the accepted entry receipt (§A.2's verb-façade row) from the engine's
 /// three-way [`GridCellEntryOutcome`]: the outcome's literal/formula/cleared
 /// value(s) mirrored into the `GridCellEntered` wire projection, plus the
 /// edited sheet's `GridChanged` built from the post-edit view the outcome
-/// already carries (see [`grid_entry_receipt`]).
+/// already carries and a `GridChanged` per peer sheet that moved against
+/// `peers_before` (see [`grid_entry_receipt`]).
 fn grid_cell_entered_receipt(
     session: &WorkbookSession,
-    sheet: oxcalc_core::structural::TreeNodeId,
+    sheet: TreeNodeId,
     grid: &dnacalc_skin_ir::NodeId,
     row: u32,
     col: u32,
     outcome: &GridCellEntryOutcome,
+    peers_before: PeerGridProjections,
 ) -> IntentReceipt {
     let (projected, view) = match outcome {
         GridCellEntryOutcome::Literal { value, view } => (
@@ -592,64 +618,133 @@ fn grid_cell_entered_receipt(
         ),
         GridCellEntryOutcome::Cleared { view } => (GridEntryOutcomeProjection::Cleared, view),
     };
-    grid_entry_receipt(session, sheet, grid, row, col, projected, view)
+    grid_entry_receipt(
+        session,
+        sheet,
+        grid,
+        row,
+        col,
+        projected,
+        view,
+        peers_before,
+    )
 }
 
 /// The accepted receipt every grid entry verb (`EnterGridCell` in all three
-/// outcomes, `ClearGridCell`) answers with — TWO changes in ONE delta:
+/// outcomes, `ClearGridCell`) answers with — the UI hint plus one
+/// `GridChanged` per sheet the edit moved, in ONE delta:
 ///
 /// 1. `GridCellEntered { outcome }` — the UI hint (what the entered text
 ///    resolved to); no projection-state effect of its own.
-/// 2. `GridChanged(projection)` — the edited sheet's complete windowed
+/// 2. `GridChanged(projection)` for the EDITED sheet — its complete windowed
 ///    projection (values, epochs, provenance AND the authored layer), built
 ///    by [`WorkbookSession::grid_projection_from_view`] from the post-edit
 ///    `view` the engine handed back with the outcome — the very readout a
-///    fresh `snapshot()` would project, through the same function, so a
-///    mirror that patches this in place (`session_channel::apply_delta`) ends
-///    up cell-for-cell equal to a full snapshot without shipping one
-///    (dtc-j7n8.18; W011's "mirrors can patch" contract).
+///    fresh `snapshot()` projects for that sheet, through the same function.
+/// 3. `GridChanged(projection)` for every OTHER sheet whose projection
+///    moved: under Automatic calc mode the engine recalculates cross-sheet
+///    dependents in the same transaction (OxCalc `propagate_cross_sheet_edit`
+///    — `Sheet2!A1 = =Sheet1!A1+Sheet1!A5` in the demo workbook) but hands
+///    back only the edited sheet's view and no "sheets I recalculated" fact,
+///    so the dispatch reads every peer sheet's projection BEFORE the edit
+///    (`peers_before`, [`WorkbookSession::peer_grid_projections`]) and again
+///    after, and emits a patch for each peer whose `GridProjection` is no
+///    longer equal — in sheet order, after the edited sheet's. A peer the
+///    edit did not touch (no cross-sheet reader of the edited cell; or any
+///    edit under Manual mode, where propagation is suppressed) stays out of
+///    the receipt, so an unrelated sheet never re-renders.
+///
+/// Every patch is the projection a fresh `snapshot()` would carry for that
+/// sheet, and a sheet without a patch has a projection equal to its pre-edit
+/// one, so a mirror that applies this delta (`session_channel::apply_delta`)
+/// ends up grid-for-grid equal to a full snapshot without shipping one
+/// (dtc-j7n8.18; W011's "mirrors can patch" contract) — proven on the
+/// single-sheet fixture and on the two-sheet demo workbook, under Automatic.
+/// What the delta does NOT cover: `workbook_calc` — under Manual mode an
+/// entry dirties the sheet without a recalc and the receipt carries no
+/// `CalcStateChanged`, so a mirror's dirty flag lags (dtc-j7n8.20).
 ///
 /// `from_seq`/`to_seq` stay `0`: host-core owns no projection-sequence
 /// authority yet — the executor that stamps sequences (the app dispatcher's
 /// snapshot republish, or a worker executor's `SessionResponse::for_receipt`)
-/// decides what a mirror sees. Emitting the patch here is what makes the
+/// decides what a mirror sees. Emitting the patches here is what makes the
 /// delta-only path possible; choosing it is the executor's call.
 ///
 /// The edit has ALREADY mutated the engine by the time this runs, so the
-/// receipt must stay `accepted` whatever happens next: if the projection
-/// cannot be built (the authored re-read fails — unreachable by construction
-/// on the sheet the engine just edited, but not a reason to `unwrap`), the
-/// receipt carries `FullReset` in place of the patch. `FullReset` is
-/// deliberately NOT mirror-applicable, so `apply_delta` reports a resync and
-/// a snapshot is shipped instead — the honest degrade: the edit landed, the
-/// mirror must resync — never a silent "nothing changed" delta over a
-/// changed grid.
+/// receipt must stay `accepted` whatever happens next: if any patch cannot
+/// be vouched for — the edited sheet's projection cannot be built, either
+/// peer readout failed, or the sheet list somehow moved under the edit (all
+/// unreachable by construction, but not a reason to `unwrap`) — the receipt
+/// carries `FullReset` in place of the patches. `FullReset` is deliberately
+/// NOT mirror-applicable, so `apply_delta` reports a resync and a snapshot is
+/// shipped instead — the honest degrade: the edit landed, the mirror must
+/// resync — never a silent "nothing changed" delta over a changed grid.
+// `too_many_arguments`: the eighth argument is the pre-edit peer baseline the
+// dispatch arms must capture before the engine call (dtc-j7n8.18, round 2);
+// bundling the address triple or the outcome into a struct for one private
+// call site would add a type without removing a fact.
+#[allow(clippy::too_many_arguments)]
 fn grid_entry_receipt(
     session: &WorkbookSession,
-    sheet: oxcalc_core::structural::TreeNodeId,
+    sheet: TreeNodeId,
     grid: &dnacalc_skin_ir::NodeId,
     row: u32,
     col: u32,
     outcome: GridEntryOutcomeProjection,
     view: &oxcalc_core::consumer::OxCalcTreeGridView,
+    peers_before: PeerGridProjections,
 ) -> IntentReceipt {
-    let grid_change = match session.grid_projection_from_view(sheet, view) {
-        Ok(projection) => WorkspaceDeltaChange::GridChanged(projection),
-        Err(_) => WorkspaceDeltaChange::FullReset,
-    };
+    let mut changes = vec![WorkspaceDeltaChange::GridCellEntered {
+        grid_node_id: grid.clone(),
+        row,
+        col,
+        outcome,
+    }];
+    match grid_entry_patches(session, sheet, view, peers_before) {
+        Some(patches) => changes.extend(patches.into_iter().map(WorkspaceDeltaChange::GridChanged)),
+        None => changes.push(WorkspaceDeltaChange::FullReset),
+    }
     IntentReceipt::accepted().with_delta(WorkspaceDelta {
         from_seq: 0,
         to_seq: 0,
-        changes: vec![
-            WorkspaceDeltaChange::GridCellEntered {
-                grid_node_id: grid.clone(),
-                row,
-                col,
-                outcome,
-            },
-            grid_change,
-        ],
+        changes,
     })
+}
+
+/// The `GridChanged` payloads an accepted entry receipt carries, in order:
+/// the edited sheet's post-edit projection, then every peer sheet whose
+/// projection differs from its `peers_before` reading (see
+/// [`grid_entry_receipt`], point 3). `None` when a patch cannot be vouched
+/// for — a failed projection build, a failed peer readout, or a peer sheet
+/// list that no longer matches the pre-edit one — which the receipt turns
+/// into `FullReset`.
+fn grid_entry_patches(
+    session: &WorkbookSession,
+    sheet: TreeNodeId,
+    view: &oxcalc_core::consumer::OxCalcTreeGridView,
+    peers_before: PeerGridProjections,
+) -> Option<Vec<GridProjection>> {
+    let edited = session.grid_projection_from_view(sheet, view).ok()?;
+    let before = peers_before.ok()?;
+    let after = session.peer_grid_projections(sheet).ok()?;
+    // An entry never adds, removes or reorders sheets; if the peer list
+    // moved anyway, nothing below can be vouched for.
+    if !before
+        .iter()
+        .map(|(peer, _)| *peer)
+        .eq(after.iter().map(|(peer, _)| *peer))
+    {
+        return None;
+    }
+    let before: BTreeMap<TreeNodeId, GridProjection> = before.into_iter().collect();
+    let mut patches = vec![edited];
+    patches.extend(
+        after
+            .into_iter()
+            .filter(|(peer, projection)| before.get(peer) != Some(projection))
+            .map(|(_, projection)| projection),
+    );
+    Some(patches)
 }
 
 /// A `CalcValue` -> `NodeValueProjection` rendering for the `GridCellEntered`
@@ -1230,11 +1325,12 @@ mod tests {
         );
     }
 
-    /// The receipt's single `GridChanged` change for `grid` — the edited
-    /// sheet's complete windowed projection a mirror patches in place
-    /// (dtc-j7n8.18). Exactly one per accepted entry receipt, naming the
-    /// edited grid, and never the `FullReset` degrade beside it: a missing,
-    /// doubled, or misaddressed patch is a contract break, not noise.
+    /// The receipt's `GridChanged` change naming `grid` — that sheet's
+    /// complete windowed projection a mirror patches in place (dtc-j7n8.18).
+    /// Exactly one per sheet on an accepted entry receipt (the edited sheet
+    /// always; a peer sheet only when the edit's cross-sheet recalc moved
+    /// it), and never the `FullReset` degrade beside it: a missing, doubled,
+    /// or misaddressed patch is a contract break, not noise.
     fn grid_changed_for<'a>(
         receipt: &'a IntentReceipt,
         grid: &dnacalc_skin_ir::NodeId,
@@ -1250,18 +1346,20 @@ mod tests {
             .changes
             .iter()
             .filter_map(|change| match change {
-                WorkspaceDeltaChange::GridChanged(projection) => Some(projection),
+                WorkspaceDeltaChange::GridChanged(projection)
+                    if projection.grid_node_id == *grid =>
+                {
+                    Some(projection)
+                }
                 _ => None,
             })
             .collect();
         assert_eq!(
             changed.len(),
             1,
-            "exactly one GridChanged change on an accepted entry receipt: {kinds:?}"
-        );
-        assert_eq!(
-            changed[0].grid_node_id, *grid,
-            "the GridChanged names the edited grid"
+            "exactly one GridChanged naming {grid:?} on an accepted entry receipt: {kinds:?} \
+             (patched grids: {:?})",
+            grid_changed_targets(receipt)
         );
         assert!(
             !receipt
@@ -1272,6 +1370,23 @@ mod tests {
             "no FullReset degrade rides beside a built GridChanged: {kinds:?}"
         );
         changed[0]
+    }
+
+    /// The grids the receipt's `GridChanged` changes name, in delta order —
+    /// the edited sheet first, then any peer sheet the edit moved
+    /// (dtc-j7n8.18, round 2).
+    fn grid_changed_targets(receipt: &IntentReceipt) -> Vec<dnacalc_skin_ir::NodeId> {
+        receipt
+            .delta
+            .changes
+            .iter()
+            .filter_map(|change| match change {
+                WorkspaceDeltaChange::GridChanged(projection) => {
+                    Some(projection.grid_node_id.clone())
+                }
+                _ => None,
+            })
+            .collect()
     }
 
     /// The receipt's single `GridCellEntered` change: `(grid, row, col,
@@ -1647,14 +1762,16 @@ mod tests {
     /// dtc-j7n8.18 acceptance — mirror-patchable deltas, on real bytes. The
     /// receipt from `EnterGridCell { A1, "10" }` on the loaded fixture carries
     /// BOTH `GridCellEntered { Literal 10 }` AND `GridChanged` for Sheet1's
-    /// grid — and nothing else — and the `GridChanged` projection already
-    /// holds the refreshed `B1` = 30 (`Calculated` on a tick newer than the
-    /// open recalc) plus the authored layer (`A1` literal `10`, `B1` still
-    /// `=A1*3`). Then the decisive check: `session_channel::apply_delta`
-    /// patches the PRE-edit snapshot with the receipt's delta alone, and the
-    /// patched mirror equals a fresh post-edit `snapshot()` — the grid cell
-    /// for cell, and the whole `WorkspaceState` (under Automatic an entry
-    /// changes nothing outside the edited grid). No snapshot crossed the
+    /// grid — and nothing else, this being a ONE-sheet workbook with no peer
+    /// to move — and the `GridChanged` projection already holds the refreshed
+    /// `B1` = 30 (`Calculated` on a tick newer than the open recalc) plus the
+    /// authored layer (`A1` literal `10`, `B1` still `=A1*3`). Then the
+    /// decisive check: `session_channel::apply_delta` patches the PRE-edit
+    /// snapshot with the receipt's delta alone, and the patched mirror equals
+    /// a fresh post-edit `snapshot()` — the grid cell for cell, and the whole
+    /// `WorkspaceState` (under Automatic on a single-sheet workbook an entry
+    /// changes nothing outside the edited grid; the cross-sheet half of the
+    /// contract is the demo-workbook tests below). No snapshot crossed the
     /// boundary; the mirror shows `B1` = 30 from the delta.
     #[test]
     fn enter_grid_cell_on_loaded_fixture_receipt_carries_grid_changed_that_patches_a_mirror() {
@@ -1762,8 +1879,8 @@ mod tests {
         );
         assert_eq!(
             mirror, after,
-            "under Automatic an entry changes nothing outside the edited grid: the patched \
-             mirror IS the fresh snapshot"
+            "under Automatic on the single-sheet fixture an entry changes nothing outside the \
+             edited grid: the patched mirror IS the fresh snapshot"
         );
         let b1_mirror = projected_cell(
             mirror.grids.get(&grid_id).expect("the mirror holds Sheet1"),
@@ -1780,6 +1897,373 @@ mod tests {
             calculated_tick("B1 in the mirror", b1_mirror),
             patch_tick,
             "the mirror's B1 carries the edit tick the patch carried"
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // dtc-j7n8.18 (round 2): the cross-sheet half of the mirror contract.
+    // The one-sheet fixture cannot show it; the demo workbook's
+    // `Sheet2!A1 = =Sheet1!A1+Sheet1!A5` can. An independent verifier
+    // refuted round 1 here: the engine recalculates Sheet2 inside the
+    // Sheet1 edit (OxCalc `propagate_cross_sheet_edit`) but the receipt
+    // patched Sheet1 only, so a mirror trusting the fully-applicable delta
+    // kept a stale Sheet2 with no resync signal.
+    // ------------------------------------------------------------------
+
+    /// The demo workbook as a document plus its two grids, addressed the way
+    /// a skin addresses them (`sheets[i].grid_node_id` off the snapshot).
+    fn demo_document_with_two_grids() -> (
+        DocumentSession,
+        dnacalc_skin_ir::NodeId,
+        dnacalc_skin_ir::NodeId,
+    ) {
+        let document = DocumentSession::Workbook(build_demo_workbook().unwrap());
+        let state = document.snapshot();
+        assert_eq!(
+            state.sheets.len(),
+            2,
+            "the demo publishes two sheets: {:?}",
+            state.sheets
+        );
+        let sheet1 = state.sheets[0].grid_node_id.clone();
+        let sheet2 = state.sheets[1].grid_node_id.clone();
+        (document, sheet1, sheet2)
+    }
+
+    /// The projected grid for `grid` in a `WorkspaceState`, failing with the
+    /// projected grid keys when it is missing.
+    fn grid_in<'a>(
+        state: &'a WorkspaceState,
+        grid: &dnacalc_skin_ir::NodeId,
+    ) -> &'a GridProjection {
+        state.grids.get(grid).unwrap_or_else(|| {
+            panic!(
+                "grid {grid:?} is projected; grids = {:?}",
+                state.grids.keys().collect::<Vec<_>>()
+            )
+        })
+    }
+
+    /// The `workbook_calc` dirty flag a state carries for `grid`'s sheet.
+    fn sheet_dirty_in(state: &WorkspaceState, grid: &dnacalc_skin_ir::NodeId) -> bool {
+        state
+            .workbook_calc
+            .as_ref()
+            .expect("a workbook snapshot carries workbook_calc")
+            .sheets
+            .iter()
+            .find(|sheet| sheet.grid_node_id == *grid)
+            .unwrap_or_else(|| panic!("workbook_calc has a row for {grid:?}"))
+            .dirty
+    }
+
+    /// dtc-j7n8.18 (round 2) — the cross-sheet half of the mirror contract.
+    /// On the demo workbook (`Sheet2!A1 = =Sheet1!A1+Sheet1!A5`), entering
+    /// `Sheet1!A1 = 7` makes the engine recalculate Sheet2 in the same
+    /// transaction (Automatic mode) — and the receipt says so: exactly
+    /// `[grid_cell_entered, grid_changed (Sheet1), grid_changed (Sheet2)]`,
+    /// Sheet2's patch carrying the RECALCULATED `A1` = 7 + 5 = 12 as
+    /// `Calculated` on the edit's own tick (one tick for the whole edit
+    /// transaction, W062 R4.8) with its authored cross-sheet formula intact.
+    /// The delta is fully applicable, and `apply_delta` over the pre-edit
+    /// snapshot equals a fresh post-edit `snapshot()` as a WHOLE
+    /// `WorkspaceState` — Sheet2 included: the mirror shows Sheet2!A1 = 12
+    /// without ever receiving a snapshot.
+    #[test]
+    fn enter_grid_cell_on_demo_workbook_receipt_patches_the_cross_sheet_dependent_too() {
+        use dnacalc_skin_ir::session_channel::{
+            apply_delta, change_kind, delta_is_fully_applicable,
+        };
+
+        let (mut document, sheet1, sheet2) = demo_document_with_two_grids();
+        let before = document.snapshot();
+        let sheet2_a1_before = projected_cell(grid_in(&before, &sheet2), 1, 1);
+        log_cell("pre-edit Sheet2", "A1", sheet2_a1_before);
+        assert_eq!(
+            sheet2_a1_before.value,
+            number("6"),
+            "Sheet2!A1 = Sheet1!A1 + Sheet1!A5 = 1 + 5 = 6 at mount"
+        );
+        let mount_tick = calculated_tick("Sheet2!A1 at mount", sheet2_a1_before);
+
+        let receipt = document.dispatch(WorkspaceIntent::EnterGridCell {
+            grid: sheet1.clone(),
+            row: 1,
+            col: 1,
+            text: "7".to_string(),
+        });
+        let kinds: Vec<_> = receipt.delta.changes.iter().map(change_kind).collect();
+        println!(
+            "W011 cross-sheet mirror: accepted={} changes={kinds:?} patched={:?}",
+            receipt.accepted,
+            grid_changed_targets(&receipt)
+        );
+        assert!(
+            receipt.accepted,
+            "Sheet1!A1 -> 7 is accepted: {:?}",
+            receipt.error
+        );
+        assert_eq!(
+            kinds,
+            vec!["grid_cell_entered", "grid_changed", "grid_changed"],
+            "the hint, the edited sheet's patch, then the recalculated dependent sheet's patch"
+        );
+        assert_eq!(
+            grid_changed_targets(&receipt),
+            vec![sheet1.clone(), sheet2.clone()],
+            "the edited sheet first, then the dependent it moved, in sheet order"
+        );
+
+        // The edited sheet's patch: A1 = 7, B1 = A1*10 = 70 on the edit tick.
+        let sheet1_patch = grid_changed_for(&receipt, &sheet1);
+        assert_eq!(projected_cell(sheet1_patch, 1, 1).value, number("7"));
+        let b1 = projected_cell(sheet1_patch, 1, 2);
+        log_cell("grid-changed Sheet1", "B1", b1);
+        assert_eq!(
+            b1.value,
+            number("70"),
+            "Sheet1!B1 = A1*10 recalculated to 70"
+        );
+        let edit_tick = calculated_tick("Sheet1!B1 in the patch", b1);
+        assert!(
+            edit_tick > mount_tick,
+            "the edit minted a tick newer than the mount ({edit_tick} > {mount_tick})"
+        );
+
+        // The dependent sheet's patch: the recalculated cross-sheet value,
+        // on the SAME tick, with the authored formula and the untouched
+        // literals beside it.
+        let sheet2_patch = grid_changed_for(&receipt, &sheet2);
+        let sheet2_a1 = projected_cell(sheet2_patch, 1, 1);
+        log_cell("grid-changed Sheet2", "A1", sheet2_a1);
+        assert_eq!(
+            sheet2_a1.value,
+            number("12"),
+            "the receipt carries the RECALCULATED Sheet2!A1 = Sheet1!A1 + Sheet1!A5 = 7 + 5 = 12"
+        );
+        assert_eq!(
+            sheet2_a1
+                .authored
+                .as_ref()
+                .and_then(|authored| authored.source_text.as_deref()),
+            Some("=Sheet1!A1+Sheet1!A5"),
+            "Sheet2!A1 keeps its authored cross-sheet formula"
+        );
+        assert_eq!(
+            calculated_tick("Sheet2!A1 in the patch", sheet2_a1),
+            edit_tick,
+            "one tick for the whole edit transaction: the dependent sheet recalculated on the \
+             edit's tick"
+        );
+        assert_eq!(projected_cell(sheet2_patch, 1, 2).value, number("100"));
+        assert_eq!(projected_cell(sheet2_patch, 2, 2).value, number("200"));
+
+        // Mirror: pre-edit snapshot + this delta == fresh post-edit
+        // snapshot, as a whole. The mirror never receives a snapshot.
+        assert!(
+            delta_is_fully_applicable(&receipt.delta),
+            "an executor may send this delta WITHOUT a snapshot: {kinds:?}"
+        );
+        let mut mirror = before.clone();
+        apply_delta(&mut mirror, &receipt.delta)
+            .expect("the entry receipt's delta patches a retained mirror in place");
+        let after = document.snapshot();
+        assert_eq!(
+            mirror.grids.get(&sheet2),
+            after.grids.get(&sheet2),
+            "the patched mirror's Sheet2 grid equals the fresh snapshot's, cell for cell"
+        );
+        assert_eq!(
+            mirror, after,
+            "the patched mirror IS the fresh snapshot: every sheet the edit moved rode the delta"
+        );
+        let sheet2_a1_mirror = projected_cell(grid_in(&mirror, &sheet2), 1, 1);
+        log_cell("mirror Sheet2", "A1", sheet2_a1_mirror);
+        assert_eq!(
+            sheet2_a1_mirror.value,
+            number("12"),
+            "the mirror shows Sheet2!A1 = 12 without ever receiving a snapshot"
+        );
+    }
+
+    /// dtc-j7n8.18 (round 2) — the other direction: a peer sheet the edit
+    /// did NOT move stays out of the receipt. `Sheet1!A2` has no cross-sheet
+    /// reader (Sheet2!A1 reads A1 and A5 only), so entering `Sheet1!A2 = 20`
+    /// recalculates Sheet1 alone: exactly `[grid_cell_entered, grid_changed
+    /// (Sheet1)]` with `B2` = 200 in the patch and no Sheet2 patch — and the
+    /// patched mirror still equals the fresh snapshot as a whole, because
+    /// Sheet2's projection did not change (A1 stays 6 on its mount tick).
+    /// This is the pin the app adapter's demo test relies on: an unrelated
+    /// sheet never re-renders on a keystroke.
+    #[test]
+    fn enter_grid_cell_on_demo_workbook_leaves_an_unmoved_peer_sheet_out_of_the_receipt() {
+        use dnacalc_skin_ir::session_channel::{apply_delta, change_kind};
+
+        let (mut document, sheet1, sheet2) = demo_document_with_two_grids();
+        let before = document.snapshot();
+
+        let receipt = document.dispatch(WorkspaceIntent::EnterGridCell {
+            grid: sheet1.clone(),
+            row: 2,
+            col: 1,
+            text: "20".to_string(),
+        });
+        let kinds: Vec<_> = receipt.delta.changes.iter().map(change_kind).collect();
+        println!(
+            "W011 unmoved peer: accepted={} changes={kinds:?} patched={:?}",
+            receipt.accepted,
+            grid_changed_targets(&receipt)
+        );
+        assert!(
+            receipt.accepted,
+            "Sheet1!A2 -> 20 is accepted: {:?}",
+            receipt.error
+        );
+        assert_eq!(
+            kinds,
+            vec!["grid_cell_entered", "grid_changed"],
+            "the hint and the edited sheet's patch only: Sheet2 read nothing the edit touched"
+        );
+        assert_eq!(
+            grid_changed_targets(&receipt),
+            vec![sheet1.clone()],
+            "no GridChanged names the unmoved Sheet2"
+        );
+        let sheet1_patch = grid_changed_for(&receipt, &sheet1);
+        assert_eq!(projected_cell(sheet1_patch, 2, 1).value, number("20"));
+        assert_eq!(
+            projected_cell(sheet1_patch, 2, 2).value,
+            number("200"),
+            "Sheet1!B2 = A2*10 recalculated to 200"
+        );
+
+        let mut mirror = before.clone();
+        apply_delta(&mut mirror, &receipt.delta)
+            .expect("the entry receipt's delta patches a retained mirror in place");
+        let after = document.snapshot();
+        assert_eq!(
+            after.grids.get(&sheet2),
+            before.grids.get(&sheet2),
+            "Sheet2's projection is untouched by an edit it does not read"
+        );
+        assert_eq!(
+            mirror, after,
+            "the patched mirror IS the fresh snapshot: nothing that did not ride the delta moved"
+        );
+        let sheet2_a1 = projected_cell(grid_in(&after, &sheet2), 1, 1);
+        assert_eq!(sheet2_a1.value, number("6"), "Sheet2!A1 stays 6");
+        assert_eq!(
+            calculated_tick("Sheet2!A1 after the unrelated edit", sheet2_a1),
+            calculated_tick(
+                "Sheet2!A1 at mount",
+                projected_cell(grid_in(&before, &sheet2), 1, 1)
+            ),
+            "Sheet2!A1 keeps its mount tick: it was not recalculated"
+        );
+    }
+
+    /// dtc-j7n8.18 (round 2), Manual mode on the two-sheet demo — what the
+    /// delta proves there and what it does not. Under Manual the engine
+    /// suppresses the edit's recalc AND its cross-sheet propagation, so
+    /// entering `Sheet1!A1 = 7` leaves Sheet2's projection untouched (A1
+    /// still 6, still `Calculated` on its mount tick): the receipt is exactly
+    /// `[grid_cell_entered, grid_changed (Sheet1)]`, Sheet1's patch carrying
+    /// the stale-but-honest published values (`A1` still 1, `Stale`) under
+    /// the new authored literal `7`, and the patched mirror's GRIDS equal
+    /// the fresh snapshot's. The known gap, pinned so its closure is visible:
+    /// the receipt carries no `CalcStateChanged`, so the mirror's
+    /// `workbook_calc` (Sheet1 is now dirty on a fresh read) lags — that is
+    /// dtc-j7n8.20's scope; when it lands, the last two asserts flip.
+    #[test]
+    fn manual_mode_entry_on_demo_workbook_patches_grids_only_and_pins_the_calc_state_gap() {
+        use dnacalc_skin_ir::session_channel::{apply_delta, change_kind};
+
+        let (mut document, sheet1, sheet2) = demo_document_with_two_grids();
+        let mode_receipt = document.dispatch(WorkspaceIntent::SetCalcMode {
+            mode: CalcModeProjection::Manual,
+        });
+        assert!(mode_receipt.accepted, "SetCalcMode(Manual) is accepted");
+        // The mirror's baseline is taken AFTER the mode switch, so it holds
+        // Manual and every sheet clean — exactly what a retained mirror that
+        // applied the SetCalcMode receipt would hold.
+        let before = document.snapshot();
+        assert!(
+            !sheet_dirty_in(&before, &sheet1),
+            "Sheet1 is clean at the baseline"
+        );
+
+        let receipt = document.dispatch(WorkspaceIntent::EnterGridCell {
+            grid: sheet1.clone(),
+            row: 1,
+            col: 1,
+            text: "7".to_string(),
+        });
+        let kinds: Vec<_> = receipt.delta.changes.iter().map(change_kind).collect();
+        println!(
+            "W011 manual cross-sheet: accepted={} changes={kinds:?} patched={:?}",
+            receipt.accepted,
+            grid_changed_targets(&receipt)
+        );
+        assert!(
+            receipt.accepted,
+            "Sheet1!A1 -> 7 is accepted under Manual: {:?}",
+            receipt.error
+        );
+        assert_eq!(
+            kinds,
+            vec!["grid_cell_entered", "grid_changed"],
+            "Manual suppresses cross-sheet propagation: no Sheet2 patch, and no CalcStateChanged \
+             yet (dtc-j7n8.20)"
+        );
+        let sheet1_patch = grid_changed_for(&receipt, &sheet1);
+        let a1 = projected_cell(sheet1_patch, 1, 1);
+        log_cell("grid-changed Sheet1 (Manual)", "A1", a1);
+        assert_eq!(
+            a1.authored
+                .as_ref()
+                .and_then(|authored| authored.literal_text.as_deref()),
+            Some("7"),
+            "the patch carries the new authored literal"
+        );
+        assert_eq!(
+            a1.value,
+            number("1"),
+            "Manual: the published value stays the pre-edit 1, not silently 7"
+        );
+        assert!(
+            matches!(a1.provenance, Some(ValueProvenanceProjection::Stale { .. })),
+            "Manual: the stale published value is tagged Stale: {:?}",
+            a1.provenance
+        );
+
+        let mut mirror = before.clone();
+        apply_delta(&mut mirror, &receipt.delta)
+            .expect("the entry receipt's delta patches a retained mirror in place");
+        let after = document.snapshot();
+        assert_eq!(
+            after.grids.get(&sheet2),
+            before.grids.get(&sheet2),
+            "Manual: Sheet2 was not recalculated, so its projection is exactly the baseline's"
+        );
+        assert_eq!(
+            mirror.grids, after.grids,
+            "every GRID the mirror holds equals the fresh snapshot's"
+        );
+
+        // The pinned known gap (dtc-j7n8.20): the mirror's calc state lags.
+        assert!(
+            sheet_dirty_in(&after, &sheet1),
+            "a fresh read shows Sheet1 dirty after the Manual-mode edit"
+        );
+        assert!(
+            !sheet_dirty_in(&mirror, &sheet1),
+            "KNOWN GAP dtc-j7n8.20: the receipt carries no CalcStateChanged, so the mirror's \
+             Sheet1 dirty flag lags the fresh snapshot — flip this assert when that bead lands"
+        );
+        assert_ne!(
+            mirror.workbook_calc, after.workbook_calc,
+            "KNOWN GAP dtc-j7n8.20: workbook_calc is the one field the entry delta does not \
+             cover under Manual — flip this assert when that bead lands"
         );
     }
 

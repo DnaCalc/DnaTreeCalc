@@ -11,9 +11,10 @@
 //!
 //! ## Deltas vs the snapshot (W011, dtc-j7n8.18)
 //!
-//! An accepted entry receipt now carries the edited sheet's complete
-//! `GridChanged` beside its `GridCellEntered` hint, so a retained mirror
-//! could patch in place. This dispatcher deliberately KEEPS the snapshot
+//! An accepted entry receipt now carries, beside its `GridCellEntered` hint,
+//! the edited sheet's complete `GridChanged` plus one per other sheet the
+//! edit's cross-sheet recalc moved, so a retained mirror could patch every
+//! changed sheet in place. This dispatcher deliberately KEEPS the snapshot
 //! republish: host-core stamps `from_seq`/`to_seq` = 0 on every receipt (it
 //! owns no projection-sequence authority), while the workspace signal carries
 //! this dispatcher's own monotonic `projection_seq` — so
@@ -278,8 +279,9 @@ impl WorkbookHostDispatcher {
     /// republishes the full snapshot (dependents recalc live in every open
     /// lens) and the receipt's own delta; a rejected receipt publishes
     /// nothing (host-core guarantees no mutation on that path). The delta's
-    /// `GridChanged` (dtc-j7n8.18) is NOT applied onto the workspace signal —
-    /// see the module doc: host-core stamps no sequence, the snapshot is the
+    /// `GridChanged`s (dtc-j7n8.18: the edited sheet's, and any peer sheet
+    /// the edit moved) are NOT applied onto the workspace signal — see the
+    /// module doc: host-core stamps no sequence, the snapshot is the
     /// authoritative path, and the delta rides alongside for delta observers.
     fn publish_after_receipt(&self, receipt: &IntentReceipt) {
         if receipt.accepted {

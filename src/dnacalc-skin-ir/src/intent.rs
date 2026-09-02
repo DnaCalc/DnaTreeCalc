@@ -978,11 +978,15 @@ pub enum WorkspaceDeltaChange {
     /// write (H6, §A.2's verb-façade table: `GridCellEntered { outcome }`).
     /// This is a UI hint carrying the three-way outcome the entry verb
     /// resolved to; it has no projection-state effect of its own. What the
-    /// mirror actually patches is the edited sheet's `GridChanged`, which
-    /// host-core emits in the SAME delta (W011, dtc-j7n8.18) carrying the
-    /// complete windowed projection — values, provenance and the authored
-    /// layer — so the narrower `GridAuthoredChanged` is not needed beside it
-    /// (§A.3).
+    /// mirror actually patches is the `GridChanged` host-core emits in the
+    /// SAME delta (W011, dtc-j7n8.18) for the edited sheet — the complete
+    /// windowed projection: values, provenance and the authored layer, so the
+    /// narrower `GridAuthoredChanged` is not needed beside it (§A.3) — plus
+    /// one more `GridChanged` per other sheet the edit's cross-sheet recalc
+    /// moved (Automatic mode; host-core diffs every peer sheet's projection
+    /// before and after the edit). Under Manual mode the delta carries no
+    /// `CalcStateChanged`, so a mirror's `workbook_calc` dirty flag lags
+    /// (dtc-j7n8.20).
     GridCellEntered {
         grid_node_id: NodeId,
         row: u32,

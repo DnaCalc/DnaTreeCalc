@@ -732,11 +732,17 @@ impl WorkbookSession {
 
     /// The ONE recipe that turns an engine grid readout into the sheet's
     /// windowed [`GridProjection`] — used by [`WorkbookSession::snapshot`] for
-    /// every sheet AND by the entry-verb dispatch (`lib.rs`) to build the
+    /// every sheet (through [`WorkbookSession::grid_projection`]) AND by the
+    /// entry-verb dispatch (`lib.rs`) to build the edited sheet's
     /// `GridChanged` delta from the post-edit view the engine hands back
     /// (`GridCellEntryOutcome::{Literal, Formula, Cleared}::view`, dtc-j7n8.18).
-    /// One function, so the mirror patch a receipt carries and the fresh
-    /// snapshot a caller re-reads can never disagree about a grid.
+    /// One function, so the patch a receipt carries for a sheet and the fresh
+    /// snapshot a caller re-reads can never disagree about THAT sheet's grid.
+    /// It says nothing about the other sheets: an edit's cross-sheet recalc
+    /// (OxCalc `propagate_cross_sheet_edit`, Automatic mode) moves dependent
+    /// sheets the engine does not hand back with the outcome — the dispatch
+    /// finds those with [`WorkbookSession::peer_grid_projections`] before and
+    /// after the edit.
     ///
     /// The authored window is the bounding box of the view's populated cells
     /// (min/max row/col across `view.cells`), or `1..=1` when the sheet is
@@ -781,6 +787,56 @@ impl WorkbookSession {
         ))
     }
 
+    /// One sheet's current windowed [`GridProjection`], read fresh from the
+    /// engine (`grid_view`) and built by the single
+    /// [`WorkbookSession::grid_projection_from_view`] recipe — the per-sheet
+    /// unit [`WorkbookSession::snapshot`] and
+    /// [`WorkbookSession::peer_grid_projections`] are both assembled from, so
+    /// a snapshot grid and a receipt patch for the same sheet are the same
+    /// bytes. A sheet without a grid backing is the internal-invariant
+    /// [`WorkbookSessionError::SheetNotGridBacked`].
+    ///
+    /// [`GridProjection`]: dnacalc_skin_ir::GridProjection
+    pub fn grid_projection(
+        &self,
+        sheet: TreeNodeId,
+    ) -> Result<GridProjection, WorkbookSessionError> {
+        let view = self
+            .context
+            .grid_view(&self.workspace_id, sheet)?
+            .ok_or(WorkbookSessionError::SheetNotGridBacked { node: sheet })?;
+        self.grid_projection_from_view(sheet, &view)
+    }
+
+    /// Every grid-backed sheet's projection EXCEPT `edited`'s, in sheet order
+    /// (`(sheet node, projection)` pairs) — the peer readout the entry-verb
+    /// dispatch (`lib.rs`, dtc-j7n8.18) takes once BEFORE and once AFTER an
+    /// edit to find the cross-sheet dependents the engine recalculated in the
+    /// same transaction (OxCalc `propagate_cross_sheet_edit`, Automatic
+    /// mode): a peer whose projection moved gets its own `GridChanged` on the
+    /// receipt; one that did not is left out, so an unrelated sheet never
+    /// re-renders. The engine hands back only the edited sheet's view with
+    /// the outcome and surfaces no "sheets I recalculated" fact, so this is a
+    /// host-side diff over every peer, twice per edit — the same order of
+    /// work as one `snapshot()`, acceptable for the W011 slice; an
+    /// engine-surfaced recalculated-sheet set is the successor that retires
+    /// the pre-edit read (dtc-j7n8.22, filed beside dtc-j7n8.20).
+    ///
+    /// Each projection comes from [`WorkbookSession::grid_projection`], so a
+    /// "moved" peer is decided by `GridProjection` equality — the exact value
+    /// a mirror holds — never by an epoch heuristic.
+    pub fn peer_grid_projections(
+        &self,
+        edited: TreeNodeId,
+    ) -> Result<Vec<(TreeNodeId, GridProjection)>, WorkbookSessionError> {
+        self.sheets()?
+            .into_iter()
+            .map(|row| row.node_id)
+            .filter(|sheet| *sheet != edited)
+            .map(|sheet| Ok((sheet, self.grid_projection(sheet)?)))
+            .collect()
+    }
+
     /// The full-workspace projection: every grid-backed sheet's windowed
     /// [`GridProjection`], the workbook's complete defined-name catalog, and
     /// its calc-mode/recalc state, assembled into one [`WorkspaceState`] a skin
@@ -802,12 +858,7 @@ impl WorkbookSession {
     pub fn snapshot(&self) -> Result<WorkspaceState, WorkbookSessionError> {
         let mut grids = BTreeMap::new();
         for row in self.sheets()? {
-            let sheet = row.node_id;
-            let view = self
-                .context
-                .grid_view(&self.workspace_id, sheet)?
-                .ok_or(WorkbookSessionError::SheetNotGridBacked { node: sheet })?;
-            let projection = self.grid_projection_from_view(sheet, &view)?;
+            let projection = self.grid_projection(row.node_id)?;
             grids.insert(projection.grid_node_id.clone(), projection);
         }
 

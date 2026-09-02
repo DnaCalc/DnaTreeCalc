@@ -422,10 +422,23 @@ literal/formula/clear branch with OxFml as the sole interpretation authority
 (`Literal`/`Formula`/`Cleared`) plus, in the same delta, the edited sheet's
 complete `GridChanged` projection (values, provenance, authored layer — built
 by the one `WorkbookSession::grid_projection_from_view` recipe `snapshot()`
-also uses), so `session_channel::apply_delta` patches a retained mirror to
-exactly the fresh snapshot without shipping one (`dtc-j7n8.18`; the app
-dispatcher still republishes the snapshot because host-core stamps no
-projection sequence — documented in `workbook_dispatcher.rs`). A no-op
+also uses) and one `GridChanged` per other sheet whose projection the edit's
+cross-sheet recalc moved (the engine hands back only the edited sheet's view,
+so host-core diffs every peer sheet's projection before and after the edit —
+`WorkbookSession::peer_grid_projections`; an unmoved peer stays out of the
+receipt). Proven under Automatic calc mode: `session_channel::apply_delta`
+over the pre-edit snapshot equals the fresh post-edit snapshot as a whole
+`WorkspaceState`, on the single-sheet fixture and on the two-sheet demo
+workbook (`Sheet2!A1 = =Sheet1!A1+Sheet1!A5` recalculates to 12 inside the
+`Sheet1!A1 = 7` receipt) — without shipping a snapshot (`dtc-j7n8.18`; the
+app dispatcher still republishes the snapshot because host-core stamps no
+projection sequence — documented in `workbook_dispatcher.rs`). Not covered:
+under Manual calc mode the entry receipt carries no `CalcStateChanged`, so a
+mirror's `workbook_calc` dirty flag lags the fresh snapshot (grids still
+agree; pinned by
+`manual_mode_entry_on_demo_workbook_patches_grids_only_and_pins_the_calc_state_gap`,
+owned by `dtc-j7n8.20`); and a genuine-drain `Recalculate` receipt carries no
+`GridChanged` at all (`dtc-j7n8.22`). A no-op
 `Recalculate` still emits no `GridChanged`. `dtc-j7n8.6` proves it on the xlsx-loaded
 fixture: `A1` 7 → 10 publishes `B1` = 30, and `=A1*4` into `B1` is accepted
 (no host-side `=` classification; the former `=`-prefix and no-`ClearCell`
