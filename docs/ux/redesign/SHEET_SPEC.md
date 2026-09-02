@@ -42,6 +42,10 @@ upgrade behind the same contracts, never a redesign.
 
 - Entry: type-to-replace, F2 edit-in-place, Enter/Tab commit+move, Esc exact revert — all via
   `EnterGridCell` three-way outcome; unresolved names surface per the route-K error table.
+  The overlay editor owns keyboard focus from the moment it opens (F2 / type-to-replace with
+  its seed character / double-click) until commit or revert, then hands it back to the grid
+  section; a key that reaches the section while an editor is open refocuses the editor rather
+  than re-running the select grammar (dtc-j7n8.26).
 - Navigation: arrows, PgUp/PgDn, Home/Ctrl+Home; Ctrl+arrow edge-jump requires a host query
   (G4 model-query; degrade: window-local jump with atlas note).
 - Selection: single cell + table cell today; **ranges, row/col ops, fill grips, grid clipboard,

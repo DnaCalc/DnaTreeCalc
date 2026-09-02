@@ -116,6 +116,18 @@
 //! `zoom = 1.0` + `scroll = 0` reproduce the earlier beads' exact geometry
 //! (`GridMetrics::scaled(1.0)` is the identity, `Viewport::default()` is the
 //! origin), so the S3.11 click test's cell math is unchanged.
+//!
+//! **dtc-j7n8.26 (editor focus ownership).** The overlay editor OWNS keyboard
+//! focus from the moment it mounts until commit / revert: the Editable overlay
+//! focuses the bridge's `<textarea>` (caret at the end, so type-to-replace keeps
+//! typing after its seed character) through a mount effect; the section's
+//! keydown pipeline routes any key that still reaches the section while EDITING
+//! back into the editor ([`section_key_route`]) instead of re-running the SELECT
+//! grammar over it; and an accepted commit / Esc revert hands focus back to the
+//! `<section>` so the next arrow / F2 / typed key lands in the grammar again.
+//! Before this the bridge textarea was never focused: after F2 or a typed key
+//! every further keystroke hit the section (re-seeding the editor with THAT
+//! character; Enter = Move(Down)) until the textarea itself was clicked.
 
 use std::sync::Arc;
 
@@ -152,8 +164,8 @@ pub use render_plan::{
     value_text,
 };
 pub use selection::{
-    ActionAvailability, GridExtent, KeyBinding, KeyChord, NavAction, SheetAction,
-    action_availability, next_active, resolve_action, sheet_keymap, typed_char,
+    ActionAvailability, GridExtent, KeyBinding, KeyChord, NavAction, SectionKeyRoute, SheetAction,
+    action_availability, next_active, resolve_action, section_key_route, sheet_keymap, typed_char,
 };
 pub use viewport::{
     BOUNDED_SCALE_INTEREST_NOTE, EDGE_JUMP_DEGRADE_REASON, EdgeDir, ScrollCoalescer, Tier,
@@ -774,11 +786,32 @@ impl StageSurface for SheetStage {
         // honest availability. While the overlay editor's textarea is focused the
         // bridge owns every key (Enter=commit, Esc=revert, arrows=caret), so the
         // text-entry guard bails first — the select grammar never steals them.
+        // dtc-j7n8.26: that guard is the first arm of [`section_key_route`]; the
+        // second answers a key that reaches the section itself WHILE EDITING
+        // (focus fell out of the editor: a header click, a focus race) by handing
+        // focus back to the open editor's textarea — never by running the SELECT
+        // grammar over it (which re-seeded the editor with each typed character
+        // and turned Enter into Move(Down)).
         let keymap = sheet_keymap();
         let keydown_workspace = workspace;
         let on_section_keydown = move |ev: leptos::ev::KeyboardEvent| {
-            if event_target_is_text_entry(&ev) {
-                return;
+            match section_key_route(event_target_is_text_entry(&ev), editing.get_untracked()) {
+                SectionKeyRoute::EditorOwns => return,
+                SectionKeyRoute::RefocusEditor => {
+                    // Put focus back into the open editor and consume the key. A
+                    // read-only note (EDIT on, but no textarea to hand the key to)
+                    // falls through to the SELECT grammar so arrows still move
+                    // away from it.
+                    let refocused = section_ref
+                        .get()
+                        .is_some_and(|section| focus_editor_textarea(&section));
+                    if refocused {
+                        ev.prevent_default();
+                        ev.stop_propagation();
+                        return;
+                    }
+                }
+                SectionKeyRoute::SelectGrammar => {}
             }
             let Some((grid, extent_rows, extent_cols)) = keydown_workspace.with_untracked(|ws| {
                 active_grid(ws).map(|g| (g.grid_node_id.clone(), g.max_rows, g.max_cols))
@@ -961,6 +994,24 @@ impl StageSurface for SheetStage {
                     let rejections_now = editor_rejections.get_untracked();
                     let commit_grid = grid.clone();
                     let commit_dispatch = dispatch.with_value(Arc::clone);
+                    // dtc-j7n8.26: the editor OWNS keyboard focus the moment it
+                    // mounts. The bridge's `<textarea>` is a child node this stage
+                    // holds no ref to, so the wrapper `<div>` is the anchor: an
+                    // effect created HERE — inside the overlay's render closure, so
+                    // it is disposed with the overlay and re-created on every
+                    // remount, including the rejection remount whose fresh textarea
+                    // would otherwise drop focus to `<body>` — runs after the DOM is
+                    // patched, queries the textarea and focuses it with the caret at
+                    // the END: F2 / double-click continue after the existing text,
+                    // type-to-replace keeps typing after its seed character. Without
+                    // this, focus stayed on the section and every further key
+                    // re-ran the SELECT grammar over the open editor.
+                    let editor_ref = NodeRef::<leptos::html::Div>::new();
+                    Effect::new(move |_| {
+                        if let Some(wrapper) = editor_ref.get() {
+                            focus_editor_textarea(&wrapper);
+                        }
+                    });
                     let on_event = Callback::new(move |event: BridgeEvent| match event {
                         // Verbatim text; the host classifies `=`-vs-literal, never
                         // the skin (SHELL_SPEC §6 layering law).
@@ -1005,6 +1056,12 @@ impl StageSurface for SheetStage {
                                     // dtc-m20s: reveal the post-commit cell (a commit
                                     // at the window edge scrolls the next cell in).
                                     reveal_active_cell(viewport, zoom, next.0, next.1);
+                                    // dtc-j7n8.26: the editor is closing — hand focus
+                                    // back to the section so the next arrow / F2 /
+                                    // typed key lands in the SELECT grammar (the
+                                    // focused textarea's removal would otherwise
+                                    // drop focus to `<body>`).
+                                    focus_section(section_ref);
                                 }
                             }
                         }
@@ -1013,6 +1070,7 @@ impl StageSurface for SheetStage {
                         BridgeEvent::RevertRequested => {
                             editor_rejections.set(Vec::new());
                             editing.set(false);
+                            focus_section(section_ref);
                         }
                         _ => {}
                     });
@@ -1022,6 +1080,7 @@ impl StageSurface for SheetStage {
                             data-testid="sheet-cell-editor"
                             data-editable="true"
                             data-cell=format!("{row}:{col}")
+                            node_ref=editor_ref
                             style=position
                         >
                             <FormulaBridgeDegrade
@@ -1279,6 +1338,37 @@ fn reveal_active_cell(viewport: RwSignal<Viewport>, zoom: RwSignal<f64>, row: u3
             v.scroll_x = next_x;
             v.scroll_y = next_y;
         });
+    }
+}
+
+/// Give the overlay editor's `<textarea>` under `root` keyboard focus with the
+/// caret at the END of its text (Excel: F2 / a double-click continue after the
+/// existing text; a typed character keeps typing after itself). `root` is the
+/// overlay wrapper (the mount effect) or the stage section (the keydown refocus
+/// route). Returns whether a textarea was found and focused — `false` for a
+/// read-only note, which renders no editor. Native builds compile this but never
+/// call it (no effects / event handlers under `ssr`).
+fn focus_editor_textarea(root: &web_sys::Element) -> bool {
+    let Ok(Some(node)) = root.query_selector(".dna-sheet__cell-editor textarea") else {
+        return false;
+    };
+    let Ok(area) = node.dyn_into::<web_sys::HtmlTextAreaElement>() else {
+        return false;
+    };
+    let _ = area.focus();
+    // Caret to the end (the browser clamps `u32::MAX` to the text length).
+    let _ = area.set_selection_range(u32::MAX, u32::MAX);
+    true
+}
+
+/// Hand keyboard focus back to the stage's `<section>` (the SELECT grammar's
+/// listener) as the overlay editor closes on commit / revert. Without this the
+/// focused textarea's removal drops focus to `<body>`, and the next arrow /
+/// Enter / F2 reaches neither the grammar nor the shell. A native no-op (refs are
+/// unbound under `ssr`).
+fn focus_section(section_ref: NodeRef<leptos::html::Section>) {
+    if let Some(section) = section_ref.get() {
+        let _ = section.focus();
     }
 }
 

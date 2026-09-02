@@ -1755,6 +1755,32 @@ mod tests {
         assert!(bench.contains("grid-template-rows: 40px 88px minmax(0, 1fr) 26px"));
     }
 
+    /// Every `--dna-*` token the cockpit stylesheet resolves through `var(...)`
+    /// is emitted by Strand's `css_custom_properties` (dtc-j7n8.26): the mast
+    /// dirty dot (`.dna-mast__dirty-dot`, `background: var(--dna-amber)`)
+    /// rendered TRANSPARENT — an accepted edit put the dot in the DOM but showed
+    /// nothing — because Strand never emitted `--dna-amber`. A reference to an
+    /// unemitted token is a silent no-paint in the browser, so it fails here.
+    #[test]
+    fn every_token_the_shell_stylesheet_references_is_emitted_by_strand() {
+        let emitted = css_custom_properties(Theme::CockpitLight, Density::Working);
+        let stylesheet = format!("{}\n{}", shell_css(44), COMMAND_DECK_CSS);
+        let mut missing: Vec<&str> = stylesheet
+            .match_indices("var(--dna-")
+            .map(|(at, _)| {
+                let rest = &stylesheet[at + "var(".len()..];
+                let end = rest.find([')', ',']).unwrap_or(rest.len());
+                &rest[..end]
+            })
+            .filter(|token| !emitted.contains(&format!("{token}:")))
+            .collect();
+        missing.dedup();
+        assert!(
+            missing.is_empty(),
+            "the shell stylesheet references tokens Strand never emits: {missing:?}"
+        );
+    }
+
     /// SHELL_SPEC §7 red-error registry liveness (bead dtc-1tk.5): a node
     /// carrying a rejected/cycle-blocked calc-state, or any binding
     /// diagnostic, is an error signal; a clean node with neither is not.

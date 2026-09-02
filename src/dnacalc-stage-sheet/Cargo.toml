@@ -49,6 +49,11 @@ web-sys = { version = "0.3", features = [
     "Performance",
     "WheelEvent",
     "ResizeObserver",
+    # dtc-j7n8.26 overlay-editor focus handover: the stage focuses the bridge's
+    # `<textarea>` (caret at the end) when the editor mounts and hands focus
+    # back to its `<section>` on commit / revert.
+    "HtmlDivElement",
+    "HtmlTextAreaElement",
 ] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

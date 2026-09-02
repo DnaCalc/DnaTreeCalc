@@ -389,11 +389,64 @@ pub fn typed_char(key: &str) -> Option<char> {
     }
 }
 
+/// Where a keydown that reached the Sheet `<section>` goes, resolved from two
+/// facts the wiring reads off the event and the stage: whether the event's
+/// target is a text-entry element, and whether the stage is in EDIT. This is the
+/// FIRST gate of the keydown pipeline (dtc-j7n8.26): the SELECT grammar (arrows,
+/// F2, type-to-replace) may only run when no overlay editor is open — otherwise a
+/// printable key re-seeds the open editor with itself (typing `xyz` leaves `z`)
+/// and Enter moves the selection instead of committing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SectionKeyRoute {
+    /// The key originated inside a text-entry element (the overlay editor's
+    /// `<textarea>`): the bridge owns it — Enter = commit, Esc = revert,
+    /// arrows = caret. The section does nothing.
+    EditorOwns,
+    /// EDIT is on but the key reached the section itself (focus fell out of the
+    /// editor): hand keyboard focus back to the open editor and consume the
+    /// key. The SELECT grammar must NOT run over an open editor.
+    RefocusEditor,
+    /// SELECT mode: the nav / edit-entry grammar resolves the key.
+    SelectGrammar,
+}
+
+/// Resolve a section keydown's route (see [`SectionKeyRoute`]). Pure over the
+/// two facts, so the wiring's first gate is unit-tested here.
+#[must_use]
+pub const fn section_key_route(target_is_text_entry: bool, editing: bool) -> SectionKeyRoute {
+    if target_is_text_entry {
+        SectionKeyRoute::EditorOwns
+    } else if editing {
+        SectionKeyRoute::RefocusEditor
+    } else {
+        SectionKeyRoute::SelectGrammar
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     const DEMO: GridExtent = GridExtent { rows: 5, cols: 2 };
+
+    /// dtc-j7n8.26 — the keydown pipeline's first gate. A key from inside the
+    /// editor's textarea is the bridge's; a key that reaches the section WHILE
+    /// EDITING must route focus back into the editor rather than run the SELECT
+    /// grammar (the re-seed / Enter-moves bug); only SELECT mode resolves keys.
+    #[test]
+    fn section_key_route_never_runs_the_select_grammar_over_an_open_editor() {
+        assert_eq!(section_key_route(true, true), SectionKeyRoute::EditorOwns);
+        assert_eq!(section_key_route(true, false), SectionKeyRoute::EditorOwns);
+        assert_eq!(
+            section_key_route(false, true),
+            SectionKeyRoute::RefocusEditor,
+            "EDIT on + a key at the section = refocus the editor, never re-seed it"
+        );
+        assert_eq!(
+            section_key_route(false, false),
+            SectionKeyRoute::SelectGrammar
+        );
+    }
 
     /// The four arrow moves step the active cell by one in the expected axis,
     /// interior to the extent (no clamping in play here).

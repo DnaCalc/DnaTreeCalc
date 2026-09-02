@@ -1325,6 +1325,222 @@ async fn calc_sheet_click_opens_editor_and_commits() {
     );
 }
 
+/// The element that currently owns keyboard focus — where the NEXT keystroke
+/// lands (what the desktop shell's injected input follows).
+fn active_element() -> web_sys::Element {
+    web_sys::window()
+        .unwrap()
+        .document()
+        .unwrap()
+        .active_element()
+        .expect("something is focused")
+}
+
+fn is_focused(element: &web_sys::Node) -> bool {
+    active_element().is_same_node(Some(element))
+}
+
+fn same_node(a: &web_sys::Node, b: &web_sys::Node) -> bool {
+    a.is_same_node(Some(b))
+}
+
+/// The overlay editor's OWN degrade textarea (scoped to the overlay element, so
+/// it can never be confused with the app's bridge-slot editor).
+fn overlay_textarea(editor: &web_sys::Element) -> web_sys::HtmlTextAreaElement {
+    editor
+        .query_selector(".dna-bridge--degrade .dna-bridge__input")
+        .unwrap()
+        .expect("the overlay carries the degrade editor's textarea")
+        .unchecked_into()
+}
+
+/// Focus the sheet section as a real pointer select does (the stage's
+/// pointerdown handler calls `section.focus()`), so the keys that follow start
+/// from the desktop click-through's exact state: focus on the grid.
+fn focus_sheet_section(host: &web_sys::HtmlElement) -> web_sys::HtmlElement {
+    let root: web_sys::HtmlElement = query(host, "[data-testid=\"sheet-root\"]")
+        .expect("the sheet root mounts")
+        .unchecked_into();
+    root.focus().unwrap();
+    root
+}
+
+/// dtc-j7n8.26 — the bead's repro, with every key dispatched at whatever element
+/// actually holds focus (the way the desktop shell's injected input reaches the
+/// page): focus on the grid section, F2 -> the overlay editor mounts seeded with
+/// A1's authored `1` AND its textarea owns keyboard focus at once (before the
+/// fix the section kept focus, so every further key re-ran the SELECT grammar);
+/// the buffer takes `10`; Enter at the focused element COMMITS and closes the
+/// overlay (before: Move(Down) on the section, overlay left open); focus returns
+/// to the section so ArrowUp then F2 re-open A1 seeded with the committed `10`;
+/// Esc reverts and hands focus back too. And the mast dirty dot is not just in
+/// the DOM but PAINTED — it resolves `var(--dna-amber)`, which Strand never
+/// emitted before, so the click-through saw no marker.
+#[wasm_bindgen_test]
+async fn calc_sheet_f2_hands_focus_to_the_editor_and_enter_commits_back_to_the_grid() {
+    let host = mount();
+    next_tick().await;
+    next_tick().await;
+    next_tick().await;
+    let root = focus_sheet_section(&host);
+    let root_target: web_sys::EventTarget = root.clone().unchecked_into();
+    assert!(
+        is_focused(&root),
+        "precondition: the grid section holds focus, as after a pointer select"
+    );
+
+    // F2 on the section (nothing selected yet -> the origin, A1 = literal 1).
+    press_chord(&root_target, "F2", false, false, false);
+    next_tick().await;
+    next_tick().await;
+    let editor = query(&host, "[data-testid=\"sheet-cell-editor\"]")
+        .expect("F2 opens the overlay editor at A1");
+    let area = overlay_textarea(&editor);
+    assert_eq!(area.value(), "1", "F2 seeds A1's authored literal");
+    assert!(
+        is_focused(&area),
+        "the overlay textarea owns keyboard focus as soon as the editor mounts \
+         (was: focus stayed on the section, so the next keys re-ran the SELECT grammar)"
+    );
+
+    // Replace the buffer with 10 (the browser's own text insertion, which a
+    // synthetic keydown cannot trigger, is the input event) and press Enter at
+    // the FOCUSED element — where a real keystroke lands.
+    area.set_value("10");
+    area.dispatch_event(&web_sys::Event::new("input").unwrap())
+        .unwrap();
+    let focused: web_sys::EventTarget = active_element().unchecked_into();
+    press_chord(&focused, "Enter", false, false, false);
+    next_tick().await;
+    next_tick().await;
+    assert!(
+        query(&host, "[data-testid=\"sheet-cell-editor\"]").is_none(),
+        "Enter at the focused element COMMITS and closes the overlay \
+         (was: Move(Down) on the section with the overlay left open)"
+    );
+    assert!(
+        is_focused(&root),
+        "an accepted commit hands focus back to the grid section"
+    );
+
+    // The mast dirty dot is in the DOM AND painted: a computed background that
+    // is not transparent proves `var(--dna-amber)` resolved to a Strand token.
+    let dot =
+        query(&host, ".dna-mast__dirty-dot").expect("an accepted edit lights the mast dirty dot");
+    let background = web_sys::window()
+        .unwrap()
+        .get_computed_style(&dot)
+        .unwrap()
+        .expect("computed style")
+        .get_property_value("background-color")
+        .unwrap();
+    assert!(
+        !matches!(background.as_str(), "" | "transparent" | "rgba(0, 0, 0, 0)"),
+        "the dirty dot must be painted, got background-color {background:?}"
+    );
+
+    // Focus is back in the grammar: ArrowUp (the commit advanced to A2) then F2
+    // re-open A1, now seeded with the committed 10.
+    let focused: web_sys::EventTarget = active_element().unchecked_into();
+    press_chord(&focused, "ArrowUp", false, false, false);
+    next_tick().await;
+    let focused: web_sys::EventTarget = active_element().unchecked_into();
+    press_chord(&focused, "F2", false, false, false);
+    next_tick().await;
+    next_tick().await;
+    let editor = query(&host, "[data-testid=\"sheet-cell-editor\"]")
+        .expect("F2 from the section re-opens the editor");
+    assert_eq!(
+        editor.get_attribute("data-cell").as_deref(),
+        Some("1:1"),
+        "ArrowUp from A2 landed on A1 (the arrow reached the SELECT grammar)"
+    );
+    assert_eq!(
+        overlay_textarea(&editor).value(),
+        "10",
+        "A1 now holds the committed 10"
+    );
+
+    // Esc at the focused element reverts and hands focus back as well.
+    let focused: web_sys::EventTarget = active_element().unchecked_into();
+    press_chord(&focused, "Escape", false, false, false);
+    next_tick().await;
+    next_tick().await;
+    assert!(
+        query(&host, "[data-testid=\"sheet-cell-editor\"]").is_none(),
+        "Escape at the focused textarea reverts and closes the overlay"
+    );
+    assert!(
+        is_focused(&root),
+        "a revert hands focus back to the grid section"
+    );
+}
+
+/// dtc-j7n8.26 — type-to-replace: a printable key on the grid section opens the
+/// editor seeded with THAT character and hands it focus, so the SECOND keystroke
+/// — dispatched at whatever element is focused, exactly as the desktop's injected
+/// input reaches the page — lands in the editor instead of re-running the SELECT
+/// grammar (before the fix `1` then `0` left a re-seeded editor reading `0`;
+/// typing `xyz` left `z`).
+#[wasm_bindgen_test]
+async fn calc_sheet_type_to_replace_keeps_its_seed_under_the_next_keystroke() {
+    let host = mount();
+    next_tick().await;
+    next_tick().await;
+    next_tick().await;
+    let root = focus_sheet_section(&host);
+    let root_target: web_sys::EventTarget = root.clone().unchecked_into();
+
+    press_chord(&root_target, "1", false, false, false);
+    next_tick().await;
+    next_tick().await;
+    let editor = query(&host, "[data-testid=\"sheet-cell-editor\"]")
+        .expect("a printable key opens the overlay editor (type-to-replace)");
+    let area = overlay_textarea(&editor);
+    assert_eq!(
+        area.value(),
+        "1",
+        "the editor seeds with the typed character"
+    );
+    assert!(
+        is_focused(&area),
+        "the seeded editor's textarea owns keyboard focus at once"
+    );
+
+    // The second key lands wherever focus is.
+    let focused: web_sys::EventTarget = active_element().unchecked_into();
+    press_chord(&focused, "0", false, false, false);
+    next_tick().await;
+    next_tick().await;
+    let editor_after = query(&host, "[data-testid=\"sheet-cell-editor\"]")
+        .expect("the editor stays open under the second keystroke");
+    assert!(
+        same_node(&editor_after, &editor),
+        "the second keystroke does NOT remount the editor (a re-seed would)"
+    );
+    assert_eq!(
+        overlay_textarea(&editor_after).value(),
+        "1",
+        "the seed character survives the second keystroke (was: re-seeded to `0`)"
+    );
+    assert!(is_focused(&area), "focus stays in the editor");
+
+    // The browser's own insertion appends (the input event): the buffer reads
+    // 10 and Enter at the focused element commits it.
+    area.set_value("10");
+    area.dispatch_event(&web_sys::Event::new("input").unwrap())
+        .unwrap();
+    let focused: web_sys::EventTarget = active_element().unchecked_into();
+    press_chord(&focused, "Enter", false, false, false);
+    next_tick().await;
+    next_tick().await;
+    assert!(
+        query(&host, "[data-testid=\"sheet-cell-editor\"]").is_none(),
+        "Enter commits the appended buffer and closes the overlay"
+    );
+    assert!(is_focused(&root), "focus returns to the grid section");
+}
+
 /// S3 follow-up (resize-reflow, dtc-4erh): the Canvas2D redraw effect reacts to
 /// workspace / scroll / zoom / selection — but a window/container RESIZE is none
 /// of those, so a `ResizeObserver` on the canvas re-fires the effect to

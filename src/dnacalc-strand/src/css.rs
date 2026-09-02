@@ -14,6 +14,7 @@ use crate::geometry::{
     GAP_SCALE, MOTION_DURATION_MAX_MS, MOTION_DURATION_MIN_MS, RADIUS_CARD, RADIUS_CHIP,
     RADIUS_PANEL,
 };
+use crate::palette::AMBER;
 use crate::theme::{Density, Theme};
 
 /// The stable emission order of every `--dna-*` custom property.
@@ -36,6 +37,7 @@ const PROPERTY_ORDER: &[&str] = &[
     "chrome-ink-2",
     "accent",
     "accent-soft",
+    "amber",
     "amber-soft",
     "green-soft",
     "signal-soft",
@@ -83,6 +85,12 @@ fn property_value(
         "chrome-ink-2" => t.chrome_ink_2.to_hex(),
         "accent" => t.accent.to_hex(),
         "accent-soft" => t.accent_soft.to_hex(),
+        // The one non-themed color (STRAND §2: amber is the single saturated
+        // attention channel, unchanged by theme). `ThemeTokens::resolve("amber")`
+        // already answers it; emitting it here is what lets a stylesheet resolve
+        // `var(--dna-amber)` — the mast dirty dot and the stale liveness dot
+        // referenced it and painted transparent until then (dtc-j7n8.26).
+        "amber" => AMBER.to_hex(),
         "amber-soft" => t.amber_soft.to_hex(),
         "green-soft" => t.green_soft.to_hex(),
         "signal-soft" => t.signal_soft.to_hex(),
@@ -150,6 +158,7 @@ mod tests {
   --dna-chrome-ink-2: #8FB3BC;
   --dna-accent: #318995;
   --dna-accent-soft: #E2EEF0;
+  --dna-amber: #FFB301;
   --dna-amber-soft: #FFF4DB;
   --dna-green-soft: #E4EFEC;
   --dna-signal-soft: #FFEDDB;
