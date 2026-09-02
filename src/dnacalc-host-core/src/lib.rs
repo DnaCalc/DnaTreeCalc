@@ -2630,6 +2630,197 @@ mod tests {
         );
     }
 
+    /// dtc-j7n8.15 (Wave 3c) at the command surface — the defined-name
+    /// fixture lane through the commands and intents a host actually
+    /// issues. `OpenXlsxBytes` -> the mount snapshot's `defined_names` lists
+    /// the LOADED `TheInput` (workbook scope, static rect `A1`) and `D1`
+    /// projects `14` with authored `=TheInput*2` -> `EnterGridCell { A1,
+    /// "10" }` is accepted and its `GridChanged` patch carries `D1 = 20`
+    /// (recalculated THROUGH the name; the patched mirror equals the fresh
+    /// snapshot) -> `SaveActiveXlsx` returns bytes whose raw OxDoc events
+    /// carry the `DefinedName` event and `D1 = Formula { "TheInput*2",
+    /// cached: Number(20) }`. The `workbook.rs` lane carries the
+    /// session-level assertions; this one adds the receipt and the snapshot
+    /// mirror of the catalog.
+    #[test]
+    fn execute_named_input_open_lists_the_name_and_save_reopens_with_cached_20() {
+        use crate::xlsx_fixture::{raw_defined_names, w011_named_input_fixture_bytes};
+        use dnacalc_skin_ir::session_channel::{
+            apply_delta, change_kind, delta_is_fully_applicable,
+        };
+
+        let mut document = DocumentSession::Workbook(build_demo_workbook().unwrap());
+        let outcome = document
+            .execute(HostCommand::OpenXlsxBytes {
+                bytes: w011_named_input_fixture_bytes(),
+                name: Some("named_input.xlsx".to_string()),
+            })
+            .expect("OxDoc opens and the engine ingests the committed defined-name fixture");
+        let HostCommandOutcome::Opened {
+            sheet_count,
+            cells,
+            formulas_bound,
+            recalc_path,
+            ..
+        } = &outcome
+        else {
+            panic!("expected Opened, got {outcome:?}");
+        };
+        assert_eq!(
+            (*sheet_count, *cells, *formulas_bound),
+            (1, 1, 1),
+            "one sheet; A1 the literal; D1 bound"
+        );
+        assert_eq!(*recalc_path, LoadRecalcPath::Automatic);
+
+        // PRE: the loaded truth through the skin's mount surface — the
+        // catalog lists the loaded name, D1 resolved through it.
+        let before = document.snapshot();
+        println!(
+            "W011 named-input snapshot: defined_names = {:?}",
+            before.defined_names
+        );
+        assert_eq!(
+            before.defined_names.entries.len(),
+            1,
+            "the mount snapshot lists exactly the loaded name: {:?}",
+            before.defined_names
+        );
+        let entry = &before.defined_names.entries[0];
+        assert_eq!(entry.name, "TheInput");
+        assert_eq!(entry.scope, DefinedNameScopeProjection::Workbook);
+        assert_eq!(
+            entry.target,
+            DefinedNameTargetProjection::Static(GridRectProjection {
+                top_row: 1,
+                left_col: 1,
+                bottom_row: 1,
+                right_col: 1,
+            })
+        );
+        assert!(!entry.is_dynamic);
+        let (grid_id, grid) = loaded_sheet1_grid(&before);
+        let d1_before = projected_cell(grid, 1, 4);
+        log_cell("named-input pre", "D1", d1_before);
+        assert_eq!(
+            d1_before
+                .authored
+                .as_ref()
+                .and_then(|authored| authored.source_text.as_deref()),
+            Some("=TheInput*2"),
+            "D1 authored Formula at open (None = token-mismatch blank)"
+        );
+        assert_eq!(
+            d1_before.value,
+            number("14"),
+            "D1 = TheInput*2 = 14 at open (not #NAME?)"
+        );
+        let open_tick = calculated_tick("D1 at open", d1_before);
+
+        // EDIT: A1 7 -> 10 through the intent.
+        let receipt = document.dispatch(WorkspaceIntent::EnterGridCell {
+            grid: grid_id.clone(),
+            row: 1,
+            col: 1,
+            text: "10".to_string(),
+        });
+        let kinds: Vec<_> = receipt.delta.changes.iter().map(change_kind).collect();
+        println!(
+            "W011 named-input fixture receipt: accepted={} changes={kinds:?}",
+            receipt.accepted
+        );
+        assert!(
+            receipt.accepted,
+            "A1 -> 10 on the loaded fixture is accepted: {:?}",
+            receipt.error
+        );
+        let (entered_grid, row, col, _) = grid_cell_entered_change(&receipt);
+        assert_eq!((entered_grid, row, col), (&grid_id, 1, 1));
+        assert_eq!(
+            grid_changed_targets(&receipt),
+            vec![grid_id.clone()],
+            "one sheet, one patch"
+        );
+        let patch = grid_changed_for(&receipt, &grid_id);
+        let a1_patch = projected_cell(patch, 1, 1);
+        let d1_patch = projected_cell(patch, 1, 4);
+        log_cell("named-input grid-changed", "A1", a1_patch);
+        log_cell("named-input grid-changed", "D1", d1_patch);
+        assert_eq!(a1_patch.value, number("10"), "A1 = 10 in the patch");
+        assert_eq!(
+            d1_patch.value,
+            number("20"),
+            "the receipt carries the RECALCULATED D1 = TheInput*2 = 10*2 = 20"
+        );
+        assert_eq!(
+            d1_patch
+                .authored
+                .as_ref()
+                .and_then(|authored| authored.source_text.as_deref()),
+            Some("=TheInput*2"),
+            "D1 keeps its authored formula through the name"
+        );
+        let edit_tick = calculated_tick("D1 in the patch", d1_patch);
+        assert!(
+            edit_tick > open_tick,
+            "the edit minted a tick newer than the open-recalc ({edit_tick} > {open_tick})"
+        );
+
+        // Mirror: pre-edit snapshot + this delta == fresh post-edit snapshot;
+        // the catalog rides along unchanged (a cell edit is not a name edit).
+        assert!(
+            delta_is_fully_applicable(&receipt.delta),
+            "an executor may send this delta WITHOUT a snapshot: {kinds:?}"
+        );
+        let mut mirror = before.clone();
+        apply_delta(&mut mirror, &receipt.delta)
+            .expect("the entry receipt's delta patches a retained mirror in place");
+        let after = document.snapshot();
+        assert_eq!(
+            mirror, after,
+            "the patched mirror IS the fresh snapshot, defined_names included"
+        );
+        assert_eq!(after.defined_names, before.defined_names);
+
+        // SAVE: the bytes' raw OxDoc events, no engine.
+        let (bytes, save_ledger) = execute_save("named-input, after edit", &mut document);
+        let dropped = dropped_entries(&save_ledger);
+        assert!(dropped.is_empty(), "no Dropped ledger entries: {dropped:?}");
+        let reopened = open_xlsx_raw(&bytes);
+        log_ledger(
+            "W011 named-input SaveActiveXlsx reopen load ledger",
+            &reopened.load_ledger,
+        );
+        let names = raw_defined_names(&reopened);
+        println!("W011 named-input SaveActiveXlsx reopen: raw defined names = {names:?}");
+        assert_eq!(
+            names.len(),
+            1,
+            "the DefinedName event is present: {names:?}"
+        );
+        assert_eq!(names[0].name, "TheInput");
+        assert_eq!(names[0].formula_text, "Sheet1!$A$1");
+        assert_eq!(names[0].scope_sheet_id, None, "workbook-scoped");
+        let cells = raw_sheet_cells(&reopened, "Sheet1");
+        println!("W011 named-input SaveActiveXlsx reopen: raw Sheet1 cells = {cells:?}");
+        assert_eq!(cells.len(), 2, "exactly A1 and D1: {cells:?}");
+        assert_eq!(
+            raw_cell_payload(&cells, 1, 1),
+            &CellPayload::Number(10.0),
+            "A1 is saved as the edited literal 10"
+        );
+        assert_eq!(
+            raw_cell_payload(&cells, 1, 4),
+            &CellPayload::Formula {
+                region: None,
+                text: Some("TheInput*2".to_string()),
+                cached: Some(Box::new(CellPayload::Number(20.0))),
+            },
+            "THE TRAP, named: D1 keeps its formula text TheInput*2 AND its cached <v> is the \
+             fresh 20, not the file's stale 14"
+        );
+    }
+
     /// dtc-j7n8.7 acceptance (2): `SaveActiveXlsx` on a `RichTree` session
     /// is the typed [`HostCommandError::UnsupportedByModel`] — no workbook,
     /// no OxDoc source — never a panic; the session is untouched.

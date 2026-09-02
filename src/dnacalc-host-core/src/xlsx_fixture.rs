@@ -41,6 +41,20 @@
 //! event-stream pin to the parts. Single-cell cross-sheet references only:
 //! the cross-sheet RANGE gap is calc-5kqg.67 (OxCalc), not this fixture's.
 //!
+//! The Wave 3c defined-name fixture (dtc-j7n8.15) lives beside them:
+//! `<repo>/fixtures/w011/named_input/{parts/,README.md}` plus the committed
+//! `named_input.xlsx` — one sheet, two unstyled cells, `A1 = 7` and
+//! `D1 = =TheInput*2` cached 14, and a WORKBOOK-scoped defined name
+//! `TheInput -> Sheet1!$A$1` in `xl/workbook.xml`'s `<definedNames>`. Five
+//! parts (the name lives in the workbook part). Same zipping, same generator
+//! pattern (`regenerate_w011_named_input_fixture_binary_from_parts`), same
+//! event-stream pin to the parts. The name's text is stored exactly as OxCalc
+//! re-renders a static name on projection (`Sheet1!$A$1`: absolute,
+//! sheet-qualified): OxDoc's round-trip policy refuses a defined-name TEXT
+//! change with a typed rejection, so a sheet-qualified rect spelled with
+//! relative anchors in the source (`Sheet1!A1`) would be re-rendered on
+//! projection and turn every save of this fixture into a refusal.
+//!
 //! Compiled only under `cfg(test)`: `oxdoc_conformance` is a dev-dependency
 //! and must never become a normal one.
 //!
@@ -53,8 +67,8 @@ use std::io::Cursor;
 use std::path::{Path, PathBuf};
 
 use oxdoc_model::{
-    CellPayload, DocumentEvent, DocumentFidelityLedger, DocumentFidelityLedgerEntry,
-    FidelityDisposition, PackedCellAddr,
+    CellPayload, DefinedNameSpec, DocumentEvent, DocumentFidelityLedger,
+    DocumentFidelityLedgerEntry, FidelityDisposition, PackedCellAddr,
 };
 use oxdoc_xlsx::{HostOwnedXlsxSource, LoadProfile, open_host_owned_xlsx_source};
 
@@ -82,6 +96,15 @@ pub(crate) const W011_CROSS_SHEET_FIXTURE_PARTS_REL: &str = "fixtures/w011/cross
 
 /// Repo-relative location of the cross-sheet fixture's committed binary.
 pub(crate) const W011_CROSS_SHEET_FIXTURE_XLSX_REL: &str = "fixtures/w011/cross_sheet.xlsx";
+
+/// Repo-relative location of the Wave 3c defined-name fixture's readable
+/// parts (dtc-j7n8.15): `A1 = 7`, `D1 = =TheInput*2` cached `14`, and the
+/// workbook-scoped name `TheInput -> Sheet1!$A$1` — five parts, otherwise
+/// the same constraints as `a1_times_three`.
+pub(crate) const W011_NAMED_INPUT_FIXTURE_PARTS_REL: &str = "fixtures/w011/named_input/parts";
+
+/// Repo-relative location of the defined-name fixture's committed binary.
+pub(crate) const W011_NAMED_INPUT_FIXTURE_XLSX_REL: &str = "fixtures/w011/named_input.xlsx";
 
 /// Repo-relative location of the POST-EDIT saved bytes (`A1 = 10`, `B1`
 /// cached 30) the `#[ignore]`d generator `emit_saved_fixture_for_excel_compare`
@@ -161,6 +184,16 @@ pub(crate) fn w011_cross_sheet_fixture_xlsx_path() -> PathBuf {
     repo_root().join(W011_CROSS_SHEET_FIXTURE_XLSX_REL)
 }
 
+/// Directory holding the defined-name fixture's readable parts (dtc-j7n8.15).
+pub(crate) fn w011_named_input_fixture_parts_dir() -> PathBuf {
+    repo_root().join(W011_NAMED_INPUT_FIXTURE_PARTS_REL)
+}
+
+/// Path of the defined-name fixture's committed binary.
+pub(crate) fn w011_named_input_fixture_xlsx_path() -> PathBuf {
+    repo_root().join(W011_NAMED_INPUT_FIXTURE_XLSX_REL)
+}
+
 /// Zip a fixture's readable parts into `.xlsx` bytes in memory through
 /// OxDoc's own conformance zipper — the one byte source every W011 fixture
 /// (auto and Manual) is opened from.
@@ -219,6 +252,19 @@ pub(crate) fn w011_cross_sheet_committed_xlsx_bytes() -> Vec<u8> {
     committed_xlsx_bytes(&w011_cross_sheet_fixture_xlsx_path())
 }
 
+/// The Wave 3c defined-name fixture (`A1 = 7`; `D1 = =TheInput*2` cached
+/// 14; workbook-scoped `TheInput -> Sheet1!$A$1`) as `.xlsx` bytes, zipped
+/// in memory from its committed parts — the byte source of the defined-name
+/// lane (dtc-j7n8.15).
+pub(crate) fn w011_named_input_fixture_bytes() -> Vec<u8> {
+    fixture_bytes_from_parts(&w011_named_input_fixture_parts_dir())
+}
+
+/// The defined-name fixture's committed binary bytes, read from disk.
+pub(crate) fn w011_named_input_committed_xlsx_bytes() -> Vec<u8> {
+    committed_xlsx_bytes(&w011_named_input_fixture_xlsx_path())
+}
+
 /// Open `.xlsx` bytes through OxDoc under [`LoadProfile::full()`] — the
 /// profile the W011 host lifecycle uses, because only `full()` materializes
 /// the `FormulaTopology` a later save needs — with NO engine involvement: the
@@ -257,6 +303,22 @@ pub(crate) fn raw_sheet_cells(
     }
     assert!(found, "no sheet named {sheet_name:?} in {events:#?}");
     cells
+}
+
+/// Every `DefinedName` event of a package, in stream order — the workbook's
+/// raw name catalog straight from OxDoc's events (Wave 3c, dtc-j7n8.15).
+/// Names are workbook-level events OxDoc emits in the prelude, before the
+/// first `SheetBegin`, so this walks the whole stream rather than one sheet.
+pub(crate) fn raw_defined_names(source: &HostOwnedXlsxSource) -> Vec<DefinedNameSpec> {
+    source
+        .source_context
+        .events()
+        .iter()
+        .filter_map(|event| match event {
+            DocumentEvent::DefinedName(name) => Some(name.clone()),
+            _ => None,
+        })
+        .collect()
 }
 
 /// The raw payload at 1-based `(row, col)`, failing with the whole cell list
@@ -842,6 +904,229 @@ mod tests {
         );
     }
 
+    /// `D1`'s packed address on the defined-name fixture.
+    fn d1() -> PackedCellAddr {
+        PackedCellAddr::from_one_based(1, 4).unwrap()
+    }
+
+    /// The one `DefinedName` the named-input fixture carries, as OxDoc emits
+    /// it: workbook-scoped (`scope_sheet_id: None`), text `Sheet1!$A$1`, no
+    /// Tier-B metadata.
+    fn the_input_spec() -> DefinedNameSpec {
+        DefinedNameSpec {
+            name: "TheInput".to_string(),
+            formula_text: "Sheet1!$A$1".to_string(),
+            scope_sheet_id: None,
+            metadata: Default::default(),
+        }
+    }
+
+    /// Acceptance (dtc-j7n8.15, fixture half): the committed defined-name
+    /// fixture opens through OxDoc under `LoadProfile::full()` (the surface
+    /// that materializes `defined_names`) and exposes exactly: one
+    /// workbook-scoped `DefinedName { TheInput, "Sheet1!$A$1" }` emitted in
+    /// the prelude BEFORE the first `SheetBegin` (the order the ingest sink
+    /// relies on); one sheet `Sheet1` holding exactly `A1 = Number(7)` and
+    /// `D1 = Formula { text: "TheInput*2", cached: Number(14) }` (the name
+    /// reference is plain A1 text to OxDoc — it classifies nothing); one
+    /// `FormulaTopology` with `D1`'s Normal record; a 1900/Automatic header;
+    /// a lossless load ledger; and the committed binary yields the same
+    /// event stream as the parts it was generated from.
+    #[test]
+    fn w011_named_input_fixture_opens_through_oxdoc_with_a_defined_name() {
+        let parts_dir = w011_named_input_fixture_parts_dir();
+        println!("W011 named-input fixture parts: {}", parts_dir.display());
+
+        let source = open_full(&w011_named_input_fixture_bytes());
+        let events = source.source_context.events();
+
+        // Header: 1900 date system, Automatic.
+        let headers: Vec<&WorkbookHeader> = events
+            .iter()
+            .filter_map(|event| match event {
+                DocumentEvent::WorkbookHeader(header) => Some(header),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            headers.len(),
+            1,
+            "exactly one WorkbookHeader in {events:#?}"
+        );
+        assert_eq!(headers[0].date_system, DateSystem::Date1900);
+        assert_eq!(headers[0].calc_mode, CalcMode::Automatic);
+
+        // Exactly one sheet, named Sheet1.
+        let sheets: Vec<&SheetRef> = events
+            .iter()
+            .filter_map(|event| match event {
+                DocumentEvent::SheetBegin(sheet) => Some(sheet),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(sheets.len(), 1, "exactly one SheetBegin in {events:#?}");
+        assert_eq!(sheets[0].name, "Sheet1");
+
+        // THE name: exactly one DefinedName event, workbook-scoped, with the
+        // absolute sheet-qualified text OxCalc re-renders on projection, and
+        // emitted in the prelude before any sheet content.
+        let names = raw_defined_names(&source);
+        println!("W011 named-input: raw defined names = {names:?}");
+        assert_eq!(
+            names,
+            vec![the_input_spec()],
+            "exactly the workbook-scoped TheInput -> Sheet1!$A$1, no metadata"
+        );
+        let name_index = events
+            .iter()
+            .position(|event| matches!(event, DocumentEvent::DefinedName(_)))
+            .unwrap();
+        let first_sheet_index = events
+            .iter()
+            .position(|event| matches!(event, DocumentEvent::SheetBegin(_)))
+            .unwrap();
+        assert!(
+            name_index < first_sheet_index,
+            "the DefinedName event precedes the first SheetBegin: {events:#?}"
+        );
+
+        // Exactly the two cells — no extra cell "for later".
+        let cells = raw_sheet_cells(&source, "Sheet1");
+        println!("W011 named-input: raw Sheet1 cells = {cells:?}");
+        assert_eq!(cells.len(), 2, "exactly A1 and D1, got {cells:?}");
+        assert_eq!(
+            raw_cell_payload(&cells, 1, 1),
+            &CellPayload::Number(7.0),
+            "A1 is the literal 7"
+        );
+        assert_eq!(
+            raw_cell_payload(&cells, 1, 4),
+            &CellPayload::Formula {
+                region: None,
+                text: Some("TheInput*2".to_string()),
+                cached: Some(Box::new(CellPayload::Number(14.0))),
+            },
+            "D1 is the Normal formula TheInput*2 with file-cached 14"
+        );
+
+        // One FormulaTopology with the single D1 record.
+        let topologies: Vec<&FormulaTopology> = events
+            .iter()
+            .filter_map(|event| match event {
+                DocumentEvent::FormulaTopology(topology) => Some(topology),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            topologies.len(),
+            1,
+            "exactly one FormulaTopology under LoadProfile::full() in {events:#?}"
+        );
+        let topology = topologies[0];
+        assert!(
+            topology.unsupported_fragments.is_empty(),
+            "no unsupported formula fragments: {:?}",
+            topology.unsupported_fragments
+        );
+        assert_eq!(topology.records.len(), 1, "only D1 carries a formula");
+        let record = &topology.records[0];
+        assert_eq!(record.address, d1(), "the formula record is D1's");
+        assert_eq!(record.kind, FormulaRecordKind::Normal);
+        assert_eq!(record.text.as_deref(), Some("TheInput*2"));
+        assert_eq!(record.text_kind, FormulaTextKind::SpreadsheetMlA1);
+        assert_eq!(
+            record.cached_value,
+            FormulaCachedValueState::Present {
+                provenance: CachedValueProvenance::FileCached,
+            }
+        );
+        assert!(record.unsupported_fragments.is_empty());
+
+        // Nothing in the package was dropped or lossily projected.
+        log_ledger("W011 named-input load ledger", &source.load_ledger);
+        for entry in &source.load_ledger.entries {
+            assert!(
+                matches!(
+                    entry.disposition,
+                    FidelityDisposition::Projected {
+                        status: ProjectionStatus::Direct,
+                        loss: None,
+                    }
+                ),
+                "ledger entry {} is not a direct lossless projection: {:?}",
+                entry.subject,
+                entry.disposition
+            );
+        }
+
+        // The committed binary is the same workbook (event-stream equality).
+        let xlsx_path = w011_named_input_fixture_xlsx_path();
+        println!(
+            "W011 named-input committed fixture: {}",
+            xlsx_path.display()
+        );
+        let committed = open_full(&w011_named_input_committed_xlsx_bytes());
+        assert_eq!(
+            committed.source_context.events(),
+            events,
+            "committed {} is out of sync with its parts; rerun \
+             regenerate_w011_named_input_fixture_binary_from_parts with --ignored",
+            xlsx_path.display()
+        );
+        assert_eq!(committed.load_ledger, source.load_ledger);
+    }
+
+    /// The defined-name fixture is exactly the five parts of `a1_times_three`
+    /// (the name lives inside `xl/workbook.xml`; still no styles, shared
+    /// strings, calc chain, or drawings), its three sheet-agnostic parts are
+    /// byte-identical to the auto fixture's, its workbook part carries the
+    /// one `<definedName>` verbatim, and the committed binary stays tiny.
+    #[test]
+    fn w011_named_input_fixture_is_exactly_five_parts_and_a_tiny_binary() {
+        let parts_dir = w011_named_input_fixture_parts_dir();
+        let mut part_names = Vec::new();
+        collect_part_names(&parts_dir, &parts_dir, &mut part_names);
+        part_names.sort();
+        assert_eq!(part_names, W011_FIXTURE_PART_NAMES);
+
+        let auto_dir = w011_fixture_parts_dir();
+        for shared in [
+            "_rels/.rels",
+            "[Content_Types].xml",
+            "xl/_rels/workbook.xml.rels",
+        ] {
+            assert_eq!(
+                std::fs::read_to_string(parts_dir.join(shared)).unwrap(),
+                std::fs::read_to_string(auto_dir.join(shared)).unwrap(),
+                "part {shared} must be byte-identical to the auto fixture's"
+            );
+        }
+        let workbook_xml = std::fs::read_to_string(parts_dir.join("xl/workbook.xml")).unwrap();
+        assert!(
+            workbook_xml.contains("<definedName name=\"TheInput\">Sheet1!$A$1</definedName>"),
+            "the workbook part carries the workbook-scoped TheInput name verbatim: {workbook_xml}"
+        );
+        assert!(
+            !workbook_xml.contains("localSheetId"),
+            "TheInput is workbook-scoped (no localSheetId): {workbook_xml}"
+        );
+        assert!(
+            workbook_xml.contains("<calcPr calcMode=\"auto\"/>"),
+            "the named-input fixture pins calcMode=\"auto\": {workbook_xml}"
+        );
+        assert!(
+            !workbook_xml.contains("date1904"),
+            "1900 date system (no workbookPr date1904): {workbook_xml}"
+        );
+
+        let committed_len = w011_named_input_committed_xlsx_bytes().len();
+        println!("W011 named-input committed fixture size: {committed_len} bytes");
+        assert!(
+            committed_len < 5 * 1024,
+            "committed named-input fixture must stay under 5 KB, got {committed_len} bytes"
+        );
+    }
+
     fn collect_part_names(root: &Path, dir: &Path, names: &mut Vec<String>) {
         for entry in std::fs::read_dir(dir)
             .unwrap_or_else(|err| panic!("failed to read {}: {err}", dir.display()))
@@ -964,6 +1249,45 @@ mod tests {
             raw_sheet_cells(&written, "Sheet2").len(),
             1,
             "the written package carries Sheet2"
+        );
+    }
+
+    /// Generator for the defined-name fixture (dtc-j7n8.15), the same shape
+    /// as `regenerate_w011_fixture_binary_from_parts`: rewrites
+    /// `fixtures/w011/named_input.xlsx` from its parts through OxDoc's
+    /// conformance zipper, then re-opens what it wrote. `#[ignore]`d so the
+    /// normal suite never writes into the repo:
+    ///
+    /// `cargo test -p dnacalc-host-core --offline regenerate_w011_named_input_fixture_binary_from_parts -- --ignored`
+    #[test]
+    #[ignore = "generator: rewrites fixtures/w011/named_input.xlsx from parts/; run with --ignored when the parts change"]
+    fn regenerate_w011_named_input_fixture_binary_from_parts() {
+        let parts_dir = w011_named_input_fixture_parts_dir();
+        let xlsx_path = w011_named_input_fixture_xlsx_path();
+        oxdoc_conformance::materialize_fixture_parts_to_xlsx(&parts_dir, &xlsx_path)
+            .unwrap_or_else(|err| {
+                panic!(
+                    "failed to materialize {} from {}: {err}",
+                    xlsx_path.display(),
+                    parts_dir.display()
+                )
+            });
+        println!(
+            "wrote {} ({} bytes) from {}",
+            xlsx_path.display(),
+            w011_named_input_committed_xlsx_bytes().len(),
+            parts_dir.display()
+        );
+        let written = open_full(&w011_named_input_committed_xlsx_bytes());
+        let from_parts = open_full(&w011_named_input_fixture_bytes());
+        assert_eq!(
+            written.source_context.events(),
+            from_parts.source_context.events()
+        );
+        assert_eq!(
+            raw_defined_names(&written),
+            vec![the_input_spec()],
+            "the written package carries the TheInput name"
         );
     }
 }

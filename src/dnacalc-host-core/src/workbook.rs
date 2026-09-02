@@ -2919,4 +2919,452 @@ mod tests {
             "a two-sheet no-op save reopens as the same document event stream"
         );
     }
+
+    // ------------------------------------------------------------------
+    // W011 Wave 3c (dtc-j7n8.15): the defined-name fixture lane, on real
+    // bytes. `named_input` is `a1_times_three`'s shape with a WORKBOOK-scoped
+    // name: `TheInput -> Sheet1!$A$1` in the workbook part, `A1 = 7`,
+    // `D1 = =TheInput*2` cached 14. The lane proves the name SEEDS through
+    // the engine's ingest (OxCalc resolves the static rect and authors the
+    // name on Sheet1's grid; `D1` publishes 14, never `#NAME?`), the
+    // `defined_names()` catalog lists it, an `A1` edit recalculates `D1`
+    // THROUGH the name, and the save round-trip re-emits the `DefinedName`
+    // event with `D1`'s formula text preserved and its cached `<v>` fresh.
+    // The name is never hand-seeded in the host: if the loaded name did not
+    // seed, `open_named_input_fixture_seeds_the_name_and_publishes_14` is the
+    // failing test that documents the typed ingest gap.
+    // ------------------------------------------------------------------
+
+    use crate::xlsx_fixture::{
+        raw_defined_names, w011_named_input_fixture_bytes, w011_named_input_fixture_parts_dir,
+    };
+    use dnacalc_skin_ir::{
+        DefinedNameScopeProjection, DefinedNameTargetProjection, DefinedNamesProjection,
+        GridRectProjection,
+    };
+    use oxdoc_model::DefinedNameSpec;
+
+    /// Open the defined-name fixture into a session, logging its parts path.
+    fn open_w011_named_input_fixture() -> WorkbookSession {
+        println!(
+            "W011 named-input fixture parts: {}",
+            w011_named_input_fixture_parts_dir().display()
+        );
+        WorkbookSession::open_xlsx_bytes(
+            XLSX_WORKSPACE_ID,
+            &w011_named_input_fixture_bytes(),
+            Some("named_input.xlsx".to_string()),
+        )
+        .expect("OxDoc opens and the engine ingests the committed W011 defined-name fixture")
+    }
+
+    /// `D1`'s wire payload: the Normal formula `TheInput*2` (leading `=`
+    /// stripped) with `cached` as the file's `<v>`.
+    fn d1_formula_cached(cached: f64) -> CellPayload {
+        CellPayload::Formula {
+            region: None,
+            text: Some("TheInput*2".to_string()),
+            cached: Some(Box::new(CellPayload::Number(cached))),
+        }
+    }
+
+    /// The `DefinedName` event the fixture carries and a save must re-emit:
+    /// workbook-scoped, absolute sheet-qualified text, no metadata.
+    fn the_input_spec() -> DefinedNameSpec {
+        DefinedNameSpec {
+            name: "TheInput".to_string(),
+            formula_text: "Sheet1!$A$1".to_string(),
+            scope_sheet_id: None,
+            metadata: Default::default(),
+        }
+    }
+
+    /// Assert the catalog is exactly `TheInput`: workbook scope, a static
+    /// single-cell rect `A1` (`(1,1)-(1,1)`), not dynamic — logged.
+    fn assert_catalog_is_the_input(stage: &str, catalog: &DefinedNamesProjection) {
+        println!("W011 named-input [{stage}]: defined_names = {catalog:?}");
+        assert_eq!(
+            catalog.entries.len(),
+            1,
+            "exactly one defined name in the catalog [{stage}]: {catalog:?}"
+        );
+        let entry = &catalog.entries[0];
+        assert_eq!(entry.name, "TheInput");
+        assert_eq!(
+            entry.scope,
+            DefinedNameScopeProjection::Workbook,
+            "the file's name has no localSheetId, so it is workbook-scoped [{stage}]"
+        );
+        assert_eq!(
+            entry.target,
+            DefinedNameTargetProjection::Static(GridRectProjection {
+                top_row: 1,
+                left_col: 1,
+                bottom_row: 1,
+                right_col: 1,
+            }),
+            "Sheet1!$A$1 resolved to the static rect A1 [{stage}]"
+        );
+        assert!(!entry.is_dynamic, "a bare rect is a static name [{stage}]");
+    }
+
+    /// Sheet1's raw `(A1, D1)` payloads of a reopened package, logged, after
+    /// asserting they are the only two cells.
+    fn a1_d1(stage: &str, reopened: &HostOwnedXlsxSource) -> (CellPayload, CellPayload) {
+        let cells = raw_sheet_cells(reopened, "Sheet1");
+        println!("W011 named-input reopen [{stage}]: raw Sheet1 cells = {cells:?}");
+        assert_eq!(
+            cells.len(),
+            2,
+            "exactly A1 and D1 in the saved file [{stage}]: {cells:?}"
+        );
+        let a1 = raw_cell_payload(&cells, 1, 1).clone();
+        let d1 = raw_cell_payload(&cells, 1, 4).clone();
+        println!("W011 named-input reopen [{stage}]: A1 payload = {a1:?}");
+        println!("W011 named-input reopen [{stage}]: D1 payload = {d1:?}");
+        (a1, d1)
+    }
+
+    /// dtc-j7n8.15 acceptance (1): opening the defined-name fixture SEEDS
+    /// the loaded name through ingest. The load report says one sheet, one
+    /// literal, one bound formula, the `Automatic` path, and — the honest
+    /// no-silent-loss channel — NO bind degradation (an unresolvable name
+    /// would surface there as `name:TheInput`); `D1` publishes `14`
+    /// engine-`Calculated` (`TheInput*2` resolved through the name, not
+    /// `#NAME?`); `D1`'s authored text is `=TheInput*2`; and the
+    /// `defined_names()` catalog (and the snapshot's mirror of it) lists
+    /// exactly `TheInput` at workbook scope targeting the static rect `A1`.
+    #[test]
+    fn open_named_input_fixture_seeds_the_name_and_publishes_14() {
+        let session = open_w011_named_input_fixture();
+        let report = session
+            .load_report()
+            .expect("a workbook opened from xlsx bytes carries its load report");
+        println!(
+            "W011 named-input ingest: load report sheets={} cells={} formulas_bound={} \
+             recalc_path={:?} engine_recalcs_at_load={} bind_degradations={:?} \
+             not_calc_modeled={} ledger_rows={}",
+            report.sheets,
+            report.cells,
+            report.formulas_bound,
+            report.recalc_path,
+            report.engine_recalcs_at_load,
+            report.bind_degradations,
+            report.not_calc_modeled,
+            report.ledger.len()
+        );
+        assert_eq!(report.sheets, 1, "one sheet created");
+        assert_eq!(report.cells, 1, "A1 is the one literal");
+        assert_eq!(
+            report.formulas_bound, 1,
+            "D1 bound through the engine's single key mint"
+        );
+        assert_eq!(report.recalc_path, LoadRecalcPath::Automatic);
+        assert_eq!(
+            report.engine_recalcs_at_load, 1,
+            "the open-recalc drained the one formula-bearing sheet"
+        );
+        assert!(
+            report.bind_degradations.is_empty(),
+            "the name TheInput -> Sheet1!$A$1 resolves and =TheInput*2 binds cleanly on a \
+             loaded workbook; a degradation here (address `name:TheInput` or `D1`) is the typed \
+             ingest gap: {:?}",
+            report.bind_degradations
+        );
+        assert_eq!(session.document_name(), Some("named_input.xlsx"));
+
+        let sheet = only_sheet(&session);
+
+        // The catalog: the loaded name seeded, listed once, workbook-scoped.
+        assert_catalog_is_the_input("at open", &session.defined_names().unwrap());
+        assert_catalog_is_the_input(
+            "snapshot at open",
+            &session.snapshot().unwrap().defined_names,
+        );
+
+        // Published values: D1 through the name, A1 the literal.
+        let a1 = session.grid_cell_value(sheet, 1, 1).unwrap();
+        let d1 = session.grid_cell_value(sheet, 1, 4).unwrap();
+        let d1_provenance = session.grid_cell_provenance(sheet, 1, 4).unwrap();
+        println!("W011 named-input ingest: A1 = {a1:?}");
+        println!("W011 named-input ingest: D1 = {d1:?} provenance = {d1_provenance:?}");
+        assert_eq!(
+            a1,
+            Some(CalcValue::number(7.0)),
+            "A1 = 7 (the file's literal)"
+        );
+        assert_eq!(
+            d1,
+            Some(CalcValue::number(14.0)),
+            "D1 = TheInput*2 = 14: the loaded name RESOLVED on the open-recalc (not #NAME?)"
+        );
+        assert!(
+            matches!(
+                d1_provenance,
+                Some(ValueProvenanceProjection::Calculated { .. })
+            ),
+            "the Automatic open-recalc made D1 engine-Calculated, not FileCached: {d1_provenance:?}"
+        );
+
+        // Authored truth: D1 is the formula with the leading `=` restored.
+        let authored = session.grid_authored_cells(sheet, 1, 1, 1, 4).unwrap();
+        let d1_authored = authored
+            .iter()
+            .find(|cell| cell.row == 1 && cell.col == 4)
+            .expect("D1 is in the requested window");
+        println!(
+            "W011 named-input ingest: D1 authored kind={:?} source_text={:?}",
+            d1_authored.kind, d1_authored.source_text
+        );
+        assert_eq!(d1_authored.kind, GridAuthoredKindProjection::Formula);
+        assert_eq!(
+            d1_authored.source_text.as_deref(),
+            Some("=TheInput*2"),
+            "the engine restores the leading `=` the file stores without"
+        );
+
+        // Automatic: nothing is left dirty after the open-recalc.
+        let calc = session.workbook_calc_projection(None).unwrap();
+        assert_eq!(calc.mode, CalcModeProjection::Automatic);
+        assert!(
+            calc.sheets.iter().all(|sheet| !sheet.dirty),
+            "under Automatic the open-recalc left no sheet dirty: {:?}",
+            calc.sheets
+        );
+    }
+
+    /// dtc-j7n8.15 acceptance (2): an edit on the loaded fixture recalculates
+    /// THROUGH the seeded name. `enter_grid_cell(A1, "10")` takes the literal
+    /// branch and `D1 = TheInput*2` publishes `20` engine-`Calculated` in the
+    /// same edit — the name's static rect tracks `A1`'s new value. The
+    /// catalog is unchanged by a cell edit and `D1`'s authored formula is
+    /// untouched.
+    #[test]
+    fn named_input_edit_on_loaded_fixture_recalculates_through_the_name() {
+        let mut session = open_w011_named_input_fixture();
+        let sheet = only_sheet(&session);
+        assert_eq!(
+            session.grid_cell_value(sheet, 1, 4).unwrap(),
+            Some(CalcValue::number(14.0)),
+            "D1 = 14 at load"
+        );
+
+        let outcome = session
+            .enter_grid_cell(sheet, 1, 1, "10")
+            .expect("A1 on the loaded sheet is addressable under the session's token");
+        assert!(
+            matches!(outcome, GridCellEntryOutcome::Literal { .. }),
+            "'10' takes the engine's literal branch, got {outcome:?}"
+        );
+
+        let a1 = session.grid_cell_value(sheet, 1, 1).unwrap();
+        let d1 = session.grid_cell_value(sheet, 1, 4).unwrap();
+        let d1_provenance = session.grid_cell_provenance(sheet, 1, 4).unwrap();
+        println!("W011 named-input edit: A1 = {a1:?}");
+        println!("W011 named-input edit: D1 = {d1:?} provenance = {d1_provenance:?}");
+        assert_eq!(a1, Some(CalcValue::number(10.0)), "A1 = 10 after the edit");
+        assert_eq!(
+            d1,
+            Some(CalcValue::number(20.0)),
+            "D1 = TheInput*2 = 20: the edit recalculated THROUGH the loaded name"
+        );
+        assert!(
+            matches!(
+                d1_provenance,
+                Some(ValueProvenanceProjection::Calculated { .. })
+            ),
+            "D1's 20 is a fresh engine value: {d1_provenance:?}"
+        );
+
+        // The catalog survives a cell edit unchanged; D1's formula too.
+        assert_catalog_is_the_input("after edit", &session.defined_names().unwrap());
+        let d1_authored = session
+            .grid_authored_cells(sheet, 1, 4, 1, 4)
+            .unwrap()
+            .into_iter()
+            .find(|cell| cell.row == 1 && cell.col == 4)
+            .expect("D1 is in the requested window");
+        assert_eq!(d1_authored.kind, GridAuthoredKindProjection::Formula);
+        assert_eq!(d1_authored.source_text.as_deref(), Some("=TheInput*2"));
+
+        let calc = session.workbook_calc_projection(None).unwrap();
+        assert!(
+            calc.sheets.iter().all(|sheet| !sheet.dirty),
+            "under Automatic the edit drained itself: {:?}",
+            calc.sheets
+        );
+    }
+
+    /// dtc-j7n8.15 acceptance (3) — the defined-name save proof, on real
+    /// bytes. Open -> `A1 -> 10` (LIVE `D1` = 20) -> `save_xlsx_bytes` -> the
+    /// ledger dropped nothing -> reopen the SAVED bytes RAW through OxDoc:
+    /// the `DefinedName` event is PRESENT and identical to the file's
+    /// (`TheInput`, `Sheet1!$A$1`, workbook-scoped — the projection
+    /// re-rendered the static rect to the same absolute text, which is what
+    /// keeps OxDoc's name-text round-trip policy quiet), still in the prelude
+    /// before `SheetBegin`; `A1` is `Number(10)`; `D1` is exactly `Formula {
+    /// text: "TheInput*2", cached: Number(20) }` — formula text preserved
+    /// AND the cached `<v>` refreshed, not the file's stale 14. The session's
+    /// FILE truth is untouched; and the full loop closes — the saved bytes
+    /// open into a fresh session whose catalog lists `TheInput` and whose
+    /// `D1` publishes 20 with authored `=TheInput*2`.
+    #[test]
+    fn named_input_save_after_edit_reopens_with_cached_20_and_the_name() {
+        let mut session = open_w011_named_input_fixture();
+        let sheet = only_sheet(&session);
+        session
+            .enter_grid_cell(sheet, 1, 1, "10")
+            .expect("A1 -> 10 on the loaded fixture");
+        assert_eq!(
+            session.grid_cell_value(sheet, 1, 4).unwrap(),
+            Some(CalcValue::number(20.0)),
+            "LIVE truth before the save: D1 = TheInput*2 = 20"
+        );
+
+        let (bytes, _ledger) = save_and_log("named-input, after edit", &session);
+
+        // FILE truth of the SAVED bytes — raw OxDoc events, no engine.
+        let reopened = reopen_raw("named-input, after edit", &bytes);
+        let names = raw_defined_names(&reopened);
+        println!("W011 named-input reopen [after edit]: raw defined names = {names:?}");
+        assert_eq!(
+            names,
+            vec![the_input_spec()],
+            "the saved package re-emits the workbook-scoped TheInput -> Sheet1!$A$1"
+        );
+        let events = reopened.source_context.events();
+        let name_index = events
+            .iter()
+            .position(|event| matches!(event, DocumentEvent::DefinedName(_)))
+            .unwrap();
+        let first_sheet_index = events
+            .iter()
+            .position(|event| matches!(event, DocumentEvent::SheetBegin(_)))
+            .unwrap();
+        assert!(
+            name_index < first_sheet_index,
+            "the DefinedName event still precedes the first SheetBegin"
+        );
+        let (a1, d1) = a1_d1("named-input, after edit", &reopened);
+        assert_eq!(
+            a1,
+            CellPayload::Number(10.0),
+            "A1 is saved as the edited literal 10"
+        );
+        assert_eq!(
+            d1,
+            d1_formula_cached(20.0),
+            "THE TRAP, named: D1 keeps its formula text TheInput*2 AND its cached <v> is the \
+             fresh 20, not the file's stale 14"
+        );
+
+        // The saved package still carries D1's formula record.
+        let records: Vec<_> = events
+            .iter()
+            .filter_map(|event| match event {
+                DocumentEvent::FormulaTopology(topology) => Some(&topology.records),
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        println!("W011 named-input reopen [after edit]: formula records = {records:?}");
+        assert_eq!(
+            records.len(),
+            1,
+            "D1 is still the only formula record: {records:?}"
+        );
+        assert_eq!(
+            records[0].address,
+            PackedCellAddr::from_one_based(1, 4).unwrap(),
+            "the record is D1's"
+        );
+        assert_eq!(records[0].kind, FormulaRecordKind::Normal);
+        assert_eq!(records[0].text.as_deref(), Some("TheInput*2"));
+
+        // The session's own FILE truth is untouched by the save; LIVE is 20.
+        let source = session
+            .xlsx_source()
+            .expect("the OxDoc source stays owned across a save");
+        assert_eq!(
+            raw_cell_payload(&raw_sheet_cells(source, "Sheet1"), 1, 4),
+            &d1_formula_cached(14.0),
+            "the opened source keeps the file's cached 14 after a save"
+        );
+        assert_eq!(
+            session.grid_cell_value(sheet, 1, 4).unwrap(),
+            Some(CalcValue::number(20.0)),
+            "LIVE truth is untouched by the save"
+        );
+
+        // Full loop: the saved bytes open into a fresh session.
+        let reloaded = WorkbookSession::open_xlsx_bytes(
+            XLSX_WORKSPACE_ID,
+            &bytes,
+            Some("named_input_saved.xlsx".to_string()),
+        )
+        .expect("the saved bytes open through OxDoc and ingest into the engine");
+        let report = reloaded.load_report().unwrap();
+        assert_eq!(
+            (report.sheets, report.cells, report.formulas_bound),
+            (1, 1, 1)
+        );
+        assert!(
+            report.bind_degradations.is_empty(),
+            "the re-emitted name resolves again on reload: {:?}",
+            report.bind_degradations
+        );
+        assert_catalog_is_the_input("full loop", &reloaded.defined_names().unwrap());
+        let reloaded_sheet = only_sheet(&reloaded);
+        let d1_authored = reloaded
+            .grid_authored_cells(reloaded_sheet, 1, 4, 1, 4)
+            .unwrap()
+            .into_iter()
+            .find(|cell| cell.row == 1 && cell.col == 4)
+            .expect("D1 is in the requested window");
+        let a1_value = reloaded.grid_cell_value(reloaded_sheet, 1, 1).unwrap();
+        let d1_value = reloaded.grid_cell_value(reloaded_sheet, 1, 4).unwrap();
+        println!(
+            "W011 named-input full loop: D1 authored kind={:?} source_text={:?} value={d1_value:?}; A1 value={a1_value:?}",
+            d1_authored.kind, d1_authored.source_text
+        );
+        assert_eq!(d1_authored.kind, GridAuthoredKindProjection::Formula);
+        assert_eq!(d1_authored.source_text.as_deref(), Some("=TheInput*2"));
+        assert_eq!(a1_value, Some(CalcValue::number(10.0)), "A1 = 10");
+        assert_eq!(
+            d1_value,
+            Some(CalcValue::number(20.0)),
+            "D1 = TheInput*2 = 20 on the reloaded session"
+        );
+    }
+
+    /// dtc-j7n8.15, the no-edit lane: saving the defined-name fixture straight
+    /// after the open round-trips cleanly (no Dropped entry) and reopens as
+    /// the SAME document event stream — the `DefinedName` event included: a
+    /// no-op save of a named workbook neither gains, loses, respells, nor
+    /// reorders an event (the projection's `Sheet1!$A$1` is the file's own
+    /// text).
+    #[test]
+    fn named_input_save_without_edit_round_trips_cleanly() {
+        let session = open_w011_named_input_fixture();
+        let (bytes, _ledger) = save_and_log("named-input, no edit", &session);
+
+        let reopened = reopen_raw("named-input, no edit", &bytes);
+        assert_eq!(raw_defined_names(&reopened), vec![the_input_spec()]);
+        let (a1, d1) = a1_d1("named-input, no edit", &reopened);
+        assert_eq!(a1, CellPayload::Number(7.0), "A1 is still 7");
+        assert_eq!(
+            d1,
+            d1_formula_cached(14.0),
+            "D1 keeps its formula text and the recomputed-equals-stored cached 14"
+        );
+        assert_eq!(
+            reopened.source_context.events(),
+            session
+                .xlsx_source()
+                .expect("the OxDoc source stays owned")
+                .source_context
+                .events(),
+            "a no-op save of a named workbook reopens as the same document event stream"
+        );
+    }
 }
