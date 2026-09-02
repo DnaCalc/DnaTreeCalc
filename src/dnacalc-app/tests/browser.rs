@@ -161,16 +161,7 @@ fn commit_degrade(host: &web_sys::HtmlElement) {
 }
 
 fn press_chord(target: &web_sys::EventTarget, key: &str, ctrl: bool, alt: bool, shift: bool) {
-    let init = web_sys::KeyboardEventInit::new();
-    init.set_key(key);
-    init.set_ctrl_key(ctrl);
-    init.set_alt_key(alt);
-    init.set_shift_key(shift);
-    init.set_bubbles(true);
-    init.set_cancelable(true);
-    let event =
-        web_sys::KeyboardEvent::new_with_keyboard_event_init_dict("keydown", &init).unwrap();
-    target.dispatch_event(&event).unwrap();
+    let _ = press_chord_observed(target, key, ctrl, alt, shift);
 }
 
 /// §10.1 — the full Calc region set mounts (with the Registry rail and the
@@ -1761,5 +1752,215 @@ async fn calc_sheet_tab_in_editor_commits_and_moves_right() {
         editor2.get_attribute("data-cell").as_deref(),
         Some("1:2"),
         "Tab-commit advanced the active cell one column RIGHT (B1), not down to 2:1"
+    );
+}
+
+/// Like [`press_chord`] but reports whether a handler called `preventDefault`
+/// — the shell's Save / Open arms do (they intercept the browser default and
+/// forward the verb), so a prevented Ctrl+S is the event-level signature of
+/// the `.dna-shell` keydown pipeline having claimed the chord.
+fn press_chord_observed(
+    target: &web_sys::EventTarget,
+    key: &str,
+    ctrl: bool,
+    alt: bool,
+    shift: bool,
+) -> bool {
+    let init = web_sys::KeyboardEventInit::new();
+    init.set_key(key);
+    init.set_ctrl_key(ctrl);
+    init.set_alt_key(alt);
+    init.set_shift_key(shift);
+    init.set_bubbles(true);
+    init.set_cancelable(true);
+    let event =
+        web_sys::KeyboardEvent::new_with_keyboard_event_init_dict("keydown", &init).unwrap();
+    target.dispatch_event(&event).unwrap();
+    event.default_prevented()
+}
+
+/// The document line's lifecycle readout: `(data-document-status, detail text)`.
+fn document_line_status(host: &web_sys::HtmlElement) -> (String, String) {
+    let line = query(host, "[data-testid=\"calc-document\"]").expect("the document line mounts");
+    let status = line
+        .get_attribute("data-document-status")
+        .expect("data-document-status is set");
+    let detail = line
+        .query_selector(".calc-document__detail")
+        .unwrap()
+        .expect("the document line carries its detail span")
+        .text_content()
+        .unwrap_or_default();
+    (status, detail)
+}
+
+/// One Open -> Save round from `target` (dtc-j7n8.25): Ctrl+O first (a fresh
+/// `open` status, and Ctrl+O's own routing stays proven), then Ctrl+S must
+/// flip the document line to the `save` note. Each read waits a tick so the
+/// document line's reactive attributes have rendered the controller's status.
+/// Returns Ctrl+S's `defaultPrevented`.
+async fn open_then_save(
+    host: &web_sys::HtmlElement,
+    target: &web_sys::EventTarget,
+    state: &str,
+) -> bool {
+    let open_prevented = press_chord_observed(target, "o", true, false, false);
+    next_tick().await;
+    let (status, detail) = document_line_status(host);
+    assert!(
+        open_prevented,
+        "[{state}] Ctrl+O must reach the shell's Open arm (defaultPrevented)"
+    );
+    assert_eq!(status, "unavailable", "[{state}] Ctrl+O ran the Open verb");
+    assert!(
+        detail.to_lowercase().contains("open"),
+        "[{state}] the document line names the Open verb, got {detail:?}"
+    );
+    let save_prevented = press_chord_observed(target, "s", true, false, false);
+    next_tick().await;
+    let (status, detail) = document_line_status(host);
+    assert_eq!(
+        status, "unavailable",
+        "[{state}] Ctrl+S must run the shell's Save verb (run_file_verb -> note_bridge_unavailable), got status {status:?} / {detail:?}"
+    );
+    assert!(
+        detail.to_lowercase().contains("save"),
+        "[{state}] the document line must name the Save verb after Ctrl+S (the desktop saw no document-line change), got {detail:?}"
+    );
+    save_prevented
+}
+
+/// dtc-j7n8.25 — the bead's acceptance test: the shell's Save verb fires for
+/// Ctrl+S with the sheet SECTION focused, end to end through the real composed
+/// app (`SheetStage` section keydown -> `.dna-shell` `handle_keydown` ->
+/// `on_shell_verb` -> `run_file_verb`). The browser runtime has no desktop
+/// file bridge, so a verb that reaches `run_file_verb` is answered by
+/// `note_bridge_unavailable` (document.rs): the document line flips to
+/// `data-document-status="unavailable"` with the VERB's label in the detail —
+/// the observable the desktop click-through never saw change. Ctrl+O is
+/// pressed before every Ctrl+S so each Save assertion is a fresh `open` ->
+/// `save` transition (and Ctrl+O's own routing stays proven — it worked on the
+/// desktop and must keep working). `defaultPrevented` proves the shell's Save
+/// arm (not some other handler) claimed the chord.
+///
+/// Three focus states, each dispatched where a real keystroke lands:
+///   1. SELECT mode after a pointer click on a cell (the section holds focus)
+///      — the literal state observed on the desktop 2026-09-02;
+///   2. EDITING after F2, the chord at the overlay editor's textarea (the
+///      degrade editor used to `stop_propagation()` every keydown);
+///   3. EDITING with the chord at the SECTION (focus fell out of the editor:
+///      the `ShellOwns` route — the refocus arm used to consume it), and the
+///      editor stays open with its buffer untouched.
+#[wasm_bindgen_test]
+async fn calc_sheet_ctrl_s_fires_the_shell_save_verb_from_every_stage_focus() {
+    let host = mount();
+    next_tick().await;
+    next_tick().await;
+    next_tick().await;
+
+    // Precondition: no bridge in this runtime, and no lifecycle verb has run.
+    let line = query(&host, "[data-testid=\"calc-document\"]").expect("the document line mounts");
+    assert_eq!(
+        line.get_attribute("data-file-bridge").as_deref(),
+        Some("unavailable"),
+        "the browser test runtime has no desktop file bridge"
+    );
+    assert_eq!(
+        document_line_status(&host).0,
+        "none",
+        "no lifecycle verb has run before any key"
+    );
+
+    // 1. Click B2 on the canvas (`pointerdown`, the stage's real selection
+    //    handler): SELECT mode, the section holds focus. B2 = row 2, col 2 sits
+    //    at the default metrics' `cell_rect(2, 2)`: center `(48 + 80 + 40,
+    //    22 + 22 + 11) = (168, 55)` in the canvas's own space.
+    let canvas = query(&host, "[data-testid=\"sheet-canvas\"]").expect("the canvas mounts");
+    let rect = canvas.get_bounding_client_rect();
+    let click = web_sys::MouseEventInit::new();
+    click.set_client_x((rect.x() + 168.0).round() as i32);
+    click.set_client_y((rect.y() + 55.0).round() as i32);
+    click.set_bubbles(true);
+    click.set_cancelable(true);
+    let pointerdown = web_sys::MouseEvent::new_with_mouse_event_init_dict("pointerdown", &click)
+        .expect("construct the pointerdown event");
+    let canvas_target: web_sys::EventTarget = canvas.clone().unchecked_into();
+    canvas_target.dispatch_event(&pointerdown).unwrap();
+    next_tick().await;
+    let root: web_sys::HtmlElement = query(&host, "[data-testid=\"sheet-root\"]")
+        .expect("the sheet root mounts")
+        .unchecked_into();
+    assert!(
+        is_focused(&root),
+        "a pointer select hands focus to the sheet section (the desktop's state)"
+    );
+    assert!(
+        query(&host, "[data-testid=\"sheet-cell-editor\"]").is_none(),
+        "a single click SELECTS; no editor is open"
+    );
+    let focused: web_sys::EventTarget = active_element().unchecked_into();
+    assert!(
+        open_then_save(&host, &focused, "SELECT, section focused").await,
+        "[SELECT, section focused] Ctrl+S must be claimed by the shell's Save arm \
+         (defaultPrevented), not left to the browser"
+    );
+    next_tick().await;
+    assert!(
+        query(&host, "[data-testid=\"sheet-cell-editor\"]").is_none(),
+        "Ctrl+S / Ctrl+O in SELECT mode open no editor"
+    );
+
+    // 2. F2 at the focused section opens the overlay at the CLICKED cell (B2 —
+    //    proving the pointerdown selected it) and hands its textarea focus; the
+    //    chord is dispatched at that textarea.
+    let focused: web_sys::EventTarget = active_element().unchecked_into();
+    press_chord(&focused, "F2", false, false, false);
+    next_tick().await;
+    next_tick().await;
+    let editor = query(&host, "[data-testid=\"sheet-cell-editor\"]")
+        .expect("F2 opens the overlay editor at the selected cell");
+    assert_eq!(
+        editor.get_attribute("data-cell").as_deref(),
+        Some("2:2"),
+        "the pointerdown selected B2 and F2 opened the editor there"
+    );
+    let area = overlay_textarea(&editor);
+    // B2's authored text on the active sheet (the demo's `=A2*10`), captured
+    // rather than assumed so the final buffer check compares against host truth.
+    let seed = area.value();
+    assert!(
+        !seed.is_empty(),
+        "F2 seeds the editor with B2's authored text"
+    );
+    assert!(
+        is_focused(&area),
+        "the overlay textarea owns focus while EDITING (dtc-j7n8.26)"
+    );
+    let focused: web_sys::EventTarget = active_element().unchecked_into();
+    assert!(
+        open_then_save(&host, &focused, "EDITING, textarea focused").await,
+        "[EDITING, textarea focused] Ctrl+S must be claimed by the shell's Save arm"
+    );
+    next_tick().await;
+    assert!(
+        query(&host, "[data-testid=\"sheet-cell-editor\"]").is_some(),
+        "a shell chord from the textarea neither commits nor reverts the editor"
+    );
+
+    // 3. Still EDITING, the chord at the SECTION (focus fell out of the editor):
+    //    the `ShellOwns` route — the section must leave it untouched so it
+    //    bubbles to the shell, and the editor stays open.
+    let root_target: web_sys::EventTarget = root.clone().unchecked_into();
+    assert!(
+        open_then_save(&host, &root_target, "EDITING, chord at the section").await,
+        "[EDITING, chord at the section] Ctrl+S must be claimed by the shell's Save arm"
+    );
+    next_tick().await;
+    let editor = query(&host, "[data-testid=\"sheet-cell-editor\"]")
+        .expect("a shell chord at the section while EDITING leaves the editor open");
+    assert_eq!(
+        overlay_textarea(&editor).value(),
+        seed,
+        "the editor's buffer is untouched by the shell chords"
     );
 }
