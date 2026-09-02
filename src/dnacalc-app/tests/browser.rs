@@ -1964,3 +1964,169 @@ async fn calc_sheet_ctrl_s_fires_the_shell_save_verb_from_every_stage_focus() {
         "the editor's buffer is untouched by the shell chords"
     );
 }
+
+/// dtc-j7n8.25 — the regression independent verification found in this bead's
+/// first cut. With the degrade editor stopping only what it consumes, its
+/// Ctrl+Z/Y carve-out decides whether Ctrl+Z is text-local (buffer dirty) or
+/// bubbles to the shell's model Undo (buffer clean). It measured "dirty"
+/// against its mount SEED — which on the Sheet's type-to-replace path is the
+/// typed character itself — so an untouched type-to-replace buffer read as
+/// clean: Ctrl+Z bubbled to the shell's Undo arm (`prevent_default` +
+/// `WorkspaceIntent::Undo`) under the open editor, and a following Enter
+/// committed the typed text on top of the reverted workspace. Excel never
+/// performs workbook undo from edit mode. The stage now hands the editor the
+/// cell's COMMITTED text; the F2 path (seed == committed) keeps the
+/// owner-ratified dtc-lfz.2 rule: an untouched F2 buffer still hands Ctrl+Z to
+/// the shell.
+///
+/// Composed app, every key dispatched at the focused element: commit `99` into
+/// A1 first (a real workspace change to protect), ArrowUp back to A1 and
+/// type-to-replace `7`; Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z at the overlay textarea
+/// leave the editor open (same node) with its `7` and focus inside it, and are
+/// NOT `defaultPrevented` — the shell's Undo/Redo arms are the only handlers on
+/// that path that prevent the chord's default, and the carve-out never does
+/// (the textarea's native undo is its effect) — so no `WorkspaceIntent::Undo`
+/// was dispatched; the document line is untouched; Escape reverts cleanly and
+/// F2 re-opens A1 still holding the committed `99`. Then the contrast: that
+/// untouched F2 buffer hands Ctrl+Z to the shell (`defaultPrevented`).
+#[wasm_bindgen_test]
+async fn calc_sheet_ctrl_z_in_a_type_to_replace_editor_stays_local_and_never_undoes_the_workbook() {
+    let host = mount();
+    next_tick().await;
+    next_tick().await;
+    next_tick().await;
+    let root = focus_sheet_section(&host);
+    let root_target: web_sys::EventTarget = root.clone().unchecked_into();
+
+    // A real workspace change to protect: F2 at A1 (the origin), commit 99.
+    press_chord(&root_target, "F2", false, false, false);
+    next_tick().await;
+    next_tick().await;
+    let editor = query(&host, "[data-testid=\"sheet-cell-editor\"]")
+        .expect("F2 opens the overlay editor at A1");
+    let area = overlay_textarea(&editor);
+    assert_eq!(area.value(), "1", "F2 seeds A1's authored literal");
+    area.set_value("99");
+    area.dispatch_event(&web_sys::Event::new("input").unwrap())
+        .unwrap();
+    let focused: web_sys::EventTarget = active_element().unchecked_into();
+    press_chord(&focused, "Enter", false, false, false);
+    next_tick().await;
+    next_tick().await;
+    assert!(
+        query(&host, "[data-testid=\"sheet-cell-editor\"]").is_none(),
+        "Enter commits 99 into A1 and closes the overlay"
+    );
+    let document_before = document_line_status(&host);
+
+    // ArrowUp (the commit advanced to A2) back to A1, then type-to-replace `7`:
+    // the editor seeds with the typed character while A1's committed text is 99.
+    let focused: web_sys::EventTarget = active_element().unchecked_into();
+    press_chord(&focused, "ArrowUp", false, false, false);
+    next_tick().await;
+    let focused: web_sys::EventTarget = active_element().unchecked_into();
+    press_chord(&focused, "7", false, false, false);
+    next_tick().await;
+    next_tick().await;
+    let editor = query(&host, "[data-testid=\"sheet-cell-editor\"]")
+        .expect("a printable key opens the overlay editor (type-to-replace)");
+    assert_eq!(
+        editor.get_attribute("data-cell").as_deref(),
+        Some("1:1"),
+        "ArrowUp landed on A1 and type-to-replace opened the editor there"
+    );
+    let area = overlay_textarea(&editor);
+    assert_eq!(
+        area.value(),
+        "7",
+        "the editor seeds with the typed character"
+    );
+    assert!(
+        is_focused(&area),
+        "the seeded editor's textarea owns keyboard focus"
+    );
+
+    // The undo/redo chords, each at the focused textarea.
+    for (key, shift, label) in [
+        ("z", false, "Ctrl+Z"),
+        ("y", false, "Ctrl+Y"),
+        ("Z", true, "Ctrl+Shift+Z"),
+    ] {
+        let focused: web_sys::EventTarget = active_element().unchecked_into();
+        let prevented = press_chord_observed(&focused, key, true, false, shift);
+        next_tick().await;
+        next_tick().await;
+        assert!(
+            !prevented,
+            "[{label}] must be consumed by the editor's carve-out (stop only, never \
+             preventDefault: the textarea's native undo is the effect); a prevented default \
+             here is the shell's Undo/Redo arm having claimed the chord under the open editor \
+             (was: the buffer was measured against its seed `7`, classed clean, and bubbled)"
+        );
+        let editor_after = query(&host, "[data-testid=\"sheet-cell-editor\"]")
+            .unwrap_or_else(|| panic!("[{label}] the editor stays open"));
+        assert!(
+            same_node(&editor_after, &editor),
+            "[{label}] the editor is not remounted"
+        );
+        assert_eq!(
+            overlay_textarea(&editor_after).value(),
+            "7",
+            "[{label}] the buffer keeps its typed text"
+        );
+        assert!(is_focused(&area), "[{label}] focus stays in the editor");
+    }
+    assert_eq!(
+        document_line_status(&host),
+        document_before,
+        "no shell verb ran under the open editor"
+    );
+
+    // Escape reverts cleanly: the overlay closes, focus returns to the section.
+    let focused: web_sys::EventTarget = active_element().unchecked_into();
+    press_chord(&focused, "Escape", false, false, false);
+    next_tick().await;
+    next_tick().await;
+    assert!(
+        query(&host, "[data-testid=\"sheet-cell-editor\"]").is_none(),
+        "Escape reverts and closes the overlay"
+    );
+    assert!(
+        is_focused(&root),
+        "a revert hands focus back to the grid section"
+    );
+
+    // F2 re-opens A1 still holding the committed 99: nothing undid the workbook
+    // under the editor.
+    let focused: web_sys::EventTarget = active_element().unchecked_into();
+    press_chord(&focused, "F2", false, false, false);
+    next_tick().await;
+    next_tick().await;
+    let editor =
+        query(&host, "[data-testid=\"sheet-cell-editor\"]").expect("F2 re-opens the editor at A1");
+    assert_eq!(
+        editor.get_attribute("data-cell").as_deref(),
+        Some("1:1"),
+        "the editor re-opens at A1"
+    );
+    let area = overlay_textarea(&editor);
+    assert_eq!(
+        area.value(),
+        "99",
+        "A1 still holds the committed 99: no WorkspaceIntent::Undo reverted the workbook \
+         under the type-to-replace editor"
+    );
+    assert!(is_focused(&area), "the re-opened editor owns focus");
+
+    // Contrast (dtc-lfz.2, unchanged): this F2 buffer is untouched — buffer ==
+    // committed — so Ctrl+Z bubbles to the shell's model Undo, whose arm
+    // prevents the default.
+    let focused: web_sys::EventTarget = active_element().unchecked_into();
+    let prevented = press_chord_observed(&focused, "z", true, false, false);
+    next_tick().await;
+    assert!(
+        prevented,
+        "an untouched F2 buffer (buffer == committed) hands Ctrl+Z to the shell's Undo arm: \
+         the owner-ratified dtc-lfz.2 rule is unchanged"
+    );
+}

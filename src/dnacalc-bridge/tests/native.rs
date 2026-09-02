@@ -13,10 +13,10 @@
 use dnacalc_bridge::{
     ALL_COMPLETION_KINDS, BridgeEvent, DegradeKeyDisposition, EditDiscipline, buffer_is_dirty,
     completion_applied, completion_kind_glyph, completion_kind_id, completion_next,
-    degrade_key_disposition, degrade_segments, drill_node_at_caret, drill_node_for_selection,
-    drill_state_id, drill_state_label, editor_segments, is_stale, is_undo_redo_chord,
-    next_preview_window, partial_eval, readout, role_class, role_id, segment_lit_by_caret,
-    segments_snapshot, segments_text, selection_from_dom, severity_label,
+    degrade_buffer_is_dirty, degrade_key_disposition, degrade_segments, drill_node_at_caret,
+    drill_node_for_selection, drill_state_id, drill_state_label, editor_segments, is_stale,
+    is_undo_redo_chord, next_preview_window, partial_eval, readout, role_class, role_id,
+    segment_lit_by_caret, segments_snapshot, segments_text, selection_from_dom, severity_label,
     should_consume_undo_redo_locally, stage_label, text_edited_from_dom, utf8_to_utf16,
     utf16_to_utf8,
 };
@@ -935,6 +935,64 @@ fn degrade_editor_lets_shell_chords_bubble_and_stops_only_what_it_consumes() {
         degrade_key_disposition("z", false, true, false, true, false),
         Bubble,
         "a clean buffer hands Ctrl+Z to the shell's model Undo"
+    );
+}
+
+/// dtc-j7n8.25 (the regression independent verification found in this bead's
+/// first cut) — the degrade editor's "dirty" fact is measured against the
+/// host's COMMITTED text, never the mount seed. The Sheet stage seeds a
+/// type-to-replace editor with the typed character (seed == buffer) while the
+/// cell's committed text is its authored text or empty; comparing against the
+/// seed classed that buffer CLEAN, so Ctrl+Z bubbled to the shell's model Undo
+/// under the open editor. The table row the regression needs: buffer == seed
+/// but != committed => `ConsumeUndoRedoLocally`. The F2 row (seed ==
+/// committed) keeps the owner-ratified dtc-lfz.2 rule.
+#[test]
+fn degrade_dirty_is_measured_against_the_committed_text_not_the_mount_seed() {
+    use DegradeKeyDisposition::{Bubble, ConsumeUndoRedoLocally};
+    let ctrl_z = |dirty: bool| degrade_key_disposition("z", false, true, false, true, dirty);
+    let ctrl_y = |dirty: bool| degrade_key_disposition("y", false, true, false, true, dirty);
+    let ctrl_shift_z = |dirty: bool| degrade_key_disposition("Z", true, true, false, true, dirty);
+
+    // Type-to-replace over an authored cell: seed `7` == buffer `7`, committed `2`.
+    let dirty = degrade_buffer_is_dirty("7", "7", Some("2"));
+    assert!(dirty, "buffer == seed but != committed is DIRTY");
+    assert_eq!(
+        ctrl_z(dirty),
+        ConsumeUndoRedoLocally,
+        "Ctrl+Z on an untouched type-to-replace buffer is text-local (was: Bubble to the shell's Undo)"
+    );
+    assert_eq!(ctrl_y(dirty), ConsumeUndoRedoLocally);
+    assert_eq!(ctrl_shift_z(dirty), ConsumeUndoRedoLocally);
+    // Type-to-replace over a BLANK cell: the committed text is empty.
+    assert!(degrade_buffer_is_dirty("7", "7", Some("")));
+    // A rejection remount: seed = the rejected text, committed = the authored text.
+    assert!(degrade_buffer_is_dirty("=A1+", "=A1+", Some("=A1")));
+    // Typing the committed text back by hand makes the buffer clean again — the
+    // committed text, not the seed, is the datum.
+    assert!(!degrade_buffer_is_dirty("2", "7", Some("2")));
+
+    // F2 / double-click: seed == committed; an untouched buffer is CLEAN, so
+    // Ctrl+Z still bubbles to the shell's model Undo (dtc-lfz.2, unchanged)...
+    let clean = degrade_buffer_is_dirty("=A2*10", "=A2*10", Some("=A2*10"));
+    assert!(!clean, "an untouched F2 buffer is clean");
+    assert_eq!(
+        ctrl_z(clean),
+        Bubble,
+        "an untouched F2 buffer hands Ctrl+Z to the shell's model Undo"
+    );
+    // ...and typing on top of it makes it dirty, exactly as before.
+    assert!(degrade_buffer_is_dirty("=A2*100", "=A2*10", Some("=A2*10")));
+
+    // No committed text supplied (the Notebook block / the Bench slot remount
+    // from the last committed text): the seed IS the committed text.
+    assert!(!degrade_buffer_is_dirty("=A1", "=A1", None));
+    assert!(degrade_buffer_is_dirty("=A1+1", "=A1", None));
+
+    // Dirtiness never touches the shell's own chords: Ctrl+S bubbles either way.
+    assert_eq!(
+        degrade_key_disposition("s", false, true, false, true, dirty),
+        Bubble
     );
 }
 

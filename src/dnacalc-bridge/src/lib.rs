@@ -43,14 +43,14 @@ pub use events::{BridgeEvent, BridgeEvents, CommitAdvance, EditDiscipline};
 pub use vm::{
     ALL_COMPLETION_KINDS, DegradeKeyDisposition, MAX_WINDOW_EDGE, PartialEvalVm, ReadoutVm,
     RenderSegment, buffer_is_dirty, completion_applied, completion_kind_class,
-    completion_kind_glyph, completion_kind_id, completion_next, degrade_key_disposition,
-    degrade_segments, diagnostic_row, drill_node_at_caret, drill_node_for_selection,
-    drill_state_class, drill_state_id, drill_state_label, dry_bind_diagnostics, dry_bind_preview,
-    editor_segments, is_stale, is_undo_redo_chord, next_preview_window, partial_eval, readout,
-    role_class, role_id, segment_lit_by_caret, segments_snapshot, segments_text,
-    selection_from_dom, severity_class, severity_id, severity_label, shape_label,
-    should_consume_undo_redo_locally, snap_to_char_boundary, stage_label, text_edited_from_dom,
-    utf8_to_utf16, utf16_to_utf8,
+    completion_kind_glyph, completion_kind_id, completion_next, degrade_buffer_is_dirty,
+    degrade_key_disposition, degrade_segments, diagnostic_row, drill_node_at_caret,
+    drill_node_for_selection, drill_state_class, drill_state_id, drill_state_label,
+    dry_bind_diagnostics, dry_bind_preview, editor_segments, is_stale, is_undo_redo_chord,
+    next_preview_window, partial_eval, readout, role_class, role_id, segment_lit_by_caret,
+    segments_snapshot, segments_text, selection_from_dom, severity_class, severity_id,
+    severity_label, shape_label, should_consume_undo_redo_locally, snap_to_char_boundary,
+    stage_label, text_edited_from_dom, utf8_to_utf16, utf16_to_utf8,
 };
 
 use dnacalc_strand::REDUCED_MOTION_FLAG;

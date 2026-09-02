@@ -135,7 +135,15 @@
 //! longer stops every keydown (it stops only what it consumes), and a shell
 //! chord the sheet grammar does not bind that reaches the section WHILE EDITING
 //! is [`SectionKeyRoute::ShellOwns`] — left untouched so it bubbles — rather
-//! than being consumed by the editor refocus.
+//! than being consumed by the editor refocus. The overlay editor is told the
+//! cell's COMMITTED text (`committed`, read from host truth at mount) alongside
+//! its seed, so the bridge's dirty-buffer Ctrl+Z/Y carve-out measures the
+//! buffer against the committed text: a type-to-replace buffer (seed = the
+//! typed character) is dirty from its first keystroke and Ctrl+Z stays
+//! text-local — Excel never runs workbook undo from edit mode — while an
+//! untouched F2 buffer (seed == committed) still hands Ctrl+Z to the shell's
+//! model Undo (dtc-lfz.2). Measuring against the seed had let Ctrl+Z bubble to
+//! the shell's Undo arm under an open type-to-replace editor.
 
 use std::sync::Arc;
 
@@ -1009,6 +1017,15 @@ impl StageSurface for SheetStage {
                     // typing (which updates `edit_text`) never remounts the bridge.
                     let seed_now = edit_text.get_untracked();
                     let rejections_now = editor_rejections.get_untracked();
+                    // dtc-j7n8.25: the cell's COMMITTED text from host truth is
+                    // what the bridge measures "dirty" against for its Ctrl+Z/Y
+                    // carve-out. The seed is NOT that text on the type-to-replace
+                    // path (seed = the typed character) nor on a rejection
+                    // remount (seed = the rejected text); measuring against the
+                    // seed classed a type-to-replace buffer clean, so Ctrl+Z
+                    // bubbled to the shell's model Undo under the open editor.
+                    let committed_now = overlay_workspace
+                        .with_untracked(|ws| edit::current_authored_seed(ws, &grid, row, col));
                     let commit_grid = grid.clone();
                     let commit_dispatch = dispatch.with_value(Arc::clone);
                     // dtc-j7n8.26: the editor OWNS keyboard focus the moment it
@@ -1102,6 +1119,7 @@ impl StageSurface for SheetStage {
                         >
                             <FormulaBridgeDegrade
                                 text=seed_now
+                                committed=Some(committed_now)
                                 rejections=rejections_now
                                 commit_on_tab=true
                                 on_event=on_event

@@ -20,7 +20,7 @@ use dnacalc_skin_ir::workspace::{FormulaBindPreviewProjection, GridEntryDiagnost
 use crate::editor::segment_view;
 use crate::events::{BridgeEvent, BridgeEvents, CommitAdvance, EditDiscipline};
 use crate::vm::{
-    DegradeKeyDisposition, buffer_is_dirty, degrade_key_disposition, degrade_segments,
+    DegradeKeyDisposition, degrade_buffer_is_dirty, degrade_key_disposition, degrade_segments,
     dry_bind_preview, text_edited_from_dom, utf8_to_utf16,
 };
 
@@ -37,9 +37,22 @@ pub struct DegradePreviewBinding {
 /// there is nothing here a host could feed fake tokens through.
 #[component]
 pub fn FormulaBridgeDegrade(
-    /// The committed text the buffer seeds from.
+    /// The text the buffer seeds from — the committed text, unless
+    /// `committed` says otherwise.
     #[prop(optional)]
     text: String,
+    /// The host's COMMITTED text for the edited slot, when it is NOT the seed
+    /// (bead dtc-j7n8.25): the Sheet stage seeds a type-to-replace editor
+    /// with the typed character (and a rejection remount with the rejected
+    /// text) while the cell's committed text is its authored text or empty.
+    /// The "dirty" predicate behind the Ctrl+Z/Y carve-out compares the
+    /// buffer to THIS, never to the seed, so such a buffer is dirty from its
+    /// first character and Ctrl+Z stays text-local instead of bubbling to the
+    /// shell's model Undo under the open editor. `None` (the default) means
+    /// the seed IS the committed text — the Notebook block and the Bench slot
+    /// remount from the last committed text, so they pass nothing.
+    #[prop(optional_no_strip)]
+    committed: Option<String>,
     /// Typed entry rejections from the last commit attempt (post-attempt
     /// channel). Spans are `(start, end)` UTF-8 byte offsets; `None`-span
     /// rows render message-only.
@@ -108,9 +121,18 @@ pub fn FormulaBridgeDegrade(
     // unchanged. Ctrl+Z/Y/Shift+Z stay TEXT-LOCAL while the buffer is dirty
     // (the dtc-lfz.2 carve-out the full editor also honors): stop only, no
     // `prevent_default`, so the textarea's own undo/redo is the effect.
+    // "Dirty" is measured against the host's COMMITTED text (`committed`,
+    // falling back to the seed only where the seed is that text): measuring
+    // against the mount seed classed a Sheet type-to-replace buffer (seed =
+    // the typed character) as clean, so Ctrl+Z bubbled to the shell's model
+    // Undo under the open editor — the regression verification found in the
+    // first cut of this bead.
     let seed_text = text.clone();
+    let committed_text = committed;
     let on_keydown = move |ev: leptos::ev::KeyboardEvent| {
-        let dirty = buffer.with_untracked(|content| buffer_is_dirty(content, &seed_text));
+        let dirty = buffer.with_untracked(|content| {
+            degrade_buffer_is_dirty(content, &seed_text, committed_text.as_deref())
+        });
         match degrade_key_disposition(
             &ev.key(),
             ev.shift_key(),

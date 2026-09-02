@@ -48,7 +48,11 @@ upgrade behind the same contracts, never a redesign.
   than re-running the select grammar (dtc-j7n8.26). The shell's universal chords (Ctrl+S,
   Ctrl+O, Ctrl+K, F9) are never swallowed inside the stage: the overlay editor stops only the
   keys it consumes (Enter/Tab commit, Esc revert, dirty-buffer Ctrl+Z/Y) and the section lets an
-  unbound shell chord bubble even while an editor is open (dtc-j7n8.25).
+  unbound shell chord bubble even while an editor is open (dtc-j7n8.25). "Dirty" is measured
+  against the cell's committed text (the stage hands the editor `committed` alongside its seed),
+  so a type-to-replace buffer is dirty from its seed character and Ctrl+Z/Y stay text-local —
+  Excel never runs workbook undo from edit mode — while an untouched F2 buffer is clean and hands
+  Ctrl+Z to the shell's model Undo (dtc-lfz.2).
 - Navigation: arrows, PgUp/PgDn, Home/Ctrl+Home; Ctrl+arrow edge-jump requires a host query
   (G4 model-query; degrade: window-local jump with atlas note).
 - Selection: single cell + table cell today; **ranges, row/col ops, fill grips, grid clipboard,

@@ -697,6 +697,25 @@ pub fn buffer_is_dirty(buffer: &str, source: &str) -> bool {
     buffer != source
 }
 
+/// The DEGRADE editor's "dirty" fact (bead dtc-j7n8.25, regression fix): the
+/// buffer is measured against the host's COMMITTED cell text when the host
+/// supplies it, and only falls back to the mount seed where the two coincide
+/// by construction (the Notebook block and the Bench slot remount from the
+/// last committed text, so their seed IS the committed text). The Sheet stage
+/// mounts a type-to-replace editor with seed = the typed character, so a
+/// seed-vs-buffer comparison classed that buffer CLEAN and Ctrl+Z bubbled to
+/// the shell's model Undo under the open editor (a subsequent Enter then
+/// committed the typed text on top of the reverted workspace). Excel never
+/// performs workbook undo from edit mode: a type-to-replace buffer is dirty
+/// from its first character, exactly as [`buffer_is_dirty`] defines dirty
+/// (buffer vs committed `source_text`). An untouched F2 buffer (buffer ==
+/// committed) stays clean, so the dtc-lfz.2 rule (clean buffer hands Ctrl+Z
+/// to the shell) is unchanged.
+#[must_use]
+pub fn degrade_buffer_is_dirty(buffer: &str, seed: &str, committed: Option<&str>) -> bool {
+    buffer_is_dirty(buffer, committed.unwrap_or(seed))
+}
+
 /// Is this keydown one of the three chords the undo/redo carve-out
 /// recognizes — Ctrl+Z (undo), Ctrl+Y (redo), Ctrl+Shift+Z (redo)? Matches
 /// the letter case-insensitively (`KeyboardEvent.key` capitalizes under

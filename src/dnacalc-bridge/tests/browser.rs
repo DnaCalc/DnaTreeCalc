@@ -457,13 +457,19 @@ fn f9_and_ctrl_k_bubble_past_the_editor_to_an_ancestor_shell_handler() {
 /// Mount `FormulaBridgeDegrade` nested inside the same stand-in shell root as
 /// `mount_inside_shell_stub` — modeling the composed Calc app, where the Sheet
 /// stage's overlay editor IS this degrade bridge and lives inside `.dna-shell`.
+/// `text` is the mount seed and `committed` the host's committed text where
+/// the Sheet stage supplies one (dtc-j7n8.25).
 fn mount_degrade_inside_shell_stub(
     commit_on_tab: bool,
+    text: &str,
+    committed: Option<&str>,
     sink: Arc<Mutex<Vec<BridgeEvent>>>,
     bubbled: Arc<Mutex<Vec<String>>>,
 ) -> web_sys::HtmlElement {
     let host = fresh_host();
     let on_event = Callback::new(move |event| sink.lock().unwrap().push(event));
+    let text = text.to_string();
+    let committed = committed.map(str::to_string);
     leptos::mount::mount_to(host.clone().unchecked_into(), move || {
         view! {
             <div
@@ -472,7 +478,12 @@ fn mount_degrade_inside_shell_stub(
                     bubbled.lock().unwrap().push(ev.key());
                 }
             >
-                <FormulaBridgeDegrade commit_on_tab=commit_on_tab on_event=on_event />
+                <FormulaBridgeDegrade
+                    text=text
+                    committed=committed
+                    commit_on_tab=commit_on_tab
+                    on_event=on_event
+                />
             </div>
         }
     })
@@ -492,7 +503,7 @@ fn ctrl_s_bubbles_past_the_degrade_editor_to_an_ancestor_shell_handler() {
     // only what the editor consumes may stop.
     let events = Arc::new(Mutex::new(Vec::new()));
     let bubbled = Arc::new(Mutex::new(Vec::new()));
-    let host = mount_degrade_inside_shell_stub(true, events.clone(), bubbled.clone());
+    let host = mount_degrade_inside_shell_stub(true, "", None, events.clone(), bubbled.clone());
     let area = textarea(&host);
 
     let default_allowed = press_ctrl_key(&area, "s");
@@ -551,6 +562,93 @@ fn ctrl_s_bubbles_past_the_degrade_editor_to_an_ancestor_shell_handler() {
     assert!(
         default_allowed,
         "the local undo carve-out must leave the textarea's native undo intact"
+    );
+}
+
+/// dtc-j7n8.25 (the regression independent verification found in this bead's
+/// first cut): the degrade editor measured "dirty" for its Ctrl+Z/Y carve-out
+/// against its mount SEED. The Sheet stage seeds a type-to-replace editor with
+/// the typed character — seed == buffer — while the cell's committed text is
+/// its authored text (or empty), so that untouched buffer read as CLEAN and
+/// Ctrl+Z bubbled to the shell's model Undo under the open editor. With the
+/// host's `committed` text supplied, the buffer is dirty from its seed
+/// character: Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z stay text-local (stop only, the
+/// textarea's native undo intact), Ctrl+S still bubbles, and the F2 mount
+/// (seed == committed) keeps the owner-ratified dtc-lfz.2 behavior — an
+/// untouched buffer hands Ctrl+Z to the shell, typing makes it local.
+#[wasm_bindgen_test]
+async fn type_to_replace_seed_is_dirty_against_the_committed_text_so_ctrl_z_stays_local() {
+    // The Sheet's type-to-replace mount over a cell whose committed text is `2`.
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let bubbled = Arc::new(Mutex::new(Vec::new()));
+    let host =
+        mount_degrade_inside_shell_stub(true, "7", Some("2"), events.clone(), bubbled.clone());
+    next_tick().await;
+    let area = textarea(&host);
+    assert_eq!(
+        area.value(),
+        "7",
+        "the editor seeds with the typed character"
+    );
+
+    let default_allowed = press_ctrl_key(&area, "z");
+    let seen = bubbled.lock().unwrap().clone();
+    assert!(
+        seen.is_empty(),
+        "Ctrl+Z on an untouched type-to-replace buffer is DIRTY against the committed text and \
+         must not reach the shell's model Undo (was: classed clean against the seed and \
+         bubbled), got {seen:?}"
+    );
+    assert!(
+        default_allowed,
+        "the carve-out never preventDefaults: the textarea's native undo is the effect"
+    );
+    press_ctrl_key(&area, "y");
+    press_ctrl_shift_key(&area, "Z");
+    let seen = bubbled.lock().unwrap().clone();
+    assert!(
+        seen.is_empty(),
+        "Ctrl+Y / Ctrl+Shift+Z stay text-local too, got {seen:?}"
+    );
+    // Dirtiness never touches the shell's own chords: Ctrl+S still bubbles.
+    press_ctrl_key(&area, "s");
+    assert_eq!(
+        bubbled.lock().unwrap().as_slice(),
+        ["s"],
+        "Ctrl+S bubbles from a dirty type-to-replace buffer"
+    );
+    let observed = events.lock().unwrap().clone();
+    assert!(
+        observed.is_empty(),
+        "none of the chords commits or reverts the editor, got {observed:?}"
+    );
+
+    // Contrast — the F2 / double-click mount: seed == committed, so an untouched
+    // buffer is clean and Ctrl+Z bubbles to the shell (dtc-lfz.2, unchanged)...
+    let f2_events = Arc::new(Mutex::new(Vec::new()));
+    let f2_bubbled = Arc::new(Mutex::new(Vec::new()));
+    let f2_host = mount_degrade_inside_shell_stub(
+        true,
+        "=A2*10",
+        Some("=A2*10"),
+        f2_events,
+        f2_bubbled.clone(),
+    );
+    next_tick().await;
+    let f2_area = textarea(&f2_host);
+    press_ctrl_key(&f2_area, "z");
+    assert_eq!(
+        f2_bubbled.lock().unwrap().as_slice(),
+        ["z"],
+        "an untouched F2 buffer hands Ctrl+Z to the shell's model Undo"
+    );
+    // ...and typing on top of it makes it dirty, so Ctrl+Z turns text-local.
+    type_text(&f2_area, "=A2*100");
+    press_ctrl_key(&f2_area, "z");
+    assert_eq!(
+        f2_bubbled.lock().unwrap().as_slice(),
+        ["z"],
+        "Ctrl+Z on the typed-over F2 buffer stays text-local"
     );
 }
 

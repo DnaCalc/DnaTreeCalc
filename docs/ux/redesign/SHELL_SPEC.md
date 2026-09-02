@@ -143,11 +143,15 @@ textarea undo/redo stack IS the effect the carve-out exists to produce; calling
 losing the effect entirely). Once the buffer is clean again — its text matches `source_text` —
 the carve-out lapses and Ctrl+Z/Y/Shift+Z fall back to the general rule above: they bubble
 undisturbed, and the shell's model Undo/Redo verbs fire, exactly as before this carve-out
-existed. This is narrower than it looks: Ctrl+K and F9 are unaffected by buffer dirtiness (they
-always bubble, per the rule above, editing or not); clipboard chords (Ctrl+X/C/V) are likewise
-unaffected — the owner chose the undo-only carve-out this phase, not a broader "capture
-everything while dirty" rule. See §1's Esc-vs-text-entry precedence note for the analogous
-one-keystroke-one-effect reasoning this carve-out follows.
+existed. *Dirty* is always measured against the edited slot's committed text, never against
+whatever text the editor happened to mount with: a grid type-to-replace editor mounts seeded
+with the typed character while the cell's committed text is untouched, so it is dirty from its
+first keystroke and Ctrl+Z stays text-local — Excel never runs workbook undo from edit mode
+(bead dtc-j7n8.25). This is narrower than it looks: Ctrl+K and F9 are unaffected by buffer
+dirtiness (they always bubble, per the rule above, editing or not); clipboard chords
+(Ctrl+X/C/V) are likewise unaffected — the owner chose the undo-only carve-out this phase, not a
+broader "capture everything while dirty" rule. See §1's Esc-vs-text-entry precedence note for
+the analogous one-keystroke-one-effect reasoning this carve-out follows.
 
 ### 5.1 Universal verbs (defaults; all rebindable except stage switching)
 
