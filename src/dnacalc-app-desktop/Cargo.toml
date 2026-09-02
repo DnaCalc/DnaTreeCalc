@@ -18,6 +18,14 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
+# The `open_xlsx_file` / `save_xlsx_file` commands (W011 Wave 1.5, bead
+# dtc-j7n8.10): native file dialogs (rfd) + plain `std::fs` reads/writes that
+# hand raw `.xlsx` BYTES to / take them from the WASM frontend, which owns the
+# host commands (`OpenXlsxBytes` / `SaveActiveXlsx`). Bytes only is deliberate
+# — it keeps this shell free of any `dnacalc-*` / OxDoc edge; the same rfd
+# pattern the sibling `dnacalc-bench-app-desktop` shell uses.
+rfd = "0.15"
+serde = { workspace = true }
 
 [lints]
 workspace = true

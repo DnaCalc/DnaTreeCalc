@@ -13,6 +13,11 @@
 
 pub mod adapter;
 pub mod app;
+pub mod document;
+/// The desktop shell's file bridge (W011 Wave 1.5): wasm32 only — the native
+/// `rlib` has no window to reach `window.__TAURI__` through.
+#[cfg(target_arch = "wasm32")]
+pub mod shell_files;
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
@@ -35,8 +40,16 @@ pub fn mount_calc(element_id: &str) -> Result<(), JsValue> {
         .ok_or_else(|| JsValue::from_str("mount element not found"))?
         .dyn_into::<web_sys::HtmlElement>()?;
 
+    // Inside the desktop shell's webview (the Tauri bridge is reachable) this
+    // is a Desktop runtime — the keyboard grammar reserves no browser chords
+    // there; a plain tab is Browser (dtc-j7n8.10).
+    let runtime = if app::shell_file_bridge_available() {
+        RuntimeContext::Desktop
+    } else {
+        RuntimeContext::Browser
+    };
     let mount_handle = mount_to(host, move || {
-        view! { <app::CalcApp runtime=RuntimeContext::Browser /> }
+        view! { <app::CalcApp runtime=runtime /> }
     });
     std::mem::forget(mount_handle);
     Ok(())

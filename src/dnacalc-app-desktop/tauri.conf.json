@@ -8,6 +8,7 @@
     "frontendDist": "../dnacalc-app/dist"
   },
   "app": {
+    "withGlobalTauri": true,
     "windows": [
       { "title": "DNA Calc", "width": 1280, "height": 800 }
     ],

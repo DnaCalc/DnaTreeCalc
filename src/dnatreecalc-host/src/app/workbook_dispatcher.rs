@@ -195,9 +195,10 @@ impl WorkbookHostDispatcher {
     /// - [`HostCommandOutcome::Opened`] — the session now holds the opened
     ///   workbook (the previous document dropped inside host-core), so the
     ///   full snapshot is republished, the caret moves to the loaded
-    ///   workbook's first grid (the old grid ids no longer exist), and a
-    ///   revision-inert delta carrying the new projection sequence is
-    ///   published so delta observers see the swap.
+    ///   workbook's first grid (the old grid ids no longer exist), the
+    ///   shared multi-select / anchor / focus / hover keys of the previous
+    ///   document are cleared, and a revision-inert delta carrying the new
+    ///   projection sequence is published so delta observers see the swap.
     /// - [`HostCommandOutcome::Saved`] — the bytes and OxDoc's save ledger are
     ///   passed through untouched: the caller owns the bytes (the shell
     ///   persists them wherever they go), and host-core guarantees the save
@@ -224,6 +225,7 @@ impl WorkbookHostDispatcher {
             HostCommandOutcome::Opened { .. } => {
                 let state = self.publish_snapshot();
                 self.select_first_grid(&state);
+                self.clear_shared_selection();
                 self.publish_unchanged_delta();
             }
             HostCommandOutcome::Dispatched(receipt) => self.publish_after_receipt(receipt),
@@ -272,6 +274,31 @@ impl WorkbookHostDispatcher {
         if let Some(first_grid) = state.grids.keys().next().cloned() {
             self.selection
                 .set(SelectionState::with_primary(Some(first_grid)));
+        }
+    }
+
+    /// After a document swap the shared multi-select / anchor / focus /
+    /// hover keys still name the PREVIOUS document's nodes — and a key can
+    /// collide with the new document's (both a demo and a loaded `.xlsx`
+    /// have a `Sheet1`), which would show cells the user never selected.
+    /// Clear them through the audited path (dtc-j7n8.10); collapse/pin sets
+    /// are left to the lenses' own gc, as no typed bulk-clear exists for
+    /// them yet.
+    fn clear_shared_selection(&self) {
+        if let Some(shared) = &self.shared {
+            shared.apply(
+                SharedStateChange::ClearSelectionSet,
+                SharedStateOrigin::Host,
+            );
+            shared.apply(
+                SharedStateChange::SetSelectionAnchor(None),
+                SharedStateOrigin::Host,
+            );
+            shared.apply(
+                SharedStateChange::SetFocusKey(None),
+                SharedStateOrigin::Host,
+            );
+            shared.apply(SharedStateChange::SetHovered(None), SharedStateOrigin::Host);
         }
     }
 

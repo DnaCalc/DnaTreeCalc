@@ -4,6 +4,13 @@
 //! `dnatreecalc-host`'s `WorkbookHostDispatcher`), and the formula workbench in
 //! DEGRADE mode editing one workbook cell via `EnterGridCell` with the
 //! three-way outcome rendered honestly.
+//!
+//! W011 Wave 1.5 (dtc-j7n8.10): the shell's own document-lifecycle seam —
+//! the command deck's `shell.open` / `shell.save` and the Ctrl+O / Ctrl+S
+//! verbs — is wired to the host's `OpenXlsxBytes` / `SaveActiveXlsx`
+//! commands through [`DocumentController`]. File dialogs live in the desktop
+//! shell (`dnacalc-app-desktop`, reached over [`crate::shell_files`]); only
+//! bytes cross into this crate, and skins never see a file API.
 
 use std::sync::Arc;
 
@@ -16,6 +23,8 @@ use dnacalc_shell::{
 };
 use dnacalc_skin_ir::IntentReceipt;
 use dnacalc_skin_ir::intent::{Dispatcher, WorkspaceDelta, WorkspaceIntent};
+use dnacalc_skin_ir::keychord::SkinVerb;
+use dnacalc_skin_ir::protocol::SkinShellIntent;
 use dnacalc_skin_ir::selection::SelectionState;
 use dnacalc_skin_ir::state::{SharedSkinState, SharedStateChange, SharedStateOrigin};
 use dnacalc_skin_ir::workspace::{GridEntryDiagnosticProjection, WorkspaceState};
@@ -27,17 +36,22 @@ use dnacalc_strand::{Density, Theme};
 use dnatreecalc_host::app::WorkbookHostDispatcher;
 
 use crate::adapter::{CellOutcome, enter_grid_cell_intent, interpret_receipt};
+use crate::document::{DocumentController, FileVerb};
 
 /// Wraps the workbook dispatcher to make persona switching real: `SetPersona`
 /// is written back into `SharedSkinState.persona` on accept (SHELL_SPEC §4 —
 /// the deck's persona marker mirrors that field and only changes when the host
-/// applies it). Every other intent delegates to the workbook dispatcher.
-struct PersonaDispatcher {
+/// applies it). Every other intent delegates to the workbook dispatcher, and
+/// an accepted receipt that carries a change (an entry, a clear, a
+/// defined-name edit — never a revision-inert select/interest receipt) marks
+/// the document dirty for the mast / persistence projection (dtc-j7n8.10).
+struct CalcDispatcher {
     inner: Arc<dyn Dispatcher>,
     shared: SharedSkinStateHandle,
+    documents: DocumentController,
 }
 
-impl Dispatcher for PersonaDispatcher {
+impl Dispatcher for CalcDispatcher {
     fn dispatch(&self, intent: WorkspaceIntent) -> IntentReceipt {
         if let WorkspaceIntent::SetPersona { persona } = &intent {
             self.shared.apply(
@@ -46,7 +60,11 @@ impl Dispatcher for PersonaDispatcher {
             );
             return IntentReceipt::accepted();
         }
-        self.inner.dispatch(intent)
+        let receipt = self.inner.dispatch(intent);
+        if receipt.accepted && !receipt.delta.changes.is_empty() {
+            self.documents.mark_dirty();
+        }
+        receipt
     }
 }
 
@@ -169,6 +187,92 @@ fn outcome_detail(outcome: &CellOutcome) -> String {
     }
 }
 
+/// Whether this page can reach the desktop shell's file bridge (the Tauri
+/// webview with `withGlobalTauri`). Never in the native compile, which has
+/// no window at all.
+#[must_use]
+pub fn shell_file_bridge_available() -> bool {
+    #[cfg(target_arch = "wasm32")]
+    {
+        crate::shell_files::bridge_available()
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        false
+    }
+}
+
+/// Run one document-lifecycle verb the shell asked for. Every file picker is
+/// async and lives in the desktop shell, so on wasm the flow is spawned:
+/// pick -> bytes -> host command -> projection/status (Open), or host
+/// command -> bytes -> pick -> write -> projection/status (Save). Where no
+/// bridge exists the verb is answered with an honest status note and nothing
+/// changes — never a silent no-op, never a fabricated success.
+fn run_file_verb(documents: &DocumentController, verb: FileVerb) {
+    if documents.bridge_available() {
+        spawn_file_verb(documents, verb);
+    } else {
+        documents.note_bridge_unavailable(verb);
+    }
+}
+
+/// wasm: hand the verb to the async shell flow.
+#[cfg(target_arch = "wasm32")]
+fn spawn_file_verb(documents: &DocumentController, verb: FileVerb) {
+    let documents = documents.clone();
+    wasm_bindgen_futures::spawn_local(async move {
+        match verb {
+            FileVerb::Open => open_through_shell(&documents).await,
+            FileVerb::Save => save_through_shell(&documents).await,
+        }
+    });
+}
+
+/// Native: there is no shell flow to hand a verb to (the native compile never
+/// reports a bridge, so this is reachable only through a controller built with
+/// `bridge_available = true` in a test) — answer honestly, never silently.
+#[cfg(not(target_arch = "wasm32"))]
+fn spawn_file_verb(documents: &DocumentController, verb: FileVerb) {
+    documents.note_bridge_unavailable(verb);
+}
+
+/// Open: the shell's native dialog resolves the bytes, the host opens them.
+#[cfg(target_arch = "wasm32")]
+async fn open_through_shell(documents: &DocumentController) {
+    match crate::shell_files::pick_xlsx_to_open().await {
+        Ok(Some(file)) => {
+            // The outcome (Opened / a typed refusal) is folded into the
+            // projection + status by the controller.
+            let _ = documents.open_bytes(file.bytes, file.name, Some(file.path));
+        }
+        Ok(None) => documents.note_cancelled(FileVerb::Open),
+        Err(error) => documents.note_bridge_error(FileVerb::Open, &error),
+    }
+}
+
+/// Save: the host produces the package bytes first (a refusal — the demo's
+/// `NoBackingSource` — ends here with the status set), then the shell's
+/// native dialog picks where they go and reports the write.
+#[cfg(target_arch = "wasm32")]
+async fn save_through_shell(documents: &DocumentController) {
+    let crate::adapter::SaveOutcome::Saved { bytes, .. } = documents.save_to_bytes() else {
+        return;
+    };
+    let suggested_name = documents.suggested_save_name();
+    let suggested_directory = documents.suggested_directory();
+    match crate::shell_files::pick_path_and_save_xlsx(
+        &suggested_name,
+        suggested_directory.as_deref(),
+        &bytes,
+    )
+    .await
+    {
+        Ok(Some(saved)) => documents.mark_saved(saved.path, saved.name, saved.bytes_written),
+        Ok(None) => documents.note_cancelled(FileVerb::Save),
+        Err(error) => documents.note_bridge_error(FileVerb::Save, &error),
+    }
+}
+
 /// The DNA Calc app root.
 #[component]
 pub fn CalcApp(runtime: RuntimeContext) -> impl IntoView {
@@ -178,13 +282,25 @@ pub fn CalcApp(runtime: RuntimeContext) -> impl IntoView {
     let shared = SharedSkinStateHandle::new(SharedSkinState::default());
 
     // The real host-core demo workbook, published into the workspace signal by
-    // the workbook dispatcher (edits recalc dependents live).
+    // the workbook dispatcher (edits recalc dependents live). The demo stays
+    // the default mount; Open replaces it with a real `.xlsx` through the same
+    // dispatcher (W011).
     let workbook = Arc::new(
         WorkbookHostDispatcher::new_demo(workspace, latest_delta, selection, Some(shared))
             .expect("build the demo workbook"),
     );
+    let documents = DocumentController::new(
+        workbook.clone(),
+        workspace.read_only(),
+        shared,
+        shell_file_bridge_available(),
+    );
     let inner: Arc<dyn Dispatcher> = workbook;
-    let dispatch: Arc<dyn Dispatcher> = Arc::new(PersonaDispatcher { inner, shared });
+    let dispatch: Arc<dyn Dispatcher> = Arc::new(CalcDispatcher {
+        inner,
+        shared,
+        documents: documents.clone(),
+    });
 
     // Degrade-path signals.
     let text_buffer = RwSignal::new(String::new());
@@ -237,6 +353,34 @@ pub fn CalcApp(runtime: RuntimeContext) -> impl IntoView {
         _ => {}
     });
 
+    // The shell's document-lifecycle seam (bead dtc-lfz.3): the deck's
+    // `shell.open` / `shell.save` dispatch a `SkinShellIntent` here once the
+    // controller's projection advertises the capability; Ctrl+O / Ctrl+S
+    // arrive as forwarded verbs. Both routes run the same flow.
+    let documents_for_intents = documents.clone();
+    let on_shell_intent = Callback::new(move |intent: SkinShellIntent| match intent {
+        SkinShellIntent::Open { .. } => run_file_verb(&documents_for_intents, FileVerb::Open),
+        SkinShellIntent::Save | SkinShellIntent::SaveAs { .. } => {
+            run_file_verb(&documents_for_intents, FileVerb::Save);
+        }
+        // Palette / active-document / recent-document intents are not part
+        // of the deck's Save/Open channel; the Calc app wires none of them.
+        SkinShellIntent::OpenCommandPalette
+        | SkinShellIntent::CloseCommandPalette
+        | SkinShellIntent::SetActiveDocument { .. }
+        | SkinShellIntent::OpenRecent { .. } => {}
+    });
+    let documents_for_verbs = documents.clone();
+    let on_shell_verb = Callback::new(move |verb: SkinVerb| {
+        if let Some(file_verb) = FileVerb::from_shell_verb(verb) {
+            run_file_verb(&documents_for_verbs, file_verb);
+        }
+    });
+    let persistence = documents.persistence();
+    let document_status = documents.status();
+    let document_name = documents.document_name();
+    let bridge_available = documents.bridge_available();
+
     let mut composition = ShellComposition::calc(ProfileTag::ExcelStrict);
     composition.bridge_slot.surface = Some(Arc::new(CalcBridgeSurface {
         on_event,
@@ -258,22 +402,72 @@ pub fn CalcApp(runtime: RuntimeContext) -> impl IntoView {
 
     view! {
         <style>{CALC_APP_CSS}</style>
-        <Shell
-            composition=composition
-            stages=stages
-            workspace=workspace.read_only()
-            latest_delta=latest_delta.read_only()
-            selection=selection.read_only()
-            shared=shared
-            dispatch=dispatch
-            theme=Theme::CockpitLight
-            density=Density::Working
-            runtime=runtime
-        />
+        <div class="calc-app">
+            // The document line (dtc-j7n8.10): which `.xlsx` is active (or the
+            // demo), whether this runtime can open/save at all, and the last
+            // lifecycle outcome verbatim — the click-through's readout.
+            <div
+                class="calc-document"
+                data-testid="calc-document"
+                data-document-status=move || {
+                    document_status
+                        .with(|status| status.as_ref().map_or("none", |status| status.label))
+                }
+                data-file-bridge=if bridge_available { "available" } else { "unavailable" }
+            >
+                <span class="calc-document__name">
+                    {move || {
+                        document_name
+                            .with(|name| {
+                                name.clone().unwrap_or_else(|| "demo workbook (in-memory)".to_string())
+                            })
+                    }}
+                </span>
+                <span class="calc-document__detail">
+                    {move || {
+                        document_status
+                            .with(|status| {
+                                status.as_ref().map_or_else(
+                                    || {
+                                        if bridge_available {
+                                            "Open (Ctrl+O) / Save (Ctrl+S) through the desktop shell".to_string()
+                                        } else {
+                                            "Open/Save need the desktop shell's file bridge; none in this runtime".to_string()
+                                        }
+                                    },
+                                    |status| status.detail.clone(),
+                                )
+                            })
+                    }}
+                </span>
+            </div>
+            <div class="calc-app__shell">
+                <Shell
+                    composition=composition
+                    stages=stages
+                    workspace=workspace.read_only()
+                    latest_delta=latest_delta.read_only()
+                    selection=selection.read_only()
+                    shared=shared
+                    dispatch=dispatch
+                    theme=Theme::CockpitLight
+                    density=Density::Working
+                    runtime=runtime
+                    host_persistence=persistence
+                    on_shell_intent=Some(on_shell_intent)
+                    on_shell_verb=Some(on_shell_verb)
+                />
+            </div>
+        </div>
     }
 }
 
 const CALC_APP_CSS: &str = "\
+.calc-app{display:flex;flex-direction:column;height:100%;min-height:0}
+.calc-app__shell{flex:1 1 auto;min-height:0}
+.calc-document{flex:none;display:flex;gap:12px;align-items:baseline;padding:4px 12px;font:12px system-ui,sans-serif;background:#f4f4f2;color:#333;border-bottom:1px solid #ddd}
+.calc-document__name{font-weight:600}
+.calc-document__detail{color:#555;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .calc-stage{padding:var(--dna-gap-5);display:flex;flex-direction:column;gap:var(--dna-gap-3)}
 .calc-stage__title{margin:0;font-size:16px}
 .calc-stage__continuity{color:var(--dna-ink-2);font-size:13px}

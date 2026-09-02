@@ -1,0 +1,8 @@
+{
+  "identifier": "default",
+  "description": "Default capability set for the DNA Calc desktop shell: core IPC so the WASM frontend can invoke the app-defined open_xlsx_file / save_xlsx_file commands (W011 Wave 1.5, bead dtc-j7n8.10).",
+  "windows": ["main"],
+  "permissions": [
+    "core:default"
+  ]
+}

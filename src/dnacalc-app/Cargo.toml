@@ -42,6 +42,9 @@ leptos = { version = "0.8.17", default-features = false, features = ["ssr"] }
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 leptos = { version = "0.8.17", default-features = false, features = ["csr"] }
 wasm-bindgen = "=0.2.117"
+# The desktop shell's file bridge (`shell_files`, W011 Wave 1.5): the Tauri
+# `invoke` promises are awaited, and the open/save flows are spawned.
+wasm-bindgen-futures = "0.4"
 js-sys = "0.3"
 web-sys = { version = "0.3", features = ["Window", "Document", "Element", "HtmlElement", "console"] }
 
