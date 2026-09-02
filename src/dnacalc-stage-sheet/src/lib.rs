@@ -128,6 +128,14 @@
 //! Before this the bridge textarea was never focused: after F2 or a typed key
 //! every further keystroke hit the section (re-seeding the editor with THAT
 //! character; Enter = Move(Down)) until the textarea itself was clicked.
+//!
+//! **dtc-j7n8.25 (Ctrl+S from inside the stage).** The shell's universal chords
+//! (Ctrl+S / Ctrl+O / Ctrl+K / F9) must reach the shell's `.dna-shell` keydown
+//! pipeline from any focus inside this stage: the degrade bridge's textarea no
+//! longer stops every keydown (it stops only what it consumes), and a shell
+//! chord the sheet grammar does not bind that reaches the section WHILE EDITING
+//! is [`SectionKeyRoute::ShellOwns`] — left untouched so it bubbles — rather
+//! than being consumed by the editor refocus.
 
 use std::sync::Arc;
 
@@ -165,7 +173,8 @@ pub use render_plan::{
 };
 pub use selection::{
     ActionAvailability, GridExtent, KeyBinding, KeyChord, NavAction, SectionKeyRoute, SheetAction,
-    action_availability, next_active, resolve_action, section_key_route, sheet_keymap, typed_char,
+    action_availability, is_shell_chord, next_active, resolve_action, section_key_route,
+    sheet_keymap, typed_char,
 };
 pub use viewport::{
     BOUNDED_SCALE_INTEREST_NOTE, EDGE_JUMP_DEGRADE_REASON, EdgeDir, ScrollCoalescer, Tier,
@@ -791,12 +800,21 @@ impl StageSurface for SheetStage {
         // (focus fell out of the editor: a header click, a focus race) by handing
         // focus back to the open editor's textarea — never by running the SELECT
         // grammar over it (which re-seeded the editor with each typed character
-        // and turned Enter into Move(Down)).
+        // and turned Enter into Move(Down)). dtc-j7n8.25: a universal shell
+        // chord the sheet grammar does not bind (Ctrl+S / Ctrl+O / Ctrl+K / F9)
+        // is `ShellOwns` in that state — left untouched so it bubbles to the
+        // shell's keydown pipeline instead of dying in the refocus.
         let keymap = sheet_keymap();
         let keydown_workspace = workspace;
         let on_section_keydown = move |ev: leptos::ev::KeyboardEvent| {
-            match section_key_route(event_target_is_text_entry(&ev), editing.get_untracked()) {
-                SectionKeyRoute::EditorOwns => return,
+            let chord = chord_from_event(&ev);
+            match section_key_route(
+                event_target_is_text_entry(&ev),
+                editing.get_untracked(),
+                &chord,
+                &keymap,
+            ) {
+                SectionKeyRoute::EditorOwns | SectionKeyRoute::ShellOwns => return,
                 SectionKeyRoute::RefocusEditor => {
                     // Put focus back into the open editor and consume the key. A
                     // read-only note (EDIT on, but no textarea to hand the key to)
@@ -819,7 +837,6 @@ impl StageSurface for SheetStage {
                 return; // No grid: let the keystroke bubble to the shell.
             };
             let extent = GridExtent::new(extent_rows, extent_cols);
-            let chord = chord_from_event(&ev);
             if let Some(action) = resolve_action(&keymap, &chord) {
                 match action_availability(action) {
                     ActionAvailability::DisabledWithReason(reason) => {

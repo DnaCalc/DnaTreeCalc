@@ -406,18 +406,52 @@ pub enum SectionKeyRoute {
     /// editor): hand keyboard focus back to the open editor and consume the
     /// key. The SELECT grammar must NOT run over an open editor.
     RefocusEditor,
+    /// EDIT is on, the key reached the section, and it is a universal shell
+    /// chord the sheet grammar does not bind (Ctrl+S, Ctrl+O, Ctrl+K, F9 —
+    /// see [`is_shell_chord`]): the section leaves the event UNTOUCHED so it
+    /// bubbles to the shell's keydown pipeline (dtc-j7n8.25). Refocusing the
+    /// editor here would swallow the shell's verb.
+    ShellOwns,
     /// SELECT mode: the nav / edit-entry grammar resolves the key.
     SelectGrammar,
 }
 
-/// Resolve a section keydown's route (see [`SectionKeyRoute`]). Pure over the
-/// two facts, so the wiring's first gate is unit-tested here.
+/// `F1`..`F24` — the shell's guard-order exemption class (mirrors
+/// `dnacalc_shell::keyboard::is_function_key`; a private copy so this pure
+/// grammar stays Leptos-free and independently testable).
+fn is_function_key(key: &str) -> bool {
+    key.len() >= 2 && key.starts_with('F') && key[1..].chars().all(|ch| ch.is_ascii_digit())
+}
+
+/// A chord in the shell's universal class — Ctrl/Alt-modified (`meta` already
+/// folded into `ctrl` by the wiring) or a function key. These are the chords
+/// the shell's `route_key` lets through even from inside an edit buffer
+/// (SHELL_SPEC §5), so a stage must never consume one it does not itself bind.
 #[must_use]
-pub const fn section_key_route(target_is_text_entry: bool, editing: bool) -> SectionKeyRoute {
+pub fn is_shell_chord(chord: &KeyChord) -> bool {
+    chord.ctrl || chord.alt || is_function_key(&chord.key)
+}
+
+/// Resolve a section keydown's route (see [`SectionKeyRoute`]). Pure over the
+/// facts, so the wiring's first gate is unit-tested here. While EDITING with
+/// the key at the section, a shell chord the sheet grammar does not bind is
+/// [`SectionKeyRoute::ShellOwns`] (Ctrl+S must save, dtc-j7n8.25); a chord the
+/// grammar binds (F2, Enter, Ctrl+Home) or plain typing refocuses the editor.
+#[must_use]
+pub fn section_key_route(
+    target_is_text_entry: bool,
+    editing: bool,
+    chord: &KeyChord,
+    keymap: &[KeyBinding],
+) -> SectionKeyRoute {
     if target_is_text_entry {
         SectionKeyRoute::EditorOwns
     } else if editing {
-        SectionKeyRoute::RefocusEditor
+        if is_shell_chord(chord) && resolve_action(keymap, chord).is_none() {
+            SectionKeyRoute::ShellOwns
+        } else {
+            SectionKeyRoute::RefocusEditor
+        }
     } else {
         SectionKeyRoute::SelectGrammar
     }
@@ -435,17 +469,81 @@ mod tests {
     /// grammar (the re-seed / Enter-moves bug); only SELECT mode resolves keys.
     #[test]
     fn section_key_route_never_runs_the_select_grammar_over_an_open_editor() {
-        assert_eq!(section_key_route(true, true), SectionKeyRoute::EditorOwns);
-        assert_eq!(section_key_route(true, false), SectionKeyRoute::EditorOwns);
+        let keymap = sheet_keymap();
+        let typed = KeyChord::new("x", false, false, false);
+        let enter = KeyChord::new("Enter", false, false, false);
         assert_eq!(
-            section_key_route(false, true),
+            section_key_route(true, true, &typed, &keymap),
+            SectionKeyRoute::EditorOwns
+        );
+        assert_eq!(
+            section_key_route(true, false, &typed, &keymap),
+            SectionKeyRoute::EditorOwns
+        );
+        assert_eq!(
+            section_key_route(false, true, &typed, &keymap),
             SectionKeyRoute::RefocusEditor,
             "EDIT on + a key at the section = refocus the editor, never re-seed it"
         );
         assert_eq!(
-            section_key_route(false, false),
+            section_key_route(false, true, &enter, &keymap),
+            SectionKeyRoute::RefocusEditor,
+            "Enter at the section while EDITING refocuses the editor (it commits there)"
+        );
+        assert_eq!(
+            section_key_route(false, false, &typed, &keymap),
             SectionKeyRoute::SelectGrammar
         );
+    }
+
+    /// dtc-j7n8.25 — Ctrl+S does nothing while focus is inside the sheet stage.
+    /// EDIT on with the key at the section (focus fell out of the editor: a
+    /// header click, a focus race) used to REFOCUS the editor and consume every
+    /// key, so the shell's universal chords died here. A shell chord the sheet
+    /// grammar does not bind must be left untouched (`ShellOwns`) so it bubbles
+    /// to the shell's Save / Open / deck / Recalculate verbs; chords the grammar
+    /// DOES bind (F2, Ctrl+Home) keep refocusing the editor.
+    #[test]
+    fn section_lets_unbound_shell_chords_bubble_while_editing() {
+        let keymap = sheet_keymap();
+        let ctrl_s = KeyChord::new("s", false, true, false);
+        let ctrl_o = KeyChord::new("o", false, true, false);
+        let ctrl_k = KeyChord::new("k", false, true, false);
+        let f9 = KeyChord::new("F9", false, false, false);
+        for chord in [&ctrl_s, &ctrl_o, &ctrl_k, &f9] {
+            assert!(is_shell_chord(chord), "{chord:?} is a shell chord");
+            assert_eq!(
+                section_key_route(false, true, chord, &keymap),
+                SectionKeyRoute::ShellOwns,
+                "{chord:?} at the section while EDITING must bubble to the shell"
+            );
+            // From inside the editor's textarea the bridge owns propagation.
+            assert_eq!(
+                section_key_route(true, true, chord, &keymap),
+                SectionKeyRoute::EditorOwns
+            );
+            // In SELECT mode the grammar runs (and leaves an unbound chord
+            // untouched so it bubbles — the wiring's existing fall-through).
+            assert_eq!(
+                section_key_route(false, false, chord, &keymap),
+                SectionKeyRoute::SelectGrammar
+            );
+        }
+        // Chords the sheet grammar binds still hand focus back to the editor.
+        let f2 = KeyChord::new("F2", false, false, false);
+        let ctrl_home = KeyChord::new("Home", false, true, false);
+        for chord in [&f2, &ctrl_home] {
+            assert_eq!(
+                section_key_route(false, true, chord, &keymap),
+                SectionKeyRoute::RefocusEditor,
+                "{chord:?} is the sheet's own — refocus the editor"
+            );
+        }
+        // Plain typing is not a shell chord.
+        assert!(!is_shell_chord(&KeyChord::new("s", false, false, false)));
+        assert!(!is_shell_chord(&KeyChord::new(
+            "Enter", false, false, false
+        )));
     }
 
     /// The four arrow moves step the active cell by one in the expected axis,

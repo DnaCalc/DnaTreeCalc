@@ -11,13 +11,14 @@
 //! assertions the (deliberately empty) fixture document cannot exercise.
 
 use dnacalc_bridge::{
-    ALL_COMPLETION_KINDS, BridgeEvent, EditDiscipline, buffer_is_dirty, completion_applied,
-    completion_kind_glyph, completion_kind_id, completion_next, degrade_segments,
-    drill_node_at_caret, drill_node_for_selection, drill_state_id, drill_state_label,
-    editor_segments, is_stale, is_undo_redo_chord, next_preview_window, partial_eval, readout,
-    role_class, role_id, segment_lit_by_caret, segments_snapshot, segments_text,
-    selection_from_dom, severity_label, should_consume_undo_redo_locally, stage_label,
-    text_edited_from_dom, utf8_to_utf16, utf16_to_utf8,
+    ALL_COMPLETION_KINDS, BridgeEvent, DegradeKeyDisposition, EditDiscipline, buffer_is_dirty,
+    completion_applied, completion_kind_glyph, completion_kind_id, completion_next,
+    degrade_key_disposition, degrade_segments, drill_node_at_caret, drill_node_for_selection,
+    drill_state_id, drill_state_label, editor_segments, is_stale, is_undo_redo_chord,
+    next_preview_window, partial_eval, readout, role_class, role_id, segment_lit_by_caret,
+    segments_snapshot, segments_text, selection_from_dom, severity_label,
+    should_consume_undo_redo_locally, stage_label, text_edited_from_dom, utf8_to_utf16,
+    utf16_to_utf8,
 };
 use dnacalc_skin_ir::formula::{
     ArrayPreviewProjection, CompletionItemProjection, CompletionSurface,
@@ -849,6 +850,92 @@ fn is_undo_redo_chord_recognizes_ctrl_z_y_shift_z_case_insensitively() {
     assert!(!is_undo_redo_chord("k", true, false));
     assert!(!is_undo_redo_chord("s", true, false));
     assert!(!is_undo_redo_chord("x", true, false));
+}
+
+/// dtc-j7n8.25 — the degrade editor's keydown policy. Its `on_keydown` used to
+/// `stop_propagation()` on EVERY key before matching, so Ctrl+S typed inside
+/// the Sheet stage's overlay editor (which owns focus since dtc-j7n8.26) never
+/// reached the shell's Save verb. Only the keys the editor consumes may stop;
+/// a universal shell chord (Ctrl+S / Ctrl+O / Ctrl+K / F9) must bubble.
+#[test]
+fn degrade_editor_lets_shell_chords_bubble_and_stops_only_what_it_consumes() {
+    use DegradeKeyDisposition::{Bubble, CommitDown, CommitRight, ConsumeUndoRedoLocally, Revert};
+
+    // The bead's chord: Ctrl+S from a dirty or clean buffer, on or off a grid,
+    // is NOT the editor's — it must bubble to the shell (the Save verb).
+    for (commit_on_tab, dirty) in [(true, true), (true, false), (false, true), (false, false)] {
+        assert_eq!(
+            degrade_key_disposition("s", false, true, false, commit_on_tab, dirty),
+            Bubble,
+            "Ctrl+S must bubble past the degrade editor (commit_on_tab={commit_on_tab}, dirty={dirty})"
+        );
+    }
+    // The rest of the shell's exemption class bubbles too.
+    assert_eq!(
+        degrade_key_disposition("o", false, true, false, true, true),
+        Bubble
+    );
+    assert_eq!(
+        degrade_key_disposition("k", false, true, false, true, true),
+        Bubble
+    );
+    assert_eq!(
+        degrade_key_disposition("F9", false, false, false, true, true),
+        Bubble
+    );
+    // Plain typing and Shift+Enter (a newline) are not consumed here either —
+    // the shell's text-entry guard suppresses them downstream.
+    assert_eq!(
+        degrade_key_disposition("a", false, false, false, true, true),
+        Bubble
+    );
+    assert_eq!(
+        degrade_key_disposition("Enter", true, false, false, true, true),
+        Bubble
+    );
+
+    // What the editor DOES consume, exactly as before.
+    assert_eq!(
+        degrade_key_disposition("Enter", false, false, false, false, false),
+        CommitDown
+    );
+    assert_eq!(
+        degrade_key_disposition("Tab", false, false, false, true, false),
+        CommitRight
+    );
+    assert_eq!(
+        degrade_key_disposition("Tab", false, false, false, false, false),
+        Bubble,
+        "off a grid Tab keeps its browser focus-move"
+    );
+    assert_eq!(
+        degrade_key_disposition("Tab", true, false, false, true, false),
+        Bubble,
+        "Shift+Tab is deliberately not captured"
+    );
+    assert_eq!(
+        degrade_key_disposition("Escape", false, false, false, true, true),
+        Revert
+    );
+
+    // The dtc-lfz.2 carve-out: Ctrl+Z/Y/Shift+Z are text-local only while dirty.
+    assert_eq!(
+        degrade_key_disposition("z", false, true, false, true, true),
+        ConsumeUndoRedoLocally
+    );
+    assert_eq!(
+        degrade_key_disposition("Z", true, true, false, true, true),
+        ConsumeUndoRedoLocally
+    );
+    assert_eq!(
+        degrade_key_disposition("y", false, true, false, true, true),
+        ConsumeUndoRedoLocally
+    );
+    assert_eq!(
+        degrade_key_disposition("z", false, true, false, true, false),
+        Bubble,
+        "a clean buffer hands Ctrl+Z to the shell's model Undo"
+    );
 }
 
 #[test]

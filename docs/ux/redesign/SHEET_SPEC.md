@@ -45,7 +45,10 @@ upgrade behind the same contracts, never a redesign.
   The overlay editor owns keyboard focus from the moment it opens (F2 / type-to-replace with
   its seed character / double-click) until commit or revert, then hands it back to the grid
   section; a key that reaches the section while an editor is open refocuses the editor rather
-  than re-running the select grammar (dtc-j7n8.26).
+  than re-running the select grammar (dtc-j7n8.26). The shell's universal chords (Ctrl+S,
+  Ctrl+O, Ctrl+K, F9) are never swallowed inside the stage: the overlay editor stops only the
+  keys it consumes (Enter/Tab commit, Esc revert, dirty-buffer Ctrl+Z/Y) and the section lets an
+  unbound shell chord bubble even while an editor is open (dtc-j7n8.25).
 - Navigation: arrows, PgUp/PgDn, Home/Ctrl+Home; Ctrl+arrow edge-jump requires a host query
   (G4 model-query; degrade: window-local jump with atlas note).
 - Selection: single cell + table cell today; **ranges, row/col ops, fill grips, grid clipboard,

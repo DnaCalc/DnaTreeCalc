@@ -722,6 +722,60 @@ pub fn should_consume_undo_redo_locally(key: &str, ctrl: bool, alt: bool, dirty:
     dirty && is_undo_redo_chord(key, ctrl, alt)
 }
 
+/// What the DEGRADE editor's `<textarea>` does with one keydown (bead
+/// dtc-j7n8.25). The degrade editor used to call `stop_propagation()` on
+/// EVERY keydown before matching, so once the Sheet stage handed the overlay
+/// editor keyboard focus (dtc-j7n8.26) Ctrl+S / Ctrl+O / Ctrl+K / F9 typed
+/// while editing a cell died in the textarea and never reached the shell's
+/// `.dna-shell` keydown pipeline. This is the same propagation policy the full
+/// [`crate::FormulaBridge`] editor follows (dtc-1tk.1 / dtc-lfz.2): only a key
+/// the editor actually consumes is stopped; everything else bubbles so the
+/// shell's guard order (SHELL_SPEC §5 — modified chords and function keys work
+/// from inside edit buffers) decides.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DegradeKeyDisposition {
+    /// Plain Enter: commit, advance Down (`prevent_default` + stop).
+    CommitDown,
+    /// Tab without Shift where the host opted in (`commit_on_tab`): commit,
+    /// advance Right (`prevent_default` + stop).
+    CommitRight,
+    /// Escape: exact revert (`prevent_default` + stop).
+    Revert,
+    /// Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z while the buffer is dirty: the
+    /// textarea's own undo/redo stack is the effect — stop propagation only,
+    /// never `prevent_default` (the dtc-lfz.2 carve-out).
+    ConsumeUndoRedoLocally,
+    /// Not the editor's key: leave the event untouched so it bubbles to the
+    /// shell (Ctrl+S saves, Ctrl+K opens the deck, F9 recalculates; plain
+    /// typing is then suppressed by the shell's text-entry guard).
+    Bubble,
+}
+
+/// The degrade editor's keydown policy as one pure function over the raw
+/// event facts (`key` verbatim from `KeyboardEvent.key`), so the wiring cannot
+/// drift from the tested table.
+#[must_use]
+pub fn degrade_key_disposition(
+    key: &str,
+    shift: bool,
+    ctrl: bool,
+    alt: bool,
+    commit_on_tab: bool,
+    dirty: bool,
+) -> DegradeKeyDisposition {
+    match key {
+        "Enter" if !shift => DegradeKeyDisposition::CommitDown,
+        // Shift+Tab is deliberately NOT captured (grid Shift+Tab-left is a
+        // later concern); off a grid Tab keeps its browser focus-move.
+        "Tab" if commit_on_tab && !shift => DegradeKeyDisposition::CommitRight,
+        "Escape" => DegradeKeyDisposition::Revert,
+        _ if should_consume_undo_redo_locally(key, ctrl, alt, dirty) => {
+            DegradeKeyDisposition::ConsumeUndoRedoLocally
+        }
+        _ => DegradeKeyDisposition::Bubble,
+    }
+}
+
 /// One diagnostic row's list metadata (shared by full-mode diagnostics and
 /// tests): `(severity label, stage label, message)` all verbatim from the IR.
 #[must_use]

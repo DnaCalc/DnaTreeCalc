@@ -19,7 +19,10 @@ use dnacalc_skin_ir::workspace::{FormulaBindPreviewProjection, GridEntryDiagnost
 
 use crate::editor::segment_view;
 use crate::events::{BridgeEvent, BridgeEvents, CommitAdvance, EditDiscipline};
-use crate::vm::{degrade_segments, dry_bind_preview, text_edited_from_dom, utf8_to_utf16};
+use crate::vm::{
+    DegradeKeyDisposition, buffer_is_dirty, degrade_key_disposition, degrade_segments,
+    dry_bind_preview, text_edited_from_dom, utf8_to_utf16,
+};
 
 /// The optional dry-bind seam a Calc host can hand the degrade editor: the
 /// preview service plus the node whose context the content would bind in.
@@ -91,34 +94,55 @@ pub fn FormulaBridgeDegrade(
         on_event.run(text_edited_from_dom(content, caret16));
     };
 
+    // Propagation policy (bead dtc-j7n8.25): `stop_propagation()` ONLY on the
+    // keys this editor consumes — the pure [`degrade_key_disposition`] table
+    // decides. This used to stop EVERY keydown first, so once the Sheet stage
+    // gave the overlay editor keyboard focus (dtc-j7n8.26) Ctrl+S typed while
+    // editing a cell died here and never reached the shell's `.dna-shell`
+    // keydown pipeline (the Save verb); Ctrl+O / Ctrl+K / F9 likewise. Now an
+    // unconsumed key bubbles untouched and the shell's guard order decides
+    // (SHELL_SPEC §5: modified chords and F-keys work from inside edit
+    // buffers; plain typing is suppressed by the text-entry guard). Tab commits
+    // and advances RIGHT only where the host opted in (`commit_on_tab`, a
+    // grid); elsewhere Tab keeps its browser focus-move, so Notebook/Bench are
+    // unchanged. Ctrl+Z/Y/Shift+Z stay TEXT-LOCAL while the buffer is dirty
+    // (the dtc-lfz.2 carve-out the full editor also honors): stop only, no
+    // `prevent_default`, so the textarea's own undo/redo is the effect.
+    let seed_text = text.clone();
     let on_keydown = move |ev: leptos::ev::KeyboardEvent| {
-        ev.stop_propagation();
-        match ev.key().as_str() {
-            "Enter" if !ev.shift_key() => {
+        let dirty = buffer.with_untracked(|content| buffer_is_dirty(content, &seed_text));
+        match degrade_key_disposition(
+            &ev.key(),
+            ev.shift_key(),
+            ev.ctrl_key() || ev.meta_key(),
+            ev.alt_key(),
+            commit_on_tab,
+            dirty,
+        ) {
+            DegradeKeyDisposition::CommitDown => {
                 ev.prevent_default();
+                ev.stop_propagation();
                 edit_state.set(EditDiscipline::Selected);
                 on_event.run(BridgeEvent::CommitRequested {
                     advance: CommitAdvance::Down,
                 });
             }
-            // Tab commits and advances RIGHT — but only where the host opted in
-            // (`commit_on_tab`, a grid). Elsewhere Tab is left to the browser
-            // (focus move), so Notebook/Bench behavior is unchanged. Shift+Tab is
-            // deliberately NOT captured here (grid Shift+Tab-left is a later
-            // concern); it falls through to the browser default.
-            "Tab" if commit_on_tab && !ev.shift_key() => {
+            DegradeKeyDisposition::CommitRight => {
                 ev.prevent_default();
+                ev.stop_propagation();
                 edit_state.set(EditDiscipline::Selected);
                 on_event.run(BridgeEvent::CommitRequested {
                     advance: CommitAdvance::Right,
                 });
             }
-            "Escape" => {
+            DegradeKeyDisposition::Revert => {
                 ev.prevent_default();
+                ev.stop_propagation();
                 edit_state.set(EditDiscipline::Selected);
                 on_event.run(BridgeEvent::RevertRequested);
             }
-            _ => {}
+            DegradeKeyDisposition::ConsumeUndoRedoLocally => ev.stop_propagation(),
+            DegradeKeyDisposition::Bubble => {}
         }
     };
 

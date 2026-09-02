@@ -454,6 +454,106 @@ fn f9_and_ctrl_k_bubble_past_the_editor_to_an_ancestor_shell_handler() {
     );
 }
 
+/// Mount `FormulaBridgeDegrade` nested inside the same stand-in shell root as
+/// `mount_inside_shell_stub` — modeling the composed Calc app, where the Sheet
+/// stage's overlay editor IS this degrade bridge and lives inside `.dna-shell`.
+fn mount_degrade_inside_shell_stub(
+    commit_on_tab: bool,
+    sink: Arc<Mutex<Vec<BridgeEvent>>>,
+    bubbled: Arc<Mutex<Vec<String>>>,
+) -> web_sys::HtmlElement {
+    let host = fresh_host();
+    let on_event = Callback::new(move |event| sink.lock().unwrap().push(event));
+    leptos::mount::mount_to(host.clone().unchecked_into(), move || {
+        view! {
+            <div
+                data-testid="shell-stub"
+                on:keydown=move |ev: leptos::ev::KeyboardEvent| {
+                    bubbled.lock().unwrap().push(ev.key());
+                }
+            >
+                <FormulaBridgeDegrade commit_on_tab=commit_on_tab on_event=on_event />
+            </div>
+        }
+    })
+    .forget();
+    host
+}
+
+#[wasm_bindgen_test]
+fn ctrl_s_bubbles_past_the_degrade_editor_to_an_ancestor_shell_handler() {
+    // Bead dtc-j7n8.25: Ctrl+S did nothing while keyboard focus was inside the
+    // Sheet stage. The stage's overlay editor is THIS degrade bridge, and its
+    // `on_keydown` called `ev.stop_propagation()` on every keydown before
+    // matching — so once dtc-j7n8.26 handed the editor focus, Ctrl+S (the
+    // shell's Save verb), Ctrl+O, Ctrl+K and F9 typed while editing a cell
+    // never reached the shell's `.dna-shell` keydown pipeline. Same law as the
+    // full editor's `f9_and_ctrl_k_bubble_past_the_editor_...` test above:
+    // only what the editor consumes may stop.
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let bubbled = Arc::new(Mutex::new(Vec::new()));
+    let host = mount_degrade_inside_shell_stub(true, events.clone(), bubbled.clone());
+    let area = textarea(&host);
+
+    let default_allowed = press_ctrl_key(&area, "s");
+    assert_eq!(
+        bubbled.lock().unwrap().as_slice(),
+        ["s"],
+        "Ctrl+S must bubble past the degrade editor to the shell's Save verb"
+    );
+    assert!(
+        default_allowed,
+        "the degrade editor must not preventDefault a chord it does not own (the shell does)"
+    );
+    press_ctrl_key(&area, "o");
+    press_key(&area, "F9");
+    assert_eq!(
+        bubbled.lock().unwrap().as_slice(),
+        ["s", "o", "F9"],
+        "Ctrl+O and F9 bubble too (SHELL_SPEC §5 exemption class)"
+    );
+
+    // Contrast: Enter / Escape ARE the editor's — consumed, never bubbled.
+    press_key(&area, "Enter");
+    press_key(&area, "Escape");
+    assert_eq!(
+        bubbled.lock().unwrap().as_slice(),
+        ["s", "o", "F9"],
+        "Enter (commit) and Escape (revert) are consumed locally and must not bubble"
+    );
+    let observed = events.lock().unwrap();
+    assert!(
+        observed.iter().any(|e| matches!(
+            e,
+            BridgeEvent::CommitRequested {
+                advance: CommitAdvance::Down
+            }
+        )),
+        "Enter must still commit through the editor, got {observed:?}"
+    );
+    assert!(
+        observed
+            .iter()
+            .any(|e| matches!(e, BridgeEvent::RevertRequested)),
+        "Escape must still revert through the editor, got {observed:?}"
+    );
+    drop(observed);
+
+    // The dtc-lfz.2 carve-out holds here too: Ctrl+Z while the buffer is
+    // dirty stays in the textarea (no bubble, default undo untouched).
+    type_text(&area, "=A1*3");
+    let default_allowed = press_ctrl_key(&area, "z");
+    assert_eq!(
+        bubbled.lock().unwrap().as_slice(),
+        ["s", "o", "F9"],
+        "Ctrl+Z on a dirty degrade buffer is text-local and must not reach the shell"
+    );
+    assert!(
+        default_allowed,
+        "the local undo carve-out must leave the textarea's native undo intact"
+    );
+}
+
 #[wasm_bindgen_test]
 fn ctrl_z_is_consumed_locally_while_dirty_and_bubbles_once_clean() {
     // Bead dtc-lfz.2 / S1.1 (owner-ratified 2026-07-12): the H1b propagation
