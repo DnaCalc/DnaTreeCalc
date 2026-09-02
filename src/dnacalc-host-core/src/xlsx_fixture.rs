@@ -32,6 +32,15 @@
 //! twin's stream with only the header's calc mode differing, so the two
 //! fixtures can never drift apart in anything but the mode.
 //!
+//! The Wave 3b cross-sheet fixture (dtc-j7n8.14) lives beside them too:
+//! `<repo>/fixtures/w011/cross_sheet/{parts/,README.md}` plus the committed
+//! `cross_sheet.xlsx` — two sheets, one unstyled cell each, `Sheet1!A1 = 2`
+//! and `Sheet2!A1 = =Sheet1!A1*5` cached 10, six parts (a second
+//! worksheet), `calcMode="auto"`. Same zipping, same generator pattern
+//! (`regenerate_w011_cross_sheet_fixture_binary_from_parts`), same
+//! event-stream pin to the parts. Single-cell cross-sheet references only:
+//! the cross-sheet RANGE gap is calc-5kqg.67 (OxCalc), not this fixture's.
+//!
 //! Compiled only under `cfg(test)`: `oxdoc_conformance` is a dev-dependency
 //! and must never become a normal one.
 //!
@@ -65,6 +74,15 @@ pub(crate) const W011_MANUAL_FIXTURE_PARTS_REL: &str = "fixtures/w011/a1_times_t
 /// Repo-relative location of the Manual twin's committed binary.
 pub(crate) const W011_MANUAL_FIXTURE_XLSX_REL: &str = "fixtures/w011/a1_times_three_manual.xlsx";
 
+/// Repo-relative location of the Wave 3b cross-sheet fixture's readable
+/// parts (dtc-j7n8.14): `Sheet1!A1 = 2`, `Sheet2!A1 = =Sheet1!A1*5` cached
+/// `10` — six parts (a second worksheet), otherwise the same constraints as
+/// `a1_times_three`.
+pub(crate) const W011_CROSS_SHEET_FIXTURE_PARTS_REL: &str = "fixtures/w011/cross_sheet/parts";
+
+/// Repo-relative location of the cross-sheet fixture's committed binary.
+pub(crate) const W011_CROSS_SHEET_FIXTURE_XLSX_REL: &str = "fixtures/w011/cross_sheet.xlsx";
+
 /// Repo-relative location of the POST-EDIT saved bytes (`A1 = 10`, `B1`
 /// cached 30) the `#[ignore]`d generator `emit_saved_fixture_for_excel_compare`
 /// (`workbook.rs`, dtc-j7n8.7) writes for the Wave 2 Excel comparison
@@ -91,6 +109,17 @@ pub(crate) const W011_FIXTURE_PART_NAMES: [&str; 5] = [
     "xl/_rels/workbook.xml.rels",
     "xl/workbook.xml",
     "xl/worksheets/sheet1.xml",
+];
+
+/// The exact part names the cross-sheet fixture consists of (zip entry
+/// names, sorted): the five of `a1_times_three` plus `sheet2.xml`.
+pub(crate) const W011_CROSS_SHEET_FIXTURE_PART_NAMES: [&str; 6] = [
+    "[Content_Types].xml",
+    "_rels/.rels",
+    "xl/_rels/workbook.xml.rels",
+    "xl/workbook.xml",
+    "xl/worksheets/sheet1.xml",
+    "xl/worksheets/sheet2.xml",
 ];
 
 fn repo_root() -> PathBuf {
@@ -120,6 +149,16 @@ pub(crate) fn w011_manual_fixture_parts_dir() -> PathBuf {
 /// Path of the Manual twin's committed binary.
 pub(crate) fn w011_manual_fixture_xlsx_path() -> PathBuf {
     repo_root().join(W011_MANUAL_FIXTURE_XLSX_REL)
+}
+
+/// Directory holding the cross-sheet fixture's readable parts (dtc-j7n8.14).
+pub(crate) fn w011_cross_sheet_fixture_parts_dir() -> PathBuf {
+    repo_root().join(W011_CROSS_SHEET_FIXTURE_PARTS_REL)
+}
+
+/// Path of the cross-sheet fixture's committed binary.
+pub(crate) fn w011_cross_sheet_fixture_xlsx_path() -> PathBuf {
+    repo_root().join(W011_CROSS_SHEET_FIXTURE_XLSX_REL)
 }
 
 /// Zip a fixture's readable parts into `.xlsx` bytes in memory through
@@ -166,6 +205,18 @@ pub(crate) fn w011_manual_fixture_bytes() -> Vec<u8> {
 /// The Manual twin's committed binary bytes, read from disk.
 pub(crate) fn w011_manual_committed_xlsx_bytes() -> Vec<u8> {
     committed_xlsx_bytes(&w011_manual_fixture_xlsx_path())
+}
+
+/// The Wave 3b cross-sheet fixture (`Sheet1!A1 = 2`; `Sheet2!A1 =
+/// =Sheet1!A1*5` cached 10) as `.xlsx` bytes, zipped in memory from its
+/// committed parts — the byte source of the cross-sheet lane (dtc-j7n8.14).
+pub(crate) fn w011_cross_sheet_fixture_bytes() -> Vec<u8> {
+    fixture_bytes_from_parts(&w011_cross_sheet_fixture_parts_dir())
+}
+
+/// The cross-sheet fixture's committed binary bytes, read from disk.
+pub(crate) fn w011_cross_sheet_committed_xlsx_bytes() -> Vec<u8> {
+    committed_xlsx_bytes(&w011_cross_sheet_fixture_xlsx_path())
 }
 
 /// Open `.xlsx` bytes through OxDoc under [`LoadProfile::full()`] — the
@@ -579,6 +630,218 @@ mod tests {
         assert_eq!(committed.load_ledger, manual.load_ledger);
     }
 
+    /// Acceptance (dtc-j7n8.14): the Wave 3b cross-sheet fixture opens
+    /// through OxDoc under `LoadProfile::full()` as TWO sheets in workbook
+    /// order — `Sheet1` (`sheet_id` 1) then `Sheet2` (`sheet_id` 2), each
+    /// `SheetBegin` .. `SheetEnd` bracket closed before the next opens —
+    /// with exactly one cell each: `Sheet1!A1 = Number(2)` and `Sheet2!A1 =
+    /// Formula { text: "Sheet1!A1*5", cached: Number(10) }`; ONE
+    /// `FormulaTopology` record, `Sheet2`'s, Normal, `FileCached`, no
+    /// unsupported fragment (the cross-sheet reference is plain A1 text to
+    /// OxDoc — it classifies nothing); a 1900/Automatic header; a lossless
+    /// load ledger; and the committed binary yields the same event stream as
+    /// the parts it was generated from.
+    #[test]
+    fn w011_cross_sheet_fixture_opens_through_oxdoc_with_two_sheets() {
+        let parts_dir = w011_cross_sheet_fixture_parts_dir();
+        println!("W011 cross-sheet fixture parts: {}", parts_dir.display());
+
+        let source = open_full(&w011_cross_sheet_fixture_bytes());
+        let events = source.source_context.events();
+
+        // Header: 1900 date system, Automatic.
+        let headers: Vec<&WorkbookHeader> = events
+            .iter()
+            .filter_map(|event| match event {
+                DocumentEvent::WorkbookHeader(header) => Some(header),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            headers.len(),
+            1,
+            "exactly one WorkbookHeader in {events:#?}"
+        );
+        assert_eq!(headers[0].date_system, DateSystem::Date1900);
+        assert_eq!(headers[0].calc_mode, CalcMode::Automatic);
+
+        // Two sheets, in workbook order, with properly nested brackets: the
+        // WorkbookHeader/SheetBegin ordering the ingest sink relies on.
+        let brackets: Vec<(u32, String, bool)> = events
+            .iter()
+            .filter_map(|event| match event {
+                DocumentEvent::SheetBegin(sheet) => {
+                    Some((sheet.sheet_id, sheet.name.clone(), true))
+                }
+                DocumentEvent::SheetEnd { sheet_id } => Some((*sheet_id, String::new(), false)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            brackets,
+            vec![
+                (1, "Sheet1".to_string(), true),
+                (1, String::new(), false),
+                (2, "Sheet2".to_string(), true),
+                (2, String::new(), false),
+            ],
+            "Sheet1 opens and closes before Sheet2 opens: {events:#?}"
+        );
+        let header_index = events
+            .iter()
+            .position(|event| matches!(event, DocumentEvent::WorkbookHeader(_)))
+            .unwrap();
+        let first_sheet_index = events
+            .iter()
+            .position(|event| matches!(event, DocumentEvent::SheetBegin(_)))
+            .unwrap();
+        assert!(
+            header_index < first_sheet_index,
+            "the WorkbookHeader precedes the first SheetBegin: {events:#?}"
+        );
+
+        // Exactly one cell per sheet — the conservative round-trip save
+        // tolerates no extra cell "for later".
+        let sheet1_cells = raw_sheet_cells(&source, "Sheet1");
+        let sheet2_cells = raw_sheet_cells(&source, "Sheet2");
+        println!("W011 cross-sheet: raw Sheet1 cells = {sheet1_cells:?}");
+        println!("W011 cross-sheet: raw Sheet2 cells = {sheet2_cells:?}");
+        assert_eq!(
+            sheet1_cells.len(),
+            1,
+            "Sheet1 holds only A1: {sheet1_cells:?}"
+        );
+        assert_eq!(
+            sheet2_cells.len(),
+            1,
+            "Sheet2 holds only A1: {sheet2_cells:?}"
+        );
+        assert_eq!(
+            raw_cell_payload(&sheet1_cells, 1, 1),
+            &CellPayload::Number(2.0),
+            "Sheet1!A1 is the literal 2"
+        );
+        assert_eq!(
+            raw_cell_payload(&sheet2_cells, 1, 1),
+            &CellPayload::Formula {
+                region: None,
+                text: Some("Sheet1!A1*5".to_string()),
+                cached: Some(Box::new(CellPayload::Number(10.0))),
+            },
+            "Sheet2!A1 is the Normal cross-sheet formula Sheet1!A1*5 with file-cached 10"
+        );
+
+        // One FormulaTopology — Sheet2's — with the single A1 record.
+        let topologies: Vec<&FormulaTopology> = events
+            .iter()
+            .filter_map(|event| match event {
+                DocumentEvent::FormulaTopology(topology) => Some(topology),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            topologies.len(),
+            1,
+            "exactly one FormulaTopology (Sheet2's; Sheet1 carries no formula) in {events:#?}"
+        );
+        let topology = topologies[0];
+        assert_eq!(topology.sheet_id, 2, "the topology is Sheet2's");
+        assert!(
+            topology.unsupported_fragments.is_empty(),
+            "no unsupported formula fragments: {:?}",
+            topology.unsupported_fragments
+        );
+        assert_eq!(
+            topology.records.len(),
+            1,
+            "only Sheet2!A1 carries a formula"
+        );
+        let record = &topology.records[0];
+        assert_eq!(record.sheet_id, 2);
+        assert_eq!(record.address, a1(), "the formula record is Sheet2!A1's");
+        assert_eq!(record.kind, FormulaRecordKind::Normal);
+        assert_eq!(record.text.as_deref(), Some("Sheet1!A1*5"));
+        assert_eq!(record.text_kind, FormulaTextKind::SpreadsheetMlA1);
+        assert_eq!(
+            record.cached_value,
+            FormulaCachedValueState::Present {
+                provenance: CachedValueProvenance::FileCached,
+            }
+        );
+        assert!(record.unsupported_fragments.is_empty());
+
+        // Nothing in the package was dropped or lossily projected.
+        log_ledger("W011 cross-sheet load ledger", &source.load_ledger);
+        for entry in &source.load_ledger.entries {
+            assert!(
+                matches!(
+                    entry.disposition,
+                    FidelityDisposition::Projected {
+                        status: ProjectionStatus::Direct,
+                        loss: None,
+                    }
+                ),
+                "ledger entry {} is not a direct lossless projection: {:?}",
+                entry.subject,
+                entry.disposition
+            );
+        }
+
+        // The committed binary is the same workbook (event-stream equality).
+        let xlsx_path = w011_cross_sheet_fixture_xlsx_path();
+        println!(
+            "W011 cross-sheet committed fixture: {}",
+            xlsx_path.display()
+        );
+        let committed = open_full(&w011_cross_sheet_committed_xlsx_bytes());
+        assert_eq!(
+            committed.source_context.events(),
+            events,
+            "committed {} is out of sync with its parts; rerun \
+             regenerate_w011_cross_sheet_fixture_binary_from_parts with --ignored",
+            xlsx_path.display()
+        );
+        assert_eq!(committed.load_ledger, source.load_ledger);
+    }
+
+    /// The cross-sheet fixture is exactly six parts (the five of
+    /// `a1_times_three` plus `sheet2.xml`; still no styles, shared strings,
+    /// calc chain, or drawings), its shared parts are byte-identical to the
+    /// auto fixture's, and the committed binary stays tiny.
+    #[test]
+    fn w011_cross_sheet_fixture_is_exactly_six_parts_and_a_tiny_binary() {
+        let parts_dir = w011_cross_sheet_fixture_parts_dir();
+        let mut part_names = Vec::new();
+        collect_part_names(&parts_dir, &parts_dir, &mut part_names);
+        part_names.sort();
+        assert_eq!(part_names, W011_CROSS_SHEET_FIXTURE_PART_NAMES);
+
+        // The one package-level part that does not enumerate sheets is the
+        // auto fixture's, byte for byte — one fixture family, not a fork.
+        let auto_dir = w011_fixture_parts_dir();
+        assert_eq!(
+            std::fs::read_to_string(parts_dir.join("_rels/.rels")).unwrap(),
+            std::fs::read_to_string(auto_dir.join("_rels/.rels")).unwrap(),
+            "part _rels/.rels must be byte-identical to the auto fixture's"
+        );
+        let workbook_xml = std::fs::read_to_string(parts_dir.join("xl/workbook.xml")).unwrap();
+        assert!(
+            workbook_xml.contains("<calcPr calcMode=\"auto\"/>"),
+            "the cross-sheet fixture pins calcMode=\"auto\": {workbook_xml}"
+        );
+        assert!(
+            !workbook_xml.contains("date1904"),
+            "1900 date system (no workbookPr date1904): {workbook_xml}"
+        );
+
+        let committed_len = w011_cross_sheet_committed_xlsx_bytes().len();
+        println!("W011 cross-sheet committed fixture size: {committed_len} bytes");
+        assert!(
+            committed_len < 5 * 1024,
+            "committed cross-sheet fixture must stay under 5 KB, got {committed_len} bytes"
+        );
+    }
+
     fn collect_part_names(root: &Path, dir: &Path, names: &mut Vec<String>) {
         for entry in std::fs::read_dir(dir)
             .unwrap_or_else(|err| panic!("failed to read {}: {err}", dir.display()))
@@ -662,6 +925,45 @@ mod tests {
         assert_eq!(
             header_calc_mode(written.source_context.events()),
             CalcMode::Manual
+        );
+    }
+
+    /// Generator for the cross-sheet fixture (dtc-j7n8.14), the same shape
+    /// as `regenerate_w011_fixture_binary_from_parts`: rewrites
+    /// `fixtures/w011/cross_sheet.xlsx` from its parts through OxDoc's
+    /// conformance zipper, then re-opens what it wrote. `#[ignore]`d so the
+    /// normal suite never writes into the repo:
+    ///
+    /// `cargo test -p dnacalc-host-core --offline regenerate_w011_cross_sheet_fixture_binary_from_parts -- --ignored`
+    #[test]
+    #[ignore = "generator: rewrites fixtures/w011/cross_sheet.xlsx from parts/; run with --ignored when the parts change"]
+    fn regenerate_w011_cross_sheet_fixture_binary_from_parts() {
+        let parts_dir = w011_cross_sheet_fixture_parts_dir();
+        let xlsx_path = w011_cross_sheet_fixture_xlsx_path();
+        oxdoc_conformance::materialize_fixture_parts_to_xlsx(&parts_dir, &xlsx_path)
+            .unwrap_or_else(|err| {
+                panic!(
+                    "failed to materialize {} from {}: {err}",
+                    xlsx_path.display(),
+                    parts_dir.display()
+                )
+            });
+        println!(
+            "wrote {} ({} bytes) from {}",
+            xlsx_path.display(),
+            w011_cross_sheet_committed_xlsx_bytes().len(),
+            parts_dir.display()
+        );
+        let written = open_full(&w011_cross_sheet_committed_xlsx_bytes());
+        let from_parts = open_full(&w011_cross_sheet_fixture_bytes());
+        assert_eq!(
+            written.source_context.events(),
+            from_parts.source_context.events()
+        );
+        assert_eq!(
+            raw_sheet_cells(&written, "Sheet2").len(),
+            1,
+            "the written package carries Sheet2"
         );
     }
 }

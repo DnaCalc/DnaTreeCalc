@@ -129,6 +129,23 @@ DnaTreeCalc:
   `dtc-j7n8.24`: a Manual load publishes formula caches only, so the literal
   `A1` has no published value and no projected cell until the first F9. B1
   renders `=A1*3` from today's projection with no skin change.
+  The cross-sheet lane (dtc-j7n8.14, Wave 3b) proves the same three truths
+  over TWO sheets on real bytes: `fixtures/w011/cross_sheet/` (`Sheet1!A1 =
+  2`; `Sheet2!A1 = =Sheet1!A1*5` cached 10; six unstyled parts) opens with
+  `Sheet2!A1` = 10 `Calculated` (cross-sheet EVALUATION on a loaded workbook,
+  OxCalc calc-5kqg.65; `engine_recalcs_at_load == 1` because the counter
+  counts drained sheets and the literal-only `Sheet1` is staged, its `A1`
+  publishing 2 `FileCached`), `EnterGridCell { Sheet1!A1, "4" }` publishes
+  `Sheet2!A1` = 20 (cross-sheet dirty PROPAGATION on a loaded workbook) with
+  a receipt of `[grid_cell_entered, grid_changed(Sheet1), grid_changed(Sheet2)]`,
+  and the saved bytes reopened raw carry `Sheet1!A1 = Number(4)` and
+  `Sheet2!A1 = Formula { "Sheet1!A1*5", cached: Number(20) }`
+  (`open_cross_sheet_fixture_publishes_10_under_automatic`,
+  `cross_sheet_edit_on_loaded_fixture_propagates_to_sheet2`,
+  `cross_sheet_save_after_edit_reopens_with_cached_20`, `workbook.rs`;
+  `execute_cross_sheet_edit_receipt_patches_sheet2_and_save_reopens_with_cached_20`,
+  `lib.rs`). Single-cell cross-sheet references only; the cross-sheet RANGE
+  gap stays `calc-5kqg.67` (OxCalc).
 - `src/dnatreecalc-host`'s `TreeWorkspaceSession` (session.rs, ~10k lines) is
   already Leptos-free and owns the `OxCalcTreeContext` + node-id maps; grid
   interest is delegated to OxCalc, not stored in the session. The Leptos
@@ -439,9 +456,11 @@ so host-core diffs every peer sheet's projection before and after the edit —
 `WorkbookSession::peer_grid_projections`; an unmoved peer stays out of the
 receipt). Proven under Automatic calc mode: `session_channel::apply_delta`
 over the pre-edit snapshot equals the fresh post-edit snapshot as a whole
-`WorkspaceState`, on the single-sheet fixture and on the two-sheet demo
+`WorkspaceState`, on the single-sheet fixture, on the two-sheet demo
 workbook (`Sheet2!A1 = =Sheet1!A1+Sheet1!A5` recalculates to 12 inside the
-`Sheet1!A1 = 7` receipt) — without shipping a snapshot (`dtc-j7n8.18`; the
+`Sheet1!A1 = 7` receipt), and on the LOADED two-sheet `cross_sheet` fixture
+(`Sheet2!A1 = =Sheet1!A1*5` recalculates to 20 inside the `Sheet1!A1 = 4`
+receipt, `dtc-j7n8.14`) — without shipping a snapshot (`dtc-j7n8.18`; the
 app dispatcher still republishes the snapshot because host-core stamps no
 projection sequence — documented in `workbook_dispatcher.rs`). Not covered:
 under Manual calc mode the entry receipt carries no `CalcStateChanged`, so a

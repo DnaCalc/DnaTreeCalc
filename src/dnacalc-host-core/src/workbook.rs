@@ -2439,4 +2439,484 @@ mod tests {
         assert_eq!(a1, CellPayload::Number(10.0));
         assert_eq!(b1, b1_formula_cached(30.0));
     }
+
+    // ------------------------------------------------------------------
+    // W011 Wave 3b (dtc-j7n8.14): the cross-sheet fixture. Two sheets;
+    // `Sheet1!A1 = 2` (literal, the only cell of a literal-only sheet);
+    // `Sheet2!A1 = =Sheet1!A1*5` cached 10. Open publishes 10 under
+    // Automatic (cross-sheet EVALUATION on a loaded workbook, the engine
+    // prerequisite calc-5kqg.65 landed); an edit of `Sheet1!A1` propagates
+    // to `Sheet2!A1` (cross-sheet DIRTY PROPAGATION on a loaded workbook);
+    // and the save/reopen proof is per sheet on the raw OxDoc events:
+    // `Sheet1!A1 = Number(4)`, `Sheet2!A1 = Formula { "Sheet1!A1*5",
+    // cached 20 }`. Single-cell cross-sheet references only — the general
+    // cross-sheet RANGE gap is calc-5kqg.67 (OxCalc) and is not chased here.
+    // ------------------------------------------------------------------
+
+    use crate::xlsx_fixture::{w011_cross_sheet_fixture_bytes, w011_cross_sheet_fixture_parts_dir};
+
+    /// Open the cross-sheet fixture into a session, logging its parts path.
+    fn open_w011_cross_sheet_fixture() -> WorkbookSession {
+        println!(
+            "W011 cross-sheet fixture parts: {}",
+            w011_cross_sheet_fixture_parts_dir().display()
+        );
+        WorkbookSession::open_xlsx_bytes(
+            XLSX_WORKSPACE_ID,
+            &w011_cross_sheet_fixture_bytes(),
+            Some("cross_sheet.xlsx".to_string()),
+        )
+        .expect("OxDoc opens and the engine ingests the committed W011 cross-sheet fixture")
+    }
+
+    /// The two grid-backed sheets of an opened cross-sheet session, in
+    /// workbook order: `(Sheet1, Sheet2)`.
+    fn two_sheets(session: &WorkbookSession) -> (TreeNodeId, TreeNodeId) {
+        let sheets = session.sheets().unwrap();
+        assert_eq!(
+            sheets.len(),
+            2,
+            "the cross-sheet fixture has exactly two sheets: {sheets:?}"
+        );
+        assert_eq!(sheets[0].display_name, "Sheet1");
+        assert_eq!(sheets[0].sheet_position, 0);
+        assert!(sheets[0].grid_backed, "Sheet1 is grid-backed");
+        assert_eq!(sheets[1].display_name, "Sheet2");
+        assert_eq!(sheets[1].sheet_position, 1);
+        assert!(sheets[1].grid_backed, "Sheet2 is grid-backed");
+        (sheets[0].node_id, sheets[1].node_id)
+    }
+
+    /// `Sheet2!A1`'s wire payload: the Normal cross-sheet formula
+    /// `Sheet1!A1*5` (leading `=` stripped) with `cached` as the file's `<v>`.
+    fn sheet2_a1_formula_cached(cached: f64) -> CellPayload {
+        CellPayload::Formula {
+            region: None,
+            text: Some("Sheet1!A1*5".to_string()),
+            cached: Some(Box::new(CellPayload::Number(cached))),
+        }
+    }
+
+    /// The raw `(Sheet1!A1, Sheet2!A1)` payloads of a reopened cross-sheet
+    /// package, logged, after asserting each sheet still holds exactly its
+    /// one cell (no cell the conservative round-trip policy would have had
+    /// to add or drop). `raw_sheet_cells` is sheet-scoped on purpose: the
+    /// two `A1`s are different cells on different sheets.
+    fn sheet1_a1_sheet2_a1(
+        stage: &str,
+        reopened: &HostOwnedXlsxSource,
+    ) -> (CellPayload, CellPayload) {
+        let sheet1_cells = raw_sheet_cells(reopened, "Sheet1");
+        let sheet2_cells = raw_sheet_cells(reopened, "Sheet2");
+        println!("W011 cross-sheet reopen [{stage}]: raw Sheet1 cells = {sheet1_cells:?}");
+        println!("W011 cross-sheet reopen [{stage}]: raw Sheet2 cells = {sheet2_cells:?}");
+        assert_eq!(
+            sheet1_cells.len(),
+            1,
+            "exactly Sheet1!A1 in the saved file [{stage}]: {sheet1_cells:?}"
+        );
+        assert_eq!(
+            sheet2_cells.len(),
+            1,
+            "exactly Sheet2!A1 in the saved file [{stage}]: {sheet2_cells:?}"
+        );
+        let sheet1_a1 = raw_cell_payload(&sheet1_cells, 1, 1).clone();
+        let sheet2_a1 = raw_cell_payload(&sheet2_cells, 1, 1).clone();
+        println!("W011 cross-sheet reopen [{stage}]: Sheet1!A1 payload = {sheet1_a1:?}");
+        println!("W011 cross-sheet reopen [{stage}]: Sheet2!A1 payload = {sheet2_a1:?}");
+        (sheet1_a1, sheet2_a1)
+    }
+
+    /// dtc-j7n8.14 acceptance (1): opening the cross-sheet fixture INGESTS
+    /// two sheets and the Automatic open-recalc EVALUATES the cross-sheet
+    /// reference on the freshly-loaded workbook (calc-5kqg.65): the load
+    /// report says two sheets, one literal (`Sheet1!A1`), one bound formula
+    /// (`Sheet2!A1`), the `Automatic` path, no bind degradation; both sheets
+    /// enumerate grid-backed in workbook order; `Sheet2!A1` publishes `10`
+    /// engine-`Calculated` (not the file's cache trusted — the same value,
+    /// but recomputed); `Sheet1!A1` publishes `2`; and `Sheet2!A1`'s
+    /// authored text is `=Sheet1!A1*5` (leading `=` restored).
+    ///
+    /// `engine_recalcs_at_load` counts DRAINED sheets, not sheets: the
+    /// literal-only `Sheet1` is never drained (its authored value is
+    /// published at staging, OxCalc calc-5kqg.65), so the count is exactly
+    /// the one formula-bearing `Sheet2` — asserted `== 1`, never `== 2`.
+    /// The same engine fact is why `Sheet1!A1` publishes `FileCached` under
+    /// Automatic here while a formula-bearing sheet's literal (the
+    /// `a1_times_three` `A1`) publishes `Calculated`: pinned as observed.
+    #[test]
+    fn open_cross_sheet_fixture_publishes_10_under_automatic() {
+        let session = open_w011_cross_sheet_fixture();
+        let report = session
+            .load_report()
+            .expect("a workbook opened from xlsx bytes carries its load report");
+        println!(
+            "W011 cross-sheet ingest: load report sheets={} cells={} formulas_bound={} \
+             recalc_path={:?} engine_recalcs_at_load={} bind_degradations={} \
+             not_calc_modeled={} ledger_rows={}",
+            report.sheets,
+            report.cells,
+            report.formulas_bound,
+            report.recalc_path,
+            report.engine_recalcs_at_load,
+            report.bind_degradations.len(),
+            report.not_calc_modeled,
+            report.ledger.len()
+        );
+        assert_eq!(report.sheets, 2, "two sheets created");
+        assert_eq!(
+            report.cells, 1,
+            "Sheet1!A1 is the one literal; Sheet2!A1 is counted in formulas_bound"
+        );
+        assert_eq!(
+            report.formulas_bound, 1,
+            "Sheet2!A1 bound through the engine's single key mint"
+        );
+        assert_eq!(report.recalc_path, LoadRecalcPath::Automatic);
+        assert_eq!(
+            report.engine_recalcs_at_load, 1,
+            "the open-recalc drained exactly the formula-bearing Sheet2; the literal-only \
+             Sheet1 contributes 0 (drained sheets are counted, not sheets)"
+        );
+        assert!(
+            report.bind_degradations.is_empty(),
+            "=Sheet1!A1*5 binds cleanly on a loaded workbook: {:?}",
+            report.bind_degradations
+        );
+        assert!(
+            session.xlsx_source().is_some(),
+            "the OxDoc source stays owned"
+        );
+        assert_eq!(session.document_name(), Some("cross_sheet.xlsx"));
+
+        let (sheet1, sheet2) = two_sheets(&session);
+
+        // Published values, both sheets.
+        let s1a1 = session.grid_cell_value(sheet1, 1, 1).unwrap();
+        let s1a1_provenance = session.grid_cell_provenance(sheet1, 1, 1).unwrap();
+        let s2a1 = session.grid_cell_value(sheet2, 1, 1).unwrap();
+        let s2a1_provenance = session.grid_cell_provenance(sheet2, 1, 1).unwrap();
+        println!("W011 cross-sheet ingest: Sheet1!A1 = {s1a1:?} provenance = {s1a1_provenance:?}");
+        println!("W011 cross-sheet ingest: Sheet2!A1 = {s2a1:?} provenance = {s2a1_provenance:?}");
+        assert_eq!(
+            s1a1,
+            Some(CalcValue::number(2.0)),
+            "Sheet1!A1 = 2 (the file's literal)"
+        );
+        assert_eq!(
+            s1a1_provenance,
+            Some(ValueProvenanceProjection::FileCached),
+            "OBSERVED: a literal-only sheet is never drained, so its literal is published at \
+             staging as FileCached even under Automatic (OxCalc calc-5kqg.65)"
+        );
+        assert_eq!(
+            s2a1,
+            Some(CalcValue::number(10.0)),
+            "Sheet2!A1 = Sheet1!A1*5 = 10: the cross-sheet reference EVALUATED on the loaded \
+             workbook (not #VALUE!, not #REF!)"
+        );
+        assert!(
+            matches!(
+                s2a1_provenance,
+                Some(ValueProvenanceProjection::Calculated { .. })
+            ),
+            "the Automatic open-recalc made Sheet2!A1 engine-Calculated, not FileCached: \
+             {s2a1_provenance:?}"
+        );
+
+        // Authored truth on both sheets (the GridRect half of the token trap).
+        let s1_authored = session.grid_authored_cells(sheet1, 1, 1, 1, 1).unwrap();
+        let s1a1_authored = s1_authored
+            .iter()
+            .find(|cell| cell.row == 1 && cell.col == 1)
+            .expect("Sheet1!A1 is in the requested window");
+        assert_eq!(s1a1_authored.kind, GridAuthoredKindProjection::Literal);
+        assert_eq!(s1a1_authored.literal_text.as_deref(), Some("2"));
+        let s2_authored = session.grid_authored_cells(sheet2, 1, 1, 1, 1).unwrap();
+        let s2a1_authored = s2_authored
+            .iter()
+            .find(|cell| cell.row == 1 && cell.col == 1)
+            .expect("Sheet2!A1 is in the requested window");
+        println!(
+            "W011 cross-sheet ingest: Sheet2!A1 authored kind={:?} source_text={:?}",
+            s2a1_authored.kind, s2a1_authored.source_text
+        );
+        assert_eq!(s2a1_authored.kind, GridAuthoredKindProjection::Formula);
+        assert_eq!(
+            s2a1_authored.source_text.as_deref(),
+            Some("=Sheet1!A1*5"),
+            "the engine restores the leading `=` the file stores without"
+        );
+        assert_eq!(
+            s2a1_authored.editability,
+            GridEditabilityProjection::Editable
+        );
+
+        // Automatic: nothing is left dirty after the open-recalc.
+        let calc = session.workbook_calc_projection(None).unwrap();
+        assert_eq!(calc.mode, CalcModeProjection::Automatic);
+        assert_eq!(calc.sheets.len(), 2);
+        assert!(
+            calc.sheets.iter().all(|sheet| !sheet.dirty),
+            "under Automatic the open-recalc left no sheet dirty: {:?}",
+            calc.sheets
+        );
+    }
+
+    /// dtc-j7n8.14 acceptance (2): cross-sheet DIRTY PROPAGATION on a LOADED
+    /// workbook. `enter_grid_cell(Sheet1!A1, "4")` on the opened fixture
+    /// takes the literal branch and the dependent on the OTHER sheet,
+    /// `Sheet2!A1`, recalculates to `20` engine-`Calculated` in the same
+    /// edit — the engine's `propagate_cross_sheet_edit` over ingest-created
+    /// grids (calc-5kqg.65 acceptance 2, here on real bytes through the
+    /// session's token authority). `Sheet1!A1` publishes `4` `Calculated`
+    /// now that the edit drained its sheet. Neither sheet's authored truth
+    /// changes beyond the entered literal.
+    #[test]
+    fn cross_sheet_edit_on_loaded_fixture_propagates_to_sheet2() {
+        let mut session = open_w011_cross_sheet_fixture();
+        let (sheet1, sheet2) = two_sheets(&session);
+        assert_eq!(
+            session.grid_cell_value(sheet2, 1, 1).unwrap(),
+            Some(CalcValue::number(10.0)),
+            "Sheet2!A1 = 10 at load"
+        );
+
+        let outcome = session
+            .enter_grid_cell(sheet1, 1, 1, "4")
+            .expect("Sheet1!A1 on the loaded sheet is addressable under the session's token");
+        assert!(
+            matches!(outcome, GridCellEntryOutcome::Literal { .. }),
+            "'4' takes the engine's literal branch, got {outcome:?}"
+        );
+
+        let s1a1 = session.grid_cell_value(sheet1, 1, 1).unwrap();
+        let s1a1_provenance = session.grid_cell_provenance(sheet1, 1, 1).unwrap();
+        let s2a1 = session.grid_cell_value(sheet2, 1, 1).unwrap();
+        let s2a1_provenance = session.grid_cell_provenance(sheet2, 1, 1).unwrap();
+        println!("W011 cross-sheet edit: Sheet1!A1 = {s1a1:?} provenance = {s1a1_provenance:?}");
+        println!("W011 cross-sheet edit: Sheet2!A1 = {s2a1:?} provenance = {s2a1_provenance:?}");
+        assert_eq!(
+            s1a1,
+            Some(CalcValue::number(4.0)),
+            "Sheet1!A1 = 4 after the edit"
+        );
+        assert!(
+            matches!(
+                s1a1_provenance,
+                Some(ValueProvenanceProjection::Calculated { .. })
+            ),
+            "the edit drained Sheet1, so its literal is now engine-Calculated: {s1a1_provenance:?}"
+        );
+        assert_eq!(
+            s2a1,
+            Some(CalcValue::number(20.0)),
+            "Sheet2!A1 = Sheet1!A1*5 = 20: the edit PROPAGATED across sheets on the loaded workbook"
+        );
+        assert!(
+            matches!(
+                s2a1_provenance,
+                Some(ValueProvenanceProjection::Calculated { .. })
+            ),
+            "Sheet2!A1's 20 is a fresh engine value: {s2a1_provenance:?}"
+        );
+
+        // Automatic: the edit drained both sheets; nothing is dirty.
+        let calc = session.workbook_calc_projection(None).unwrap();
+        assert!(
+            calc.sheets.iter().all(|sheet| !sheet.dirty),
+            "under Automatic the edit drained itself and its dependents: {:?}",
+            calc.sheets
+        );
+
+        // Authored truth: Sheet2!A1's formula is untouched.
+        let s2a1_authored = session
+            .grid_authored_cells(sheet2, 1, 1, 1, 1)
+            .unwrap()
+            .into_iter()
+            .find(|cell| cell.row == 1 && cell.col == 1)
+            .expect("Sheet2!A1 is in the requested window");
+        assert_eq!(s2a1_authored.kind, GridAuthoredKindProjection::Formula);
+        assert_eq!(s2a1_authored.source_text.as_deref(), Some("=Sheet1!A1*5"));
+    }
+
+    /// dtc-j7n8.14 acceptance (3) — the cross-sheet save proof, on real
+    /// bytes, per sheet. Open -> `Sheet1!A1 -> 4` (LIVE `Sheet2!A1` = 20) ->
+    /// `save_xlsx_bytes` -> the ledger dropped nothing -> reopen the SAVED
+    /// bytes RAW through OxDoc and walk each sheet's events: `Sheet1!A1` is
+    /// `Number(4)` and `Sheet2!A1` is exactly `Formula { text:
+    /// "Sheet1!A1*5", cached: Number(20) }` — the cross-sheet formula text
+    /// preserved AND the cached `<v>` on the OTHER sheet refreshed to 20,
+    /// not the file's stale 10. The two sheets stay in order; the reopened
+    /// package still materializes `Sheet2`'s `FormulaTopology` record; the
+    /// session's FILE truth is untouched (its source still says cached 10,
+    /// LIVE still 20); and the full loop closes — the saved bytes open into
+    /// a fresh session whose `Sheet2!A1` publishes 20 with authored
+    /// `=Sheet1!A1*5`. An engine readout alone would mask a stale cache
+    /// (the reload recomputes 20 from `Sheet1!A1 = 4`), which is why the
+    /// raw walk comes first.
+    #[test]
+    fn cross_sheet_save_after_edit_reopens_with_cached_20() {
+        let mut session = open_w011_cross_sheet_fixture();
+        let (sheet1, sheet2) = two_sheets(&session);
+        session
+            .enter_grid_cell(sheet1, 1, 1, "4")
+            .expect("Sheet1!A1 -> 4 on the loaded fixture");
+        assert_eq!(
+            session.grid_cell_value(sheet2, 1, 1).unwrap(),
+            Some(CalcValue::number(20.0)),
+            "LIVE truth before the save: Sheet2!A1 = Sheet1!A1*5 = 20"
+        );
+
+        let (bytes, _ledger) = save_and_log("cross-sheet, after edit", &session);
+
+        // FILE truth of the SAVED bytes — raw OxDoc events, no engine.
+        let reopened = reopen_raw("cross-sheet, after edit", &bytes);
+        let sheet_names: Vec<String> = reopened
+            .source_context
+            .events()
+            .iter()
+            .filter_map(|event| match event {
+                DocumentEvent::SheetBegin(sheet) => Some(sheet.name.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            sheet_names,
+            ["Sheet1", "Sheet2"],
+            "the saved package keeps both sheets in workbook order"
+        );
+        let (sheet1_a1, sheet2_a1) = sheet1_a1_sheet2_a1("cross-sheet, after edit", &reopened);
+        assert_eq!(
+            sheet1_a1,
+            CellPayload::Number(4.0),
+            "Sheet1!A1 is saved as the edited literal 4"
+        );
+        assert_eq!(
+            sheet2_a1,
+            sheet2_a1_formula_cached(20.0),
+            "THE TRAP, cross-sheet: Sheet2!A1 keeps its formula text Sheet1!A1*5 AND its cached \
+             <v> is the fresh 20, not the file's stale 10"
+        );
+
+        // The saved package still carries Sheet2!A1's formula record.
+        let records: Vec<_> = reopened
+            .source_context
+            .events()
+            .iter()
+            .filter_map(|event| match event {
+                DocumentEvent::FormulaTopology(topology) => Some(&topology.records),
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        println!("W011 cross-sheet reopen [after edit]: formula records = {records:?}");
+        assert_eq!(
+            records.len(),
+            1,
+            "Sheet2!A1 is still the only formula record in the saved file: {records:?}"
+        );
+        assert_eq!(records[0].sheet_id, 2, "the record is Sheet2's");
+        assert_eq!(
+            records[0].address,
+            PackedCellAddr::from_one_based(1, 1).unwrap(),
+            "the record is A1's"
+        );
+        assert_eq!(records[0].kind, FormulaRecordKind::Normal);
+        assert_eq!(records[0].text.as_deref(), Some("Sheet1!A1*5"));
+
+        // The session's own FILE truth is untouched by the save; LIVE is 20.
+        let source_cells = raw_sheet_cells(
+            session
+                .xlsx_source()
+                .expect("the OxDoc source stays owned across a save"),
+            "Sheet2",
+        );
+        assert_eq!(
+            raw_cell_payload(&source_cells, 1, 1),
+            &sheet2_a1_formula_cached(10.0),
+            "the opened source keeps the file's cached 10 after a save"
+        );
+        assert_eq!(
+            session.grid_cell_value(sheet2, 1, 1).unwrap(),
+            Some(CalcValue::number(20.0)),
+            "LIVE truth is untouched by the save"
+        );
+
+        // Full loop: the saved bytes open into a fresh session.
+        let reloaded = WorkbookSession::open_xlsx_bytes(
+            XLSX_WORKSPACE_ID,
+            &bytes,
+            Some("cross_sheet_saved.xlsx".to_string()),
+        )
+        .expect("the saved bytes open through OxDoc and ingest into the engine");
+        let report = reloaded.load_report().unwrap();
+        assert_eq!(
+            (report.sheets, report.cells, report.formulas_bound),
+            (2, 1, 1)
+        );
+        let (reloaded_sheet1, reloaded_sheet2) = two_sheets(&reloaded);
+        let s1a1_authored = reloaded
+            .grid_authored_cells(reloaded_sheet1, 1, 1, 1, 1)
+            .unwrap()
+            .into_iter()
+            .find(|cell| cell.row == 1 && cell.col == 1)
+            .expect("Sheet1!A1 is in the requested window");
+        let s2a1_authored = reloaded
+            .grid_authored_cells(reloaded_sheet2, 1, 1, 1, 1)
+            .unwrap()
+            .into_iter()
+            .find(|cell| cell.row == 1 && cell.col == 1)
+            .expect("Sheet2!A1 is in the requested window");
+        let s1a1_value = reloaded.grid_cell_value(reloaded_sheet1, 1, 1).unwrap();
+        let s2a1_value = reloaded.grid_cell_value(reloaded_sheet2, 1, 1).unwrap();
+        println!(
+            "W011 cross-sheet full loop: Sheet1!A1 authored kind={:?} literal_text={:?} value={s1a1_value:?}",
+            s1a1_authored.kind, s1a1_authored.literal_text
+        );
+        println!(
+            "W011 cross-sheet full loop: Sheet2!A1 authored kind={:?} source_text={:?} value={s2a1_value:?}",
+            s2a1_authored.kind, s2a1_authored.source_text
+        );
+        assert_eq!(s1a1_authored.kind, GridAuthoredKindProjection::Literal);
+        assert_eq!(s1a1_authored.literal_text.as_deref(), Some("4"));
+        assert_eq!(s2a1_authored.kind, GridAuthoredKindProjection::Formula);
+        assert_eq!(s2a1_authored.source_text.as_deref(), Some("=Sheet1!A1*5"));
+        assert_eq!(s1a1_value, Some(CalcValue::number(4.0)), "Sheet1!A1 = 4");
+        assert_eq!(
+            s2a1_value,
+            Some(CalcValue::number(20.0)),
+            "Sheet2!A1 = Sheet1!A1*5 = 20 on the reloaded session"
+        );
+    }
+
+    /// dtc-j7n8.14, the no-edit lane: saving the two-sheet fixture straight
+    /// after the open round-trips cleanly (no Dropped entry) and the
+    /// reopened bytes are the file's own truth on both sheets — `Sheet1!A1`
+    /// 2, `Sheet2!A1` `Sheet1!A1*5` cached 10 (projected fresh, equal to the
+    /// stored cache) — as the SAME document event stream: a two-sheet no-op
+    /// save neither gains, loses, nor reorders an event.
+    #[test]
+    fn cross_sheet_save_without_edit_round_trips_cleanly() {
+        let session = open_w011_cross_sheet_fixture();
+        let (bytes, _ledger) = save_and_log("cross-sheet, no edit", &session);
+
+        let reopened = reopen_raw("cross-sheet, no edit", &bytes);
+        let (sheet1_a1, sheet2_a1) = sheet1_a1_sheet2_a1("cross-sheet, no edit", &reopened);
+        assert_eq!(sheet1_a1, CellPayload::Number(2.0), "Sheet1!A1 is still 2");
+        assert_eq!(
+            sheet2_a1,
+            sheet2_a1_formula_cached(10.0),
+            "Sheet2!A1 keeps its formula text and the recomputed-equals-stored cached 10"
+        );
+        assert_eq!(
+            reopened.source_context.events(),
+            session
+                .xlsx_source()
+                .expect("the OxDoc source stays owned")
+                .source_context
+                .events(),
+            "a two-sheet no-op save reopens as the same document event stream"
+        );
+    }
 }

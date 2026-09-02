@@ -2441,6 +2441,195 @@ mod tests {
         );
     }
 
+    /// dtc-j7n8.14 (Wave 3b) at the command surface, on the LOADED
+    /// cross-sheet fixture (`Sheet1!A1 = 2`; `Sheet2!A1 = =Sheet1!A1*5`
+    /// cached 10): `OpenXlsxBytes` reports two sheets / one literal / one
+    /// bound formula and the snapshot shows `Sheet2!A1` = 10 `Calculated`;
+    /// `EnterGridCell { Sheet1!A1, "4" }` is accepted and — the dtc-j7n8.18
+    /// receipt shape, here proven on real bytes rather than the in-memory
+    /// demo — carries exactly `[grid_cell_entered, grid_changed (Sheet1),
+    /// grid_changed (Sheet2)]`, Sheet2's patch holding the RECALCULATED
+    /// `A1` = 20 on the edit's tick with its authored cross-sheet formula,
+    /// so `apply_delta` over the pre-edit snapshot equals a fresh snapshot
+    /// as a whole; then `SaveActiveXlsx` returns bytes whose raw OxDoc
+    /// events say `Sheet1!A1 = Number(4)` and `Sheet2!A1 = Formula {
+    /// "Sheet1!A1*5", cached: Number(20) }` — the bead's own cached-20
+    /// proof, at the surface a host actually calls. The `workbook.rs` lane
+    /// carries the session-level assertions; this one adds the receipt.
+    #[test]
+    fn execute_cross_sheet_edit_receipt_patches_sheet2_and_save_reopens_with_cached_20() {
+        use crate::xlsx_fixture::w011_cross_sheet_fixture_bytes;
+        use dnacalc_skin_ir::session_channel::{
+            apply_delta, change_kind, delta_is_fully_applicable,
+        };
+
+        let mut document = DocumentSession::Workbook(build_demo_workbook().unwrap());
+        let outcome = document
+            .execute(HostCommand::OpenXlsxBytes {
+                bytes: w011_cross_sheet_fixture_bytes(),
+                name: Some("cross_sheet.xlsx".to_string()),
+            })
+            .expect("OxDoc opens and the engine ingests the committed cross-sheet fixture");
+        let HostCommandOutcome::Opened {
+            sheet_count,
+            cells,
+            formulas_bound,
+            recalc_path,
+            ..
+        } = &outcome
+        else {
+            panic!("expected Opened, got {outcome:?}");
+        };
+        assert_eq!(
+            (*sheet_count, *cells, *formulas_bound),
+            (2, 1, 1),
+            "two sheets; Sheet1!A1 the literal; Sheet2!A1 bound"
+        );
+        assert_eq!(*recalc_path, LoadRecalcPath::Automatic);
+
+        // PRE: the loaded truth through the skin's mount surface.
+        let before = document.snapshot();
+        assert_eq!(
+            before
+                .sheets
+                .iter()
+                .map(|sheet| sheet.display_name.as_str())
+                .collect::<Vec<_>>(),
+            ["Sheet1", "Sheet2"],
+            "two tab-strip rows in workbook order: {:?}",
+            before.sheets
+        );
+        let sheet1 = before.sheets[0].grid_node_id.clone();
+        let sheet2 = before.sheets[1].grid_node_id.clone();
+        let s2a1_before = projected_cell(grid_in(&before, &sheet2), 1, 1);
+        log_cell("cross-sheet pre", "Sheet2!A1", s2a1_before);
+        assert_eq!(
+            s2a1_before
+                .authored
+                .as_ref()
+                .and_then(|authored| authored.source_text.as_deref()),
+            Some("=Sheet1!A1*5"),
+            "Sheet2!A1 authored Formula at open (None = token-mismatch blank)"
+        );
+        assert_eq!(
+            s2a1_before.value,
+            number("10"),
+            "Sheet2!A1 = Sheet1!A1*5 = 10 at open"
+        );
+        let open_tick = calculated_tick("Sheet2!A1 at open", s2a1_before);
+
+        // EDIT: Sheet1!A1 2 -> 4 through the intent.
+        let receipt = document.dispatch(WorkspaceIntent::EnterGridCell {
+            grid: sheet1.clone(),
+            row: 1,
+            col: 1,
+            text: "4".to_string(),
+        });
+        let kinds: Vec<_> = receipt.delta.changes.iter().map(change_kind).collect();
+        println!(
+            "W011 cross-sheet fixture receipt: accepted={} changes={kinds:?} patched={:?}",
+            receipt.accepted,
+            grid_changed_targets(&receipt)
+        );
+        assert!(
+            receipt.accepted,
+            "Sheet1!A1 -> 4 on the loaded fixture is accepted: {:?}",
+            receipt.error
+        );
+        let (entered_grid, row, col, _) = grid_cell_entered_change(&receipt);
+        assert_eq!((entered_grid, row, col), (&sheet1, 1, 1));
+        assert_eq!(
+            kinds,
+            vec!["grid_cell_entered", "grid_changed", "grid_changed"],
+            "the hint, the edited sheet's patch, then the recalculated dependent sheet's patch"
+        );
+        assert_eq!(
+            grid_changed_targets(&receipt),
+            vec![sheet1.clone(), sheet2.clone()],
+            "the edited sheet first, then the dependent it moved"
+        );
+        let sheet1_patch = grid_changed_for(&receipt, &sheet1);
+        let s1a1_patch = projected_cell(sheet1_patch, 1, 1);
+        log_cell("cross-sheet grid-changed Sheet1", "A1", s1a1_patch);
+        assert_eq!(s1a1_patch.value, number("4"), "Sheet1!A1 = 4 in the patch");
+        let edit_tick = calculated_tick("Sheet1!A1 in the patch", s1a1_patch);
+        assert!(
+            edit_tick > open_tick,
+            "the edit minted a tick newer than the open-recalc ({edit_tick} > {open_tick})"
+        );
+        let sheet2_patch = grid_changed_for(&receipt, &sheet2);
+        let s2a1_patch = projected_cell(sheet2_patch, 1, 1);
+        log_cell("cross-sheet grid-changed Sheet2", "A1", s2a1_patch);
+        assert_eq!(
+            s2a1_patch.value,
+            number("20"),
+            "the receipt carries the RECALCULATED Sheet2!A1 = Sheet1!A1*5 = 4*5 = 20"
+        );
+        assert_eq!(
+            s2a1_patch
+                .authored
+                .as_ref()
+                .and_then(|authored| authored.source_text.as_deref()),
+            Some("=Sheet1!A1*5"),
+            "Sheet2!A1 keeps its authored cross-sheet formula"
+        );
+        assert_eq!(
+            calculated_tick("Sheet2!A1 in the patch", s2a1_patch),
+            edit_tick,
+            "one tick for the whole edit transaction: Sheet2 recalculated on the edit's tick"
+        );
+
+        // Mirror: pre-edit snapshot + this delta == fresh post-edit snapshot.
+        assert!(
+            delta_is_fully_applicable(&receipt.delta),
+            "an executor may send this delta WITHOUT a snapshot: {kinds:?}"
+        );
+        let mut mirror = before.clone();
+        apply_delta(&mut mirror, &receipt.delta)
+            .expect("the entry receipt's delta patches a retained mirror in place");
+        let after = document.snapshot();
+        assert_eq!(
+            mirror, after,
+            "the patched mirror IS the fresh snapshot: both sheets the edit moved rode the delta"
+        );
+        assert_eq!(
+            projected_cell(grid_in(&mirror, &sheet2), 1, 1).value,
+            number("20"),
+            "the mirror shows Sheet2!A1 = 20 without ever receiving a snapshot"
+        );
+
+        // SAVE: the bytes' raw OxDoc events, per sheet, no engine.
+        let (bytes, save_ledger) = execute_save("cross-sheet, after edit", &mut document);
+        let dropped = dropped_entries(&save_ledger);
+        assert!(dropped.is_empty(), "no Dropped ledger entries: {dropped:?}");
+        let reopened = open_xlsx_raw(&bytes);
+        log_ledger(
+            "W011 cross-sheet SaveActiveXlsx reopen load ledger",
+            &reopened.load_ledger,
+        );
+        let sheet1_cells = raw_sheet_cells(&reopened, "Sheet1");
+        let sheet2_cells = raw_sheet_cells(&reopened, "Sheet2");
+        println!("W011 cross-sheet SaveActiveXlsx reopen: raw Sheet1 cells = {sheet1_cells:?}");
+        println!("W011 cross-sheet SaveActiveXlsx reopen: raw Sheet2 cells = {sheet2_cells:?}");
+        assert_eq!(sheet1_cells.len(), 1, "exactly Sheet1!A1: {sheet1_cells:?}");
+        assert_eq!(sheet2_cells.len(), 1, "exactly Sheet2!A1: {sheet2_cells:?}");
+        assert_eq!(
+            raw_cell_payload(&sheet1_cells, 1, 1),
+            &CellPayload::Number(4.0),
+            "Sheet1!A1 is saved as the edited literal 4"
+        );
+        assert_eq!(
+            raw_cell_payload(&sheet2_cells, 1, 1),
+            &CellPayload::Formula {
+                region: None,
+                text: Some("Sheet1!A1*5".to_string()),
+                cached: Some(Box::new(CellPayload::Number(20.0))),
+            },
+            "THE TRAP, cross-sheet: Sheet2!A1 keeps its formula text Sheet1!A1*5 AND its cached \
+             <v> is the fresh 20, not the file's stale 10"
+        );
+    }
+
     /// dtc-j7n8.7 acceptance (2): `SaveActiveXlsx` on a `RichTree` session
     /// is the typed [`HostCommandError::UnsupportedByModel`] — no workbook,
     /// no OxDoc source — never a panic; the session is untouched.
