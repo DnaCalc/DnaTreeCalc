@@ -235,3 +235,44 @@ type-to-replace (each key re-seeds the buffer, Enter moves instead of
 committing) until its textarea is clicked, and no dirty marker is visible in
 the mast after an edit. Neither affects the byte-level round trip; both affect
 the keyboard-first editing experience the design intends.
+
+## 2026-09-02 — UX follow-ups fixed and verified on the desktop: `dtc-j7n8.25`, `.26`, `.28`
+
+**Product status:** keyboard-first editing in the sheet stage now works as
+designed on the real desktop shell: F2 opens the overlay editor with the
+cell's authored text and keyboard focus inside it; type-to-replace keeps the
+typed character as the seed and appends the next keystrokes; Enter commits and
+moves down; Escape reverts; Ctrl+Z inside a freshly typed editor stays in the
+editor and never undoes the workbook; the mast shows an amber dirty dot after
+an accepted edit; Ctrl+S opens the native Save dialog from both SELECT mode and
+EDIT mode of the sheet stage.
+
+**Evidence:** commits `a76d039` (.26: the bridge textarea is focused on mount
+and focus is handed back to the grid section after commit/revert; a section
+key that arrives while an editor is open refocuses the editor instead of
+re-seeding it; Strand now emits `--dna-amber`, so the dirty dot that was
+rendered transparent paints), `b6de0e8` + `f2a4b12` (.25: the degrade bridge
+stops propagation only for the keys it owns, so shell chords bubble; composed
+app test for Ctrl+S from every stage focus), `587d44f` (record corrected: the
+desktop's WebView2 runs with browser accelerator keys enabled; no webview
+setting was changed), `1cfd03b` (regression found by a refuter and fixed:
+"dirty" is measured against the committed cell text, not the mount seed, so
+Ctrl+Z in a type-to-replace editor is consumed locally). Each bead passed two
+independent refuters; headless-Firefox wasm tests fail on the pre-fix sources
+and pass after. Desktop re-verification at HEAD by the orchestrator (recorded
+on `dtc-j7n8.28`, closed): SELECT-mode Ctrl+S → "Save workbook as"; EDIT-mode
+Ctrl+S → same; F2 + select-all + "10" + Enter → A1 = 10, B1 = 30, dirty dot;
+type-to-replace "5","0" + Enter → A1 = 50, B1 = 150; type "9" + Ctrl+Z →
+editor still open, B1 still 150.
+
+**Root cause of the original SELECT-mode Ctrl+S report:** the inert Ctrl+S in
+the first click-through followed an Enter-commit from the editor textarea;
+before .26 the unmounted textarea left keyboard focus on the document body,
+outside the shell element that owns the keydown handler, while the Ctrl+O that
+worked came after a click on the mast. The .26 focus hand-back closes that
+path; no WebView2 accelerator change was needed.
+
+**Still open:** `dtc-j7n8.27` (arrow Move while a read-only note is up keeps
+EDIT on with a stale seed) and `dtc-j7n8.29` (Ctrl+Z/Y arriving at the sheet
+SECTION while an editor is open still bubble to the shell's Undo), both filed
+by the implementers, not fixed here.
