@@ -66,6 +66,10 @@ pub mod workbook;
 // crate, hence `cfg(test)`). Later W011 beads open the same bytes.
 #[cfg(test)]
 pub(crate) mod xlsx_fixture;
+// W012 (dtc-5zet.2): the FileCached false green proven on the product's open
+// path — fixtures under `fixtures/w012/`, zipped the same dev-only way.
+#[cfg(test)]
+mod xlsx_false_green;
 
 pub use calc::{
     calc_mode_from_projection, calc_mode_projection, present_calc_rejection,

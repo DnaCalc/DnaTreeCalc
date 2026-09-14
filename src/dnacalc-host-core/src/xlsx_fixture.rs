@@ -145,7 +145,9 @@ pub(crate) const W011_CROSS_SHEET_FIXTURE_PART_NAMES: [&str; 6] = [
     "xl/worksheets/sheet2.xml",
 ];
 
-fn repo_root() -> PathBuf {
+/// The repo root every fixture path hangs off (shared with the W012 module
+/// `xlsx_false_green.rs`, which keeps its own fixtures under `fixtures/w012/`).
+pub(crate) fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join(REPO_ROOT_FROM_MANIFEST)
 }
 
