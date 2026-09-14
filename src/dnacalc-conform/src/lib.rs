@@ -24,18 +24,26 @@
 //! denominator), [`verdict`] (the ladder's types and the comparator),
 //! [`volatile`] (nondeterministic-formula detection), [`diff`] (the runner
 //! and the artifact assembly), [`report`] (the `divergence.v1.json`
-//! schema), [`cli`] (argument parsing for the binary).
+//! schema), [`bench`] (the wall-clock baseline runner, dtc-5zet.13),
+//! [`bench_report`] (the `bench.v1.json` schema), [`machine`] (machine
+//! identity and peak-working-set probes), [`cli`] (argument parsing for
+//! the binary).
 //!
 //! TC tier: this crate may depend on `dnacalc-host-core`, `oxcalc_core`,
 //! `oxdoc_model`, `oxdoc_xlsx`; it is never a dependency of any other
 //! workspace crate (positive control in `dnacalc-arch-gates`).
 
+pub mod bench;
+pub mod bench_report;
 pub mod cli;
 pub mod diff;
+pub mod machine;
 pub mod oracle;
 pub mod report;
 pub mod verdict;
 pub mod volatile;
 
+#[cfg(test)]
+mod bench_tests;
 #[cfg(test)]
 mod fixture_tests;

@@ -1137,6 +1137,7 @@ name = "dnacalc-conform"
 version = "0.1.0"
 dependencies = [
  "dnacalc-host-core",
+ "dnacalc-skin-ir",
  "oxcalc-core",
  "oxdoc-conformance",
  "oxdoc-model",

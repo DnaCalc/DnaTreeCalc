@@ -93,12 +93,39 @@ Field order is reading order: `schema`, **`coverage`** (corpus-wide), `totals` (
 
 `unreadable` workbooks (OxDoc itself rejects the bytes) have no event stream and therefore no known formula-cell count; they are counted and named but contribute nothing to the denominator — the honest gap, stated rather than hidden.
 
+## `bench` — the grid-engine wall-clock baseline (dtc-5zet.13)
+
+```
+cargo run --release -p dnacalc-conform --offline -- bench --corpus <dir> --out <dir>
+```
+
+Measures the lane that runs `.xlsx`, through the same `WorkbookSession` verbs the product runs, and writes `<out>/bench.v1.json` (`bench_report.rs`; machine identity first, then what the host can and cannot observe, the subject selection, and one block per subject with every sample retained). The committed baseline and its tolerance bands are `docs/test-runs/w012/BASELINE_2026-09-15.md`.
+
+Subjects, in order:
+
+- the `--corpus-subjects` (3) largest-formula-cell corpus workbooks that open on the product path — every readable `*.xlsx` under `--corpus` is ranked Excel-authored first (`docProps/app.xml` carries `<Application>Microsoft Excel</Application>`, read through OxDoc's package snapshot), then formula cells descending, then path; higher-ranked files the engine refuses are listed under `skipped_open_failed` with their typed error kind;
+- `synthetic:filldown-<rows>` — one sheet, `A{r}` = `r`, `B{r}` = `=A{r}*2`, authored under `Manual` through `enter_grid_cell` (default 2,000 rows; `--filldown-rows 10000` is the bead's long run — every verb is O(authored cells), so it takes tens of minutes);
+- `synthetic:cross-sheet-<rows>` — `Inputs!A{r}` = `r`, `Calc!A{r}` = `=Inputs!A{r}*2` (default 500), so the cross-sheet propagation's escalation is in the numbers.
+
+Per subject: corpus opens (`oxdoc_only` = engine-free `open_host_owned_xlsx_source`; `product_open` = `open_xlsx_bytes`, which for an `Automatic` file includes the cold open-recalc) or synthetic setup plus the cold F9; then `--edit-repeats` (5) Automatic-mode `enter_grid_cell` edits of an input cell (an existing literal a formula references, found by an address-token scan of the file's formulas, cross-sheet qualifiers included; a workbook with no literal gets a new literal in column A, recorded as such), each proven drained by the `Calculated { tick_id }` the edited cell carries and by the dependent formula's value moving; then `--full-recalc-repeats` (3, the cold one included for synthetic subjects) cycles of `set_calc_mode(Manual)` → edit → `recalculate()`.
+
+What the counters mean — read before quoting a number:
+
+- `full_recalc[i].cells_evaluated` is `WorkbookRecalcOutcome::total_cells_evaluated()`. The F9 verb rebuilds each seeded sheet's derived state from authored input (a whole-sheet mark-all, tick 0, so the reference twin runs under the host's `DualValidatedSampled { one_in: 16 }`) and THEN runs a second, seeded recalc; the counter is that second pass only. The rebuild's mark-all and its oracle sweep are in `wall_ms` and absent from the counter (a warm F9 on the 2,000-row fill-down reports `2`).
+- On a workbook with cross-sheet edges the origin sheet's counter is every one of its cells, not the cone: `propagate_cross_sheet_edit` re-enters the origin with a mark-all. Sheets recalculated only by propagation are not in the outcome.
+- `edit.lane_outcome` is `null`: OxCalc has no public accessor for `GridSeededLaneOutcome`, `cells_evaluated` on an inline edit, or the grid phase timers (`docs/handovers/HANDOVER_OXCALC_lane_outcome_and_phase_timers_accessor.md`). The artifact's `observability` block says so once; nothing is estimated in their place.
+- `peak_working_set_bytes` is `Get-Process PeakWorkingSet64` of the bench process at the end of the run (Windows; `null` with the reason elsewhere) — process-wide, not per subject. There is no allocation counter: the workspace forbids `unsafe_code`, which a counting `GlobalAlloc` needs.
+
+Wall-clock samples are milliseconds with every sample retained plus min / median / max; the summary quotes the median. Run-to-run spread on the same machine was up to 2.8× on some numbers (see the baseline doc), so bands are set per number, not as one percentage.
+
 ## Exit codes and flags
 
-`0`: the run completed and the artifact was written — RED coverage or mismatches are results, not failures (floors are a later bead). `1`: the run could not complete (I/O, no workbooks under the corpus dir, an internal identity violation — the artifact is then not written). `2`: bad arguments.
+`0`: the run completed and the artifact was written — RED coverage or mismatches are results, not failures (floors are a later bead). `1`: the run could not complete (I/O, no workbooks under the corpus dir, an internal identity violation, a bench subject that could not be measured — the artifact is then not written). `2`: bad arguments.
+
+`bench` knobs (`--corpus-subjects`, `--filldown-rows`, `--cross-sheet-rows`, `--open-repeats`, `--edit-repeats`, `--full-recalc-repeats`) take positive integers; the defaults are the committed baseline shape and are printed by `--help`.
 
 `--no-force-recalc` is a test-only flag, absent from the usage text: it skips the forced recalc so the Manual-mode coverage trap can be proven (`manual_mode_fixture_has_coverage_only_because_the_recalc_is_forced`). It is not a way to run the instrument.
 
 ## Tier
 
-TC: depends on `dnacalc-host-core`, `oxcalc_core`, `oxfunc_core`, `oxdoc_model`, `oxdoc_xlsx` (`oxdoc_conformance` dev-only, for zipping the parts-only W012 fixtures in tests), plus `sha2` (already in the workspace lock) for the corpus identity. Never a dependency of any other workspace crate; `dnacalc-arch-gates` carries the positive control `tc_control_conform_contains_oxcalc_and_oxdoc`. No zip crate, no absolute machine paths: corpus and out dirs are arguments; tests reach `../../fixtures` by `CARGO_MANIFEST_DIR` arithmetic.
+TC: depends on `dnacalc-host-core`, `dnacalc-skin-ir` (T0; the `CalcModeProjection` that `set_calc_mode` takes), `oxcalc_core`, `oxfunc_core`, `oxdoc_model`, `oxdoc_xlsx` (`oxdoc_conformance` dev-only, for zipping the parts-only W012 fixtures in tests), plus `sha2` (already in the workspace lock) for the corpus identity. Never a dependency of any other workspace crate; `dnacalc-arch-gates` carries the positive control `tc_control_conform_contains_oxcalc_and_oxdoc`. No zip crate, no absolute machine paths: corpus and out dirs are arguments; tests reach `../../fixtures` by `CARGO_MANIFEST_DIR` arithmetic.

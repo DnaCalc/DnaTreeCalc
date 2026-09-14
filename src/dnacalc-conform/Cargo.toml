@@ -20,6 +20,10 @@ path = "src/main.rs"
 serde = { workspace = true }
 serde_json = { workspace = true }
 dnacalc-host-core = { path = "../dnacalc-host-core" }
+# The skin-IR calc-mode projection `WorkbookSession::set_calc_mode` takes
+# (the bench flips Manual/Automatic through the product's own verb). T0
+# tier, already a host-core dependency: a new edge, not a new crate.
+dnacalc-skin-ir = { path = "../dnacalc-skin-ir" }
 oxcalc_core.workspace = true
 oxfunc_core.workspace = true
 oxdoc_model.workspace = true
