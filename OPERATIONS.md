@@ -105,6 +105,16 @@ br dep add <id> <depends-on-id>
 br close <id> --reason "..."
 ```
 
+### Concurrency rules for agents in this repo (recorded 2026-09-14, W012-0.5)
+
+- **One `cargo` invocation at a time.** The workspace shares one `target/`; two concurrent cargo runs produced rustc ICEs on 2026-09-01 (`dtc-g43s` context). Run cargo strictly sequentially and in the foreground, never in the background, never from two agents at once. Parallel agents are allowed only across repos, and one committer per repo at a time.
+- **Sibling repos are path dependencies.** DnaTreeCalc compiles OxCalc, OxFml, OxFunc and OxDoc from source; an agent editing a sibling can produce a transient compile error here. Wait and retry; never edit the sibling from this repo.
+- **Single-writer files** (edit under one agent at a time; coordinate through the owning bead):
+  - `src/dnacalc-host-core/src/{command.rs,lib.rs,workbook.rs}` — the W011 relay's files. The relay `dtc-j7n8` is **parked** (owner, 2026-09-14), so they are editable under the ordinary one-committer rule; whoever resumes the relay re-claims them by marking a `dtc-j7n8` child in progress and saying so on that epic.
+  - `src/dnacalc-bench-host/src/services/verification_bundle.rs` — 301 KB, shells `cargo run` into OxXlPlay/OxReplay with hardcoded absolute paths; the fourth hotspot.
+  - In sibling repos: OxCalc `consumer.rs` / `grid/machine.rs`, OxDoc `oxdoc-xlsx/src/lib.rs`.
+- The W012 crate `src/dnacalc-conform` owns its own files and needs no slot.
+
 ## 6. Verification and anchoring
 
 Pass/fail gates are only as good as the specs behind them. We write specs and worksets so gates are *embeddable*, then flow them through the beads. Verification is **layered** and applied **as appropriate to the work** — never a blanket sweep.
