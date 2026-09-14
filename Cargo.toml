@@ -36,6 +36,11 @@ members = [
     "src/dnacalc-bench-app-desktop",
     "src/dnacalc-app",
     "src/dnacalc-app-desktop",
+    # W012 measured-Excel instrument (dtc-5zet.8): TC-tier lib + bin that
+    # runs the provenance-first Excel-vs-DNA differential over a corpus of
+    # Excel-authored workbooks through host-core's own open path. Never a
+    # dependency of any TP/TF crate (positive control in dnacalc-arch-gates).
+    "src/dnacalc-conform",
 ]
 
 [workspace.package]

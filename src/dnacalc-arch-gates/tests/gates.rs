@@ -264,3 +264,44 @@ fn tc_gate_host_core_has_no_leptos() {
     let tree = run_cargo_tree("dnacalc-host-core");
     assert_graph_excludes("TC-gate", &tree, &["leptos"]);
 }
+
+/// TC positive control for the W012 instrument crate (dtc-5zet.8) —
+/// `dnacalc-conform` *does* contain `oxcalc-core`, `oxdoc-model` and
+/// `oxdoc-xlsx`, on purpose: it opens Excel-authored `.xlsx` bytes through
+/// `dnacalc-host-core`'s own path and reads OxCalc's published provenance
+/// per cell (`Foundation/notes/PROGRAM_INVESTIGATION_2026-09-10.md`
+/// Appendix A, constraint 1). It mirrors
+/// `inverted_control_host_core_contains_oxdoc`: the crate is TC-tier and
+/// must never appear in [`TP_CRATES`] or in any F-gated Bench graph; this
+/// control is what keeps that exclusion honest — if the crate ever
+/// silently stopped reaching the engine (say, a refactor that scored from
+/// the skin-IR mirror alone), the instrument would still compile and every
+/// "no ox in TP/TF" gate would keep passing without the instrument actually
+/// measuring the product path.
+///
+/// Each crate is asserted separately (`oxdoc-model` is reachable through
+/// `oxcalc-core` alone, so a single `oxdoc` prefix could keep passing after
+/// the `oxdoc-xlsx` edge — the one that opens bytes — had been dropped).
+/// Never "fix" this by loosening or deleting it; if the instrument
+/// legitimately moves, retarget the control.
+#[test]
+fn tc_control_conform_contains_oxcalc_and_oxdoc() {
+    let tree = run_cargo_tree("dnacalc-conform");
+    for required in [
+        "oxcalc-core",
+        "oxdoc-model",
+        "oxdoc-xlsx",
+        "dnacalc-host-core",
+    ] {
+        assert_graph_includes("TC control (dnacalc-conform)", &tree, required);
+        let (name, line) = find_crate_prefixed(&tree, required)
+            .expect("assert_graph_includes just proved a matching crate line exists");
+        println!(
+            "tc_control_conform_contains_oxcalc_and_oxdoc: `{required}` matched `{name}` via line: `{line}`"
+        );
+    }
+    assert!(
+        !TP_CRATES.contains(&"dnacalc-conform"),
+        "dnacalc-conform is TC-tier and must never be listed as a TP crate"
+    );
+}

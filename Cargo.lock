@@ -1133,6 +1133,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "dnacalc-conform"
+version = "0.1.0"
+dependencies = [
+ "dnacalc-host-core",
+ "oxcalc-core",
+ "oxdoc-conformance",
+ "oxdoc-model",
+ "oxdoc-xlsx",
+ "oxfunc_core",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "dnacalc-extension-host-core"
 version = "0.1.0"
 dependencies = [

@@ -654,6 +654,24 @@ impl WorkbookSession {
             .map(|cell| crate::calc::value_provenance_projection(cell.provenance)))
     }
 
+    /// One sheet's whole published readout at the OxCalc level
+    /// (`grid_view`): every published cell with its `CalcValue` and its
+    /// engine `PublishedValueProvenance` — the value the W012 conformance
+    /// instrument (`dnacalc-conform`, dtc-5zet.8) scores from. Read here and
+    /// not through [`WorkbookSession::grid_cell_provenance`] because that
+    /// skin-IR mirror folds `Degraded` into `FileCached`
+    /// (`calc::value_provenance_projection`), and the instrument's
+    /// `NotEvaluated { reason }` breakdown must not launder a cache-less
+    /// rejection into "read from the file". Read-only; a sheet without a grid
+    /// backing is the internal-invariant
+    /// [`WorkbookSessionError::SheetNotGridBacked`], as for every other
+    /// grid readout on this session.
+    pub fn grid_view(&self, sheet: TreeNodeId) -> Result<OxCalcTreeGridView, WorkbookSessionError> {
+        self.context
+            .grid_view(&self.workspace_id, sheet)?
+            .ok_or(WorkbookSessionError::SheetNotGridBacked { node: sheet })
+    }
+
     /// The windowed authored-metadata projection for a sheet's interest
     /// window (H3, §A.3): the skin-IR mirror of `grid_authored_view`, filled
     /// for exactly the requested rectangle — never the whole sheet — so the
