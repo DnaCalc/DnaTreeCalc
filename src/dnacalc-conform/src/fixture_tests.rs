@@ -59,7 +59,9 @@ fn verdict_of<'a>(report: &'a WorkbookReport, address: &str) -> &'a crate::repor
         .unwrap_or_else(|| panic!("no verdict row for {address} in {:#?}", report.verdicts))
 }
 
-/// (a) THE ladder test. `C1 = =Größe*2` is OxFml-rejected; OxCalc publishes
+/// (a) THE ladder test. `C1 = =Is?Valid*2` is OxFml-rejected (a `?` inside
+/// a name is Excel-legal, [MS-XLSX] §2.2.2; re-cut by dtc-5zet.20 after OxFml
+/// fml-kt8.2 learned the fixture's first text, `=Größe*2`); OxCalc publishes
 /// the file's cached `#NAME?` as a `FileCached` pin — equal to Excel's
 /// cache. A value-only comparator scores it a match; this runner scores it
 /// `not_evaluated:bind_degraded`, and the control `B1 = =A1*3` `match` under
@@ -95,7 +97,7 @@ fn false_green_rejected_cell_is_not_evaluated_bind_degraded_and_control_matches(
     assert_eq!(c1.verdict, "not_evaluated:bind_degraded");
     assert_eq!(c1.provenance.as_deref(), Some("FileCached"));
     assert_eq!(c1.tick_id, None, "a pinned cell carries no Calculated tick");
-    assert_eq!(c1.formula.as_deref(), Some("Größe*2"));
+    assert_eq!(c1.formula.as_deref(), Some("Is?Valid*2"));
     assert_eq!(
         (c1.engine.as_deref(), c1.excel.as_deref()),
         (Some("#NAME?"), Some("#NAME?")),

@@ -1,6 +1,7 @@
 # false_green_manual — the Manual twin of `../false_green`
 
-Status: committed W012 fixture (`dtc-5zet.2`). Byte-identical to
+Status: committed W012 fixture (`dtc-5zet.2`; `C1` re-cut to `=Is?Valid*2`
+by `dtc-5zet.20` in lock-step with the auto fixture). Byte-identical to
 `../false_green/parts/**` except `xl/workbook.xml` carries
 `<calcPr calcMode="manual"/>` instead of `auto`.
 

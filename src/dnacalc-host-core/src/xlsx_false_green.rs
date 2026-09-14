@@ -20,23 +20,29 @@
 //!
 //! Fixtures (`fixtures/w012/false_green/{parts/,README.md}` and the Manual
 //! twin `false_green_manual/`): `Sheet1` with `A1 = 7`, `B1 = =A1*3` cached
-//! `21` (binds fine — the control), and `C1 = =Größe*2` cached `#NAME?`
-//! (`<c r="C1" t="e"><f>Größe*2</f><v>#NAME?</v></c>`). `=Größe*2` is an
-//! Excel-legal formula — a defined name may contain non-ASCII letters — and
-//! with no name `Größe` defined, `#NAME?` is exactly what Excel evaluates and
-//! writes for it. OxFml's lexer does not accept non-ASCII letters outside a
-//! string, so the load never binds `C1`. Why the cache is not a number: the
-//! Excel-faithful numeric form needs the name DECLARED, and declaring a
-//! non-ASCII name makes the whole open fail (`InvalidDefinedName`: OxCalc's
-//! name-key validator is ASCII-only) — a reader-ceiling fact filed as
-//! dtc-5zet.5, not this bead's.
+//! `21` (binds fine — the control), and `C1 = =Is?Valid*2` cached `#NAME?`
+//! (`<c r="C1" t="e"><f>Is?Valid*2</f><v>#NAME?</v></c>`). `=Is?Valid*2` is
+//! an Excel-legal formula — `?` is a legal character inside a defined name
+//! by the file format's grammar ([MS-XLSX] §2.2.2, `name-character` includes
+//! `questionmark`) — and with no name `Is?Valid` defined, `#NAME?` is exactly
+//! what Excel evaluates and writes for it: the `C1` element is byte-for-byte
+//! what Excel 16.0 build 20326 saved for that entry (COM, 2026-09-15; see the
+//! fixture README). OxFml's lexer tokenizes `?` as `Unknown`, so the load
+//! never binds `C1`. Why the cache is not a number: the Excel-faithful
+//! numeric form needs the name DECLARED, and declaring a name with `?` in it
+//! makes the whole open fail (`InvalidDefinedName`: OxCalc's name-key
+//! validator accepts only ASCII alphanumerics, `_` and `.` after the first
+//! character) — a reader-ceiling fact filed as dtc-5zet.5, not this bead's.
 //!
 //! The rejection premise is pinned verbatim (the exact OxFml diagnostics as
-//! observed 2026-09-14 against OxFml `0bf8266` / OxCalc `9d702764`). OxFml's
-//! W079 workset (fml-kt8) plans non-ASCII identifiers; when that lands this
-//! module fails loudly at the diagnostics pin, on purpose — re-point the
-//! fixture at another Excel-legal text OxFml still rejects, never delete the
-//! test.
+//! observed 2026-09-15 against OxFml `63a17b1` / OxCalc `03e42664`). This
+//! is the fixture's second text: it was cut on `=Größe*2` (a non-ASCII name,
+//! dtc-5zet.2), and when OxFml fml-kt8.2 (`cbb3099`) made non-ASCII
+//! identifiers bind, this module failed loudly at the diagnostics pin, on
+//! purpose, and dtc-5zet.20 re-cut it on a text OxFml still rejects. When
+//! OxFml learns `?` in names the same thing happens again — re-point the
+//! fixture at another Excel-legal text OxFml still rejects (the fixture
+//! README lists the probed candidates), never delete the test.
 //!
 //! Compiled only under `cfg(test)` (the parts are zipped in memory through
 //! the dev-only `oxdoc_conformance` crate, like every W011 fixture).
@@ -66,30 +72,30 @@ const W012_FALSE_GREEN_MANUAL_PARTS_REL: &str = "fixtures/w012/false_green_manua
 /// it — Excel's own encoding of an error-valued formula cell: `t="e"` and the
 /// error text as `<v>`. The test asserts this literal is in the part so the
 /// "equals Excel's cached `<v>`" claim is anchored in the file's bytes.
-const C1_FILE_XML: &str = "<c r=\"C1\" t=\"e\"><f>Größe*2</f><v>#NAME?</v></c>";
+const C1_FILE_XML: &str = "<c r=\"C1\" t=\"e\"><f>Is?Valid*2</f><v>#NAME?</v></c>";
 
 /// The rejected formula as the engine records it in the `BindDegradation`
 /// row (leading `=` restored).
-const C1_REJECTED_TEXT: &str = "=Größe*2";
+const C1_REJECTED_TEXT: &str = "=Is?Valid*2";
 
 /// OxDoc's `CellPayload::Error` code for `#NAME?` — the value Excel wrote for
 /// `C1`, decoded by oxdoc-xlsx's `"#NAME?" => 29` table (Excel's own error
 /// code) and resolved by OxCalc's ingest to `WorksheetErrorCode::Name`.
 const NAME_ERROR_PAYLOAD_CODE: u8 = 29;
 
-/// The exact diagnostics OxFml returned for `=Größe*2` when it rejected the
-/// text as a formula (observed 2026-09-14, OxFml `0bf8266`): the lexer
-/// tokenizes `ö` and `ß` as `Unknown`, so `Gr` parses as a bare name and
-/// everything after it is a trailing token. Spans are char offsets into the
+/// The exact diagnostics OxFml returned for `=Is?Valid*2` when it rejected
+/// the text as a formula (observed 2026-09-15, OxFml `63a17b1`): the lexer
+/// tokenizes `?` as `Unknown`, so `Is` parses as a bare name and everything
+/// after it is a trailing token. Spans are char offsets into the
 /// `=`-prefixed text. Pinned verbatim, like W011's `OXDOC_CELL_ADD_REJECTION`:
-/// an upstream change (OxFml learning non-ASCII identifiers) fails this
-/// module loudly instead of silently voiding its premise.
-const C1_REJECTION_DIAGNOSTICS: [&str; 5] = [
+/// an upstream change (OxFml learning `?` in names) fails this module loudly
+/// instead of silently voiding its premise — exactly what happened to the
+/// first text, `=Größe*2`, when OxFml fml-kt8.2 landed (dtc-5zet.20).
+const C1_REJECTION_DIAGNOSTICS: [&str; 4] = [
     "unexpected trailing token Unknown [3..4]",
-    "unexpected trailing token Unknown [4..5]",
-    "unexpected trailing token Identifier [5..6]",
-    "unexpected trailing token Star [6..7]",
-    "unexpected trailing token Number [7..8]",
+    "unexpected trailing token Identifier [4..9]",
+    "unexpected trailing token Star [9..10]",
+    "unexpected trailing token Number [10..11]",
 ];
 
 fn false_green_parts_dir() -> PathBuf {
@@ -262,15 +268,15 @@ fn assert_load_report_names_c1_rejected(session: &WorkbookSession) {
     );
     assert_eq!(
         degradation.diagnostics, C1_REJECTION_DIAGNOSTICS,
-        "OxFml's exact rejection of =Größe*2 (the premise of this fixture; if OxFml now \
-         accepts non-ASCII identifiers, re-point the fixture at another Excel-legal text it \
-         still rejects)"
+        "OxFml's exact rejection of =Is?Valid*2 (the premise of this fixture; if OxFml now \
+         accepts `?` in names, re-point the fixture at another Excel-legal text it still \
+         rejects — the fixture README lists the probed candidates)"
     );
 }
 
 /// The file's own truth for `C1`, with no engine involved: the part's XML
 /// literally carries Excel's `t="e"` / `<v>#NAME?</v>` encoding, and OxDoc's
-/// event for the cell is `Formula { text: "Größe*2", cached: Error(29) }` —
+/// event for the cell is `Formula { text: "Is?Valid*2", cached: Error(29) }` —
 /// the cache the engine will publish unchanged.
 fn assert_file_truth_of_c1(parts_dir: &std::path::Path) {
     let sheet_xml = std::fs::read_to_string(parts_dir.join("xl/worksheets/sheet1.xml")).unwrap();
@@ -294,7 +300,7 @@ fn assert_file_truth_of_c1(parts_dir: &std::path::Path) {
         raw_cell_payload(&cells, 1, 3),
         &CellPayload::Formula {
             region: None,
-            text: Some("Größe*2".to_string()),
+            text: Some("Is?Valid*2".to_string()),
             cached: Some(Box::new(CellPayload::Error(NAME_ERROR_PAYLOAD_CODE))),
         },
         "OxDoc decodes <v>#NAME?</v> under t=\"e\" to Error(29) — Excel's cached value for C1"
@@ -446,7 +452,7 @@ fn file_cached_pin_is_a_false_green_for_a_naive_value_comparator() {
     );
 
     // OBSERVED: the authored projection does not know C1 is a formula. The
-    // file says `<f>Größe*2</f>`; the engine's authored view says Empty. A
+    // file says `<f>Is?Valid*2</f>`; the engine's authored view says Empty. A
     // formula-cell census taken from this view would not count C1 at all.
     let authored = session.grid_authored_cells(sheet, 1, 1, 1, 3).unwrap();
     let c1_authored = authored
