@@ -10,8 +10,11 @@ Status: committed W012 fixture (`dtc-5zet.2`). One sheet `Sheet1`:
 
 `C1` is the point of the fixture. `=Größe*2` is an Excel-legal formula (a
 defined name may contain non-ASCII letters), and because no name `Größe` is
-defined in this workbook Excel evaluates it to `#NAME?` and stores exactly
-the cell above: `t="e"` plus `<v>#NAME?</v>`. OxFml's lexer does not accept
+defined in this workbook Excel would evaluate it to `#NAME?` and, per the
+SpreadsheetML cell rules, store an error-typed cell like the one above
+(`t="e"` plus `<v>#NAME?</v>`). This fixture is hand-authored, not
+Excel-authored: the bytes follow the documented format, and were not
+observed from a live Excel save. OxFml's lexer does not accept
 non-ASCII letters outside a string, so on load OxCalc never binds the cell:
 it publishes the file's own `#NAME?` with `PublishedValueProvenance::
 FileCached` and records a `BindDegradation` for `R1C3` (OxCalc
@@ -26,7 +29,8 @@ Why the cache is `#NAME?` and not a number: declaring the name
 outright — OxCalc's defined-name key validator is ASCII-only
 (`InvalidDefinedName { name: "Größe" }`), so an Excel-faithful numeric cache
 for a rejected non-ASCII name is not openable today (filed as dtc-5zet.5).
-The undefined-name form is what Excel itself would write for this workbook.
+The undefined-name form is what the documented format says Excel writes for
+such a workbook; it has not been captured from live Excel here.
 
 `parts/` (readable XML) is the source of truth; there is no committed binary
 (no app click-through needs one). Host-core tests zip `parts/` in memory
