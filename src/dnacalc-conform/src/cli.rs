@@ -19,7 +19,12 @@ diff:
   forces a recalc, scores every formula cell against Excel's cached <v>
   with the provenance-first verdict ladder, and writes
   <out>/divergence.v1.json. Coverage (engine_calculated / formula_cells)
-  is printed first; RED is a result, not a failure.
+  is printed first; RED is a result, not a failure. Every session runs
+  under GridEngineValidationMode::DualValidated, so the engine's own
+  reference twin checks every recalc; its mismatches are reported per
+  workbook (reference_twin) and per cell (mismatch:ReferenceTwin).
+    --fail-on-twin             exit 3 when the reference twin reported any
+                               mismatch (the artifact is still written)
 
 bench:
   The grid-engine wall-clock baseline (dtc-5zet.13): the largest
@@ -136,6 +141,10 @@ fn parse_diff(args: &[String]) -> Result<Command, ArgError> {
                 options.force_recalc = false;
                 i += 1;
             }
+            "--fail-on-twin" => {
+                options.fail_on_twin = true;
+                i += 1;
+            }
             "--help" | "-h" => return Ok(Command::Help),
             other => return Err(ArgError::Unknown(other.to_string())),
         }
@@ -203,9 +212,28 @@ mod tests {
             Command::Diff {
                 corpus: PathBuf::from("corpus"),
                 out: PathBuf::from("target/out"),
-                options: DiffOptions { force_recalc: true },
+                options: DiffOptions {
+                    force_recalc: true,
+                    fail_on_twin: false
+                },
             }
         );
+    }
+
+    #[test]
+    fn parses_fail_on_twin_and_documents_it() {
+        let command = parse(["diff", "--corpus", "c", "--fail-on-twin", "--out", "o"]).unwrap();
+        assert!(matches!(
+            command,
+            Command::Diff {
+                options: DiffOptions {
+                    force_recalc: true,
+                    fail_on_twin: true
+                },
+                ..
+            }
+        ));
+        assert!(USAGE.contains("--fail-on-twin"));
     }
 
     #[test]
@@ -215,7 +243,8 @@ mod tests {
             command,
             Command::Diff {
                 options: DiffOptions {
-                    force_recalc: false
+                    force_recalc: false,
+                    fail_on_twin: false
                 },
                 ..
             }

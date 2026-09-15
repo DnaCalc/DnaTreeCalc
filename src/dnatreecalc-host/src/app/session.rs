@@ -1,6 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use dnacalc_host_core::grid_publication::grid_authored_cell_projection;
+use dnacalc_host_core::grid_publication::{
+    grid_authored_cell_projection, grid_differential_mismatch_projections,
+};
 use dnatreecalc_skin_framework::{
     AuthoringScope, BindingDiagnosticProjection, CalcRunProjection, CalcRunStateProjection,
     CandidateNodeProjection, CandidateProjection, ComparativeColumnProjection,
@@ -7825,6 +7827,10 @@ fn grid_projection_for(
         overlays: grid_overlay_bundle_for(view),
         overlay_epoch: view.overlay_epoch,
         differential_clean: view.differential_mismatches.is_empty(),
+        // W012-1.5 (dtc-5zet.12) compiler-forced fill: the typed rows behind
+        // the boolean, through host-core's single mapping so the tree-model
+        // session and the workbook session publish the same diagnostic.
+        differential_mismatches: grid_differential_mismatch_projections(view),
         authored_epoch,
     }
 }

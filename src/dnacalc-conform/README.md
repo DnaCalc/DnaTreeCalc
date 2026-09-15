@@ -6,7 +6,7 @@ The W012 measured-Excel conformance instrument (`Foundation/notes/PROGRAM_INVEST
 cargo run -p dnacalc-conform --offline -- diff --corpus <dir> --out <dir>
 ```
 
-Per workbook: `std::fs::read` → `dnacalc_host_core::WorkbookSession::open_xlsx_bytes` (OxDoc `LoadProfile::full()` + OxCalc ingest) → `session.recalculate()` **unconditionally**, whatever the file's `calcMode` (62 of the 174 Excel-authored corpus files are `manual` and would otherwise contribute zero coverage) → for every formula cell the file carries, the verdict ladder → `<out>/divergence.v1.json`.
+Per workbook: `std::fs::read` → `dnacalc_host_core::WorkbookSession::open_xlsx_bytes_with_validation(.., GridEngineValidationMode::DualValidated)` (OxDoc `LoadProfile::full()` + OxCalc ingest; the same open path the product runs, with the engine's reference twin on every recalc instead of the interactive host's 1-in-16 sample — see "The reference twin" below) → `session.recalculate()` **unconditionally**, whatever the file's `calcMode` (62 of the 174 Excel-authored corpus files are `manual` and would otherwise contribute zero coverage) → for every formula cell the file carries, the verdict ladder → `<out>/divergence.v1.json`.
 
 ## The primary number
 
@@ -28,6 +28,9 @@ Per workbook: `std::fs::read` → `dnacalc_host_core::WorkbookSession::open_xlsx
                                                     file_cached
      Degraded                                    -> not_evaluated:degraded
      Stale                                       -> not_evaluated:stale
+1b. Calculated, and the engine's reference twin disputes
+    the cell (differential_mismatches names it)   -> mismatch:ReferenceTwin |
+                                                    mismatch:ReferenceTwin:RichOnly
 2. Calculated, formula calls NOW/TODAY/RAND/RANDBETWEEN/RANDARRAY
    or the file marks the cell ca="1"             -> excluded:nondeterministic:<trigger>
 3. Calculated, no scorable cache                 -> excluded:no_file_cache |
@@ -39,6 +42,21 @@ Per workbook: `std::fs::read` → `dnacalc_host_core::WorkbookSession::open_xlsx
 Only rung 4 produces `match`. A `FileCached` value that equals Excel's cache is the false green (`dnacalc-host-core/src/xlsx_false_green.rs`) and stops at rung 1 by construction — the fixture test `false_green_rejected_cell_is_not_evaluated_bind_degraded_and_control_matches` pins that.
 
 Provenance is read at the OxCalc level (`WorkbookSession::grid_view`, the engine's `PublishedValueProvenance`), not through the skin-IR mirror, which folds `Degraded` into `FileCached`.
+
+### The reference twin (rung 1b, W012-1.5 / dtc-5zet.12)
+
+OxCalc ships a second, brute-force **reference** grid engine beside the optimized one and compares their readouts after a recalc (`grid/machine/differential.rs`, `compare_grid_engine_readouts`); the result is `OxCalcTreeGridView::differential_mismatches`. The interactive host samples it (`DualValidatedSampled { one_in: 16 }`) and, until this bead, collapsed the list to a boolean and discarded the rows. The instrument runs every session under **`DualValidated`** — the twin on **every** recalc — because under a sampled mode an empty list can mean "not checked this recalc" (the engine keeps the last checked result and exposes no per-recalc "lane ran" fact to the host), so only the every-recalc mode makes an empty list mean *checked and clean*. The published values the ladder scores come from the optimized lane in both modes; the mode changes only the oracle spend.
+
+What the instrument does with the engine's rows — it never re-compares the lanes itself:
+
+- every row is a `reference_twin.mismatches[]` entry on the workbook (sheet, A1, both rendered values, `core_equal`, both rich-payload kinds, `formula_cell`), whether or not the file carries a formula cell at the address, so nothing the engine reported is dropped;
+- a row on a **`Calculated`** formula cell is that cell's verdict: `mismatch:ReferenceTwin` when the two `CoreValue`s differ, `mismatch:ReferenceTwin:RichOnly` when the cores are equal and only the rich payload differs (see the class table); the verdict row carries the oracle lane's value as `twin_reference`; no Excel comparison is made — the engine disagrees with itself;
+- a row on a cell the ladder stopped at rung 1 (a pin) leaves that verdict alone — provenance decides before value does, and a pinned value is not the engine's — but the row is still listed and counted;
+- `totals.reference_twin_mismatches` / `totals.reference_twin_workbooks` sum the rows; with **`--fail-on-twin`** a non-zero total makes the binary exit **`3`** after writing the artifact and the summary.
+
+The host-side proof (`fixture_tests.rs`, `injected_leaf_arithmetic_twin_mismatch_scores_reference_twin_and_fails_on_twin` and its siblings) injects a mismatch at the engine→instrument seam (`engine_sheet_views` → `score_session_views`) on the real W011 fixture. It proves the host no longer discards a row the engine reports; it does **not** prove that the engine's differential catches a wrong value at the three blind sites the Foundation note names (the >10k mark-all fall-through, the cross-sheet escalation, a FileCached pin) — those need a test-only seam inside OxCalc: `docs/handovers/HANDOVER_OXCALC_twin_injection_hooks.md`.
+
+Observed on the first every-recalc run over the Foundation corpus (2026-09-15, `docs/test-runs/w012/TWIN_2026-09-15.md`): one row, `SCN-EK011-FUNCTION-RECOGNITION.xlsx` `H18 = =_xlfn.LAMBDA(1)`, both lanes `#CALC!`, cores equal, `Callable` payload on both sides — OxFunc's `CallableValue::eq` is handle identity (`Shared::ptr_eq`) and each lane minted its own handle, so OxCalc's whole-`CalcValue` comparison reports a mismatch that is not a value divergence. Typed `ReferenceTwin:RichOnly`, kept red, sibling-owned (dtc-5zet.26).
 
 ### `not_evaluated` reasons
 
@@ -83,13 +101,15 @@ Comparison is on the typed value: numbers as `f64`, booleans, text as UTF-16 cod
 | `EngineError:<code>` | the engine produced an error where Excel cached a non-error (observed in dtc-5zet.7 for `_xlfn.SINGLE`, `XLOOKUP`, `LET`, `LAMBDA`, whole-column refs, union, Table refs: these bind, evaluate to an error, and are `Calculated` — so they score here, never under `not_evaluated`). |
 | `OracleError:<code>` | Excel cached an error where the engine produced a non-error value. |
 | `Type:<engine>-><excel>` | different scalar kinds, neither an error (e.g. engine `Empty`, Excel `Number`). |
+| `ReferenceTwin` | the engine's reference (oracle) lane and its optimized lane published different `CoreValue`s for this cell on the last recalc (`differential_mismatches`); Excel's cache is recorded but not compared — the engine disagrees with itself. |
+| `ReferenceTwin:RichOnly` | the two lanes' `CoreValue`s are equal and their `CalcValue`s still compare unequal: only the rich payload differs (a `Callable` compares by handle identity; `Presentation` / `ErrorMetadata` / `Object` by value). The engine's verdict, typed apart so a payload-identity disagreement never shares a count with a value disagreement. |
 | `Unclassified:<engine>` | an engine value shape the classifier does not model (array, reference, missing). **Must be 0.** Widening any class to reach zero requires a named bead. |
 
 `match`: exact — equal `f64` bits (or both zero: Excel has no negative zero), equal booleans, equal UTF-16 text, equal error codes.
 
 ## `divergence.v1.json`
 
-Field order is reading order: `schema`, **`coverage`** (corpus-wide), `totals` (workbooks opened / open_failed / unreadable, sheets, cells, formula_cells, engine_calculated, coverage, `not_evaluated` by reason, `excluded` by reason, `match`, `mismatch` by class, `unclassified`), `worst_covered` (the ten lowest-coverage formula-bearing workbooks), `corpus` (every workbook's sha256, sorted, and the sha256 of that list), `run` (corpus dir, out dir, `forced_recalc`), then `workbooks`: per workbook the same counts plus `open` status, `calc_mode`, the engine's `WorkbookLoadReport` counts, the forced recalc's tick / drained sheets / cells evaluated, and a `verdicts` row per formula cell (sheet, A1 address, formula text as stored, verdict key, provenance, `tick_id`, engine value, Excel value) so every `match` can be audited back to its `Calculated { tick_id }`.
+Field order is reading order: `schema`, **`coverage`** (corpus-wide), `totals` (workbooks opened / open_failed / unreadable, sheets, cells, formula_cells, engine_calculated, coverage, `not_evaluated` by reason, `excluded` by reason, `match`, `mismatch` by class, `unclassified`, `reference_twin_mismatches`, `reference_twin_workbooks`), `worst_covered` (the ten lowest-coverage formula-bearing workbooks), `corpus` (every workbook's sha256, sorted, and the sha256 of that list), `run` (corpus dir, out dir, `forced_recalc`, `validation_mode`, `fail_on_twin`), then `workbooks`: per workbook the same counts plus `open` status, `calc_mode`, the engine's `WorkbookLoadReport` counts, the forced recalc's tick / drained sheets / cells evaluated, the `reference_twin` block (validation mode, `checked_every_recalc`, every disputed cell), and a `verdicts` row per formula cell (sheet, A1 address, formula text as stored, verdict key, provenance, `tick_id`, engine value, Excel value, and `twin_reference` when the twin disputes the cell) so every `match` can be audited back to its `Calculated { tick_id }`. The W012-1.5 fields are all additive (`#[serde(default)]`): an artifact written before them still reads back.
 
 `unreadable` workbooks (OxDoc itself rejects the bytes) have no event stream and therefore no known formula-cell count; they are counted and named but contribute nothing to the denominator — the honest gap, stated rather than hidden.
 
@@ -99,7 +119,7 @@ Field order is reading order: `schema`, **`coverage`** (corpus-wide), `totals` (
 cargo run --release -p dnacalc-conform --offline -- bench --corpus <dir> --out <dir>
 ```
 
-Measures the lane that runs `.xlsx`, through the same `WorkbookSession` verbs the product runs, and writes `<out>/bench.v1.json` (`bench_report.rs`; machine identity first, then what the host can and cannot observe, the subject selection, and one block per subject with every sample retained). The committed baseline and its tolerance bands are `docs/test-runs/w012/BASELINE_2026-09-15.md`.
+Measures the lane that runs `.xlsx`, through the same `WorkbookSession` verbs the product runs (under the interactive host's `DualValidatedSampled { one_in: 16 }` on purpose — the baseline was measured under it; `diff`'s every-recalc twin is not the bench's), and writes `<out>/bench.v1.json` (`bench_report.rs`; machine identity first, then what the host can and cannot observe, the subject selection, and one block per subject with every sample retained). The committed baseline and its tolerance bands are `docs/test-runs/w012/BASELINE_2026-09-15.md`.
 
 Subjects, in order:
 
@@ -120,7 +140,9 @@ Wall-clock samples are milliseconds with every sample retained plus min / median
 
 ## Exit codes and flags
 
-`0`: the run completed and the artifact was written — RED coverage or mismatches are results, not failures (floors are a later bead). `1`: the run could not complete (I/O, no workbooks under the corpus dir, an internal identity violation, a bench subject that could not be measured — the artifact is then not written). `2`: bad arguments.
+`0`: the run completed and the artifact was written — RED coverage or mismatches are results, not failures (floors are a later bead). `1`: the run could not complete (I/O, no workbooks under the corpus dir, an internal identity violation, a bench subject that could not be measured — the artifact is then not written). `2`: bad arguments. `3`: `diff --fail-on-twin` only — the run completed, the artifact was written, and `totals.reference_twin_mismatches > 0`.
+
+`diff --fail-on-twin` is the one flag that changes the exit code; it changes nothing else (the twin runs, and its rows are reported, on every `diff`).
 
 `bench` knobs (`--corpus-subjects`, `--filldown-rows`, `--cross-sheet-rows`, `--open-repeats`, `--edit-repeats`, `--full-recalc-repeats`) take positive integers; the defaults are the committed baseline shape and are printed by `--help`.
 

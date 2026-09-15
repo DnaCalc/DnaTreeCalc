@@ -158,6 +158,9 @@ pub struct WorkbookSession {
     workbook_token: String,
     /// Default grid geometry for freshly-added sheets (strict-Excel bounds).
     bounds: ExcelGridBounds,
+    /// The engine-validation profile `context` was constructed with (W012-1.5,
+    /// dtc-5zet.12) — recorded here because the engine keeps its copy private.
+    validation_mode: GridEngineValidationMode,
     /// `Some` iff this workbook was opened from `.xlsx` bytes; an in-memory
     /// workbook ([`WorkbookSession::create`], the demo) has no source.
     xlsx: Option<XlsxSourceState>,
@@ -220,6 +223,7 @@ impl WorkbookSession {
             context,
             workspace_id,
             workbook_token,
+            Self::INTERACTIVE_VALIDATION_MODE,
             None,
         ))
     }
@@ -267,8 +271,32 @@ impl WorkbookSession {
         bytes: &[u8],
         name: Option<String>,
     ) -> Result<Self, WorkbookSessionError> {
+        Self::open_xlsx_bytes_with_validation(
+            workspace_id,
+            bytes,
+            name,
+            Self::INTERACTIVE_VALIDATION_MODE,
+        )
+    }
+
+    /// [`WorkbookSession::open_xlsx_bytes`] with an explicit engine-validation
+    /// profile (W012-1.5, dtc-5zet.12). The interactive host keeps the
+    /// sampled twin ([`Self::INTERACTIVE_VALIDATION_MODE`]); the conformance
+    /// instrument (`dnacalc-conform diff`) opens with
+    /// [`GridEngineValidationMode::DualValidated`] so the brute-force
+    /// reference lane runs on EVERY recalc and its mismatch list — read back
+    /// through the `differential_mismatches` of [`WorkbookSession::grid_view`]
+    /// — tracks every recalc exactly (under the sampled mode an empty list can
+    /// mean "not checked this recalc", never "checked and clean"). Same open
+    /// path, same ingest, same open-recalc: only the oracle spend differs.
+    pub fn open_xlsx_bytes_with_validation(
+        workspace_id: impl Into<String>,
+        bytes: &[u8],
+        name: Option<String>,
+        validation_mode: GridEngineValidationMode,
+    ) -> Result<Self, WorkbookSessionError> {
         let source = open_host_owned_xlsx_source(std::io::Cursor::new(bytes), LoadProfile::full())?;
-        let mut context = Self::new_context();
+        let mut context = Self::new_context_with_validation(validation_mode);
         // `load_workbook_model` creates the workspace itself (forcing the
         // Workbook role) and commits the whole stream as one revision; a
         // prior `create_workspace` here would collide, so there is none.
@@ -281,6 +309,7 @@ impl WorkbookSession {
             context,
             workspace_id,
             workbook_token,
+            validation_mode,
             Some(XlsxSourceState {
                 source,
                 name,
@@ -289,15 +318,29 @@ impl WorkbookSession {
         ))
     }
 
+    /// The interactive host's engine-validation profile: every 16th recalc
+    /// (and always the first recalc of a fresh backing) also runs the
+    /// brute-force reference engine and compares — a live correctness
+    /// heartbeat without paying the full-sheet oracle sweep on every
+    /// keystroke. The retained wall-clock baseline
+    /// (`docs/test-runs/w012/BASELINE_2026-09-15.md`) was measured under
+    /// this profile.
+    pub const INTERACTIVE_VALIDATION_MODE: GridEngineValidationMode =
+        GridEngineValidationMode::DualValidatedSampled { one_in: 16 };
+
     /// The one engine context both origins stand on. Engine validation spend
-    /// is an explicit choice (OxCalc O-20, no Default on purpose). The
-    /// interactive host samples the dual-engine oracle: every 16th recalc (and
-    /// always the first recalc of a fresh backing) also runs the brute-force
-    /// reference engine and compares — a live correctness heartbeat without
-    /// paying the full-sheet oracle sweep on every keystroke. Suites/CI use
-    /// DualValidated.
+    /// is an explicit choice (OxCalc O-20, no Default on purpose): the
+    /// interactive profile is [`Self::INTERACTIVE_VALIDATION_MODE`]; suites,
+    /// CI and the conformance instrument choose `DualValidated` through
+    /// [`WorkbookSession::open_xlsx_bytes_with_validation`].
     fn new_context() -> OxCalcDocumentContext {
-        OxCalcDocumentContext::new(GridEngineValidationMode::DualValidatedSampled { one_in: 16 })
+        Self::new_context_with_validation(Self::INTERACTIVE_VALIDATION_MODE)
+    }
+
+    fn new_context_with_validation(
+        validation_mode: GridEngineValidationMode,
+    ) -> OxCalcDocumentContext {
+        OxCalcDocumentContext::new(validation_mode)
     }
 
     /// The one workspace-create request both origins use: the caller's stable
@@ -315,6 +358,7 @@ impl WorkbookSession {
         context: OxCalcDocumentContext,
         workspace_id: OxCalcTreeWorkspaceId,
         workbook_token: String,
+        validation_mode: GridEngineValidationMode,
         xlsx: Option<XlsxSourceState>,
     ) -> Self {
         Self {
@@ -322,8 +366,22 @@ impl WorkbookSession {
             workspace_id,
             workbook_token,
             bounds: ExcelGridBounds::strict_excel(),
+            validation_mode,
             xlsx,
         }
+    }
+
+    /// The engine-validation profile this session's context was constructed
+    /// with (W012-1.5): [`Self::INTERACTIVE_VALIDATION_MODE`] for both
+    /// default origins, or the caller's choice through
+    /// [`WorkbookSession::open_xlsx_bytes_with_validation`]. The engine keeps
+    /// its own copy private and exposes no per-recalc "reference lane ran"
+    /// fact, so this is the construction-time fact, recorded on the session
+    /// — a consumer reasons from OxCalc's `runs_reference_lane` contract
+    /// (`DualValidated` runs the twin on every recalc), never from a guess.
+    #[must_use]
+    pub fn validation_mode(&self) -> GridEngineValidationMode {
+        self.validation_mode
     }
 
     /// The workbook's stable workspace id.

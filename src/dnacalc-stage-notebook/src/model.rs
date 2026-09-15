@@ -419,6 +419,7 @@ mod tests {
             },
             overlay_epoch: 1,
             differential_clean: true,
+            differential_mismatches: Vec::new(),
             authored_epoch: 1,
         }
     }

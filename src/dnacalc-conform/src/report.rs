@@ -11,6 +11,15 @@
 //! "Green" must always mean *we evaluated X% of the corpus and matched*,
 //! never *we matched what we chose to evaluate* — which is why a class
 //! count is never printed without its denominator.
+//!
+//! W012-1.5 (dtc-5zet.12) added the reference-twin fields — additive, every
+//! one `#[serde(default)]`, so a `divergence.v1.json` written before them
+//! still reads back: `run.validation_mode` / `run.fail_on_twin`,
+//! `totals.reference_twin_mismatches` / `totals.reference_twin_workbooks`,
+//! per workbook `reference_twin` (every row the engine's differential
+//! reported, whether or not the file has a formula cell there), and per
+//! verdict `twin_reference` (the oracle lane's value when the row is
+//! `mismatch:ReferenceTwin`).
 
 use std::collections::BTreeMap;
 
@@ -69,6 +78,17 @@ pub struct Totals {
     pub mismatch_total: u64,
     /// Mismatches in the `Unclassified` class. Must be zero.
     pub unclassified: u64,
+    /// Every row the engine's reference-vs-optimized differential reported,
+    /// summed over `workbooks[*].reference_twin.mismatches` (W012-1.5). Not
+    /// a subset of `mismatch`: a twin row on a cell the ladder stopped at
+    /// rung 1 (a pin) or on an address the file carries no formula cell for
+    /// is counted here and nowhere else. `--fail-on-twin` exits non-zero
+    /// when this is non-zero.
+    #[serde(default)]
+    pub reference_twin_mismatches: u64,
+    /// Workbooks with at least one such row.
+    #[serde(default)]
+    pub reference_twin_workbooks: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -98,6 +118,16 @@ pub struct RunSettings {
     /// Whether `recalculate()` was called after every open (always true on
     /// the product path; false only under the test-only `--no-force-recalc`).
     pub forced_recalc: bool,
+    /// The `GridEngineValidationMode` every session was opened with,
+    /// `Debug`-rendered (`DualValidated` for `diff`: the reference twin runs
+    /// on every recalc, W012-1.5). Absent on a pre-W012-1.5 artifact, which
+    /// ran under the interactive host's `DualValidatedSampled { one_in: 16 }`.
+    #[serde(default)]
+    pub validation_mode: Option<String>,
+    /// Whether `--fail-on-twin` was set (a non-zero `reference_twin_mismatches`
+    /// then makes the binary exit `3`).
+    #[serde(default)]
+    pub fail_on_twin: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -125,7 +155,53 @@ pub struct WorkbookReport {
     pub unclassified: u64,
     pub load_report: Option<LoadReportSummary>,
     pub recalc: Option<RecalcSummary>,
+    /// The engine's reference-vs-optimized differential for this workbook
+    /// (W012-1.5); `None` when the workbook did not open.
+    #[serde(default)]
+    pub reference_twin: Option<ReferenceTwinSummary>,
     pub verdicts: Vec<CellVerdict>,
+}
+
+/// What the engine's permanent-pair differential reported for one opened
+/// workbook (W012-1.5, dtc-5zet.12): every `differential_mismatches` row on
+/// every engine sheet's `grid_view`, read AFTER the forced recalc.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ReferenceTwinSummary {
+    /// The session's `GridEngineValidationMode`, `Debug`-rendered.
+    pub validation_mode: String,
+    /// True iff that mode runs the reference lane on every recalc (OxCalc's
+    /// `runs_reference_lane` contract: `DualValidated`), so an empty
+    /// `mismatches` means *checked and clean*. Under a sampled mode the
+    /// engine leaves the last checked result in place and exposes no
+    /// "checked this recalc" fact to the host, so an empty list would mean
+    /// nothing — the instrument therefore never runs sampled.
+    pub checked_every_recalc: bool,
+    pub mismatches: Vec<ReferenceTwinMismatchRow>,
+}
+
+/// One cell the two engine lanes disagreed on.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ReferenceTwinMismatchRow {
+    pub sheet: String,
+    /// A1 notation.
+    pub address: String,
+    /// The reference (brute-force oracle) lane's value, rendered.
+    pub reference: String,
+    /// The optimized lane's value — the one the engine published — rendered.
+    pub optimized: String,
+    /// True when the two `CoreValue`s are equal and the engine's `CalcValue`
+    /// inequality comes from the rich payload alone (see `reference_rich` /
+    /// `optimized_rich`): the lanes agree on the value and disagree on its
+    /// payload identity.
+    pub core_equal: bool,
+    /// The rich payload's variant name on each side (`Callable`, `Object`,
+    /// `Presentation`, `ErrorMetadata`), `None` when the side has none.
+    pub reference_rich: Option<String>,
+    pub optimized_rich: Option<String>,
+    /// Whether the file carries a formula cell at this address, i.e. whether
+    /// a verdict row exists for it (and scored `mismatch:ReferenceTwin` if
+    /// the cell was engine-`Calculated`).
+    pub formula_cell: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -195,4 +271,9 @@ pub struct CellVerdict {
     pub engine: Option<String>,
     /// Excel's cached value, rendered.
     pub excel: Option<String>,
+    /// The reference (oracle) lane's value, rendered — present iff the
+    /// engine's differential disputes this cell (`mismatch:ReferenceTwin`,
+    /// W012-1.5); `engine` is then the optimized lane's value.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub twin_reference: Option<String>,
 }

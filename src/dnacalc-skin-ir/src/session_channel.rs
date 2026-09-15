@@ -430,6 +430,7 @@ mod tests {
             overlays: GridOverlayBundle::default(),
             overlay_epoch: 0,
             differential_clean: true,
+            differential_mismatches: Vec::new(),
             authored_epoch: 0,
         }
     }

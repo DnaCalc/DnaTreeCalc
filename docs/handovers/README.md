@@ -35,6 +35,7 @@ Authored:
 - `HANDOVER_OXCALC_map_lambda_node_array.md` — regression for `MAP` over a TreeCalc node-published array with an inline `LAMBDA` that captures another TreeCalc host name.
 - `HANDOVER_DNAONECALC_error_value_display.md` — request that OneCalc check the same bare `Value` error display symptom and consume OxFml visible value text for worksheet error tokens.
 - `HANDOVER_OXCALC_lane_outcome_and_phase_timers_accessor.md` — W012 (dtc-5zet.13): expose the seeded lane's `GridSeededLaneOutcome`, per-recalc `cells_evaluated`, reference-lane flag and M-2 phase timers to the host, and make the F9 / entry outcomes account for the rebuild's mark-all and the sheets cross-sheet propagation recalculated.
+- `HANDOVER_OXCALC_twin_injection_hooks.md` — W012 (dtc-5zet.12): a test-only seam that makes the optimized lane publish a wrong value for one cell on one recalc, so the reference twin can be proven to fire at the three blind sites (>10k mark-all fall-through, cross-sheet escalation, a FileCached pin); plus the twin's callable-identity false red on `=LAMBDA(1)` (dtc-5zet.26) and a `reference_lane_ran` fact on the view.
 
 Anticipated:
 

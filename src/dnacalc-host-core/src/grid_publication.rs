@@ -14,9 +14,10 @@ use std::collections::BTreeMap;
 
 use dnacalc_skin_ir::{
     GridAuthoredCellProjection, GridAuthoredKindProjection, GridCellProjection,
-    GridCellRefProjection, GridEditabilityProjection, GridMergedOverlayDescriptor,
-    GridOverlayBundle, GridOverlayRect, GridProjection, GridSpillOverlayDescriptor,
-    GridTableColumnBand, GridTableOverlayDescriptor, NodeId, NodeKey, NodeValueProjection,
+    GridCellRefProjection, GridDifferentialMismatchProjection, GridEditabilityProjection,
+    GridMergedOverlayDescriptor, GridOverlayBundle, GridOverlayRect, GridProjection,
+    GridSpillOverlayDescriptor, GridTableColumnBand, GridTableOverlayDescriptor, NodeId, NodeKey,
+    NodeValueProjection,
 };
 use oxcalc_core::consumer::{OxCalcTreeGridOverlayRect, OxCalcTreeGridView};
 use oxcalc_core::grid::authored::{GridAuthoredCellReadout, GridAuthoredKind, GridCellEditability};
@@ -194,8 +195,37 @@ pub fn grid_projection_for(
         overlays: grid_overlay_bundle_for(view),
         overlay_epoch: view.overlay_epoch,
         differential_clean: view.differential_mismatches.is_empty(),
+        differential_mismatches: grid_differential_mismatch_projections(view),
         authored_epoch,
     }
+}
+
+/// The typed diagnostic behind `GridProjection::differential_clean` (W012-1.5,
+/// dtc-5zet.12): every cell on which the engine's permanent-pair differential
+/// — the brute-force reference lane against the optimized lane, run per the
+/// context's `GridEngineValidationMode` — disagreed on the last checked
+/// recalc, with both values projected through the same
+/// [`grid_value_projection`] the cells use. Empty iff `differential_clean`.
+///
+/// Before this the host collapsed `view.differential_mismatches` to the
+/// boolean and discarded the rows, so a twin failure was invisible to every
+/// skin and receipt (Foundation note §1, "the one oracle that could catch it
+/// is unwired at the last step"). The rows are the engine's own
+/// `GridDifferentialMismatch` list, projected verbatim: the host never
+/// re-compares values and never infers a mismatch.
+#[must_use]
+pub fn grid_differential_mismatch_projections(
+    view: &OxCalcTreeGridView,
+) -> Vec<GridDifferentialMismatchProjection> {
+    view.differential_mismatches
+        .iter()
+        .map(|mismatch| GridDifferentialMismatchProjection {
+            row: mismatch.address.row,
+            col: mismatch.address.col,
+            reference: grid_value_projection(&mismatch.reference),
+            optimized: grid_value_projection(&mismatch.optimized),
+        })
+        .collect()
 }
 
 fn grid_overlay_rect(rect: &OxCalcTreeGridOverlayRect) -> GridOverlayRect {
@@ -340,5 +370,106 @@ mod tests {
         let projection = grid_authored_cell_projection(&readout);
         assert_eq!(projection.kind, GridAuthoredKindProjection::Literal);
         assert_eq!(projection.literal_text.as_deref(), Some("7"));
+    }
+
+    /// W012-1.5 (dtc-5zet.12), the host-side half of "the shipping reference
+    /// twin fails loudly": a non-empty `differential_mismatches` on the
+    /// engine's view is a typed, visible diagnostic on the projection —
+    /// `differential_clean: false` PLUS the disputed rows with both values —
+    /// and a clean view projects `true` with no rows.
+    ///
+    /// The injection is the LEAF-ARITHMETIC one the bead allows the host to
+    /// prove on its own: the real W011 fixture (`A1 = 7`, `B1 = =A1*3`) is
+    /// opened through the product path under `DualValidated` (the twin runs
+    /// on the open-recalc and agrees: the control), then a deliberately wrong
+    /// reference value for `B1` is injected into the view at the OxCalc→host
+    /// seam (`OxCalcTreeGridView` is the value the engine hands the host; the
+    /// host never re-compares). The three blind sites the bead names (the
+    /// over-10k mark-all fall-through, the cross-sheet escalation, a
+    /// FileCached pin) live inside OxCalc and have no test-only injection seam; that
+    /// proof is `docs/handovers/HANDOVER_OXCALC_twin_injection_hooks.md`, not
+    /// this test — this test proves only that a mismatch the engine reports
+    /// can no longer be discarded by the host.
+    #[test]
+    fn injected_leaf_arithmetic_twin_mismatch_is_a_typed_projection_diagnostic() {
+        use crate::WorkbookSession;
+        use crate::xlsx_fixture::w011_fixture_bytes;
+        use oxcalc_core::grid::machine::{GridDifferentialMismatch, GridEngineValidationMode};
+
+        let session = WorkbookSession::open_xlsx_bytes_with_validation(
+            "w012:twin-injection",
+            &w011_fixture_bytes(),
+            Some("a1_times_three.xlsx".to_string()),
+            GridEngineValidationMode::DualValidated,
+        )
+        .expect("the W011 fixture opens on the product path");
+        assert_eq!(
+            session.validation_mode(),
+            GridEngineValidationMode::DualValidated
+        );
+        let sheets = session.sheets().unwrap();
+        assert_eq!(sheets.len(), 1, "{sheets:?}");
+        let sheet = sheets[0].node_id;
+
+        // Control: the real twin agreed on the open-recalc.
+        let mut view = session.grid_view(sheet).unwrap();
+        assert!(
+            view.differential_mismatches.is_empty(),
+            "the reference twin agrees with the optimized lane on the fixture: {:?}",
+            view.differential_mismatches
+        );
+        let clean = session.grid_projection_from_view(sheet, &view).unwrap();
+        assert!(clean.differential_clean);
+        assert!(clean.differential_mismatches.is_empty());
+        let b1 = view
+            .cells
+            .iter()
+            .find(|cell| cell.address.row == 1 && cell.address.col == 2)
+            .expect("B1 is published");
+        assert_eq!(b1.value, CalcValue::number(21.0));
+
+        // Injection at the seam: the engine reports that the reference lane
+        // computed 22 for B1 where the optimized lane published 21.
+        view.differential_mismatches.push(GridDifferentialMismatch {
+            address: b1.address.clone(),
+            reference: CalcValue::number(22.0),
+            optimized: b1.value.clone(),
+        });
+        let disputed = session.grid_projection_from_view(sheet, &view).unwrap();
+        assert!(
+            !disputed.differential_clean,
+            "a non-empty mismatch list is never projected clean"
+        );
+        assert_eq!(
+            disputed.differential_mismatches,
+            vec![GridDifferentialMismatchProjection {
+                row: 1,
+                col: 2,
+                reference: NodeValueProjection::Number {
+                    raw: "22".to_string(),
+                    display: "22".to_string(),
+                },
+                optimized: NodeValueProjection::Number {
+                    raw: "21".to_string(),
+                    display: "21".to_string(),
+                },
+            }],
+            "the typed diagnostic names the cell and carries both values"
+        );
+        // The published cell itself is untouched: the projection carries the
+        // optimized value, and the dispute sits beside it, not inside it.
+        let projected_b1 = disputed
+            .cells
+            .iter()
+            .find(|cell| cell.row == 1 && cell.col == 2)
+            .unwrap();
+        assert_eq!(
+            projected_b1.value,
+            disputed.differential_mismatches[0].optimized
+        );
+        // And it survives the wire: a mirror reads the same rows back.
+        let json = serde_json::to_string(&disputed).unwrap();
+        let read_back: GridProjection = serde_json::from_str(&json).unwrap();
+        assert_eq!(read_back, disputed);
     }
 }

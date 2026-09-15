@@ -9,7 +9,14 @@
 //!   coverage 1.0 because the recalc was forced, and 0 with
 //!   `not_evaluated:manual_mode` under `--no-force-recalc`;
 //! - (d) a whole `run_diff` over a temp corpus round-trips through serde
-//!   with `unclassified == 0` and the arithmetic identities intact.
+//!   with `unclassified == 0` and the arithmetic identities intact;
+//! - (e) W012-1.5 (dtc-5zet.12), the reference twin fails loudly: every
+//!   fixture runs under `DualValidated` with a clean twin (the control); a
+//!   leaf-arithmetic mismatch injected at the engine→instrument seam scores
+//!   `mismatch:ReferenceTwin`, lands in the workbook's `reference_twin`
+//!   rows and the totals, and makes `--fail-on-twin` exit 3; a twin row on
+//!   a pinned cell keeps rung 1's verdict and is still counted; a
+//!   pre-W012-1.5 artifact still deserializes.
 //!
 //! Fixture locations are `CARGO_MANIFEST_DIR` arithmetic to the repo root;
 //! the parts-only W012 fixtures are zipped in memory through the dev-only
@@ -17,8 +24,15 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::diff::{DiffOptions, diff_workbook_bytes, run_diff};
+use crate::diff::{
+    DIFF_VALIDATION_MODE, DiffOptions, EXIT_TWIN_FAILED, EngineSheetView, assemble,
+    diff_workbook_bytes, engine_sheet_views, exit_code, run_diff, score_session_views, sha256_hex,
+};
 use crate::report::{ARTIFACT_FILE_NAME, DivergenceReport, OpenStatus, SCHEMA, WorkbookReport};
+use dnacalc_host_core::{GridEngineValidationMode, WorkbookSession, WorkbookSessionError};
+use oxcalc_core::consumer::WorkbookRecalcOutcome;
+use oxcalc_core::grid::machine::GridDifferentialMismatch;
+use oxfunc_core::value::CalcValue;
 
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -194,7 +208,10 @@ fn manual_mode_fixture_has_coverage_only_because_the_recalc_is_forced() {
     let forced = diff_workbook_bytes(
         &a1_times_three_manual_bytes(),
         "w011/a1_times_three_manual.xlsx",
-        &DiffOptions { force_recalc: true },
+        &DiffOptions {
+            force_recalc: true,
+            ..DiffOptions::default()
+        },
     );
     println!("forced: {forced:#?}");
     assert_eq!(forced.calc_mode.as_deref(), Some("Manual"));
@@ -210,6 +227,7 @@ fn manual_mode_fixture_has_coverage_only_because_the_recalc_is_forced() {
         "w011/a1_times_three_manual.xlsx",
         &DiffOptions {
             force_recalc: false,
+            ..DiffOptions::default()
         },
     );
     println!("unforced: {unforced:#?}");
@@ -349,4 +367,456 @@ fn run_diff_writes_an_artifact_that_round_trips_with_zero_unclassified() {
     assert!(summary.contains("unclassified 0"));
 
     std::fs::remove_dir_all(&root).unwrap();
+}
+
+/// (e, control) Every committed fixture runs under `DualValidated` — the
+/// reference lane on every recalc — and the twin agrees with the optimized
+/// lane on all of them: `reference_twin` is present, says so, and is empty.
+/// This is what `diff --fail-on-twin` over the Foundation corpus exiting 0
+/// rests on, pinned on fixtures that never leave the repo.
+#[test]
+fn every_fixture_runs_dual_validated_with_a_clean_reference_twin() {
+    assert_eq!(
+        DIFF_VALIDATION_MODE,
+        GridEngineValidationMode::DualValidated
+    );
+    for (bytes, name) in [
+        (a1_times_three_bytes(), "w011/a1_times_three.xlsx"),
+        (
+            a1_times_three_manual_bytes(),
+            "w011/a1_times_three_manual.xlsx",
+        ),
+        (
+            read_fixture("fixtures/w011/cross_sheet.xlsx"),
+            "w011/cross_sheet.xlsx",
+        ),
+        (
+            read_fixture("fixtures/w011/named_input.xlsx"),
+            "w011/named_input.xlsx",
+        ),
+        (false_green_bytes(), "w012/false_green.xlsx"),
+        (false_green_manual_bytes(), "w012/false_green_manual.xlsx"),
+    ] {
+        let report = diff_workbook_bytes(&bytes, name, &DiffOptions::default());
+        assert_eq!(report.open, OpenStatus::Opened, "{name}");
+        let twin = report
+            .reference_twin
+            .as_ref()
+            .unwrap_or_else(|| panic!("{name}: an opened workbook carries its twin summary"));
+        assert_eq!(twin.validation_mode, "DualValidated", "{name}");
+        assert!(twin.checked_every_recalc, "{name}");
+        assert!(
+            twin.mismatches.is_empty(),
+            "{name}: the reference twin disputes {:?}",
+            twin.mismatches
+        );
+        assert!(
+            !report.mismatch.contains_key("ReferenceTwin"),
+            "{name}: {:?}",
+            report.mismatch
+        );
+        assert!(
+            report
+                .verdicts
+                .iter()
+                .all(|row| row.twin_reference.is_none()),
+            "{name}"
+        );
+    }
+}
+
+/// Open a fixture the way the runner does, force the recalc, and hand back
+/// the session, its recalc outcome and its sheet views — the seam the
+/// injection tests below write into.
+type OpenedFixture = (
+    WorkbookSession,
+    Option<Result<WorkbookRecalcOutcome, WorkbookSessionError>>,
+    Vec<EngineSheetView>,
+);
+
+fn open_for_injection(bytes: &[u8], name: &str) -> OpenedFixture {
+    let mut session = WorkbookSession::open_xlsx_bytes_with_validation(
+        format!("conform-test:{name}"),
+        bytes,
+        Some(name.to_string()),
+        DIFF_VALIDATION_MODE,
+    )
+    .unwrap_or_else(|err| panic!("{name} opens on the product path: {err:?}"));
+    let recalc = Some(session.recalculate());
+    let views = engine_sheet_views(&session).expect("sheets() succeeds");
+    (session, recalc, views)
+}
+
+fn view_cell(
+    views: &[EngineSheetView],
+    row: u32,
+    col: u32,
+) -> &oxcalc_core::consumer::OxCalcTreeGridCellReadout {
+    views[0]
+        .view
+        .as_ref()
+        .unwrap()
+        .cells
+        .iter()
+        .find(|cell| cell.address.row == row && cell.address.col == col)
+        .unwrap_or_else(|| panic!("R{row}C{col} is published"))
+}
+
+/// (e) THE injection test, host side. The W011 fixture (`A1 = 7`, `B1 =
+/// =A1*3` cached `21`) is opened under `DualValidated`; the control scores
+/// `match`. Then a deliberately wrong REFERENCE value for `B1` is injected
+/// into the engine's view at the seam the runner reads
+/// (`differential_mismatches`), exactly the shape OxCalc's differential
+/// would report if the optimized lane had published a wrong 21 against a
+/// reference 22: the verdict flips to `mismatch:ReferenceTwin`, no Excel
+/// comparison is made, the row carries both lane values, the workbook's
+/// `reference_twin` lists it as a formula cell, the totals count it, and
+/// `--fail-on-twin` turns it into exit 3 — with the artifact still written.
+/// A second injected row at `A1` (a literal — no formula cell in the file)
+/// is counted at the workbook level and nowhere else, so nothing the engine
+/// reports is dropped.
+///
+/// What this does NOT prove: that OxCalc's differential catches a wrong
+/// value at the three blind sites the bead names (the >10k mark-all
+/// fall-through, the cross-sheet escalation, a FileCached pin). Those live
+/// inside the engine, have no test-only injection seam, and are the subject
+/// of `docs/handovers/HANDOVER_OXCALC_twin_injection_hooks.md`.
+#[test]
+fn injected_leaf_arithmetic_twin_mismatch_scores_reference_twin_and_fails_on_twin() {
+    let (session, recalc, mut views) =
+        open_for_injection(&a1_times_three_bytes(), "w011/a1_times_three.xlsx");
+    assert_eq!(views.len(), 1);
+    assert!(
+        views[0]
+            .view
+            .as_ref()
+            .unwrap()
+            .differential_mismatches
+            .is_empty(),
+        "control: the real twin agrees"
+    );
+    let b1 = view_cell(&views, 1, 2);
+    assert_eq!(b1.value, CalcValue::number(21.0));
+    let b1_address = b1.address.clone();
+    let a1_address = view_cell(&views, 1, 1).address.clone();
+
+    // Control: unmodified views score the fixture as (b) does.
+    let control = score_session_views(
+        &session,
+        &recalc,
+        Ok(views.clone()),
+        "w011/a1_times_three.xlsx",
+        sha256_hex(&a1_times_three_bytes()),
+        &DiffOptions::default(),
+    );
+    assert_eq!(verdict_of(&control, "B1").verdict, "match");
+    assert!(
+        control
+            .reference_twin
+            .as_ref()
+            .unwrap()
+            .mismatches
+            .is_empty()
+    );
+
+    // Injection at the seam.
+    let view = views[0].view.as_mut().unwrap();
+    view.differential_mismatches.push(GridDifferentialMismatch {
+        address: b1_address,
+        reference: CalcValue::number(22.0),
+        optimized: CalcValue::number(21.0),
+    });
+    view.differential_mismatches.push(GridDifferentialMismatch {
+        address: a1_address,
+        reference: CalcValue::number(8.0),
+        optimized: CalcValue::number(7.0),
+    });
+    let options = DiffOptions {
+        fail_on_twin: true,
+        ..DiffOptions::default()
+    };
+    let report = score_session_views(
+        &session,
+        &recalc,
+        Ok(views),
+        "w011/a1_times_three.xlsx",
+        sha256_hex(&a1_times_three_bytes()),
+        &options,
+    );
+    println!("{report:#?}");
+
+    let b1 = verdict_of(&report, "B1");
+    assert_eq!(b1.verdict, "mismatch:ReferenceTwin");
+    assert_eq!(
+        (
+            b1.engine.as_deref(),
+            b1.twin_reference.as_deref(),
+            b1.excel.as_deref()
+        ),
+        (Some("21.0"), Some("22.0"), Some("21.0")),
+        "the optimized value equals Excel's cache and is STILL not a match: the engine disagrees with itself"
+    );
+    assert!(b1.tick_id.is_some(), "the cell was engine-Calculated");
+    assert_eq!(report.formula_cells, 1);
+    assert_eq!(report.engine_calculated, 1);
+    assert_eq!(report.matched, 0);
+    assert_eq!(
+        report.mismatch,
+        [("ReferenceTwin".to_string(), 1)].into_iter().collect()
+    );
+    assert_eq!(report.unclassified, 0);
+
+    let twin = report.reference_twin.as_ref().unwrap();
+    assert_eq!(twin.validation_mode, "DualValidated");
+    assert!(twin.checked_every_recalc);
+    assert_eq!(twin.mismatches.len(), 2);
+    let twin_b1 = twin
+        .mismatches
+        .iter()
+        .find(|row| row.address == "B1")
+        .unwrap();
+    assert_eq!(twin_b1.sheet, "Sheet1");
+    assert_eq!(
+        (twin_b1.reference.as_str(), twin_b1.optimized.as_str()),
+        ("22.0", "21.0")
+    );
+    assert!(!twin_b1.core_equal, "21 and 22 disagree on the core value");
+    assert_eq!(
+        (
+            twin_b1.reference_rich.as_deref(),
+            twin_b1.optimized_rich.as_deref()
+        ),
+        (None, None)
+    );
+    assert!(twin_b1.formula_cell);
+    let twin_a1 = twin
+        .mismatches
+        .iter()
+        .find(|row| row.address == "A1")
+        .unwrap();
+    assert!(
+        !twin_a1.formula_cell,
+        "A1 is a literal: no verdict row, but the engine's row is still reported"
+    );
+
+    // Corpus level: the totals carry both rows, the identities hold (the
+    // A1 row is not a verdict), and the exit code is the requested failure.
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let scratch = std::env::temp_dir().join(format!("dnacalc-conform-twin-{stamp}"));
+    let assembled = assemble(vec![report], &scratch, &scratch, &options).unwrap();
+    assert_eq!(assembled.totals.reference_twin_mismatches, 2);
+    assert_eq!(assembled.totals.reference_twin_workbooks, 1);
+    assert_eq!(assembled.totals.mismatch_total, 1);
+    assert_eq!(assembled.totals.engine_calculated, 1);
+    assert_eq!(assembled.totals.formula_cells, 1);
+    assert_eq!(
+        assembled.run.validation_mode.as_deref(),
+        Some("DualValidated")
+    );
+    assert!(assembled.run.fail_on_twin);
+    assert_eq!(exit_code(&assembled, &options), EXIT_TWIN_FAILED);
+    assert_eq!(EXIT_TWIN_FAILED, 3);
+    assert_eq!(
+        exit_code(&assembled, &DiffOptions::default()),
+        0,
+        "without --fail-on-twin the mismatch is a result, not a failure"
+    );
+    let mut summary = Vec::new();
+    crate::diff::write_summary(&assembled, &scratch.join(ARTIFACT_FILE_NAME), &mut summary)
+        .unwrap();
+    let summary = String::from_utf8(summary).unwrap();
+    println!("{summary}");
+    assert!(summary.contains(
+        "reference_twin (DualValidated, every recalc): mismatches 2 in 1 workbooks  <-- --fail-on-twin: exit 3"
+    ));
+    assert!(summary.contains("Sheet1!B1  reference 22.0 vs optimized 21.0"));
+    assert!(summary.contains(
+        "Sheet1!A1  reference 8.0 vs optimized 7.0  (no formula cell in the file at this address)"
+    ));
+    assert!(summary.contains("mismatch 1: ReferenceTwin=1"));
+    // And it survives the artifact.
+    let json = serde_json::to_string_pretty(&assembled).unwrap();
+    let read_back: DivergenceReport = serde_json::from_str(&json).unwrap();
+    assert_eq!(read_back, assembled);
+}
+
+/// (e, ordering) A twin row on a cell the ladder stops at rung 1 — the
+/// false-green fixture's pinned `C1` — does not change that verdict
+/// (provenance decides before value does, and a `FileCached` value is not
+/// the engine's): `not_evaluated:bind_degraded` stays, `twin_reference`
+/// stays empty, and the row is STILL reported and counted at the workbook
+/// level with `formula_cell: true`, so `--fail-on-twin` still fails.
+#[test]
+fn twin_row_on_a_pinned_cell_keeps_rung_one_and_is_still_counted() {
+    let (session, recalc, mut views) =
+        open_for_injection(&false_green_bytes(), "w012/false_green.xlsx");
+    let c1 = view_cell(&views, 1, 3).clone();
+    assert_eq!(
+        c1.provenance,
+        oxcalc_core::workbook_settings::PublishedValueProvenance::FileCached,
+        "the fixture's premise: C1 is the pin"
+    );
+    views[0]
+        .view
+        .as_mut()
+        .unwrap()
+        .differential_mismatches
+        .push(GridDifferentialMismatch {
+            address: c1.address.clone(),
+            reference: CalcValue::number(0.0),
+            optimized: c1.value.clone(),
+        });
+    let options = DiffOptions {
+        fail_on_twin: true,
+        ..DiffOptions::default()
+    };
+    let report = score_session_views(
+        &session,
+        &recalc,
+        Ok(views),
+        "w012/false_green.xlsx",
+        sha256_hex(&false_green_bytes()),
+        &options,
+    );
+    println!("{report:#?}");
+    let c1 = verdict_of(&report, "C1");
+    assert_eq!(c1.verdict, "not_evaluated:bind_degraded");
+    assert_eq!(c1.twin_reference, None);
+    assert_eq!(verdict_of(&report, "B1").verdict, "match");
+    assert!(report.mismatch.is_empty(), "{:?}", report.mismatch);
+    assert_eq!(report.engine_calculated, 1);
+    let twin = report.reference_twin.as_ref().unwrap();
+    assert_eq!(twin.mismatches.len(), 1);
+    assert_eq!(twin.mismatches[0].address, "C1");
+    assert!(twin.mismatches[0].formula_cell);
+    let scratch = std::env::temp_dir();
+    let assembled = assemble(vec![report], &scratch, &scratch, &options).unwrap();
+    assert_eq!(assembled.totals.reference_twin_mismatches, 1);
+    assert_eq!(exit_code(&assembled, &options), EXIT_TWIN_FAILED);
+}
+
+/// (e, wire) An artifact written before W012-1.5 — no `reference_twin`,
+/// no `twin_reference`, no twin totals, no `run.validation_mode` — still
+/// deserializes, with the new fields at their defaults.
+#[test]
+fn pre_w012_1_5_artifact_deserializes_with_twin_fields_defaulted() {
+    let report = diff_workbook_bytes(
+        &a1_times_three_bytes(),
+        "w011/a1_times_three.xlsx",
+        &DiffOptions::default(),
+    );
+    let scratch = std::env::temp_dir();
+    let assembled = assemble(vec![report], &scratch, &scratch, &DiffOptions::default()).unwrap();
+    let mut value: serde_json::Value = serde_json::to_value(&assembled).unwrap();
+    let totals = value["totals"].as_object_mut().unwrap();
+    assert!(totals.remove("reference_twin_mismatches").is_some());
+    assert!(totals.remove("reference_twin_workbooks").is_some());
+    let run = value["run"].as_object_mut().unwrap();
+    assert!(run.remove("validation_mode").is_some());
+    assert!(run.remove("fail_on_twin").is_some());
+    for workbook in value["workbooks"].as_array_mut().unwrap() {
+        assert!(
+            workbook
+                .as_object_mut()
+                .unwrap()
+                .remove("reference_twin")
+                .is_some()
+        );
+        for verdict in workbook["verdicts"].as_array_mut().unwrap() {
+            assert!(
+                verdict.get("twin_reference").is_none(),
+                "absent when the twin does not dispute the cell"
+            );
+        }
+    }
+    let read_back: DivergenceReport = serde_json::from_value(value).unwrap();
+    assert_eq!(read_back.totals.reference_twin_mismatches, 0);
+    assert_eq!(read_back.run.validation_mode, None);
+    assert!(!read_back.run.fail_on_twin);
+    assert_eq!(read_back.workbooks[0].reference_twin, None);
+    assert_eq!(read_back.coverage, assembled.coverage);
+}
+
+/// (e, rich-only) The shape the twin ACTUALLY reported on the Foundation
+/// corpus on 2026-09-15 (`SCN-EK011-FUNCTION-RECOGNITION.xlsx` `H18 =
+/// =_xlfn.LAMBDA(1)`): both lanes publish `#CALC!`, the cores are equal,
+/// and the `CalcValue`s still compare unequal because OxFunc's `Callable`
+/// rich payload compares by handle identity and each lane minted its own.
+/// Reproduced here with two `Presentation` payloads that differ by value
+/// (the same equality path, no callable needed): the verdict is the
+/// distinct `mismatch:ReferenceTwin:RichOnly`, the row says `core_equal`
+/// and names both payload kinds, and `--fail-on-twin` still fails — the
+/// instrument types the engine's own verdict, it does not overrule it.
+#[test]
+fn twin_row_with_equal_cores_is_typed_rich_only_and_still_fails_on_twin() {
+    use oxfunc_core::value::{CoreValue, NumberFormatHint, PresentationHint, WorksheetErrorCode};
+
+    let (session, recalc, mut views) =
+        open_for_injection(&a1_times_three_bytes(), "w011/a1_times_three.xlsx");
+    let b1 = view_cell(&views, 1, 2).clone();
+    views[0]
+        .view
+        .as_mut()
+        .unwrap()
+        .differential_mismatches
+        .push(GridDifferentialMismatch {
+            address: b1.address.clone(),
+            reference: CalcValue::with_presentation(
+                CoreValue::Error(WorksheetErrorCode::Calc),
+                PresentationHint::number_format(NumberFormatHint::General),
+            ),
+            optimized: CalcValue::with_presentation(
+                CoreValue::Error(WorksheetErrorCode::Calc),
+                PresentationHint::number_format(NumberFormatHint::Currency),
+            ),
+        });
+    let options = DiffOptions {
+        fail_on_twin: true,
+        ..DiffOptions::default()
+    };
+    let report = score_session_views(
+        &session,
+        &recalc,
+        Ok(views),
+        "w011/a1_times_three.xlsx",
+        sha256_hex(&a1_times_three_bytes()),
+        &options,
+    );
+    println!("{report:#?}");
+    let verdict = verdict_of(&report, "B1");
+    assert_eq!(verdict.verdict, "mismatch:ReferenceTwin:RichOnly");
+    assert_eq!(verdict.twin_reference.as_deref(), Some("#CALC!"));
+    assert_eq!(
+        report.mismatch,
+        [("ReferenceTwin:RichOnly".to_string(), 1)]
+            .into_iter()
+            .collect(),
+        "a payload-identity disagreement never shares a count with a value disagreement"
+    );
+    let row = &report.reference_twin.as_ref().unwrap().mismatches[0];
+    assert!(row.core_equal);
+    assert_eq!(
+        (row.reference_rich.as_deref(), row.optimized_rich.as_deref()),
+        (Some("Presentation"), Some("Presentation"))
+    );
+    assert_eq!(
+        (row.reference.as_str(), row.optimized.as_str()),
+        ("#CALC!", "#CALC!")
+    );
+    let scratch = std::env::temp_dir();
+    let assembled = assemble(vec![report], &scratch, &scratch, &options).unwrap();
+    assert_eq!(exit_code(&assembled, &options), EXIT_TWIN_FAILED);
+    let mut summary = Vec::new();
+    crate::diff::write_summary(&assembled, &scratch.join(ARTIFACT_FILE_NAME), &mut summary)
+        .unwrap();
+    let summary = String::from_utf8(summary).unwrap();
+    assert!(
+        summary.contains(
+            "Sheet1!B1  reference #CALC! vs optimized #CALC!  (cores equal; rich payload Presentation vs Presentation)"
+        ),
+        "{summary}"
+    );
 }

@@ -83,8 +83,8 @@ pub use defined_names::{
 };
 pub use demo::build_demo_workbook;
 pub use grid_publication::{
-    grid_authored_cell_projection, grid_overlay_bundle_for, grid_projection_for,
-    grid_value_projection,
+    grid_authored_cell_projection, grid_differential_mismatch_projections, grid_overlay_bundle_for,
+    grid_projection_for, grid_value_projection,
 };
 pub use persistence::LocalFileSkinStatePersistenceStore;
 pub use present::present_grid_entry_rejection;
@@ -111,6 +111,11 @@ pub use oxcalc_core::consumer::OxCalcDocumentContext;
 // Likewise the engine's load-report types an `Opened` outcome / a
 // `WorkbookSession::load_report` reader needs to name (dtc-j7n8.4).
 pub use oxcalc_core::oxdoc_ingest::{LoadRecalcPath, WorkbookLoadReport};
+// And the engine-validation profile a caller of
+// `WorkbookSession::open_xlsx_bytes_with_validation` chooses (W012-1.5,
+// dtc-5zet.12): the interactive host samples the reference twin, the
+// conformance instrument runs it on every recalc.
+pub use oxcalc_core::grid::machine::GridEngineValidationMode;
 
 /// The general-tree document model family — the seam placeholder for the
 /// existing `TreeWorkspaceSession` (scenarios, sweeps, revision cursors,

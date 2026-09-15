@@ -11,6 +11,9 @@
 //!                                                     file_cached }
 //!      Degraded                                    -> NotEvaluated { degraded }
 //!      Stale                                       -> NotEvaluated { stale }
+//! 1b. Calculated, and the engine's own reference twin disputes the cell
+//!     (`differential_mismatches` names the address)
+//!                                                   -> Mismatch { ReferenceTwin }
 //! 2. Calculated but the formula calls NOW/TODAY/RAND/RANDBETWEEN/RANDARRAY,
 //!    or the file marks the cell ca="1"             -> Excluded { nondeterministic }
 //! 3. Calculated but the file has no scorable cache -> Excluded { no_file_cache |
@@ -21,7 +24,13 @@
 //!
 //! Only rung 4 ever produces `Match`. A `FileCached` value that equals
 //! Excel's cache is the false green (`dnacalc-host-core/src/xlsx_false_green.rs`)
-//! and lands on rung 1 by construction.
+//! and lands on rung 1 by construction. Rung 1b (W012-1.5, dtc-5zet.12) is
+//! the reference twin failing loudly: the instrument runs the engine under
+//! `GridEngineValidationMode::DualValidated`, so the brute-force reference
+//! lane checks every recalc, and a cell the two lanes disagree on is a
+//! mismatch before any Excel comparison — the engine disagrees with itself,
+//! so its published value earns no `Match` however well it agrees with the
+//! file.
 //!
 //! Every class has a one-line definition in the crate README; `Unclassified`
 //! must be zero and is never widened silently.
@@ -171,6 +180,22 @@ pub enum MismatchClass {
     /// Different scalar kinds, neither an error (e.g. engine `Empty`, Excel
     /// `Number`).
     Type { engine: String, excel: String },
+    /// The engine's reference (oracle) lane and its optimized lane disagreed
+    /// on this cell on the last recalc (`OxCalcTreeGridView::
+    /// differential_mismatches`, W012-1.5): the published (optimized) value
+    /// is not compared with Excel's cache at all — the engine disagrees with
+    /// itself. `reference` and `optimized` are the two rendered values;
+    /// `core_equal` is true when the two `CoreValue`s are equal and only the
+    /// rich payload differs (OxCalc's differential compares whole
+    /// `CalcValue`s, and a `Callable` payload compares by handle identity —
+    /// observed on `=_xlfn.LAMBDA(1)`), keyed `ReferenceTwin:RichOnly` so a
+    /// value disagreement and a payload-identity disagreement never share a
+    /// count.
+    ReferenceTwin {
+        reference: String,
+        optimized: String,
+        core_equal: bool,
+    },
     /// An engine value shape the classifier does not model (array,
     /// reference, missing). Must be zero; widening requires a named bead.
     Unclassified { engine: String },
@@ -191,6 +216,12 @@ impl MismatchClass {
             Self::EngineError { code } => format!("EngineError:{code:?}"),
             Self::OracleError { code } => format!("OracleError:{code:?}"),
             Self::Type { engine, excel } => format!("Type:{engine}->{excel}"),
+            Self::ReferenceTwin {
+                core_equal: false, ..
+            } => "ReferenceTwin".to_string(),
+            Self::ReferenceTwin {
+                core_equal: true, ..
+            } => "ReferenceTwin:RichOnly".to_string(),
             Self::Unclassified { engine } => format!("Unclassified:{engine}"),
         }
     }
@@ -595,6 +626,27 @@ mod tests {
         assert_eq!(
             not_evaluated_reason(PublishedValueProvenance::Calculated { tick_id: 3 }, &facts),
             None
+        );
+    }
+
+    #[test]
+    fn reference_twin_keys_separate_value_and_payload_disagreements() {
+        let value = MismatchClass::ReferenceTwin {
+            reference: "22.0".to_string(),
+            optimized: "21.0".to_string(),
+            core_equal: false,
+        };
+        let payload = MismatchClass::ReferenceTwin {
+            reference: "#CALC!".to_string(),
+            optimized: "#CALC!".to_string(),
+            core_equal: true,
+        };
+        assert_eq!(value.key(), "ReferenceTwin");
+        assert_eq!(payload.key(), "ReferenceTwin:RichOnly");
+        assert!(!value.is_unclassified() && !payload.is_unclassified());
+        assert_eq!(
+            Verdict::Mismatch(payload).key(),
+            "mismatch:ReferenceTwin:RichOnly"
         );
     }
 

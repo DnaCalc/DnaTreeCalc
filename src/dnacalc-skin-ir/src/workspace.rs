@@ -832,12 +832,40 @@ pub struct GridProjection {
     /// True when the permanent-pair differential found no mismatch for this view
     /// (the optimized and reference grid engines agreed).
     pub differential_clean: bool,
+    /// The typed diagnostic behind `differential_clean == false` (W012-1.5,
+    /// dtc-5zet.12): one row per cell where the reference (oracle) grid
+    /// engine and the optimized engine disagreed on the last checked recalc,
+    /// carrying both values. Empty whenever `differential_clean` is true.
+    /// Before W012-1.5 the host collapsed the engine's mismatch list to the
+    /// boolean and discarded the rows; a skin that wants to show *which*
+    /// cell the twin disputes reads this, never a string. Absent on an older
+    /// wire payload — deserializes as empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub differential_mismatches: Vec<GridDifferentialMismatchProjection>,
     /// Bumped whenever the windowed authored layer (`GridCellProjection::authored`)
     /// changes, independently of the computed-value epochs — a client pulls
     /// "authored changes since" by comparing against it (H3, §A.3). `0` for a
     /// pre-H3 mirror or wire payload that never carried authored fields.
     #[serde(default)]
     pub authored_epoch: u64,
+}
+
+/// One cell the permanent-pair differential disputes (W012-1.5,
+/// dtc-5zet.12): the skin-IR mirror of OxCalc's `GridDifferentialMismatch`
+/// (`grid/machine/differential.rs`) — the reference (brute-force oracle)
+/// engine's value and the optimized engine's value at one address, in the
+/// same 1-based strict-Excel coordinates `GridCellProjection` uses. The
+/// optimized value is the one the projection's `cells` publish; the
+/// reference value is what the oracle lane computed for the same authored
+/// input on the same recalc tick.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GridDifferentialMismatchProjection {
+    pub row: u32,
+    pub col: u32,
+    /// The reference (oracle) engine's value.
+    pub reference: NodeValueProjection,
+    /// The optimized engine's value — the one published in `cells`.
+    pub optimized: NodeValueProjection,
 }
 
 /// The window-clipped, read-only overlay descriptors for a [`GridProjection`].
@@ -3007,6 +3035,56 @@ mod serde_round_trip_tests {
             grid.cells[0].provenance, None,
             "a pre-H5 cell has no provenance field, so it defaults to None"
         );
+    }
+
+    /// W012-1.5 (dtc-5zet.12): the pre-H3/H5 payloads above carry no
+    /// `differential_mismatches`, so it deserializes as empty (the same
+    /// forward-compatibility contract); a projection the twin disputes
+    /// serializes the typed rows beside `differential_clean: false` and
+    /// round-trips them, and a clean projection omits the field entirely.
+    #[test]
+    fn grid_projection_differential_mismatches_round_trip_and_default_empty() {
+        let pre_w012_json = r#"{
+            "grid_node_key": "sheet",
+            "grid_node_id": "Sheet1",
+            "grid_id": "book:grid:sheet:grid",
+            "max_rows": 1048576,
+            "max_cols": 16384,
+            "cells": [],
+            "projection_epoch": 1,
+            "differential_clean": true
+        }"#;
+        let clean: GridProjection = serde_json::from_str(pre_w012_json).expect("deserialize");
+        assert!(clean.differential_mismatches.is_empty());
+        let clean_json = serde_json::to_string(&clean).expect("serialize");
+        assert!(
+            !clean_json.contains("differential_mismatches"),
+            "a clean projection omits the field: {clean_json}"
+        );
+
+        let disputed = GridProjection {
+            differential_clean: false,
+            differential_mismatches: vec![GridDifferentialMismatchProjection {
+                row: 1,
+                col: 2,
+                reference: NodeValueProjection::Number {
+                    raw: "21".to_string(),
+                    display: "21".to_string(),
+                },
+                optimized: NodeValueProjection::Number {
+                    raw: "22".to_string(),
+                    display: "22".to_string(),
+                },
+            }],
+            ..clean
+        };
+        let json = serde_json::to_string(&disputed).expect("serialize");
+        assert!(json.contains("\"differential_clean\":false"), "{json}");
+        assert!(json.contains("\"differential_mismatches\""), "{json}");
+        let read_back: GridProjection = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(read_back, disputed);
+        assert_eq!(read_back.differential_mismatches[0].row, 1);
+        assert_eq!(read_back.differential_mismatches[0].col, 2);
     }
 
     /// H5 acceptance (1): a pre-H5 `WorkspaceState` (no `workbook_calc` field

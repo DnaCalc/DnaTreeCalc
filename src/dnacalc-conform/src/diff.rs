@@ -15,6 +15,17 @@
 //!   engine's authored view. A workbook the engine refuses to open still
 //!   contributes its formula cells — counted from an engine-free OxDoc open
 //!   of the same bytes — as `not_evaluated:open_failed:*` (dtc-5zet.5).
+//!
+//! A third rule landed with W012-1.5 (dtc-5zet.12) — **the reference twin
+//! fails loudly**: every session is opened under
+//! [`GridEngineValidationMode::DualValidated`] ([`DIFF_VALIDATION_MODE`]),
+//! so OxCalc's brute-force reference lane runs on every recalc, and every
+//! `differential_mismatches` row the engine reports is (a) a
+//! `reference_twin` row on the workbook, (b) `mismatch:ReferenceTwin` on the
+//! cell's verdict when the file has a `Calculated` formula cell there, and
+//! (c) with `--fail-on-twin`, exit code [`EXIT_TWIN_FAILED`]. The host
+//! never re-compares the two lanes: the rows are the engine's own list,
+//! read off `WorkbookSession::grid_view`.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
@@ -22,26 +33,46 @@ use std::io::{self, Cursor, Write};
 use std::path::{Path, PathBuf};
 
 use dnacalc_host_core::{
-    LoadRecalcPath, WorkbookLoadReport, WorkbookSession, WorkbookSessionError,
+    GridEngineValidationMode, LoadRecalcPath, WorkbookLoadReport, WorkbookSession,
+    WorkbookSessionError,
 };
-use oxcalc_core::consumer::{OxCalcTreeGridCellReadout, WorkbookRecalcOutcome};
+use oxcalc_core::consumer::{OxCalcTreeGridCellReadout, OxCalcTreeGridView, WorkbookRecalcOutcome};
+use oxcalc_core::grid::machine::GridDifferentialMismatch;
 use oxcalc_core::workbook_settings::PublishedValueProvenance;
 use oxdoc_xlsx::{LoadProfile, open_host_owned_xlsx_source};
 use oxfunc_core::value::{CalcValue, CoreValue};
 use sha2::{Digest, Sha256};
 
-use crate::oracle::{Oracle, OracleFormulaCell, OracleFormulaKind, error_literal};
+use crate::oracle::{Oracle, OracleFormulaCell, OracleFormulaKind, column_letters, error_literal};
 use crate::report::{
     ARTIFACT_FILE_NAME, CellVerdict, CorpusIdentity, DivergenceReport, LoadReportSummary,
-    OpenStatus, RecalcSummary, RunSettings, SCHEMA, Totals, WorkbookReport, WorstCovered,
+    OpenStatus, RecalcSummary, ReferenceTwinMismatchRow, ReferenceTwinSummary, RunSettings, SCHEMA,
+    Totals, WorkbookReport, WorstCovered,
 };
 use crate::verdict::{
-    ExcludedReason, NotEvaluatedReason, PinFacts, Verdict, compare, not_evaluated_reason,
+    ExcludedReason, MismatchClass, NotEvaluatedReason, PinFacts, Verdict, compare,
+    not_evaluated_reason,
 };
 use crate::volatile::nondeterministic_call;
 
 /// How many workbooks the summary lists under "worst covered".
 pub const WORST_COVERED_LIMIT: usize = 10;
+
+/// The engine-validation profile every `diff` session runs under (W012-1.5):
+/// the reference (oracle) lane on EVERY recalc, so the engine's
+/// `differential_mismatches` track every recalc exactly. The interactive
+/// host samples instead (`WorkbookSession::INTERACTIVE_VALIDATION_MODE`),
+/// and under a sampled mode an empty list can mean "not checked this
+/// recalc" — the engine exposes no per-recalc "lane ran" fact to the host —
+/// so the instrument never runs sampled. `bench` keeps the interactive
+/// profile on purpose: its retained baseline was measured under it.
+pub const DIFF_VALIDATION_MODE: GridEngineValidationMode = GridEngineValidationMode::DualValidated;
+
+/// The process exit code when `--fail-on-twin` is set and at least one
+/// workbook's reference twin reported a mismatch. Distinct from `1` (the run
+/// could not complete): the artifact IS written — a twin failure is a
+/// result, and the non-zero exit is the requested consequence of it.
+pub const EXIT_TWIN_FAILED: u8 = 3;
 
 /// Runner settings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -51,11 +82,31 @@ pub struct DiffOptions {
     /// test can prove the Manual-mode trap; the CLI exposes it as the
     /// undocumented `--no-force-recalc`.
     pub force_recalc: bool,
+    /// `--fail-on-twin`: exit [`EXIT_TWIN_FAILED`] when
+    /// `totals.reference_twin_mismatches > 0`. The artifact and the summary
+    /// are written either way.
+    pub fail_on_twin: bool,
 }
 
 impl Default for DiffOptions {
     fn default() -> Self {
-        Self { force_recalc: true }
+        Self {
+            force_recalc: true,
+            fail_on_twin: false,
+        }
+    }
+}
+
+/// The binary's exit code for a completed run: [`EXIT_TWIN_FAILED`] iff
+/// `--fail-on-twin` was set and the engine's reference twin disputed at
+/// least one cell anywhere in the corpus; `0` otherwise. RED coverage and
+/// Excel mismatches never change it (floors are a later bead).
+#[must_use]
+pub fn exit_code(report: &DivergenceReport, options: &DiffOptions) -> u8 {
+    if options.fail_on_twin && report.totals.reference_twin_mismatches > 0 {
+        EXIT_TWIN_FAILED
+    } else {
+        0
     }
 }
 
@@ -143,8 +194,12 @@ pub fn collect_workbooks(corpus_dir: &Path) -> Result<Vec<PathBuf>, DiffError> {
 #[must_use]
 pub fn diff_workbook_bytes(bytes: &[u8], path: &str, options: &DiffOptions) -> WorkbookReport {
     let sha256 = sha256_hex(bytes);
-    match WorkbookSession::open_xlsx_bytes(format!("conform:{path}"), bytes, Some(path.to_string()))
-    {
+    match WorkbookSession::open_xlsx_bytes_with_validation(
+        format!("conform:{path}"),
+        bytes,
+        Some(path.to_string()),
+        DIFF_VALIDATION_MODE,
+    ) {
         Ok(session) => score_opened_session(session, path, sha256, options),
         Err(error) => {
             let kind = error_kind(&error);
@@ -187,6 +242,7 @@ pub fn diff_workbook_bytes(bytes: &[u8], path: &str, options: &DiffOptions) -> W
                     unclassified: 0,
                     load_report: None,
                     recalc: None,
+                    reference_twin: None,
                     verdicts: Vec::new(),
                 },
             }
@@ -231,6 +287,35 @@ impl Tally {
     }
 }
 
+/// One engine sheet's readout for the ladder: the sheet's display name (the
+/// key the oracle's sheets are matched on) and its `grid_view` — or the
+/// typed error kind when the session refused the read.
+#[derive(Debug, Clone)]
+pub struct EngineSheetView {
+    pub name: String,
+    pub view: Result<OxCalcTreeGridView, String>,
+}
+
+/// Every engine sheet's `grid_view` after the recalc, in sheet order — the
+/// published cells the ladder scores AND the `differential_mismatches` the
+/// reference twin reported (W012-1.5). `Err` is `sheets()` itself failing
+/// (its typed error kind); a per-sheet `grid_view` failure is that sheet's
+/// `Err`. Public so a test can score a session with a mismatch injected at
+/// this seam (the leaf-arithmetic injection the bead allows the host to
+/// prove; the engine-internal blind sites are the OxCalc handover).
+pub fn engine_sheet_views(session: &WorkbookSession) -> Result<Vec<EngineSheetView>, String> {
+    let rows = session.sheets().map_err(|error| error_kind(&error))?;
+    Ok(rows
+        .into_iter()
+        .map(|row| EngineSheetView {
+            name: row.display_name,
+            view: session
+                .grid_view(row.node_id)
+                .map_err(|error| error_kind(&error)),
+        })
+        .collect())
+}
+
 /// The opened-session path: forced recalc, then the ladder over every
 /// formula cell the file carries, read against the engine's own published
 /// readout per sheet.
@@ -245,6 +330,22 @@ fn score_opened_session(
     } else {
         None
     };
+    let views = engine_sheet_views(&session);
+    score_session_views(&session, &recalc, views, path, sha256, options)
+}
+
+/// The ladder over an opened session's sheet views (the second half of
+/// [`score_opened_session`], separated so the views can be handed in — see
+/// [`engine_sheet_views`]). `recalc` is the forced recalc's outcome (`None`
+/// under `--no-force-recalc`); `views` is what the engine published after it.
+pub fn score_session_views(
+    session: &WorkbookSession,
+    recalc: &Option<Result<WorkbookRecalcOutcome, WorkbookSessionError>>,
+    views: Result<Vec<EngineSheetView>, String>,
+    path: &str,
+    sha256: String,
+    options: &DiffOptions,
+) -> WorkbookReport {
     let recalc_summary = recalc.as_ref().map(recalc_summary);
     // Did the forced recalc actually run the engine over anything? A Manual
     // load whose cells were never drained is the whole-file trap; a cell
@@ -274,37 +375,61 @@ fn score_opened_session(
     // An engine read failure (sheets() or grid_view()) is an internal
     // invariant of the session, but on a corpus run it must be a typed row,
     // not a panic and not a silent "no sheets".
-    let engine_sheets = session.sheets().map_err(|error| error_kind(&error));
     let mut tally = Tally::default();
     let mut verdicts = Vec::new();
+    // The reference twin's rows, every engine sheet, whether or not the file
+    // has a formula cell at the address (W012-1.5): nothing the engine
+    // reported is dropped. `formula_cell` is filled as the oracle loop
+    // scores the matching verdict rows.
+    let mut twin_rows: Vec<ReferenceTwinMismatchRow> = match &views {
+        Ok(views) => views
+            .iter()
+            .filter_map(|sheet| sheet.view.as_ref().ok().map(|view| (sheet, view)))
+            .flat_map(|(sheet, view)| {
+                view.differential_mismatches
+                    .iter()
+                    .map(|mismatch| ReferenceTwinMismatchRow {
+                        sheet: sheet.name.clone(),
+                        address: a1(mismatch.address.row, mismatch.address.col),
+                        reference: render_value(&mismatch.reference),
+                        optimized: render_value(&mismatch.optimized),
+                        core_equal: mismatch.reference.core == mismatch.optimized.core,
+                        reference_rich: rich_kind(&mismatch.reference),
+                        optimized_rich: rich_kind(&mismatch.optimized),
+                        formula_cell: false,
+                    })
+            })
+            .collect(),
+        Err(_) => Vec::new(),
+    };
 
     for oracle_sheet in &oracle.sheets {
-        let published: Result<BTreeMap<(u32, u32), OxCalcTreeGridCellReadout>, NotEvaluatedReason> =
-            match &engine_sheets {
-                Err(kind) => Err(NotEvaluatedReason::EngineReadFailed { kind: kind.clone() }),
-                Ok(rows) => match rows
-                    .iter()
-                    .find(|row| row.display_name == oracle_sheet.name)
-                {
-                    None => Err(NotEvaluatedReason::SheetUnmatched),
-                    Some(row) => session
-                        .grid_view(row.node_id)
-                        .map(|view| {
-                            view.cells
-                                .into_iter()
-                                .map(|cell| ((cell.address.row, cell.address.col), cell))
-                                .collect()
-                        })
-                        .map_err(|error| NotEvaluatedReason::EngineReadFailed {
-                            kind: error_kind(&error),
-                        }),
+        let published: Result<PublishedSheet<'_>, NotEvaluatedReason> = match &views {
+            Err(kind) => Err(NotEvaluatedReason::EngineReadFailed { kind: kind.clone() }),
+            Ok(views) => match views.iter().find(|sheet| sheet.name == oracle_sheet.name) {
+                None => Err(NotEvaluatedReason::SheetUnmatched),
+                Some(sheet) => match &sheet.view {
+                    Ok(view) => Ok((
+                        view.cells
+                            .iter()
+                            .map(|cell| ((cell.address.row, cell.address.col), cell))
+                            .collect(),
+                        view.differential_mismatches
+                            .iter()
+                            .map(|mismatch| {
+                                ((mismatch.address.row, mismatch.address.col), mismatch)
+                            })
+                            .collect(),
+                    )),
+                    Err(kind) => Err(NotEvaluatedReason::EngineReadFailed { kind: kind.clone() }),
                 },
-            };
+            },
+        };
 
         for cell in &oracle_sheet.formula_cells {
             let (verdict, readout) = match &published {
                 Err(reason) => (Verdict::NotEvaluated(reason.clone()), None),
-                Ok(published) => match published.get(&(cell.row, cell.col)) {
+                Ok((published, twins)) => match published.get(&(cell.row, cell.col)) {
                     None => (
                         Verdict::NotEvaluated(NotEvaluatedReason::NotPublished),
                         None,
@@ -320,10 +445,22 @@ fn score_opened_session(
                             ),
                             manual_load_undrained,
                         };
-                        (ladder(cell, readout, &oracle, &facts), Some(readout))
+                        let twin = twins.get(&(cell.row, cell.col)).copied();
+                        (ladder(cell, readout, twin, &oracle, &facts), Some(*readout))
                     }
                 },
             };
+            // The file carries a formula cell at a disputed address: say so
+            // on the twin row, whatever verdict the ladder gave the cell.
+            if matches!(&published, Ok((_, twins)) if twins.contains_key(&(cell.row, cell.col))) {
+                let a1 = cell.a1();
+                for row in twin_rows
+                    .iter_mut()
+                    .filter(|row| row.sheet == oracle_sheet.name && row.address == a1)
+                {
+                    row.formula_cell = true;
+                }
+            }
             let provenance = readout.map(|readout| readout.provenance);
             tally.record(&verdict, provenance);
             verdicts.push(CellVerdict {
@@ -343,10 +480,22 @@ fn score_opened_session(
                         .map(|value| render_value(&value))
                         .unwrap_or_else(|gap| format!("<{gap:?}>"))
                 }),
+                twin_reference: match &verdict {
+                    Verdict::Mismatch(MismatchClass::ReferenceTwin { reference, .. }) => {
+                        Some(reference.clone())
+                    }
+                    _ => None,
+                },
             });
         }
     }
 
+    let validation_mode = session.validation_mode();
+    let reference_twin = Some(ReferenceTwinSummary {
+        validation_mode: format!("{validation_mode:?}"),
+        checked_every_recalc: matches!(validation_mode, GridEngineValidationMode::DualValidated),
+        mismatches: twin_rows,
+    });
     let formula_cells = oracle.formula_cell_count();
     WorkbookReport {
         path: path.to_string(),
@@ -366,20 +515,58 @@ fn score_opened_session(
         unclassified: tally.unclassified,
         load_report: Some(load_report_summary(report)),
         recalc: recalc_summary,
+        reference_twin,
         verdicts,
     }
 }
 
-/// Rungs 1–4 for one published formula cell.
+/// One engine sheet's readout indexed for the ladder: the published cells
+/// and the reference twin's disputed cells, both by 1-based `(row, col)`.
+type PublishedSheet<'a> = (
+    BTreeMap<(u32, u32), &'a OxCalcTreeGridCellReadout>,
+    BTreeMap<(u32, u32), &'a GridDifferentialMismatch>,
+);
+
+/// A1 notation for a 1-based `(row, col)`.
+fn a1(row: u32, col: u32) -> String {
+    format!("{}{row}", column_letters(col))
+}
+
+/// The variant name of a value's rich payload, if it carries one.
+fn rich_kind(value: &CalcValue) -> Option<String> {
+    use oxfunc_core::value::RichValue;
+    value.rich.as_ref().map(|rich| {
+        match rich.as_ref() {
+            RichValue::Object(_) => "Object",
+            RichValue::Callable(_) => "Callable",
+            RichValue::Presentation(_) => "Presentation",
+            RichValue::ErrorMetadata(_) => "ErrorMetadata",
+        }
+        .to_string()
+    })
+}
+
+/// Rungs 1–4 for one published formula cell. `twin` is the engine's own
+/// differential row for the address, when the reference lane disputed it.
 fn ladder(
     cell: &OracleFormulaCell,
     readout: &OxCalcTreeGridCellReadout,
+    twin: Option<&GridDifferentialMismatch>,
     oracle: &Oracle,
     facts: &PinFacts,
 ) -> Verdict {
     // Rung 1: provenance decides before value does.
     if let Some(reason) = not_evaluated_reason(readout.provenance, facts) {
         return Verdict::NotEvaluated(reason);
+    }
+    // Rung 1b (W012-1.5): the engine disagrees with itself on this cell —
+    // its published value is not compared with Excel at all.
+    if let Some(mismatch) = twin {
+        return Verdict::Mismatch(MismatchClass::ReferenceTwin {
+            reference: render_value(&mismatch.reference),
+            optimized: render_value(&mismatch.optimized),
+            core_equal: mismatch.reference.core == mismatch.optimized.core,
+        });
     }
     // Rung 2: nondeterministic formulas are excluded, never scored.
     let function = cell.text.as_deref().and_then(nondeterministic_call);
@@ -432,6 +619,7 @@ fn score_unopened(
                         .map(|value| render_value(&value))
                         .unwrap_or_else(|gap| format!("<{gap:?}>"))
                 }),
+                twin_reference: None,
             });
         }
     }
@@ -454,6 +642,7 @@ fn score_unopened(
         unclassified: 0,
         load_report: None,
         recalc: None,
+        reference_twin: None,
         verdicts,
     }
 }
@@ -652,6 +841,12 @@ pub fn assemble(
         totals.engine_calculated += workbook.engine_calculated;
         totals.matched += workbook.matched;
         totals.unclassified += workbook.unclassified;
+        if let Some(twin) = &workbook.reference_twin {
+            if !twin.mismatches.is_empty() {
+                totals.reference_twin_workbooks += 1;
+            }
+            totals.reference_twin_mismatches += twin.mismatches.len() as u64;
+        }
         let mut not_evaluated = 0;
         for (key, count) in &workbook.not_evaluated {
             *totals.not_evaluated.entry(key.clone()).or_default() += count;
@@ -731,6 +926,8 @@ pub fn assemble(
             corpus_dir: corpus_dir.to_string_lossy().replace('\\', "/"),
             out_dir: out_dir.to_string_lossy().replace('\\', "/"),
             forced_recalc: options.force_recalc,
+            validation_mode: Some(format!("{DIFF_VALIDATION_MODE:?}")),
+            fail_on_twin: options.fail_on_twin,
         },
         workbooks,
     })
@@ -783,6 +980,52 @@ pub fn write_summary(
             ""
         }
     )?;
+    writeln!(
+        out,
+        "  reference_twin ({}, every recalc): mismatches {} in {} workbooks{}",
+        report
+            .run
+            .validation_mode
+            .as_deref()
+            .unwrap_or("<pre-W012-1.5 artifact: sampled>"),
+        t.reference_twin_mismatches,
+        t.reference_twin_workbooks,
+        if report.run.fail_on_twin && t.reference_twin_mismatches > 0 {
+            format!("  <-- --fail-on-twin: exit {EXIT_TWIN_FAILED}")
+        } else {
+            String::new()
+        }
+    )?;
+    for workbook in &report.workbooks {
+        let Some(twin) = &workbook.reference_twin else {
+            continue;
+        };
+        for row in &twin.mismatches {
+            writeln!(
+                out,
+                "    {}  {}!{}  reference {} vs optimized {}{}{}",
+                workbook.path,
+                row.sheet,
+                row.address,
+                row.reference,
+                row.optimized,
+                if row.core_equal {
+                    format!(
+                        "  (cores equal; rich payload {} vs {})",
+                        row.reference_rich.as_deref().unwrap_or("none"),
+                        row.optimized_rich.as_deref().unwrap_or("none")
+                    )
+                } else {
+                    String::new()
+                },
+                if row.formula_cell {
+                    ""
+                } else {
+                    "  (no formula cell in the file at this address)"
+                }
+            )?;
+        }
+    }
     writeln!(
         out,
         "worst-covered {} workbooks (coverage, engine_calculated/formula_cells):",
