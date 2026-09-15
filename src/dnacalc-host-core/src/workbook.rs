@@ -60,6 +60,7 @@ use oxdoc_xlsx::{
 use oxfunc_core::value::CalcValue;
 
 use crate::grid_publication::{grid_authored_cell_projection, grid_projection_for};
+use crate::recalc_accounting::RecalcAccounting;
 
 /// The stable `NodeId` a workbook session projects for a sheet's grid-backed
 /// node — the same `sheet:{node}` string this session already uses as the
@@ -164,6 +165,12 @@ pub struct WorkbookSession {
     /// `Some` iff this workbook was opened from `.xlsx` bytes; an in-memory
     /// workbook ([`WorkbookSession::create`], the demo) has no source.
     xlsx: Option<XlsxSourceState>,
+    /// Every recalc this session's live path caused so far, and what the
+    /// engine let the host observe about it (W012-1.7, dtc-5zet.14; the
+    /// `recalc_accounting` module). Seeded from the load report's
+    /// open-recalc at construction; advanced by the entry/clear verbs and
+    /// by `recalculate`; read through [`WorkbookSession::recalc_accounting`].
+    pub(crate) recalc_accounting: RecalcAccounting,
 }
 
 /// Errors a workbook session surfaces. Every arm wraps a typed engine error as
@@ -361,6 +368,10 @@ impl WorkbookSession {
         validation_mode: GridEngineValidationMode,
         xlsx: Option<XlsxSourceState>,
     ) -> Self {
+        let recalc_accounting = xlsx
+            .as_ref()
+            .map(|state| RecalcAccounting::from_load_report(&state.load_report))
+            .unwrap_or_default();
         Self {
             context,
             workspace_id,
@@ -368,6 +379,7 @@ impl WorkbookSession {
             bounds: ExcelGridBounds::strict_excel(),
             validation_mode,
             xlsx,
+            recalc_accounting,
         }
     }
 
@@ -663,9 +675,13 @@ impl WorkbookSession {
         value: CalcValue,
     ) -> Result<OxCalcTreeGridView, WorkbookSessionError> {
         let address = self.address_for(sheet, row, col);
-        self.context
+        let mode = self.current_calc_mode()?;
+        let view = self
+            .context
             .set_grid_cell_value(&self.workspace_id, sheet, &address, value)?
-            .ok_or(WorkbookSessionError::SheetNotGridBacked { node: sheet })
+            .ok_or(WorkbookSessionError::SheetNotGridBacked { node: sheet })?;
+        self.recalc_accounting.record_entry(mode);
+        Ok(view)
     }
 
     /// Read back the current published value at a single grid cell, or `None`
@@ -784,10 +800,26 @@ impl WorkbookSession {
         col: u32,
         text: &str,
     ) -> Result<GridCellEntryOutcome, WorkbookSessionError> {
+        // Empty text is the engine's ClearCell path (delegated inside the
+        // verb): account for it as a clear, so the accounting never calls a
+        // rebuild an entry.
+        if text.is_empty() {
+            let view = self.clear_grid_cell(sheet, row, col)?;
+            return Ok(GridCellEntryOutcome::Cleared { view });
+        }
         let address = self.address_for(sheet, row, col);
-        self.context
+        // Read the mode before the verb (W012-1.7): the engine reads the
+        // same setting once, ahead of any mutation, to decide whether this
+        // entry recalculates inline or accumulates a seed.
+        let mode = self.current_calc_mode()?;
+        let outcome = self
+            .context
             .enter_grid_cell(&self.workspace_id, sheet, &address, text)?
-            .ok_or(WorkbookSessionError::SheetNotGridBacked { node: sheet })
+            .ok_or(WorkbookSessionError::SheetNotGridBacked { node: sheet })?;
+        // Only an accepted entry mutated anything (no-mutation-on-Err, C9);
+        // a rejection returned above and is counted nowhere.
+        self.recalc_accounting.record_entry(mode);
+        Ok(outcome)
     }
 
     /// Clear a grid cell's authored content directly (`clear_grid_cell`, H6
@@ -801,9 +833,18 @@ impl WorkbookSession {
         col: u32,
     ) -> Result<OxCalcTreeGridView, WorkbookSessionError> {
         let address = self.address_for(sheet, row, col);
-        self.context
+        // W012-1.7: whether the clear changes anything is the engine's
+        // `was_authored || was_pinned`, read here through the public
+        // readouts BEFORE the verb (`clear_target_is_live`), with the mode
+        // the verb will run under.
+        let was_live = self.clear_target_is_live(sheet, row, col)?;
+        let mode = self.current_calc_mode()?;
+        let view = self
+            .context
             .clear_grid_cell(&self.workspace_id, sheet, &address)?
-            .ok_or(WorkbookSessionError::SheetNotGridBacked { node: sheet })
+            .ok_or(WorkbookSessionError::SheetNotGridBacked { node: sheet })?;
+        self.recalc_accounting.record_clear(mode, was_live);
+        Ok(view)
     }
 
     /// The ONE recipe that turns an engine grid readout into the sheet's

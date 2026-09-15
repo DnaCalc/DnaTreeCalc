@@ -11,8 +11,16 @@
 //! accessor on `OxCalcDocumentContext` today, so the artifact carries
 //! `lane_outcome: null` with the reason, and the committed baseline doc
 //! states the code-reading expectation separately from the measurement.
+//!
+//! W012-1.7 (dtc-5zet.14) added the recalc accounting beside the numbers —
+//! per subject `escalation` (the session's `RecalcAccounting` at the end of
+//! its series) and run-wide `escalation` (the fold) — additive,
+//! `#[serde(default)]`, so a `bench.v1.json` written before it still reads
+//! back. See [`crate::escalation`].
 
 use serde::{Deserialize, Serialize};
+
+use crate::escalation::EscalationSummary;
 
 /// The schema tag every bench artifact carries.
 pub const BENCH_SCHEMA: &str = "dnacalc-conform/bench.v1";
@@ -28,6 +36,11 @@ pub struct BenchReport {
     pub observability: Observability,
     pub selection: Selection,
     pub subjects: Vec<SubjectReport>,
+    /// Every subject's recalc accounting folded (W012-1.7): the run's
+    /// `escalation_rate` (engine-reported; `null` while OxCalc exposes no
+    /// lane outcome) and its lower bound from the verbs' contract rebuilds.
+    #[serde(default)]
+    pub escalation: EscalationSummary,
     /// The process's peak working set at the end of the run, when the
     /// platform probe succeeded. Process-wide: OxDoc parses, every subject,
     /// the revision retention the product path keeps per edit, and the
@@ -158,6 +171,12 @@ pub struct SubjectReport {
     pub edit: EditTimings,
     /// The Manual-edit + F9 cycles, in order.
     pub full_recalc: Vec<FullRecalcSample>,
+    /// The subject's session accounting at the end of its series (W012-1.7):
+    /// the open-recalc (corpus subjects), the Manual setup verbs (synthetic
+    /// subjects), the `edit_repeats` Automatic entries, the F9 drains — each
+    /// a contract rebuild — and the lane-outcome gap.
+    #[serde(default)]
+    pub escalation: EscalationSummary,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

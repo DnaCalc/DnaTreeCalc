@@ -136,3 +136,4 @@ pub use workspace::{
     TreeReferenceCollectionFamilyProjection, TreeReferenceCollectionProjection,
     ValueProvenanceProjection, WorkbookCalcProjection, WorkspaceRevisionProjection, WorkspaceState,
 };
+pub use workspace::{LaneOutcomeCountersProjection, RecalcAccountingProjection};

@@ -26,7 +26,8 @@
 //! and the artifact assembly), [`report`] (the `divergence.v1.json`
 //! schema), [`bench`] (the wall-clock baseline runner, dtc-5zet.13),
 //! [`bench_report`] (the `bench.v1.json` schema), [`machine`] (machine
-//! identity and peak-working-set probes), [`cli`] (argument parsing for
+//! identity and peak-working-set probes), [`escalation`] (the recalc
+//! accounting beside coverage, dtc-5zet.14), [`cli`] (argument parsing for
 //! the binary).
 //!
 //! TC tier: this crate may depend on `dnacalc-host-core`, `oxcalc_core`,
@@ -37,6 +38,7 @@ pub mod bench;
 pub mod bench_report;
 pub mod cli;
 pub mod diff;
+pub mod escalation;
 pub mod machine;
 pub mod oracle;
 pub mod report;

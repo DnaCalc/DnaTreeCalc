@@ -377,11 +377,13 @@ mod tests {
             }
         );
         // dtc-j7n8.18 regression: the receipt now carries the edited sheet's
-        // `GridChanged` beside the `GridCellEntered` hint (two changes, not
-        // one). `interpret_receipt` SCANS for the hint, so the extra variant
-        // must not change its answer (asserted just above) — and the patch
-        // itself is the mirror-applicable projection carrying the entered
-        // value, so nothing about this receipt is a surprise to a mirror.
+        // `GridChanged` beside the `GridCellEntered` hint, and since W012-1.7
+        // (dtc-5zet.14) the workbook's `CalcStateChanged` too (three changes,
+        // not one). `interpret_receipt` SCANS for the hint, so the extra
+        // variants must not change its answer (asserted just above) — and
+        // each patch is a mirror-applicable projection (the entered value;
+        // the calc state with its recalc accounting), so nothing about this
+        // receipt is a surprise to a mirror.
         let kinds: Vec<_> = receipt
             .delta
             .changes
@@ -390,8 +392,8 @@ mod tests {
             .collect();
         assert_eq!(
             kinds,
-            vec!["grid_cell_entered", "grid_changed"],
-            "the entry receipt is exactly the hint plus the edited sheet's patch"
+            vec!["grid_cell_entered", "grid_changed", "calc_state_changed"],
+            "the entry receipt is exactly the hint, the edited sheet's patch, and the calc state"
         );
         let patched = receipt
             .delta

@@ -1692,6 +1692,7 @@ mod tests {
                 grid_node_id: NodeId::new("s1"),
                 dirty: false,
             }],
+            recalc_accounting: None,
         });
         assert!(!document_is_dirty(&workspace));
         workspace.workbook_calc.as_mut().unwrap().sheets[0].dirty = true;
@@ -1737,6 +1738,7 @@ mod tests {
                     grid_node_id: NodeId::new("s1"),
                     dirty: true,
                 }],
+                recalc_accounting: None,
             }),
             ..WorkspaceState::default()
         };

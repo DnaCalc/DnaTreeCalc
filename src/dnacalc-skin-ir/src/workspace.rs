@@ -1011,6 +1011,94 @@ pub struct WorkbookCalcProjection {
     pub last_recalc_tick: Option<u64>,
     /// One summary row per grid-backed sheet, in sheet order.
     pub sheets: Vec<SheetCalcSummaryProjection>,
+    /// The session's recalc accounting (W012-1.7, dtc-5zet.14): every recalc
+    /// the live host path caused so far and what the engine let the host
+    /// observe about it. Typed counters, never strings; the rates a reader
+    /// wants (`escalation_rate`, its lower bound) are quotients of these and
+    /// are computed by the consumer so the wire shape stays `Eq`. `None` on
+    /// a projection built before the field existed (`#[serde(default)]`)
+    /// and on a tree-model session, which has no grid recalc to account.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recalc_accounting: Option<RecalcAccountingProjection>,
+}
+
+/// Mirror of `dnacalc_host_core`'s `RecalcAccounting` (W012-1.7,
+/// dtc-5zet.14): per-session counters of every recalc the live host path
+/// caused — the Automatic open-recalc, Automatic-mode entry/clear verbs, F9
+/// drains — and, per engine-reported `GridSeededLaneOutcome` variant, why
+/// each recalc did what it did. The Foundation note's rule ("escalation is
+/// never free": every conservative fallback on the live path is counted and
+/// reported beside coverage) needs the *engine's* outcome per recalc; OxCalc
+/// exposes none to the host today (calc-1q03.15 open), so every recalc lands
+/// in [`LaneOutcomeCountersProjection::unobserved`] and the only escalations
+/// the host can count are the ones the verbs' own contracts guarantee
+/// (`contract_rebuilds`). Semantics of each field are the host-core type's;
+/// the identities `recalcs == automatic_entries + automatic_clears +
+/// f9_drains` and `lane_outcomes total == recalcs` hold by construction.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RecalcAccountingProjection {
+    /// `1` when the load path ran the Automatic open-recalc (an engine pass
+    /// on a fresh backing: no retained valuation exists, so it is a full
+    /// evaluation by definition, kept out of `recalcs`); `0` otherwise.
+    pub open_recalcs: u64,
+    /// Sheets the open-recalc drained (`WorkbookLoadReport::engine_recalcs_at_load`).
+    pub open_recalc_sheet_drains: u64,
+    /// Entry verbs (`enter_grid_cell` with text, `set_grid_cell_value`)
+    /// applied under Automatic: each ran the edited sheet's recalc inline
+    /// (plus cross-sheet propagation the engine does not report).
+    pub automatic_entries: u64,
+    /// Clears (`clear_grid_cell`, empty-text entry) of an authored or
+    /// pinned cell under Automatic: each rebuilt the sheet from authored
+    /// input and recalculated it in full (OxCalc's `clear_grid_cell`
+    /// contract).
+    pub automatic_clears: u64,
+    /// Clears of an address with nothing authored and nothing published:
+    /// idempotent no-ops in the engine, no recalc.
+    pub clear_noops: u64,
+    /// Entry/clear verbs applied under Manual: no engine pass, seeds accumulate.
+    pub manual_edits: u64,
+    /// `recalculate()` (F9) calls that drained at least one sheet.
+    pub f9_drains: u64,
+    /// `recalculate()` calls that found nothing to drain (no engine pass).
+    pub f9_noops: u64,
+    /// `recalculate()` calls the engine aborted with a typed error (a cell
+    /// it could not evaluate under the F9 path's `Abort` policy): nothing
+    /// published, and — observed 2026-09-15 — the drained sheet's seeds are
+    /// consumed, so the edit never drains. Not a recalc transaction.
+    #[serde(default)]
+    pub f9_failures: u64,
+    /// Sheets drained across every F9 — each one rebuilt from authored input
+    /// and recalculated in full before the seeded pass (OxCalc's
+    /// `recalculate_workbook` contract).
+    pub f9_sheet_drains: u64,
+    /// `WorkbookRecalcOutcome::total_cells_evaluated()` summed over F9s: the
+    /// seeded pass only, never the rebuild's mark-all.
+    pub f9_cells_evaluated: u64,
+    /// Recalc transactions the host issued after the open:
+    /// `automatic_entries + automatic_clears + f9_drains`.
+    pub recalcs: u64,
+    /// Of `recalcs`, those whose verb rebuilds every drained sheet from
+    /// authored input by contract: `automatic_clears + f9_drains`. A lower
+    /// bound on the escalations, counted from the verb's documented
+    /// behaviour, not from an engine-reported outcome.
+    pub contract_rebuilds: u64,
+    pub lane_outcomes: LaneOutcomeCountersProjection,
+}
+
+/// Engine-reported `GridSeededLaneOutcome`s per variant, one entry per
+/// recalc transaction in `RecalcAccountingProjection::recalcs`, plus the
+/// typed gap: `unobserved` counts the transactions whose outcome the engine
+/// did not expose. Every non-`incremental` variant is an escalation to a
+/// full mark-all.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LaneOutcomeCountersProjection {
+    pub incremental: u64,
+    pub no_retained_valuation: u64,
+    pub basis_mismatch: u64,
+    pub not_full_coverage: u64,
+    pub graph_not_installed: u64,
+    pub topology_growth: u64,
+    pub unobserved: u64,
 }
 
 /// Mirror of OxCalc's `CalcMode` (`workbook_settings.rs`): a scheduling fact,
@@ -3243,5 +3331,57 @@ mod serde_round_trip_tests {
             }],
         };
         assert_eq!(round_trip(&history), history);
+    }
+
+    /// W012-1.7 (dtc-5zet.14): the recalc accounting rides `WorkbookCalcProjection`
+    /// as an additive, `#[serde(default)]` field — a calc projection written
+    /// before it (no `recalc_accounting` key) still reads back with `None`,
+    /// `None` is omitted on the wire, and a filled block round-trips with
+    /// every typed counter intact.
+    #[test]
+    fn workbook_calc_projection_recalc_accounting_is_additive_and_round_trips() {
+        let pre_w012_1_7 = r#"{"mode":"Manual","last_recalc_tick":7,"sheets":[]}"#;
+        let read_back: WorkbookCalcProjection = serde_json::from_str(pre_w012_1_7).unwrap();
+        assert_eq!(read_back.recalc_accounting, None);
+        assert!(
+            !serde_json::to_string(&read_back)
+                .unwrap()
+                .contains("recalc_accounting"),
+            "an absent block is omitted, not written as null"
+        );
+
+        let filled = WorkbookCalcProjection {
+            mode: CalcModeProjection::Automatic,
+            last_recalc_tick: Some(3),
+            sheets: Vec::new(),
+            recalc_accounting: Some(RecalcAccountingProjection {
+                open_recalcs: 1,
+                open_recalc_sheet_drains: 2,
+                automatic_entries: 5,
+                automatic_clears: 1,
+                clear_noops: 1,
+                manual_edits: 3,
+                f9_drains: 2,
+                f9_noops: 1,
+                f9_failures: 1,
+                f9_sheet_drains: 3,
+                f9_cells_evaluated: 40,
+                recalcs: 8,
+                contract_rebuilds: 3,
+                lane_outcomes: LaneOutcomeCountersProjection {
+                    incremental: 0,
+                    no_retained_valuation: 0,
+                    basis_mismatch: 0,
+                    not_full_coverage: 0,
+                    graph_not_installed: 0,
+                    topology_growth: 0,
+                    unobserved: 8,
+                },
+            }),
+        };
+        assert_eq!(round_trip(&filled), filled);
+        let json = serde_json::to_string(&filled).unwrap();
+        assert!(json.contains("\"contract_rebuilds\":3"), "{json}");
+        assert!(json.contains("\"unobserved\":8"), "{json}");
     }
 }

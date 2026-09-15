@@ -12,7 +12,12 @@
 //!   the cross-sheet propagation re-enters the origin with a mark-all. If
 //!   either number moves, the engine's F9/propagation behaviour changed:
 //!   record it against dtc-5zet.13's baseline, never "fix" the test;
-//! - the artifact round-trips through serde with the schema tag first.
+//! - the artifact round-trips through serde with the schema tag first;
+//! - (W012-1.7, dtc-5zet.14) every subject's `escalation` block is the
+//!   session's own accounting: the Automatic edit repeats are recalcs with
+//!   an unobserved lane outcome, every F9 drain is a contract rebuild, the
+//!   Manual setup verbs are `manual_edits`, and the run-wide fold's rates
+//!   follow — `escalation_rate` null, the lower bound exact.
 
 use std::path::{Path, PathBuf};
 
@@ -206,7 +211,79 @@ fn bench_measures_selection_edits_and_f9_counters_and_round_trips() {
                 subject.id
             );
         }
+        // W012-1.7: the accounting agrees with the series the bench ran —
+        // 3 Automatic edits, 2 F9 drains (both contract rebuilds), so 5
+        // recalcs, lower bound 2/5, exact rate unobservable (5 of 5
+        // unobserved). The sheet drains and the seeded-pass counters are
+        // the F9 samples' own numbers, summed.
+        let e = &subject.escalation;
+        assert_eq!(e.automatic_entries, 3, "{}", subject.id);
+        assert_eq!(e.automatic_clears, 0, "{}", subject.id);
+        assert_eq!(e.f9_drains, 2, "{}", subject.id);
+        assert_eq!(e.f9_noops, 0, "{}", subject.id);
+        assert_eq!(
+            e.f9_failures,
+            subject
+                .full_recalc
+                .iter()
+                .filter(|s| s.error.is_some())
+                .count() as u64,
+            "{}: every errored F9 sample is an f9_failure (none on the fixtures)",
+            subject.id
+        );
+        assert_eq!(
+            e.f9_sheet_drains,
+            subject
+                .full_recalc
+                .iter()
+                .map(|s| s.drained_sheets)
+                .sum::<u64>(),
+            "{}",
+            subject.id
+        );
+        assert_eq!(
+            e.f9_cells_evaluated,
+            subject
+                .full_recalc
+                .iter()
+                .map(|s| s.cells_evaluated)
+                .sum::<u64>(),
+            "{}",
+            subject.id
+        );
+        assert_eq!((e.recalcs, e.contract_rebuilds), (5, 2), "{}", subject.id);
+        assert_eq!(e.escalation_rate, None, "{}", subject.id);
+        assert_eq!(e.escalation_rate_lower_bound, Some(0.4), "{}", subject.id);
+        assert_eq!(e.lane_outcomes.unobserved, 5, "{}", subject.id);
+        assert!(!e.lane_outcomes_exposed, "{}", subject.id);
+        e.check_identities(&subject.id).unwrap();
     }
+    // Corpus subjects: the Automatic open-recalc is reported apart, and
+    // the two Manual-edit + F9 cycles are the two manual edits. Synthetic
+    // subjects: no open; the Manual setup verbs plus the one warm cycle's
+    // edit are the manual edits (the cold F9 needed none).
+    for subject in &report.subjects[..2] {
+        let e = &subject.escalation;
+        assert_eq!(
+            (e.open_recalcs, e.open_recalc_sheet_drains),
+            (1, 1),
+            "{}",
+            subject.id
+        );
+        assert_eq!(e.manual_edits, 2, "{}", subject.id);
+    }
+    assert_eq!(report.subjects[2].escalation.open_recalcs, 0);
+    assert_eq!(report.subjects[2].escalation.manual_edits, 40 + 1);
+    assert_eq!(report.subjects[3].escalation.manual_edits, 10 + 1);
+    assert_eq!(report.subjects[3].escalation.f9_sheet_drains, 2 + 1);
+    // The run-wide fold.
+    let run = &report.escalation;
+    assert_eq!(run.recalcs, 4 * 5);
+    assert_eq!(run.contract_rebuilds, 4 * 2);
+    assert_eq!(run.escalation_rate, None);
+    assert_eq!(run.escalation_rate_lower_bound, Some(0.4));
+    assert_eq!(run.lane_outcomes.unobserved, 20);
+    run.check_identities("run").unwrap();
 
     // Corpus subjects: open timings with the load report's facts; the edit
     // target is an existing literal a formula references (a1_times_three's
@@ -362,6 +439,16 @@ fn bench_measures_selection_edits_and_f9_counters_and_round_trips() {
     assert!(summary.contains("full_recalc[0] (cold):"));
     assert!(summary.contains("lane_outcome UNOBSERVABLE"));
     assert!(summary.contains("observability: lane_outcome_exposed=false"));
+    assert!(
+        summary.contains(
+            "ESCALATION (run-wide) escalation_rate UNOBSERVABLE (lane outcomes engine-reported 0 / 20;"
+        ),
+        "{summary}"
+    );
+    assert!(
+        summary.contains("lower bound 0.4000 = contract_rebuilds 8 / recalcs 20"),
+        "{summary}"
+    );
 
     std::fs::remove_dir_all(&root).unwrap();
 }

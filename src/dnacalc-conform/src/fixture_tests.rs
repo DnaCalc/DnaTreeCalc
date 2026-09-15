@@ -16,7 +16,13 @@
 //!   `mismatch:ReferenceTwin`, lands in the workbook's `reference_twin`
 //!   rows and the totals, and makes `--fail-on-twin` exit 3; a twin row on
 //!   a pinned cell keeps rung 1's verdict and is still counted; a
-//!   pre-W012-1.5 artifact still deserializes.
+//!   pre-W012-1.5 artifact still deserializes;
+//! - (f) W012-1.7 (dtc-5zet.14), escalation beside coverage: an Automatic
+//!   fixture's forced F9 is a no-op (0 recalcs, rates undefined, the
+//!   open-recalc reported apart); a Manual fixture's forced F9 is one drain
+//!   = one contract rebuild (lower bound 1.0, `escalation_rate` null: no
+//!   lane outcome is exposed); the corpus fold and its identities hold on
+//!   the artifact; a pre-W012-1.7 artifact still deserializes.
 //!
 //! Fixture locations are `CARGO_MANIFEST_DIR` arithmetic to the repo root;
 //! the parts-only W012 fixtures are zipped in memory through the dev-only
@@ -197,6 +203,26 @@ fn a1_times_three_is_one_calculated_match_with_full_coverage() {
     assert_eq!(b1.verdict, "match");
     assert_eq!(b1.formula.as_deref(), Some("A1*3"));
     assert!(b1.tick_id.is_some());
+
+    // (f) Escalation beside coverage: the Automatic load ran the
+    // open-recalc (1 sheet), the forced F9 found nothing to drain, so the
+    // workbook issued NO recalc after the open — both rates undefined,
+    // nothing unobserved because nothing ran.
+    let escalation = report
+        .escalation
+        .expect("an opened workbook carries its accounting");
+    assert_eq!(
+        (escalation.open_recalcs, escalation.open_recalc_sheet_drains),
+        (1, 1)
+    );
+    assert_eq!(escalation.f9_noops, 1);
+    assert_eq!(escalation.f9_drains, 0);
+    assert_eq!(escalation.recalcs, 0);
+    assert_eq!(escalation.contract_rebuilds, 0);
+    assert_eq!(escalation.escalation_rate, None);
+    assert_eq!(escalation.escalation_rate_lower_bound, None);
+    assert_eq!(escalation.lane_outcomes.unobserved, 0);
+    escalation.check_identities("a1_times_three").unwrap();
 }
 
 /// (c) The Manual-mode trap. Forced (the product path): coverage 1.0.
@@ -221,6 +247,34 @@ fn manual_mode_fixture_has_coverage_only_because_the_recalc_is_forced() {
     assert_eq!(verdict_of(&forced, "B1").verdict, "match");
     assert!(forced.recalc.as_ref().unwrap().tick_id.is_some());
     assert!(forced.forced_recalc);
+    // (f) The forced F9 on a Manual load is ONE recalc transaction, and by
+    // OxCalc's `recalculate_workbook` contract every drained sheet is
+    // rebuilt from authored input and recalculated in full: one contract
+    // rebuild over one recalc — lower bound 1.0. The exact rate stays
+    // null: the engine reported no lane outcome (1 of 1 unobserved). No
+    // open-recalc: a Manual load runs zero engine passes.
+    let escalation = forced
+        .escalation
+        .expect("an opened workbook carries its accounting");
+    assert_eq!(
+        (escalation.open_recalcs, escalation.open_recalc_sheet_drains),
+        (0, 0)
+    );
+    assert_eq!((escalation.f9_drains, escalation.f9_sheet_drains), (1, 1));
+    assert_eq!(
+        escalation.f9_cells_evaluated,
+        forced.recalc.as_ref().unwrap().cells_evaluated,
+        "the accounting retains the outcome's own seeded-pass counter"
+    );
+    assert_eq!(escalation.recalcs, 1);
+    assert_eq!(escalation.contract_rebuilds, 1);
+    assert_eq!(escalation.escalation_rate_lower_bound, Some(1.0));
+    assert_eq!(escalation.escalation_rate, None);
+    assert!(!escalation.lane_outcomes_exposed);
+    assert_eq!(escalation.lane_outcomes.unobserved, 1);
+    escalation
+        .check_identities("a1_times_three_manual forced")
+        .unwrap();
 
     let unforced = diff_workbook_bytes(
         &a1_times_three_manual_bytes(),
@@ -257,6 +311,17 @@ fn manual_mode_fixture_has_coverage_only_because_the_recalc_is_forced() {
         (b1.engine.as_deref(), b1.excel.as_deref()),
         (Some("21.0"), Some("21.0")),
         "equal values, never a match: the engine did not compute this"
+    );
+    let escalation = unforced.escalation.unwrap();
+    assert_eq!(
+        (
+            escalation.open_recalcs,
+            escalation.f9_drains,
+            escalation.f9_noops,
+            escalation.recalcs
+        ),
+        (0, 0, 0, 0),
+        "unforced: no engine pass at all, nothing to account"
     );
 }
 
@@ -358,11 +423,53 @@ fn run_diff_writes_an_artifact_that_round_trips_with_zero_unclassified() {
     assert_eq!(report.corpus.set_sha256.len(), 64);
     assert!(report.run.forced_recalc);
 
+    // (f) The corpus fold: two Automatic loads (open-recalc each, forced
+    // F9 a no-op) and one Manual load (no open-recalc, forced F9 drains
+    // one sheet = one contract rebuild). One recalc corpus-wide, at the
+    // lower bound 1.0 and with its lane outcome unobserved; the identities
+    // `assemble` checked hold on the read-back artifact too.
+    let e = &report.totals.escalation;
+    assert_eq!((e.open_recalcs, e.open_recalc_sheet_drains), (2, 2));
+    assert_eq!((e.f9_drains, e.f9_noops, e.f9_sheet_drains), (1, 2, 1));
+    assert_eq!((e.recalcs, e.contract_rebuilds), (1, 1));
+    assert_eq!(e.escalation_rate, None);
+    assert_eq!(e.escalation_rate_lower_bound, Some(1.0));
+    assert_eq!(e.lane_outcomes.unobserved, 1);
+    assert!(!e.lane_outcomes_exposed);
+    read_back
+        .totals
+        .escalation
+        .check_identities("read back")
+        .unwrap();
+    assert_eq!(
+        report
+            .workbooks
+            .iter()
+            .map(|w| w.escalation.unwrap().recalcs)
+            .collect::<Vec<_>>(),
+        [0, 1, 0],
+        "only the Manual load's forced F9 was a recalc"
+    );
+
     let mut summary = Vec::new();
     crate::diff::write_summary(&report, &artifact, &mut summary).unwrap();
     let summary = String::from_utf8(summary).unwrap();
     println!("{summary}");
     assert!(summary.contains("COVERAGE 0.7500  = engine_calculated 3 / formula_cells 4"));
+    assert!(
+        summary.contains(
+            "ESCALATION escalation_rate UNOBSERVABLE (lane outcomes engine-reported 0 / 1;"
+        ),
+        "{summary}"
+    );
+    assert!(
+        summary.contains("lower bound 1.0000 = contract_rebuilds 1 / recalcs 1"),
+        "{summary}"
+    );
+    assert!(
+        summary.contains("1 of 3 opened workbooks issued a recalc after the open"),
+        "{summary}"
+    );
     assert!(summary.contains("not_evaluated 1: bind_degraded=1"));
     assert!(summary.contains("unclassified 0"));
 
@@ -714,6 +821,8 @@ fn pre_w012_1_5_artifact_deserializes_with_twin_fields_defaulted() {
     let totals = value["totals"].as_object_mut().unwrap();
     assert!(totals.remove("reference_twin_mismatches").is_some());
     assert!(totals.remove("reference_twin_workbooks").is_some());
+    // Pre-W012-1.7 too: no escalation block anywhere.
+    assert!(totals.remove("escalation").is_some());
     let run = value["run"].as_object_mut().unwrap();
     assert!(run.remove("validation_mode").is_some());
     assert!(run.remove("fail_on_twin").is_some());
@@ -723,6 +832,13 @@ fn pre_w012_1_5_artifact_deserializes_with_twin_fields_defaulted() {
                 .as_object_mut()
                 .unwrap()
                 .remove("reference_twin")
+                .is_some()
+        );
+        assert!(
+            workbook
+                .as_object_mut()
+                .unwrap()
+                .remove("escalation")
                 .is_some()
         );
         for verdict in workbook["verdicts"].as_array_mut().unwrap() {
@@ -737,6 +853,12 @@ fn pre_w012_1_5_artifact_deserializes_with_twin_fields_defaulted() {
     assert_eq!(read_back.run.validation_mode, None);
     assert!(!read_back.run.fail_on_twin);
     assert_eq!(read_back.workbooks[0].reference_twin, None);
+    assert_eq!(read_back.workbooks[0].escalation, None);
+    assert_eq!(
+        read_back.totals.escalation,
+        crate::escalation::EscalationSummary::default(),
+        "pre-W012-1.7: the corpus escalation block defaults to zeros"
+    );
     assert_eq!(read_back.coverage, assembled.coverage);
 }
 

@@ -20,10 +20,17 @@
 //! reported, whether or not the file has a formula cell there), and per
 //! verdict `twin_reference` (the oracle lane's value when the row is
 //! `mismatch:ReferenceTwin`).
+//!
+//! W012-1.7 (dtc-5zet.14) added the escalation accounting beside coverage
+//! — `totals.escalation` (the corpus-wide fold) and per workbook
+//! `escalation` (the session's `RecalcAccounting` after the forced recalc)
+//! — additive and `#[serde(default)]` the same way. See [`crate::escalation`].
 
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
+
+use crate::escalation::EscalationSummary;
 
 /// The schema tag every artifact carries.
 pub const SCHEMA: &str = "dnacalc-conform/divergence.v1";
@@ -68,6 +75,12 @@ pub struct Totals {
     /// `Calculated { .. }`. Equals `matched + mismatch_total + excluded_total`.
     pub engine_calculated: u64,
     pub coverage: f64,
+    /// Beside coverage (W012-1.7): every recalc the runs' sessions caused,
+    /// folded corpus-wide — `escalation_rate` (engine-reported; `null` while
+    /// OxCalc exposes no lane outcome), its lower bound from the verbs'
+    /// contract rebuilds, and the verb counts behind both.
+    #[serde(default)]
+    pub escalation: EscalationSummary,
     pub not_evaluated: BTreeMap<String, u64>,
     pub not_evaluated_total: u64,
     pub excluded: BTreeMap<String, u64>,
@@ -159,6 +172,12 @@ pub struct WorkbookReport {
     /// (W012-1.5); `None` when the workbook did not open.
     #[serde(default)]
     pub reference_twin: Option<ReferenceTwinSummary>,
+    /// The session's recalc accounting after the forced recalc (W012-1.7):
+    /// the open-recalc the load ran, the forced F9 (a drain on a `Manual`
+    /// load, a no-op on an `Automatic` one), and the lane-outcome gap.
+    /// `None` when the workbook did not open.
+    #[serde(default)]
+    pub escalation: Option<EscalationSummary>,
     pub verdicts: Vec<CellVerdict>,
 }
 

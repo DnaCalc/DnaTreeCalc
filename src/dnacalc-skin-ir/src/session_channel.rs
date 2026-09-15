@@ -501,6 +501,7 @@ mod tests {
                     grid_node_id: NodeId::new("Sheet1"),
                     dirty: false,
                 }],
+                recalc_accounting: None,
             }),
             WorkspaceDeltaChange::SheetsChanged(vec![SheetProjection {
                 grid_node_id: NodeId::new("sheet:1"),
@@ -726,7 +727,8 @@ mod tests {
         // (H5): the mirror replaces `WorkspaceState::workbook_calc` in place,
         // without a snapshot, matching DefinedNamesChanged's shape.
         use crate::workspace::{
-            CalcModeProjection, SheetCalcSummaryProjection, WorkbookCalcProjection,
+            CalcModeProjection, LaneOutcomeCountersProjection, RecalcAccountingProjection,
+            SheetCalcSummaryProjection, WorkbookCalcProjection,
         };
 
         let mut mirror = mirror_at(3);
@@ -739,6 +741,25 @@ mod tests {
                 grid_node_id: NodeId::new("Sheet1"),
                 dirty: true,
             }],
+            recalc_accounting: Some(RecalcAccountingProjection {
+                open_recalcs: 1,
+                open_recalc_sheet_drains: 1,
+                automatic_entries: 2,
+                automatic_clears: 1,
+                clear_noops: 0,
+                manual_edits: 1,
+                f9_drains: 1,
+                f9_noops: 0,
+                f9_failures: 0,
+                f9_sheet_drains: 1,
+                f9_cells_evaluated: 2,
+                recalcs: 4,
+                contract_rebuilds: 2,
+                lane_outcomes: LaneOutcomeCountersProjection {
+                    unobserved: 4,
+                    ..LaneOutcomeCountersProjection::default()
+                },
+            }),
         };
         let result = apply_delta(
             &mut mirror,

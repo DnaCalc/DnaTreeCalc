@@ -439,6 +439,7 @@ mod tests {
                         dirty: false,
                     },
                 ],
+                recalc_accounting: None,
             }),
             last_run: Some(CalcRunProjection {
                 run_state: CalcRunStateProjection::VerifiedClean,
@@ -478,6 +479,7 @@ mod tests {
                 mode: CalcModeProjection::Automatic,
                 last_recalc_tick: None,
                 sheets: Vec::new(),
+                recalc_accounting: None,
             }),
             ..Default::default()
         };

@@ -36,6 +36,7 @@ Authored:
 - `HANDOVER_DNAONECALC_error_value_display.md` — request that OneCalc check the same bare `Value` error display symptom and consume OxFml visible value text for worksheet error tokens.
 - `HANDOVER_OXCALC_lane_outcome_and_phase_timers_accessor.md` — W012 (dtc-5zet.13): expose the seeded lane's `GridSeededLaneOutcome`, per-recalc `cells_evaluated`, reference-lane flag and M-2 phase timers to the host, and make the F9 / entry outcomes account for the rebuild's mark-all and the sheets cross-sheet propagation recalculated.
 - `HANDOVER_OXCALC_twin_injection_hooks.md` — W012 (dtc-5zet.12): a test-only seam that makes the optimized lane publish a wrong value for one cell on one recalc, so the reference twin can be proven to fire at the three blind sites (>10k mark-all fall-through, cross-sheet escalation, a FileCached pin); plus the twin's callable-identity false red on `=LAMBDA(1)` (dtc-5zet.26) and a `reference_lane_ran` fact on the view.
+- `HANDOVER_OXCALC_charter_s8_escalation_is_counted.md` — W012 (dtc-5zet.14): the one-sentence CHARTER §8 amendment (a conservative full rebuild is legal only when counted, reported, and owned by a bead naming its incremental successor) and the ask to expose the lane outcome and `rebuild_from_input` as public, countable facts on the verbs' outcomes — host-core's `RecalcAccounting` counts rebuilds by verb contract until then.
 
 Anticipated:
 

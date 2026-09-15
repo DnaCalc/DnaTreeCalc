@@ -44,6 +44,7 @@ use crate::bench_report::{
     Samples, Selection, SetupTimings, SkippedCandidate, SubjectKind, SubjectReport,
 };
 use crate::diff::{DiffError, collect_workbooks, error_kind, render_value, sha256_hex};
+use crate::escalation::EscalationSummary;
 use crate::machine::{peak_working_set_bytes, probe_machine};
 use crate::oracle::{Oracle, column_letters};
 
@@ -751,6 +752,7 @@ fn bench_corpus_subject(
         setup: None,
         edit,
         full_recalc,
+        escalation: EscalationSummary::from_accounting(&session.recalc_accounting()),
     })
 }
 
@@ -817,6 +819,7 @@ fn bench_synthetic_filldown(options: &BenchOptions) -> Result<SubjectReport, Ben
         }),
         edit,
         full_recalc,
+        escalation: EscalationSummary::from_accounting(&session.recalc_accounting()),
     })
 }
 
@@ -887,6 +890,7 @@ fn bench_synthetic_cross_sheet(options: &BenchOptions) -> Result<SubjectReport, 
         }),
         edit,
         full_recalc,
+        escalation: EscalationSummary::from_accounting(&session.recalc_accounting()),
     })
 }
 
@@ -930,6 +934,19 @@ pub fn run_bench(
         bench_synthetic_cross_sheet(options)
             .map_err(|error| DiffError::Invariant(format!("synthetic cross-sheet: {error}")))?,
     );
+
+    // W012-1.7: the run-wide fold of every subject's accounting, with the
+    // same identities `diff` checks before writing.
+    let escalation = EscalationSummary::fold(subjects.iter().map(|subject| &subject.escalation));
+    for subject in &subjects {
+        subject
+            .escalation
+            .check_identities(&subject.id)
+            .map_err(DiffError::Invariant)?;
+    }
+    escalation
+        .check_identities("bench totals")
+        .map_err(DiffError::Invariant)?;
 
     let (peak_working_set_bytes, peak_working_set_source) = match peak_working_set_bytes() {
         Ok(bytes) => (
@@ -987,10 +1004,19 @@ pub fn run_bench(
                  inline recalc, cross-sheet propagation, the revision mint, and the returned \
                  post-edit readout of the edited sheet."
                     .to_string(),
+                "`escalation` (W012-1.7, dtc-5zet.14) is host-core's RecalcAccounting per subject \
+                 and folded for the run: `escalation_rate` is null while every recalc's lane \
+                 outcome is unobserved (the same accessor gap as `lane_outcome`); \
+                 `escalation_rate_lower_bound` counts the verbs that rebuild every drained sheet \
+                 by contract (each F9 drain; an Automatic Delete) over the recalcs the host \
+                 issued (the Automatic edits plus those drains). The open-recalc is reported \
+                 apart and is in neither number."
+                    .to_string(),
             ],
         },
         selection: selected.selection,
         subjects,
+        escalation,
         peak_working_set_bytes,
         peak_working_set_source,
     };
@@ -1153,7 +1179,9 @@ pub fn write_bench_summary(
                 dependent.provenance_after.as_deref().unwrap_or("<none>")
             )?;
         }
+        subject.escalation.write_line("  escalation:", out)?;
     }
+    report.escalation.write_line("ESCALATION (run-wide)", out)?;
     writeln!(
         out,
         "peak_working_set: {} ({})",

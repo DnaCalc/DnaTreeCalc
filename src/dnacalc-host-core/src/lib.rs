@@ -58,6 +58,7 @@ pub mod demo;
 pub mod grid_publication;
 pub mod persistence;
 pub mod present;
+pub mod recalc_accounting;
 pub mod skin_protocol;
 pub mod tree;
 pub mod workbook;
@@ -88,6 +89,7 @@ pub use grid_publication::{
 };
 pub use persistence::LocalFileSkinStatePersistenceStore;
 pub use present::present_grid_entry_rejection;
+pub use recalc_accounting::{LaneOutcomeCounters, RecalcAccounting};
 pub use skin_protocol::SkinProtocolSession;
 pub use workbook::{
     WorkbookSession, WorkbookSessionError, XLSX_WORKSPACE_ID, parse_sheet_grid_node_id,
@@ -668,10 +670,14 @@ fn grid_cell_entered_receipt(
 /// one, so a mirror that applies this delta (`session_channel::apply_delta`)
 /// ends up grid-for-grid equal to a full snapshot without shipping one
 /// (dtc-j7n8.18; W011's "mirrors can patch" contract) — proven on the
-/// single-sheet fixture and on the two-sheet demo workbook, under Automatic.
-/// What the delta does NOT cover: `workbook_calc` — under Manual mode an
-/// entry dirties the sheet without a recalc and the receipt carries no
-/// `CalcStateChanged`, so a mirror's dirty flag lags (dtc-j7n8.20).
+/// single-sheet fixture and on the two-sheet demo workbook, under Automatic
+/// and under Manual.
+/// 4. **The calc state**, last (W012-1.7, dtc-5zet.14 — closing
+///    dtc-j7n8.20): every accepted entry moves `workbook_calc` — the recalc
+///    accounting advances on every edit in either mode, and under Manual the
+///    edited sheet turns dirty — so the receipt carries the
+///    complete-replacement `CalcStateChanged` too, read fresh after the edit,
+///    and `workbook_calc` is no longer the one field a mirror had to lag on.
 ///
 /// `from_seq`/`to_seq` stay `0`: host-core owns no projection-sequence
 /// authority yet — the executor that stamps sequences (the app dispatcher's
@@ -712,6 +718,18 @@ fn grid_entry_receipt(
     match grid_entry_patches(session, sheet, view, peers_before) {
         Some(patches) => changes.extend(patches.into_iter().map(WorkspaceDeltaChange::GridChanged)),
         None => changes.push(WorkspaceDeltaChange::FullReset),
+    }
+    // W012-1.7 (dtc-5zet.14), closing dtc-j7n8.20: every accepted entry
+    // moves the workbook's calc state — the recalc accounting on every
+    // edit, and under Manual the edited sheet's dirty flag — so the receipt
+    // carries the complete-replacement `CalcStateChanged` too, last, and a
+    // mirror stays equal to a fresh snapshot in BOTH calc modes. `None`
+    // tick: an entry mints no F9 tick (the same value `snapshot()` carries).
+    match session.workbook_calc_projection(None) {
+        Ok(projection) => changes.push(WorkspaceDeltaChange::CalcStateChanged(projection)),
+        // Unreachable by construction (engine reads only); the honest
+        // degrade is the same as a patch that cannot be vouched for.
+        Err(_) => changes.push(WorkspaceDeltaChange::FullReset),
     }
     IntentReceipt::accepted().with_delta(WorkspaceDelta {
         from_seq: 0,
@@ -1812,7 +1830,8 @@ mod tests {
             receipt.error
         );
 
-        // BOTH changes on the ONE receipt, and only those two.
+        // The hint, the patch, and (W012-1.7) the calc state — on the ONE
+        // receipt, and only those three.
         let (entered_grid, row, col, outcome) = grid_cell_entered_change(&receipt);
         assert_eq!(*entered_grid, grid_id, "the hint names the edited grid");
         assert_eq!((row, col), (1, 1), "the hint names A1");
@@ -1825,8 +1844,9 @@ mod tests {
         let changed = grid_changed_for(&receipt, &grid_id);
         assert_eq!(
             kinds,
-            vec!["grid_cell_entered", "grid_changed"],
-            "exactly the UI hint and the mirror patch, in that order"
+            vec!["grid_cell_entered", "grid_changed", "calc_state_changed"],
+            "exactly the UI hint, the mirror patch, and the calc state (W012-1.7: the recalc \
+             accounting moves on every edit), in that order"
         );
 
         // The patch already carries the refreshed truth — values, provenance
@@ -2014,8 +2034,14 @@ mod tests {
         );
         assert_eq!(
             kinds,
-            vec!["grid_cell_entered", "grid_changed", "grid_changed"],
-            "the hint, the edited sheet's patch, then the recalculated dependent sheet's patch"
+            vec![
+                "grid_cell_entered",
+                "grid_changed",
+                "grid_changed",
+                "calc_state_changed"
+            ],
+            "the hint, the edited sheet's patch, the recalculated dependent sheet's patch, \
+             then the calc state (W012-1.7)"
         );
         assert_eq!(
             grid_changed_targets(&receipt),
@@ -2130,8 +2156,9 @@ mod tests {
         );
         assert_eq!(
             kinds,
-            vec!["grid_cell_entered", "grid_changed"],
-            "the hint and the edited sheet's patch only: Sheet2 read nothing the edit touched"
+            vec!["grid_cell_entered", "grid_changed", "calc_state_changed"],
+            "the hint, the edited sheet's patch and the calc state only: Sheet2 read nothing \
+             the edit touched"
         );
         assert_eq!(
             grid_changed_targets(&receipt),
@@ -2172,19 +2199,20 @@ mod tests {
     }
 
     /// dtc-j7n8.18 (round 2), Manual mode on the two-sheet demo — what the
-    /// delta proves there and what it does not. Under Manual the engine
-    /// suppresses the edit's recalc AND its cross-sheet propagation, so
-    /// entering `Sheet1!A1 = 7` leaves Sheet2's projection untouched (A1
-    /// still 6, still `Calculated` on its mount tick): the receipt is exactly
-    /// `[grid_cell_entered, grid_changed (Sheet1)]`, Sheet1's patch carrying
+    /// delta proves there. Under Manual the engine suppresses the edit's
+    /// recalc AND its cross-sheet propagation, so entering `Sheet1!A1 = 7`
+    /// leaves Sheet2's projection untouched (A1 still 6, still `Calculated`
+    /// on its mount tick): the receipt is exactly `[grid_cell_entered,
+    /// grid_changed (Sheet1), calc_state_changed]`, Sheet1's patch carrying
     /// the stale-but-honest published values (`A1` still 1, `Stale`) under
     /// the new authored literal `7`, and the patched mirror's GRIDS equal
-    /// the fresh snapshot's. The known gap, pinned so its closure is visible:
-    /// the receipt carries no `CalcStateChanged`, so the mirror's
-    /// `workbook_calc` (Sheet1 is now dirty on a fresh read) lags — that is
-    /// dtc-j7n8.20's scope; when it lands, the last two asserts flip.
+    /// the fresh snapshot's. Since W012-1.7 (dtc-5zet.14, closing
+    /// dtc-j7n8.20) the receipt also carries `CalcStateChanged`, so the
+    /// mirror's `workbook_calc` — Sheet1 now dirty, the recalc accounting
+    /// advanced by one Manual edit — equals the fresh snapshot's too: the
+    /// WHOLE mirror is the snapshot, under Manual as under Automatic.
     #[test]
-    fn manual_mode_entry_on_demo_workbook_patches_grids_only_and_pins_the_calc_state_gap() {
+    fn manual_mode_entry_on_demo_workbook_patches_grids_and_the_calc_state() {
         use dnacalc_skin_ir::session_channel::{apply_delta, change_kind};
 
         let (mut document, sheet1, sheet2) = demo_document_with_two_grids();
@@ -2220,9 +2248,9 @@ mod tests {
         );
         assert_eq!(
             kinds,
-            vec!["grid_cell_entered", "grid_changed"],
-            "Manual suppresses cross-sheet propagation: no Sheet2 patch, and no CalcStateChanged \
-             yet (dtc-j7n8.20)"
+            vec!["grid_cell_entered", "grid_changed", "calc_state_changed"],
+            "Manual suppresses cross-sheet propagation: no Sheet2 patch; the calc state rides \
+             the receipt (dtc-j7n8.20 closed by W012-1.7)"
         );
         let sheet1_patch = grid_changed_for(&receipt, &sheet1);
         let a1 = projected_cell(sheet1_patch, 1, 1);
@@ -2259,20 +2287,33 @@ mod tests {
             "every GRID the mirror holds equals the fresh snapshot's"
         );
 
-        // The pinned known gap (dtc-j7n8.20): the mirror's calc state lags.
+        // dtc-j7n8.20, closed: the mirror's calc state no longer lags.
         assert!(
             sheet_dirty_in(&after, &sheet1),
             "a fresh read shows Sheet1 dirty after the Manual-mode edit"
         );
         assert!(
-            !sheet_dirty_in(&mirror, &sheet1),
-            "KNOWN GAP dtc-j7n8.20: the receipt carries no CalcStateChanged, so the mirror's \
-             Sheet1 dirty flag lags the fresh snapshot — flip this assert when that bead lands"
+            sheet_dirty_in(&mirror, &sheet1),
+            "the receipt's CalcStateChanged carried Sheet1's dirty flag to the mirror"
         );
-        assert_ne!(
+        assert_eq!(
             mirror.workbook_calc, after.workbook_calc,
-            "KNOWN GAP dtc-j7n8.20: workbook_calc is the one field the entry delta does not \
-             cover under Manual — flip this assert when that bead lands"
+            "workbook_calc — dirty flags AND the recalc accounting (one Manual edit) — is \
+             covered by the entry delta under Manual"
+        );
+        assert_eq!(
+            mirror, after,
+            "the patched mirror IS the fresh snapshot, calc state included"
+        );
+        let accounting = after
+            .workbook_calc
+            .as_ref()
+            .and_then(|calc| calc.recalc_accounting)
+            .expect("a workbook snapshot carries the recalc accounting");
+        assert_eq!(
+            (accounting.manual_edits, accounting.automatic_entries),
+            (1, 13),
+            "13 Automatic entries authored the demo; this edit was the one Manual edit"
         );
     }
 
@@ -2549,8 +2590,14 @@ mod tests {
         assert_eq!((entered_grid, row, col), (&sheet1, 1, 1));
         assert_eq!(
             kinds,
-            vec!["grid_cell_entered", "grid_changed", "grid_changed"],
-            "the hint, the edited sheet's patch, then the recalculated dependent sheet's patch"
+            vec![
+                "grid_cell_entered",
+                "grid_changed",
+                "grid_changed",
+                "calc_state_changed"
+            ],
+            "the hint, the edited sheet's patch, the recalculated dependent sheet's patch, \
+             then the calc state (W012-1.7)"
         );
         assert_eq!(
             grid_changed_targets(&receipt),

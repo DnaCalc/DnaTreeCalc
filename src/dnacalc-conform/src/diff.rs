@@ -43,6 +43,7 @@ use oxdoc_xlsx::{LoadProfile, open_host_owned_xlsx_source};
 use oxfunc_core::value::{CalcValue, CoreValue};
 use sha2::{Digest, Sha256};
 
+use crate::escalation::EscalationSummary;
 use crate::oracle::{Oracle, OracleFormulaCell, OracleFormulaKind, column_letters, error_literal};
 use crate::report::{
     ARTIFACT_FILE_NAME, CellVerdict, CorpusIdentity, DivergenceReport, LoadReportSummary,
@@ -243,6 +244,7 @@ pub fn diff_workbook_bytes(bytes: &[u8], path: &str, options: &DiffOptions) -> W
                     load_report: None,
                     recalc: None,
                     reference_twin: None,
+                    escalation: None,
                     verdicts: Vec::new(),
                 },
             }
@@ -516,6 +518,11 @@ pub fn score_session_views(
         load_report: Some(load_report_summary(report)),
         recalc: recalc_summary,
         reference_twin,
+        // W012-1.7: the session's accounting after the forced recalc — the
+        // only host verb `diff` issues — read, never derived.
+        escalation: Some(EscalationSummary::from_accounting(
+            &session.recalc_accounting(),
+        )),
         verdicts,
     }
 }
@@ -643,6 +650,7 @@ fn score_unopened(
         load_report: None,
         recalc: None,
         reference_twin: None,
+        escalation: None,
         verdicts,
     }
 }
@@ -882,7 +890,18 @@ pub fn assemble(
                 workbook.formula_cells
             )));
         }
+        if let Some(escalation) = &workbook.escalation {
+            escalation
+                .check_identities(&workbook.path)
+                .map_err(DiffError::Invariant)?;
+        }
     }
+    totals.escalation =
+        EscalationSummary::fold(workbooks.iter().filter_map(|w| w.escalation.as_ref()));
+    totals
+        .escalation
+        .check_identities("totals")
+        .map_err(DiffError::Invariant)?;
     totals.not_evaluated_total = totals.not_evaluated.values().sum();
     totals.excluded_total = totals.excluded.values().sum();
     totals.mismatch_total = totals.mismatch.values().sum();
@@ -955,6 +974,29 @@ pub fn write_summary(
         out,
         "COVERAGE {:.4}  = engine_calculated {} / formula_cells {}",
         report.coverage, t.engine_calculated, t.formula_cells
+    )?;
+    // W012-1.7: beside coverage, every recalc the run caused and what the
+    // engine let the host see of it — corpus-wide here, per workbook in
+    // the artifact (`workbooks[*].escalation`).
+    t.escalation.write_line("ESCALATION", out)?;
+    let with_recalcs = report
+        .workbooks
+        .iter()
+        .filter(|w| w.escalation.is_some_and(|e| e.recalcs > 0))
+        .count();
+    let at_bound_one = report
+        .workbooks
+        .iter()
+        .filter(|w| {
+            w.escalation
+                .and_then(|e| e.escalation_rate_lower_bound)
+                .is_some_and(|b| b == 1.0)
+        })
+        .count();
+    writeln!(
+        out,
+        "  escalation per workbook (retained in the artifact): {with_recalcs} of {} opened workbooks issued a recalc after the open (the forced F9 drains a Manual load; on an Automatic load it is a no-op); {at_bound_one} at lower bound 1.0",
+        t.opened
     )?;
     writeln!(
         out,

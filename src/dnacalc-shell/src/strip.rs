@@ -238,6 +238,7 @@ mod tests {
                     dirty: false,
                 },
             ],
+            recalc_accounting: None,
         });
         assert_eq!(
             strip_slot_content(StripSlot::Calc, &workspace, &shared, None),

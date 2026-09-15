@@ -984,9 +984,11 @@ pub enum WorkspaceDeltaChange {
     /// narrower `GridAuthoredChanged` is not needed beside it (§A.3) — plus
     /// one more `GridChanged` per other sheet the edit's cross-sheet recalc
     /// moved (Automatic mode; host-core diffs every peer sheet's projection
-    /// before and after the edit). Under Manual mode the delta carries no
-    /// `CalcStateChanged`, so a mirror's `workbook_calc` dirty flag lags
-    /// (dtc-j7n8.20).
+    /// before and after the edit) — and, last, a `CalcStateChanged` (W012-1.7,
+    /// dtc-5zet.14, closing dtc-j7n8.20): every entry moves the workbook's
+    /// recalc accounting, and under Manual the edited sheet's dirty flag, so
+    /// the calc state rides the same delta and a mirror's `workbook_calc`
+    /// no longer lags in either mode.
     GridCellEntered {
         grid_node_id: NodeId,
         row: u32,

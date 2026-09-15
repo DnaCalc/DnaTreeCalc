@@ -197,7 +197,14 @@ is *what the host does inside dispatch*:
    - `DefinedNamesChanged(DefinedNamesProjection)` — complete replacement of
      the name catalog (H4);
    - `CalcStateChanged(WorkbookCalcProjection)` — mode + last-recalc tick +
-     per-sheet dirty/stale summary (H5).
+     per-sheet dirty/stale summary (H5) + the session's recalc accounting
+     (`recalc_accounting: Option<RecalcAccountingProjection>`, W012-1.7 /
+     dtc-5zet.14: typed counters of every recalc the live path caused and,
+     per `GridSeededLaneOutcome` variant, why — `unobserved` while OxCalc
+     exposes none). Since W012-1.7 every accepted `EnterGridCell` /
+     `ClearGridCell` receipt carries a `CalcStateChanged` last, after its
+     `GridChanged` patches, so a mirror's `workbook_calc` never lags an edit
+     in either calc mode (this closed dtc-j7n8.20).
    All three are complete-replacement patches, matching the conservative
    doctrine documented at `session_channel.rs:145–158`.
 4. **Projection extensions** (all `#[serde(default)]`, mirror-compatible the

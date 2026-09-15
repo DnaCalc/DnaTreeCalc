@@ -101,6 +101,9 @@ impl WorkbookSession {
             mode: calc_mode_projection(settings.calc_mode),
             last_recalc_tick,
             sheets,
+            // W012-1.7 (dtc-5zet.14): the session's recalc accounting rides
+            // every `CalcStateChanged` and every snapshot, typed.
+            recalc_accounting: Some(self.recalc_accounting().projection()),
         })
     }
 
@@ -129,7 +132,20 @@ impl WorkbookSession {
     /// only emits the `CalcStateChanged` delta).
     pub fn recalculate(&mut self) -> Result<WorkbookRecalcOutcome, WorkbookSessionError> {
         let workspace_id = self.workspace_id().clone();
-        Ok(self.context_mut().recalculate_workbook(&workspace_id)?)
+        // W012-1.7: the F9 is a recalc transaction only when it drained;
+        // the engine's own outcome carries the drained sheets and the
+        // seeded-pass counter the accounting retains. An F9 the engine
+        // aborts (a typed evaluation failure under its `Abort` policy) is
+        // counted apart, before the error propagates.
+        let outcome = match self.context_mut().recalculate_workbook(&workspace_id) {
+            Ok(outcome) => outcome,
+            Err(error) => {
+                self.recalc_accounting.record_f9_failure();
+                return Err(error.into());
+            }
+        };
+        self.recalc_accounting.record_f9(&outcome);
+        Ok(outcome)
     }
 }
 
